@@ -5,9 +5,7 @@ This file provides guidance to Claude Code when working in this repository.
 ## What this is
 
 **m3l-groundwork** — a two-phase TypeScript + Claude Code project
-bootstrapper, extracted and generalized from
-[m3l-automation](https://github.com/monte3l/m3l-automation)'s harness and
-toolchain. **Phase A** (`packages/cli`) is deterministic: an offline Node
+bootstrapper. **Phase A** (`packages/cli`) is deterministic: an offline Node
 CLI that writes a baseline Claude Code harness and TypeScript toolchain into
 an empty directory, correct for any TypeScript project. **Phase B**
 (`packages/plugin`) is adaptive: a `/customize` skill that interviews the
@@ -124,8 +122,8 @@ steps) before considering any task here done.
 
 Single-maintainer project on GitHub (`monte3l/m3l-groundwork`, public).
 Conventional Commits, enforced by the `commit-msg` hook
-(`bin/lint-commit.mjs`) -- same convention as `templates/core` emits and as
-m3l-automation uses. Add a `Co-Authored-By:` trailer when Claude authored or
+(`bin/lint-commit.mjs`) -- same convention `templates/core` emits into every
+bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
 substantially assisted a commit.
 
 No branch-protection ruleset is configured on the GitHub repo yet, and nothing
@@ -178,9 +176,10 @@ bash`, a `type-design-analyzer` agent, a `check-file-budget` gate), a
   because it failed the generalization test.
 - No npm publishing, release automation, or version bumping.
 - `.claude/` harness support (agents/hooks/skills for working _in this repo_
-  specifically, as opposed to what it emits) does not exist yet -- this
-  repo currently relies on m3l-automation's own session-level harness when
-  edited from inside that session, which is why some hooks (path-shape
-  guards scoped to `packages/*/src/**`/`**/tests/**`) fire here as false
-  positives; see this repo's own git log for how those were worked around
-  during the initial build.
+  specifically, as opposed to what it emits) does not exist yet. If this
+  repo is ever edited from inside a Claude Code session that has its own
+  PreToolUse write-time guards configured, a hook whose path-shape rule is
+  scoped to something like `packages/*/src/**`/`**/tests/**` can false-
+  positive here purely because this repo happens to share that directory
+  shape (`packages/cli/src/`, `packages/plugin/tests/`) -- that is a
+  property of whatever session is doing the editing, not of this repo.

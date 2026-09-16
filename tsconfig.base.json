@@ -22,8 +22,7 @@
     // that includes tests/ can't tolerate it (a test file re-exporting a
     // fixture without an explicit return type is normal and fine). Promoting
     // it here would fail typecheck on every test file rather than catch a
-    // real declaration-emit gap. (Carried over from m3l-automation, which
-    // arrived at this exact reasoning independently.)
+    // real declaration-emit gap.
     //
     // noUnusedLocals / noUnusedParameters are deliberately NOT set:
     // @typescript-eslint/no-unused-vars already covers both at error level

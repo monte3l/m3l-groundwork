@@ -13,6 +13,5 @@ allowBuilds:
 # Supply-chain cooldown: hold back package versions younger than this many
 # minutes (pnpm's minimumReleaseAge feature). Pinned explicitly rather than
 # relying on pnpm's default so a future default change cannot silently
-# weaken the gate. Carried over from m3l-automation's pnpm-workspace.yaml,
-# which arrived at this value and reasoning independently of this project.
+# weaken the gate.
 minimumReleaseAge: 1440

@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 /**
  * The single source of truth for what `pnpm verify` (bin/verify.mjs) runs
- * locally, and what CI runs per lane. Unlike the m3l-automation prior art
- * this is adapted from -- which needed a SEPARATE `check-verify-parity.mjs`
- * gate to keep this list honest against a hand-written `ci.yml` -- this
- * baseline inverts the dependency: `.github/workflows/ci.yml`'s job steps
- * each invoke `node bin/verify.mjs --step <id>` directly, naming an id from
- * this file, so parity is structural rather than a second gate to maintain.
+ * locally, and what CI runs per lane. `.github/workflows/ci.yml`'s job
+ * steps each invoke `node bin/verify.mjs --step <id>` directly, naming an
+ * id from this file, so the local command and CI can never drift apart --
+ * there is no separate list to keep in sync.
  *
  * Each step's `cmd` is the argv array to run (via `node:child_process`
  * `spawnSync`, stdio inherited so failures are visible directly).
