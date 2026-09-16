@@ -65,6 +65,27 @@ describe("planFacets", () => {
     expect(serviceAgent?.emphasis).not.toContain("visual verification");
   });
 
+  it('covers the "both" runtime target branch', () => {
+    const plan = planFacets({ ...BASE_ANSWERS, runtime: "both" });
+    const modules = plan.typescript.find(
+      (f) => f.facetId === "modules-esm-node-interop",
+    );
+    expect(modules?.emphasis).toContain("Node + browser");
+  });
+
+  it("covers the minimal and thorough CI-depth branches", () => {
+    const minimal = planFacets({ ...BASE_ANSWERS, ciDepth: "minimal" });
+    const thorough = planFacets({ ...BASE_ANSWERS, ciDepth: "thorough" });
+    const minimalCi = minimal.harness.find(
+      (f) => f.facetId === "cc-features-settings",
+    );
+    const thoroughCi = thorough.harness.find(
+      (f) => f.facetId === "cc-features-settings",
+    );
+    expect(minimalCi?.emphasis).toContain("minimal");
+    expect(thoroughCi?.emphasis).toContain("thorough");
+  });
+
   it("varies module-resolution emphasis by runtime target", () => {
     const node = planFacets({ ...BASE_ANSWERS, runtime: "node" });
     const browser = planFacets({ ...BASE_ANSWERS, runtime: "browser" });

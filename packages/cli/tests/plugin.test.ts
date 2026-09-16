@@ -56,6 +56,16 @@ describe("installCustomizeSkill", () => {
     );
   });
 
+  it("resolves a default source directory when none is passed", () => {
+    // pluginDir() (the default parameter) resolves relative to this
+    // module's own runtime location, which under vitest is not
+    // dist/main.js, so it won't find real skill files here -- the point of
+    // this test is only that the default-parameter branch executes and
+    // degrades to an empty result rather than throwing.
+    const result = installCustomizeSkill(targetDir);
+    expect(Array.isArray(result.filesWritten)).toBe(true);
+  });
+
   it("skips a missing source file rather than throwing", () => {
     rmSync(join(sourceDir, "src", "domain-map.ts"));
 
