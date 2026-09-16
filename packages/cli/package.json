@@ -1,0 +1,20 @@
+{
+  "name": "@m3l-groundwork/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic Phase A bootstrapper: writes the m3l-groundwork baseline (toolchain + Claude Code harness) into a new directory. No prompts, no network beyond the package install.",
+  "bin": {
+    "m3l-groundwork": "bin/m3l-groundwork.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "templates"
+  ],
+  "scripts": {},
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

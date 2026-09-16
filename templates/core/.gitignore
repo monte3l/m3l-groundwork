@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output (tsc-owned; never committed)
+dist/
+*.tsbuildinfo
+
+# Test / coverage artifacts
+coverage/
+
+# Editor / OS
+.DS_Store
+
+# Local overrides
+lefthook-local.yml

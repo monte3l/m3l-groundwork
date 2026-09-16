@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreDependencies": [
+    "@commitlint/config-conventional",
+    "@commitlint/types"
+  ],
+  "ignoreBinaries": ["verify"],
+  "workspaces": {
+    ".": {
+      "entry": ["bin/*.mjs"],
+      "project": ["bin/**/*.mjs"]
+    },
+    "packages/cli": {
+      "entry": ["src/main.ts", "bin/*.mjs"],
+      "project": ["src/**/*.ts", "bin/**/*.mjs"]
+    },
+    "packages/plugin": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
+    }
+  }
+}

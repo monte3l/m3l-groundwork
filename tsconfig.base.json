@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "types": ["node"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "allowUnreachableCode": false,
+    // isolatedDeclarations stays out of the base config deliberately: the
+    // per-package build projects set it individually, but a tooling project
+    // that includes tests/ can't tolerate it (a test file re-exporting a
+    // fixture without an explicit return type is normal and fine). Promoting
+    // it here would fail typecheck on every test file rather than catch a
+    // real declaration-emit gap. (Carried over from m3l-automation, which
+    // arrived at this exact reasoning independently.)
+    //
+    // noUnusedLocals / noUnusedParameters are deliberately NOT set:
+    // @typescript-eslint/no-unused-vars already covers both at error level
+    // (eslint.config.js) with an `^_`-prefix escape hatch this codebase
+    // relies on; tsc's flags honor no such pattern for locals, so adding
+    // them would duplicate an existing gate while breaking that convention.
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The tooling project: covers src + tests for typecheck/lint, distinct
+    // from tsconfig.build.json (src-only, emits dist/). Mirrors why
+    // tsconfig.base.json keeps isolatedDeclarations out of the shared base
+    // -- a tests/ file re-exporting a fixture without an explicit return
+    // type is normal and fine, and this project never emits declarations.
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

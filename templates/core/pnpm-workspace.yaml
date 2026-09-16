@@ -1,0 +1,13 @@
+# A single-package project still needs this file: pnpm 10+ moved
+# install-script approval here (the `pnpm` field in package.json is no
+# longer read).
+allowBuilds:
+  # lefthook's postinstall fetches its platform binary; needed for the git
+  # hooks to actually work.
+  lefthook: true
+  # unrs-resolver is a native binary transitive dep of
+  # eslint-import-resolver-typescript; it works without its optional native
+  # acceleration, so this is explicitly false (not omitted) so pnpm skips
+  # the build with a notice instead of erroring when no compiler toolchain
+  # is available.
+  unrs-resolver: false

@@ -1,0 +1,18 @@
+packages:
+  - "packages/*"
+allowBuilds:
+  # lefthook's postinstall fetches its platform binary; needed for the git
+  # hooks to actually work.
+  lefthook: true
+  # unrs-resolver is a native binary transitive dep of
+  # eslint-import-resolver-typescript; eslint-import-resolver-typescript
+  # works without its optional native acceleration, so this is explicitly
+  # false (not omitted) so pnpm skips the build with a notice instead of
+  # erroring when no compiler toolchain is available.
+  unrs-resolver: false
+# Supply-chain cooldown: hold back package versions younger than this many
+# minutes (pnpm's minimumReleaseAge feature). Pinned explicitly rather than
+# relying on pnpm's default so a future default change cannot silently
+# weaken the gate. Carried over from m3l-automation's pnpm-workspace.yaml,
+# which arrived at this value and reasoning independently of this project.
+minimumReleaseAge: 1440
