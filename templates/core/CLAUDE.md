@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## What this is
 
-****PROJECT_NAME**** — a TypeScript project bootstrapped by
+**__PROJECT_NAME__** — a TypeScript project bootstrapped by
 [m3l-groundwork](https://github.com/monte3l/m3l-groundwork). This baseline
 is deliberately generic: it holds for any TypeScript project regardless of
 domain. Run `/customize` to tailor it to what you're actually building.

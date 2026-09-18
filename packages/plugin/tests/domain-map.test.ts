@@ -47,6 +47,44 @@ describe("classifyPath", () => {
   it("reports an unrecognized path as uncovered", () => {
     expect(classifyPath("some/random/file.xyz")).toBe("uncovered");
   });
+
+  it("classifies common adopt-mode toolchain equivalents as typescript-domain", () => {
+    expect(classifyPath(".eslintrc.cjs")).toBe("typescript");
+    expect(classifyPath("jest.config.js")).toBe("typescript");
+    expect(classifyPath(".husky/pre-commit")).toBe("typescript");
+    expect(classifyPath("packages/a/tsconfig.json")).toBe("typescript");
+    expect(classifyPath("biome.json")).toBe("typescript");
+    expect(classifyPath(".nvmrc")).toBe("typescript");
+  });
+
+  it("classifies adopt-mode harness equivalents as harness-domain", () => {
+    expect(classifyPath(".claude/commands/deploy.md")).toBe("harness");
+    expect(classifyPath(".mcp.json")).toBe("harness");
+  });
+
+  it("does not let a broadened typescript glob swallow .claude/settings.json", () => {
+    expect(classifyPath(".claude/settings.json")).toBe("harness");
+  });
+
+  it("classifies via extraGlobs when the shared lists don't cover a path", () => {
+    expect(classifyPath("config/custom-lint.json")).toBe("uncovered");
+    expect(
+      classifyPath("config/custom-lint.json", {
+        typescript: ["config/custom-lint.json"],
+      }),
+    ).toBe("typescript");
+    expect(
+      classifyPath("config/custom-hook.md", {
+        harness: ["config/custom-hook.md"],
+      }),
+    ).toBe("harness");
+  });
+
+  it("still prefers the shared domain lists over extraGlobs when both would match", () => {
+    expect(classifyPath("README.md", { typescript: ["README.md"] })).toBe(
+      "neutral",
+    );
+  });
 });
 
 describe("the real templates/core tree", () => {

@@ -1,8 +1,8 @@
 /**
  * Covers main()'s own body (parseArgs and templatesCoreDir are covered
  * separately in main.test.ts). git.js and plugin.js are mocked so this
- * exercises real emitTemplate() against a real temp directory without
- * spawning real git/pnpm processes.
+ * exercises real emitTemplate()/surveyProject()/planConflicts() against a
+ * real temp directory without spawning real git/pnpm processes.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -10,14 +10,20 @@ import {
   mkdirSync,
   rmSync,
   writeFileSync,
+  readFileSync,
   existsSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Inventory } from "../src/inventory.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
 const installCustomizeSkillMock = vi.fn(() => ({ filesWritten: [] }));
+const installCustomizeSkillGuardedMock = vi.fn(() => ({
+  filesWritten: [],
+  location: "claude" as const,
+}));
 
 vi.mock("../src/git.js", () => ({
   gitInit: gitInitMock,
@@ -25,6 +31,7 @@ vi.mock("../src/git.js", () => ({
 }));
 vi.mock("../src/plugin.js", () => ({
   installCustomizeSkill: installCustomizeSkillMock,
+  installCustomizeSkillGuarded: installCustomizeSkillGuardedMock,
 }));
 
 const { main } = await import("../src/main.js");
@@ -37,49 +44,141 @@ describe("main", () => {
     gitInitMock.mockClear();
     runInstallMock.mockClear();
     installCustomizeSkillMock.mockClear();
+    installCustomizeSkillGuardedMock.mockClear();
   });
 
   afterEach(() => {
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  it("emits the template, installs the skill, inits git, and installs deps by default", () => {
-    // main() targets an empty subdirectory it creates itself.
-    const emptyTarget = join(targetDir, "sub");
+  describe("fresh mode", () => {
+    it("emits the template, installs the skill, inits git, and installs deps by default", () => {
+      // main() targets an empty subdirectory it creates itself.
+      const emptyTarget = join(targetDir, "sub");
 
-    main([emptyTarget, "--name", "widgets"]);
+      main([emptyTarget, "--name", "widgets"]);
 
-    expect(existsSync(join(emptyTarget, "package.json"))).toBe(true);
-    expect(installCustomizeSkillMock).toHaveBeenCalledWith(emptyTarget);
-    expect(gitInitMock).toHaveBeenCalledWith(emptyTarget);
-    expect(runInstallMock).toHaveBeenCalledWith(emptyTarget);
+      expect(existsSync(join(emptyTarget, "package.json"))).toBe(true);
+      expect(installCustomizeSkillMock).toHaveBeenCalledWith(emptyTarget);
+      expect(gitInitMock).toHaveBeenCalledWith(emptyTarget);
+      expect(runInstallMock).toHaveBeenCalledWith(emptyTarget);
+    });
+
+    it("skips the install step when --skip-install is passed", () => {
+      const emptyTarget = join(targetDir, "sub2");
+
+      main([emptyTarget, "--skip-install"]);
+
+      expect(gitInitMock).toHaveBeenCalledWith(emptyTarget);
+      expect(runInstallMock).not.toHaveBeenCalled();
+    });
+
+    it("throws rather than overwrite a non-empty directory without --force", () => {
+      mkdirSync(join(targetDir, "occupied"));
+      writeFileSync(join(targetDir, "occupied", "existing.txt"), "hi");
+
+      expect(() => main([join(targetDir, "occupied")])).toThrow(
+        /already exists and is not empty/,
+      );
+      expect(gitInitMock).not.toHaveBeenCalled();
+    });
+
+    it("proceeds into a non-empty directory when --force is passed", () => {
+      mkdirSync(join(targetDir, "occupied2"));
+      writeFileSync(join(targetDir, "occupied2", "existing.txt"), "hi");
+
+      main([join(targetDir, "occupied2"), "--skip-install", "--force"]);
+
+      expect(gitInitMock).toHaveBeenCalled();
+    });
+
+    it("forces fresh mode even on a directory with a package.json, via --fresh", () => {
+      const freshForced = join(targetDir, "sub3");
+      mkdirSync(freshForced);
+      writeFileSync(join(freshForced, "package.json"), "{}");
+
+      main([freshForced, "--skip-install", "--force", "--fresh"]);
+
+      expect(gitInitMock).toHaveBeenCalled();
+      expect(installCustomizeSkillGuardedMock).not.toHaveBeenCalled();
+    });
   });
 
-  it("skips the install step when --skip-install is passed", () => {
-    const emptyTarget = join(targetDir, "sub2");
+  describe("adopt mode", () => {
+    it("auto-detects adopt for a directory containing package.json and writes .groundwork/ only", () => {
+      const projectDir = join(targetDir, "existing-project");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
 
-    main([emptyTarget, "--skip-install"]);
+      main([projectDir]);
 
-    expect(gitInitMock).toHaveBeenCalledWith(emptyTarget);
-    expect(runInstallMock).not.toHaveBeenCalled();
+      expect(
+        existsSync(join(projectDir, ".groundwork", "inventory.json")),
+      ).toBe(true);
+      expect(
+        existsSync(join(projectDir, ".groundwork", "adoption-report.md")),
+      ).toBe(true);
+      const inventory = JSON.parse(
+        readFileSync(join(projectDir, ".groundwork", "inventory.json"), "utf8"),
+      ) as Inventory;
+      expect(inventory.modeSignal).toBe("found package.json");
+
+      // Nothing outside .groundwork/ was written -- no git init, no install,
+      // and the guarded (not the unguarded) skill installer was used.
+      expect(gitInitMock).not.toHaveBeenCalled();
+      expect(runInstallMock).not.toHaveBeenCalled();
+      expect(installCustomizeSkillMock).not.toHaveBeenCalled();
+      expect(installCustomizeSkillGuardedMock).toHaveBeenCalledWith(projectDir);
+    });
+
+    it("forces adopt mode via --adopt even on an empty directory", () => {
+      const emptyTarget = join(targetDir, "forced-adopt");
+      mkdirSync(emptyTarget);
+
+      main([emptyTarget, "--adopt"]);
+
+      expect(
+        existsSync(join(emptyTarget, ".groundwork", "inventory.json")),
+      ).toBe(true);
+      expect(gitInitMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects --force in adopt mode rather than writing anything", () => {
+      const projectDir = join(targetDir, "existing-project2");
+      mkdirSync(projectDir);
+      writeFileSync(join(projectDir, "package.json"), "{}");
+
+      expect(() => main([projectDir, "--force"])).toThrow(
+        /no effect in adopt mode/,
+      );
+      expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
+    });
   });
 
-  it("throws rather than overwrite a non-empty directory without --force", () => {
-    mkdirSync(join(targetDir, "occupied"));
-    writeFileSync(join(targetDir, "occupied", "existing.txt"), "hi");
+  describe("--help / --version", () => {
+    it("prints usage and returns for --help without requiring a target directory", () => {
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+      main(["--help"]);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/usage: m3l-groundwork/),
+      );
+      logSpy.mockRestore();
+    });
 
-    expect(() => main([join(targetDir, "occupied")])).toThrow(
-      /already exists and is not empty/,
-    );
-    expect(gitInitMock).not.toHaveBeenCalled();
-  });
-
-  it("proceeds into a non-empty directory when --force is passed", () => {
-    mkdirSync(join(targetDir, "occupied2"));
-    writeFileSync(join(targetDir, "occupied2", "existing.txt"), "hi");
-
-    main([join(targetDir, "occupied2"), "--skip-install", "--force"]);
-
-    expect(gitInitMock).toHaveBeenCalled();
+    it("prints a version string and returns for --version", () => {
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+      main(["--version"]);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      );
+      logSpy.mockRestore();
+    });
   });
 });

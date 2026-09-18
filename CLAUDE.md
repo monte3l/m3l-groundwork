@@ -6,12 +6,19 @@ This file provides guidance to Claude Code when working in this repository.
 
 **m3l-groundwork** — a two-phase TypeScript + Claude Code project
 bootstrapper. **Phase A** (`packages/cli`) is deterministic: an offline Node
-CLI that writes a baseline Claude Code harness and TypeScript toolchain into
-an empty directory, correct for any TypeScript project. **Phase B**
-(`packages/plugin`) is adaptive: a `/customize` skill that interviews the
-user, tailors the baseline, then runs a live guidance pass over official
-TypeScript and Anthropic sources so the result reflects current upstream
-recommendations rather than what was true when this repo last shipped.
+CLI with two modes, auto-detected from the target directory (`mode.ts`).
+**Fresh mode** writes a baseline Claude Code harness and TypeScript
+toolchain into an empty directory, correct for any TypeScript project.
+**Adopt mode** points at an already-established project instead: it surveys
+it read-only (`src/survey/`), diffs the baseline against what's actually
+there (`conflicts.ts`), and writes only a report (`.groundwork/`) -- it never
+touches a project file. **Phase B** (`packages/plugin`) is adaptive: a
+`/customize` skill that, for a fresh bootstrap, interviews the user and
+tailors the baseline; for an adopted project, first reconciles the CLI's
+survey against the real repo and confirms what to change (its own Step 0).
+Either way it then runs a live guidance pass over official TypeScript and
+Anthropic sources so the result reflects current upstream recommendations
+rather than what was true when this repo last shipped.
 
 Do not confuse this repo's own toolchain with **the baseline it emits**
 (`templates/core/`) — the two share the same design (same tsconfig strict
@@ -33,12 +40,16 @@ tooling `tsconfig.json` (src + tests, no emit) and a build-only
 
 ```
 packages/cli/          Phase A: the offline bootstrapper CLI
-  src/                   tokens.ts, emit.ts, git.ts, plugin.ts, main.ts
+  src/                   main.ts, mode.ts, tokens.ts, emit.ts, git.ts, plugin.ts,
+                          conflicts.ts, inventory.ts, report.ts, jsonc.ts
+  src/survey/             survey.ts + one collector per discovery area
+                          (survey-shape, survey-toolchain, survey-harness,
+                          survey-docs), fs-walk.ts, types.ts
   bin/                    m3l-groundwork.mjs -- the published entry point
-  tests/                  unit tests + bootstrap.e2e.test.ts
+  tests/                  unit tests + bootstrap.e2e.test.ts + adopt.e2e.test.ts
 
 packages/plugin/        Phase B: the /customize skill
-  skills/customize/       SKILL.md
+  skills/customize/       SKILL.md (Step 0 is the adopt-mode reconcile step)
   src/                    kind-facet-map.ts, domain-map.ts, index.ts
   tests/                  unit tests for both
 
@@ -55,19 +66,19 @@ templates/packs/        Extension point for future opt-in packs. Currently
 
 Run any task with `pnpm <script>`.
 
-| Script                         | What it does                                                                                                                                                                                                                                              |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm build`                   | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                              |
-| `pnpm typecheck`               | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                       |
-| `pnpm lint` / `lint:fix`       | ESLint over the whole repo (excludes `templates/**`)                                                                                                                                                                                                      |
-| `pnpm format` / `format:check` | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                           |
-| `pnpm test` / `test:coverage`  | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                      |
-| `pnpm test:e2e`                | The real acceptance test: builds nothing itself, but bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify`. Slow (~15-20s) and network-touching (a real `pnpm install`); not part of `pnpm test`. |
-| `pnpm knip`                    | Unused-dependency / unused-export hygiene, both packages                                                                                                                                                                                                  |
-| `pnpm check:exports`           | publint + attw against this repo's own root (a private package -- skips cleanly with a warning)                                                                                                                                                           |
-| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                           |
-| `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`), in the order `lefthook`'s `pre-push` runs them                                                                                                                                                         |
-| `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                                                                           |
+| Script                         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                   | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                                                                                                           |
+| `pnpm typecheck`               | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                                                                                                                    |
+| `pnpm lint` / `lint:fix`       | ESLint over the whole repo (excludes `templates/**`)                                                                                                                                                                                                                                                                                                                                                                                   |
+| `pnpm format` / `format:check` | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                        |
+| `pnpm test` / `test:coverage`  | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                   |
+| `pnpm test:e2e`                | The real acceptance test, both modes: `bootstrap.e2e.test.ts` bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify` (slow, ~15-20s, network-touching -- a real `pnpm install`); `adopt.e2e.test.ts` runs adopt mode against a fixture pre-existing project and asserts nothing outside `.groundwork/` and `.claude/skills/customize/` changed. Neither is part of `pnpm test`. |
+| `pnpm knip`                    | Unused-dependency / unused-export hygiene, both packages                                                                                                                                                                                                                                                                                                                                                                               |
+| `pnpm check:exports`           | publint + attw against this repo's own root (a private package -- skips cleanly with a warning)                                                                                                                                                                                                                                                                                                                                        |
+| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                        |
+| `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`), in the order `lefthook`'s `pre-push` runs them                                                                                                                                                                                                                                                                                                                                      |
+| `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 Run `pnpm verify` (or just push -- `lefthook`'s `pre-push` runs the same
 steps) before considering any task here done.
@@ -82,10 +93,26 @@ steps) before considering any task here done.
   `dist/main.js` the published `bin/m3l-groundwork.mjs` actually invokes --
   don't hardcode a path assuming one or the other.
 - **The CLI has zero runtime dependencies it can avoid**, and makes no
-  network call beyond the package install it runs at the end
-  (`packages/cli/src/git.ts`'s `runInstall`). If a change to `packages/cli`
-  needs a new dependency, stop and reconsider -- this is a hard constraint,
-  not a style preference.
+  network call beyond the package install it runs at the end of fresh mode
+  (`packages/cli/src/git.ts`'s `runInstall`; adopt mode makes none at all).
+  If a change to `packages/cli` needs a new dependency, stop and
+  reconsider -- this is a hard constraint, not a style preference. It's why
+  `src/survey/` parses JSONC by hand (`jsonc.ts`) and never parses YAML at
+  all -- `lefthook.yml`/workflow files are indexed and excerpted, flagged
+  `needsReading: true`, and left for `/customize`'s Step 0 to actually read.
+- **Adopt mode's contract is "the survey is an index, not an
+  interpretation."** Every `survey-*.ts` collector records facts it can
+  establish offline -- which files exist, their verbatim content, which
+  keys are set -- and never infers a verdict (there is no `ProjectKind`
+  anywhere in `packages/cli`; that inference happens once, visibly, in
+  `/customize`'s Step 1, with its evidence shown). Anything a collector
+  can't parse goes into `ProjectSurvey.undetermined` rather than being
+  silently dropped -- a survey that looks complete but isn't is worse than
+  one that admits a gap. Adopt mode writes exactly two files
+  (`.groundwork/inventory.json`, `.groundwork/adoption-report.md`) plus one
+  guarded, purely-additive copy of the `/customize` skill
+  (`installCustomizeSkillGuarded` in `plugin.ts`) -- never a project file.
+  `adopt.e2e.test.ts` is the test of that guarantee; don't weaken it.
 - **`/customize`'s two guidance skills (`typescript-guidance`,
   `harness-guidance`, both in `templates/core/.claude/skills/`) each have
   full authority over their entire domain**, not just the facets an
@@ -183,3 +210,13 @@ bash`, a `type-design-analyzer` agent, a `check-file-budget` gate), a
   positive here purely because this repo happens to share that directory
   shape (`packages/cli/src/`, `packages/plugin/tests/`) -- that is a
   property of whatever session is doing the editing, not of this repo.
+- **Adopt mode's `inventory.json` records `templateRoot` as an absolute
+  path.** If the CLI ran from a location that no longer exists by the time
+  `/customize` runs (a deleted temp checkout, a different machine), the
+  approved additions can't be read; `/customize`'s Step 0 should report this
+  and ask for a re-run rather than guessing at the baseline's contents.
+- **Adopt mode's post-merge cap counts (in `report.ts`) are an estimate, not
+  a reconciliation.** It assumes no name overlap between the baseline's
+  agents/skills/hooks and the project's own -- good enough to flag "you may
+  go over budget," not precise enough to be the final word; `/customize`'s
+  Step 0 confirmation round settles it for real.
