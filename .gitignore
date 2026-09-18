@@ -13,3 +13,6 @@ coverage/
 
 # Local overrides
 lefthook-local.yml
+
+# Adopt mode's own output, from testing it against this repo itself
+.groundwork/
