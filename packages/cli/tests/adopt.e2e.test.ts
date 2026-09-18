@@ -131,7 +131,7 @@ describe("adopt mode end-to-end", () => {
         readFileSync(inventoryPath, "utf8"),
       ) as Inventory;
 
-      expect(inventory.schemaVersion).toBe(1);
+      expect(inventory.schemaVersion).toBe(2);
       expect(inventory.survey.toolchain.testRunner.tool).toBe("jest");
       expect(
         inventory.survey.harness.agents.some(
@@ -144,10 +144,29 @@ describe("adopt mode end-to-end", () => {
         ),
       ).toBe(true);
 
+      // Every pack under templates/packs/ is surveyed regardless of any
+      // --pack flag (none was passed here) and staged, unapplied.
+      expect(inventory.packs.some((p) => p.name === "harness-extras")).toBe(
+        true,
+      );
+      expect(
+        existsSync(
+          join(
+            projectDir,
+            ".groundwork",
+            "packs",
+            "harness-extras",
+            "pack.json",
+          ),
+        ),
+      ).toBe(true);
+
       const reportPath = join(projectDir, ".groundwork", "adoption-report.md");
       const report = readFileSync(reportPath, "utf8");
       expect(report).toContain("package.json");
       expect(report).toContain("## Could not be determined");
+      expect(report).toContain("## Available packs");
+      expect(report).toContain("harness-extras");
       expect(report).not.toContain(
         "Nothing -- every file the survey looked at parsed cleanly.",
       );

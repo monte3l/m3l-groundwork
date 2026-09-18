@@ -20,6 +20,15 @@ Either way it then runs a live guidance pass over official TypeScript and
 Anthropic sources so the result reflects current upstream recommendations
 rather than what was true when this repo last shipped.
 
+`templates/packs/` adds optional bundles on top of the baseline -- artifacts
+cut from `templates/core` purely to hold its hard caps, not because they
+failed the generalization test. The CLI installs a pack directly in fresh
+mode (`--pack <name>`); in adopt mode it only surveys which packs apply and
+stages their payload at `.groundwork/packs/`, and `/customize`'s Step 0
+installs from there after confirmation -- the same fresh/adopt split as
+everything else Phase A does. See `templates/packs/README.md` for the
+wiring contract (a pack never edits YAML or JavaScript).
+
 Do not confuse this repo's own toolchain with **the baseline it emits**
 (`templates/core/`) — the two share the same design (same tsconfig strict
 flags, same eslint rule set, same lefthook shape) but are separate,
@@ -41,44 +50,47 @@ tooling `tsconfig.json` (src + tests, no emit) and a build-only
 ```
 packages/cli/          Phase A: the offline bootstrapper CLI
   src/                   main.ts, mode.ts, tokens.ts, emit.ts, git.ts, plugin.ts,
-                          conflicts.ts, inventory.ts, report.ts, jsonc.ts
+                          conflicts.ts, inventory.ts, report.ts, jsonc.ts,
+                          caps.ts, packs.ts, merge-json.ts
   src/survey/             survey.ts + one collector per discovery area
                           (survey-shape, survey-toolchain, survey-harness,
                           survey-docs), fs-walk.ts, types.ts
   bin/                    m3l-groundwork.mjs -- the published entry point
   tests/                  unit tests + bootstrap.e2e.test.ts + adopt.e2e.test.ts
+                          + packs.e2e.test.ts
 
 packages/plugin/        Phase B: the /customize skill
   skills/customize/       SKILL.md (Step 0 is the adopt-mode reconcile step)
-  src/                    kind-facet-map.ts, domain-map.ts, index.ts
-  tests/                  unit tests for both
+  src/                    kind-facet-map.ts, domain-map.ts, pack-map.ts, index.ts
+  tests/                  unit tests for all three
 
 templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          toolchain, .claude/ harness, CI workflows, and
                          placeholder src/tests. See its own CLAUDE.md.
 
-templates/packs/        Extension point for future opt-in packs. Currently
-                         just a README documenting the intent -- no packs
-                         are built yet (see "Known gaps" below).
+templates/packs/        Optional add-on bundles installed on top of the
+                         baseline. `harness-extras/` ships today; see its
+                         own README.md for the wiring contract and "Known
+                         gaps" below for the deferred candidates.
 ```
 
 ## Commands
 
 Run any task with `pnpm <script>`.
 
-| Script                         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm build`                   | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                                                                                                           |
-| `pnpm typecheck`               | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                                                                                                                    |
-| `pnpm lint` / `lint:fix`       | ESLint over the whole repo (excludes `templates/**`)                                                                                                                                                                                                                                                                                                                                                                                   |
-| `pnpm format` / `format:check` | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                        |
-| `pnpm test` / `test:coverage`  | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                   |
-| `pnpm test:e2e`                | The real acceptance test, both modes: `bootstrap.e2e.test.ts` bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify` (slow, ~15-20s, network-touching -- a real `pnpm install`); `adopt.e2e.test.ts` runs adopt mode against a fixture pre-existing project and asserts nothing outside `.groundwork/` and `.claude/skills/customize/` changed. Neither is part of `pnpm test`. |
-| `pnpm knip`                    | Unused-dependency / unused-export hygiene, both packages                                                                                                                                                                                                                                                                                                                                                                               |
-| `pnpm check:exports`           | publint + attw against this repo's own root (a private package -- skips cleanly with a warning)                                                                                                                                                                                                                                                                                                                                        |
-| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                        |
-| `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`), in the order `lefthook`'s `pre-push` runs them                                                                                                                                                                                                                                                                                                                                      |
-| `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Script                         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm build`                   | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `pnpm typecheck`               | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `pnpm lint` / `lint:fix`       | ESLint over the whole repo (excludes `templates/**`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `pnpm format` / `format:check` | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `pnpm test` / `test:coverage`  | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `pnpm test:e2e`                | The real acceptance test, both modes: `bootstrap.e2e.test.ts` bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify` (slow, ~15-20s, network-touching -- a real `pnpm install`); `adopt.e2e.test.ts` runs adopt mode against a fixture pre-existing project and asserts nothing outside `.groundwork/` and `.claude/skills/customize/` changed; `packs.e2e.test.ts` bootstraps with `--pack harness-extras` and asserts the emitted project's own `pnpm verify` (including the pack's gate) is green. None are part of `pnpm test`. |
+| `pnpm knip`                    | Unused-dependency / unused-export hygiene, both packages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `pnpm check:exports`           | publint + attw against this repo's own root (a private package -- skips cleanly with a warning)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`), in the order `lefthook`'s `pre-push` runs them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Run `pnpm verify` (or just push -- `lefthook`'s `pre-push` runs the same
 steps) before considering any task here done.
@@ -131,19 +143,39 @@ steps) before considering any task here done.
   new template file gets caught before it becomes a silent blind spot for
   both guidance sweeps. Update the glob lists in the same commit that adds
   the file, not as a follow-up.
-- **The emitted baseline has hard caps, verified by counting, not by
-  convention:** ≤5 agents, ≤8 skills (7 in `templates/core/.claude/skills/`
-  - `/customize` via the installed plugin = 8), ≤10 hooks, ≤3 CI workflows,
-    ≤12 root `package.json` scripts, 0 gates that exist only to check
-    documentation about the repo itself. Adding a new agent/skill/hook/
-    workflow/script to `templates/core` means removing or merging an existing
-    one first, or the baseline silently drifts over its budget with nothing
-    to catch it (there is no `check:*` gate for this in the repo itself --
-    count manually: `ls templates/core/.claude/agents | wc -l`, etc.).
-- **`bin/lib/verify-steps.mjs` is the single source of truth `pnpm verify`
-  and every future CI job would read from** -- the same pattern
-  `templates/core/bin/lib/verify-steps.mjs` uses for the emitted baseline's
-  own CI. Add a new gate here, not as a bespoke script invocation.
+- **`templates/core`'s caps bind the baseline only, verified by counting
+  (`packages/cli/src/caps.ts`'s `countBaselineCaps`/`CAP_LIMITS`), not
+  every installed pack on top of it:** ≤5 agents, ≤8 skills (7 in
+  `templates/core/.claude/skills/` - `/customize` via the installed plugin
+  = 8), ≤10 hooks, ≤3 CI workflows, ≤12 root `package.json` scripts, 0
+  gates that exist only to check documentation about the repo itself.
+  Adding a new agent/skill/hook/workflow/script to `templates/core` means
+  removing or merging an existing one first -- `caps.ts` is the one place
+  the cap numbers and the counting logic live, so `report.ts` (the
+  adoption-report table) and `main.ts` (the fresh-mode post-`--pack`
+  summary) can't state a different number for the same cap. A pack
+  declares its own `budget` delta in `pack.json`, checked by a structural
+  test against its own `files/` tree's actual contents -- see
+  `templates/packs/README.md`.
+- **`bin/lib/verify-steps.mjs` is the single source of truth `pnpm verify`,
+  every `lefthook.yml` `pre-push` lane, and every CI job reads from --
+  keyed by _group_ (`format`/`lint`/`typecheck`/`build`/`test`), not by
+  individual step id.** Both YAML files name a group, never a step, which
+  is what lets a pack register a gate (appended to
+  `bin/lib/verify-steps.packs.json`, a plain JSON array) without either
+  YAML file changing. The same pattern applies in the emitted baseline
+  (`templates/core/bin/lib/verify-steps.mjs`). Add a new baseline gate to
+  `CORE_STEPS` here, not as a bespoke script invocation in either YAML
+  file.
+- **A pack never edits YAML or JavaScript.** It extends exactly two JSON
+  structures the baseline already reads at runtime
+  (`.claude/settings.json`, `bin/lib/verify-steps.packs.json`) via the pure
+  merge functions in `packages/cli/src/merge-json.ts`. This is what keeps
+  pack installation inside `packages/cli`'s zero-runtime-dependency,
+  no-YAML-parsing constraints in both fresh mode (the CLI installs
+  directly) and adopt mode (the CLI only surveys; `/customize` installs
+  from the staged `.groundwork/packs/<name>/` copy after reading the
+  project's real gate runner) -- see `templates/packs/README.md`.
 
 ## Git Workflow
 
@@ -192,15 +224,21 @@ removed from `templates/core`.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` is a README only -- no packs exist yet. The build's own
-  `EXTRACTION-MANIFEST.md` (written to a scratchpad during the original
-  build, not checked into this repo) names three candidates: a
-  `harness-extras` pack (the compaction-handoff hook pair, `guard-readonly-
-bash`, a `type-design-analyzer` agent, a `check-file-budget` gate), a
-  `github-ops` pack (`reviewing-dependabot-prs`, `triaging-scan-alerts`),
-  and a `publishing` pack (a release workflow, `check-publish-version`,
-  `check-dts-deps`) -- each cut from the baseline purely to fit a cap, not
-  because it failed the generalization test.
+- `templates/packs/` ships one pack, `harness-extras` (a type-design
+  analyzer agent, the compaction-handoff hook pair, `guard-readonly-bash`,
+  a `check-file-budget` gate) -- the four artifacts the original build cut
+  purely to fit a cap, not because they failed the generalization test. Two
+  more candidates from that same build (recorded in its
+  `EXTRACTION-MANIFEST.md`, written to a scratchpad during the original
+  build, not checked into this repo) remain deferred: a `github-ops` pack
+  (`reviewing-dependabot-prs`, `triaging-scan-alerts` -- the most
+  m3l-coupled of the original nine candidates) and a `publishing` pack (a
+  release workflow, `check-publish-version`, `check-dts-deps` -- needs a
+  registry/scope/`publishConfig` story the baseline doesn't have yet).
+- **No standalone "add a pack to an already-bootstrapped project" flag.**
+  Today that path is: re-run the CLI against the now-non-empty directory
+  (it auto-detects adopt mode), then run `/customize`. Works, but is
+  indirect -- a dedicated additive install mode is real future work.
 - No npm publishing, release automation, or version bumping.
 - `.claude/` harness support (agents/hooks/skills for working _in this repo_
   specifically, as opposed to what it emits) does not exist yet. If this

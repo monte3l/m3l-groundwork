@@ -109,6 +109,7 @@ describe("buildInventory / writeInventory", () => {
       targetDir: "/tmp/project",
       survey: EMPTY_SURVEY,
       conflicts: [],
+      packs: [],
     });
 
     expect(inventory.schemaVersion).toBe(INVENTORY_SCHEMA_VERSION);
@@ -125,6 +126,7 @@ describe("buildInventory / writeInventory", () => {
       targetDir: "/tmp/project",
       survey: EMPTY_SURVEY,
       conflicts: [],
+      packs: [],
     });
 
     const path = writeInventory(inventory, join(groundworkDir, "nested"));

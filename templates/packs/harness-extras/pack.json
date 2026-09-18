@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "name": "harness-extras",
+  "description": "Compaction handoff hooks, a read-only Bash guard, a type-design analyzer agent, and a file-budget gate -- cut from the baseline purely to fit its hard caps, not because they failed the generalization test.",
+  "modes": ["fresh", "adopt"],
+  "budget": {
+    "agents": 1,
+    "skills": 0,
+    "hooks": 3,
+    "workflows": 0,
+    "scripts": 0
+  },
+  "requires": {
+    "paths": ["bin/lib/agent-roster.mjs", "bin/lib/report.mjs"]
+  },
+  "wiring": {
+    "settings": {
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/write-compact-handoff.mjs\"",
+              "timeout": 30
+            }
+          ]
+        }
+      ],
+      "SessionStart": [
+        {
+          "matcher": "compact|resume|startup",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/reinject-compact-handoff.mjs\"",
+              "timeout": 30
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "matcher": "Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-readonly-bash.mjs\"",
+              "timeout": 30
+            }
+          ]
+        }
+      ]
+    },
+    "packageScripts": {},
+    "verifySteps": [
+      {
+        "id": "file-budget",
+        "group": "build",
+        "name": "Check file budget",
+        "cmd": ["node", "bin/check-file-budget.mjs"]
+      }
+    ]
+  },
+  "adoptNotes": "check-file-budget.mjs's ROOTS default assumes a flat src/+tests/ layout and its ceilings are this baseline's defaults -- in an adopted project, re-point ROOTS at the project's real source layout (or drop the gate) before wiring it. The hooks and the agent have no such dependency and install anywhere a .claude/ directory exists. The verify step assumes a bin/verify.mjs-shaped gate runner; if the project has none, install the other artifacts and report the gate as not installable rather than inventing one."
+}

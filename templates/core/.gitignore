@@ -13,3 +13,7 @@ coverage/
 
 # Local overrides
 lefthook-local.yml
+
+# Scratch state written by opt-in harness-extras pack hooks (e.g. the
+# compaction-handoff artifact) -- harmless if the pack isn't installed.
+tmp/
