@@ -5,41 +5,9 @@
  * what was found so the user (and later `/customize`'s Step 0) can decide
  * what to do about it.
  */
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import type { Inventory } from "./inventory.js";
-
-function countDirEntries(
-  dir: string,
-  filter?: (name: string) => boolean,
-): number {
-  if (!existsSync(dir)) return 0;
-  const names = readdirSync(dir);
-  return filter === undefined ? names.length : names.filter(filter).length;
-}
-
-interface CapCounts {
-  agents: number;
-  skills: number;
-  hooks: number;
-}
-
-/** Counts baseline .claude/ artifacts at `templateRoot`, for the caps table. */
-function countBaselineCaps(templateRoot: string): CapCounts {
-  const claudeDir = join(templateRoot, ".claude");
-  return {
-    // +1 for the /customize skill, which ships via the plugin copy rather
-    // than as a templates/core file -- see plugin.ts.
-    agents: countDirEntries(join(claudeDir, "agents"), (n) =>
-      n.endsWith(".md"),
-    ),
-    skills: countDirEntries(join(claudeDir, "skills")) + 1,
-    hooks: countDirEntries(
-      join(claudeDir, "hooks"),
-      (n) => n.endsWith(".mjs") || n.endsWith(".js"),
-    ),
-  };
-}
+import type { CapCounts } from "./caps.js";
+import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
+import type { Inventory, PackSurvey } from "./inventory.js";
 
 /**
  * Estimates the post-merge total against each cap: the baseline's own count
@@ -53,14 +21,39 @@ function estimatePostMergeCaps(inventory: Inventory): {
 } {
   const baseline = countBaselineCaps(inventory.templateRoot);
   const existing = inventory.survey.harness;
+  const workflowsExisting = inventory.survey.toolchain.workflows.files.length;
+  const scriptsExisting = Object.keys(
+    inventory.survey.toolchain.scripts,
+  ).length;
   return {
     baseline,
     postMerge: {
       agents: baseline.agents + existing.agents.length,
       skills: baseline.skills + existing.skills.length,
       hooks: baseline.hooks + existing.hooks.length,
+      workflows: baseline.workflows + workflowsExisting,
+      scripts: baseline.scripts + scriptsExisting,
     },
   };
+}
+
+/** Sums every listed pack's declared `budget` -- the "if every pack were installed" delta, not just the ones a user will choose. */
+function sumPackBudgets(packs: PackSurvey[]): CapCounts {
+  const total: CapCounts = {
+    agents: 0,
+    skills: 0,
+    hooks: 0,
+    workflows: 0,
+    scripts: 0,
+  };
+  for (const pack of packs) {
+    total.agents += pack.budget.agents;
+    total.skills += pack.budget.skills;
+    total.hooks += pack.budget.hooks;
+    total.workflows += pack.budget.workflows;
+    total.scripts += pack.budget.scripts;
+  }
+  return total;
 }
 
 function renderShapeSection(inventory: Inventory): string {
@@ -138,19 +131,108 @@ function renderDocsSection(inventory: Inventory): string {
 
 function renderCapsSection(inventory: Inventory): string {
   const { baseline, postMerge } = estimatePostMergeCaps(inventory);
+  const hasPacks = inventory.packs.length > 0;
+  const packBudget = sumPackBudgets(inventory.packs);
   const overCap = (count: number, cap: number): string =>
     count > cap ? " ⚠ over cap" : "";
-  return [
+
+  const header = hasPacks
+    ? "| Artifact | Baseline | Existing project | + all packs | Post-merge (approx.) | Cap |"
+    : "| Artifact | Baseline | Existing project | Post-merge (approx.) | Cap |";
+  const divider = hasPacks
+    ? "| --- | --- | --- | --- | --- | --- |"
+    : "| --- | --- | --- | --- | --- |";
+
+  const row = (
+    label: string,
+    key: "agents" | "skills" | "hooks",
+    existingCount: number,
+    cap: number,
+  ): string => {
+    const cells = [label, String(baseline[key]), String(existingCount)];
+    if (hasPacks) cells.push(`+${packBudget[key]}`);
+    cells.push(`${postMerge[key]}${overCap(postMerge[key], cap)}`, String(cap));
+    return `| ${cells.join(" | ")} |`;
+  };
+
+  const lines = [
     "## Baseline caps after a merge (approximate)",
     "",
-    "| Artifact | Baseline | Existing project | Post-merge (approx.) | Cap |",
-    "| --- | --- | --- | --- | --- |",
-    `| Agents | ${baseline.agents} | ${inventory.survey.harness.agents.length} | ${postMerge.agents}${overCap(postMerge.agents, 5)} | 5 |`,
-    `| Skills | ${baseline.skills} | ${inventory.survey.harness.skills.length} | ${postMerge.skills}${overCap(postMerge.skills, 8)} | 8 |`,
-    `| Hooks | ${baseline.hooks} | ${inventory.survey.harness.hooks.length} | ${postMerge.hooks}${overCap(postMerge.hooks, 10)} | 10 |`,
+    header,
+    divider,
+    row(
+      "Agents",
+      "agents",
+      inventory.survey.harness.agents.length,
+      CAP_LIMITS.agents,
+    ),
+    row(
+      "Skills",
+      "skills",
+      inventory.survey.harness.skills.length,
+      CAP_LIMITS.skills,
+    ),
+    row(
+      "Hooks",
+      "hooks",
+      inventory.survey.harness.hooks.length,
+      CAP_LIMITS.hooks,
+    ),
     "",
     "This is an approximate count assuming no name overlap; `/customize`'s Step 0 resolves it for real.",
-  ].join("\n");
+  ];
+  if (hasPacks) {
+    lines.push(
+      "",
+      '"+ all packs" sums every pack listed below, not just the ones you choose ' +
+        'to install -- see "## Available packs" for per-pack numbers.',
+    );
+  }
+  return lines.join("\n");
+}
+
+function renderConflictTable(conflicts: Inventory["conflicts"]): string[] {
+  const divergent = conflicts.filter((c) => c.status === "divergent");
+  if (divergent.length === 0) {
+    return [];
+  }
+  const lines = ["", "| File | Differing keys |", "| --- | --- |"];
+  for (const conflict of divergent) {
+    lines.push(
+      `| ${conflict.relPath} | ${conflict.keyDiffs?.join(", ") ?? "(whole file)"} |`,
+    );
+  }
+  return lines;
+}
+
+function renderPacksSection(inventory: Inventory): string {
+  const lines = ["## Available packs", ""];
+  if (inventory.packs.length === 0) {
+    lines.push("No packs found under `templates/packs/`.");
+    return lines.join("\n");
+  }
+
+  for (const pack of inventory.packs) {
+    const b = pack.budget;
+    lines.push(
+      `### ${pack.name}`,
+      "",
+      `- Modes: ${pack.modes.join(", ")}`,
+      `- Budget: ${b.agents} agent(s), ${b.skills} skill(s), ${b.hooks} hook(s), ${b.workflows} workflow(s), ${b.scripts} script(s)`,
+    );
+    for (const observation of pack.wiringObservations) {
+      lines.push(`- ${observation}`);
+    }
+    if (pack.adoptNotes !== undefined) {
+      lines.push(`- Adopt notes: ${pack.adoptNotes}`);
+    }
+    lines.push(...renderConflictTable(pack.fileConflicts), "");
+  }
+
+  return lines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
 }
 
 function renderConflictsSection(inventory: Inventory): string {
@@ -165,18 +247,12 @@ function renderConflictsSection(inventory: Inventory): string {
     `- ${absent.length} file(s) would be added cleanly (no collision).`,
     `- ${identical.length} file(s) already match the baseline.`,
     `- ${divergent.length} file(s) conflict and need a decision.`,
-    "",
   ];
 
   if (divergent.length > 0) {
-    lines.push("| File | Differing keys |", "| --- | --- |");
-    for (const conflict of divergent) {
-      lines.push(
-        `| ${conflict.relPath} | ${conflict.keyDiffs?.join(", ") ?? "(whole file)"} |`,
-      );
-    }
+    lines.push(...renderConflictTable(conflicts));
   } else {
-    lines.push("No conflicts found.");
+    lines.push("", "No conflicts found.");
   }
 
   return lines.join("\n");
@@ -212,6 +288,8 @@ export function renderReport(inventory: Inventory): string {
     renderDocsSection(inventory),
     "",
     renderCapsSection(inventory),
+    "",
+    renderPacksSection(inventory),
     "",
     renderConflictsSection(inventory),
     "",

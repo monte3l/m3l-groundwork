@@ -2,21 +2,39 @@
 /**
  * `pnpm verify` -- runs every step in VERIFY_STEPS (bin/lib/verify-steps.mjs)
  * sequentially and reports pass/fail for each. `--step <id>` runs a single
- * named step, which is what each `.github/workflows/ci.yml` job invokes, so
- * the local command and the CI command are always the same command, never
- * two lists that can drift apart.
+ * named step; `--group <name>` runs every step in one of the five fixed
+ * groups (format/lint/typecheck/build/test). `.github/workflows/ci.yml` and
+ * `lefthook.yml` each invoke `--group <name>`, never individual step ids, so
+ * a new step -- core or pack-contributed -- is picked up by both without
+ * either file changing.
  */
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { VERIFY_STEPS, findStep } from "./lib/verify-steps.mjs";
+import {
+  VERIFY_STEPS,
+  GROUPS,
+  findStep,
+  stepsInGroup,
+} from "./lib/verify-steps.mjs";
 
 const args = process.argv.slice(2);
 const stepIndex = args.indexOf("--step");
 const requestedId = stepIndex === -1 ? null : args[stepIndex + 1];
+const groupIndex = args.indexOf("--group");
+const requestedGroup = groupIndex === -1 ? null : args[groupIndex + 1];
+
+if (requestedGroup && !GROUPS.includes(requestedGroup)) {
+  console.error(
+    `verify: unknown group "${requestedGroup}" -- known groups: ${GROUPS.join(", ")}`,
+  );
+  process.exit(1);
+}
 
 const steps = requestedId
   ? [findStep(requestedId)].filter((step) => step !== undefined)
-  : VERIFY_STEPS;
+  : requestedGroup
+    ? stepsInGroup(requestedGroup)
+    : VERIFY_STEPS;
 
 if (requestedId && steps.length === 0) {
   console.error(
@@ -33,9 +51,9 @@ for (const step of steps) {
   if (result.status !== 0) {
     failed = true;
     console.error(`✗ ${step.name} failed`);
-    if (!requestedId) {
-      // Local `pnpm verify` (no --step): keep going so a single early
-      // failure doesn't hide every other failing step in the same run.
+    if (!requestedId && !requestedGroup) {
+      // Local `pnpm verify` (no --step/--group): keep going so a single
+      // early failure doesn't hide every other failing step in the same run.
       continue;
     }
     break;

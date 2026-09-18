@@ -22,9 +22,9 @@ export interface InstallPluginResult {
 
 /**
  * Copies `skills/customize/SKILL.md` and its backing data
- * (`src/kind-facet-map.ts`, `src/domain-map.ts`) from `sourceDir` into
- * `destDir`. A missing source file is a broken install, not something to
- * degrade past silently -- it throws.
+ * (`src/kind-facet-map.ts`, `src/domain-map.ts`, `src/pack-map.ts`) from
+ * `sourceDir` into `destDir`. A missing source file is a broken install,
+ * not something to degrade past silently -- it throws.
  */
 function copyCustomizeSkillFiles(
   destDir: string,
@@ -46,6 +46,7 @@ function copyCustomizeSkillFiles(
   copyInto(join(skillSourceDir, "SKILL.md"), "SKILL.md");
   copyInto(join(dataSourceDir, "kind-facet-map.ts"), "kind-facet-map.ts");
   copyInto(join(dataSourceDir, "domain-map.ts"), "domain-map.ts");
+  copyInto(join(dataSourceDir, "pack-map.ts"), "pack-map.ts");
 
   return { filesWritten };
 }

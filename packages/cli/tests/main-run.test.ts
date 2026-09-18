@@ -102,6 +102,53 @@ describe("main", () => {
       expect(gitInitMock).toHaveBeenCalled();
       expect(installCustomizeSkillGuardedMock).not.toHaveBeenCalled();
     });
+
+    it("installs a requested pack alongside the baseline", () => {
+      const packTarget = join(targetDir, "sub-pack");
+
+      main([packTarget, "--skip-install", "--pack", "harness-extras"]);
+
+      expect(
+        existsSync(
+          join(packTarget, ".claude", "hooks", "guard-readonly-bash.mjs"),
+        ),
+      ).toBe(true);
+      expect(existsSync(join(packTarget, "bin", "check-file-budget.mjs"))).toBe(
+        true,
+      );
+      const steps = JSON.parse(
+        readFileSync(
+          join(packTarget, "bin", "lib", "verify-steps.packs.json"),
+          "utf8",
+        ),
+      ) as unknown[];
+      expect(steps).toHaveLength(1);
+    });
+
+    it("prints a caps summary when a pack is installed", () => {
+      const packTarget = join(targetDir, "sub-pack-summary");
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      main([packTarget, "--skip-install", "--pack", "harness-extras"]);
+
+      expect(
+        logSpy.mock.calls.some(
+          ([line]) =>
+            typeof line === "string" && line.includes("templates/core:"),
+        ),
+      ).toBe(true);
+      logSpy.mockRestore();
+    });
+
+    it("throws naming the available packs when an unknown pack is requested", () => {
+      const packTarget = join(targetDir, "sub-pack-unknown");
+
+      expect(() =>
+        main([packTarget, "--skip-install", "--pack", "does-not-exist"]),
+      ).toThrow(/unknown pack "does-not-exist"/);
+    });
   });
 
   describe("adopt mode", () => {
@@ -156,6 +203,43 @@ describe("main", () => {
       );
       expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
     });
+
+    it("surveys every pack and stages it, unapplied, regardless of --pack", () => {
+      const projectDir = join(targetDir, "existing-project3");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+
+      // --pack is passed but must be ignored -- adopt mode never installs.
+      main([projectDir, "--pack", "harness-extras"]);
+
+      const inventory = JSON.parse(
+        readFileSync(join(projectDir, ".groundwork", "inventory.json"), "utf8"),
+      ) as Inventory;
+      expect(inventory.packs.some((p) => p.name === "harness-extras")).toBe(
+        true,
+      );
+
+      // Staged, not installed: the payload lives under .groundwork/packs/,
+      // and the project's own .claude/ tree was never created.
+      expect(
+        existsSync(
+          join(
+            projectDir,
+            ".groundwork",
+            "packs",
+            "harness-extras",
+            "files",
+            ".claude",
+            "hooks",
+            "guard-readonly-bash.mjs",
+          ),
+        ),
+      ).toBe(true);
+      expect(existsSync(join(projectDir, ".claude"))).toBe(false);
+    });
   });
 
   describe("--help / --version", () => {
@@ -178,6 +262,22 @@ describe("main", () => {
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringMatching(/^\d+\.\d+\.\d+$/),
       );
+      logSpy.mockRestore();
+    });
+  });
+
+  describe("--list-packs", () => {
+    it("prints every available pack without requiring a target directory", () => {
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+      main(["--list-packs"]);
+      expect(
+        logSpy.mock.calls.some(
+          ([line]) =>
+            typeof line === "string" && line.includes("harness-extras"),
+        ),
+      ).toBe(true);
       logSpy.mockRestore();
     });
   });

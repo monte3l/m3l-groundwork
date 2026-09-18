@@ -28,14 +28,12 @@ pre-push:
   parallel: true
   commands:
     format:
-      run: pnpm format:check
+      run: node bin/verify.mjs --group format
     lint:
-      run: pnpm lint
+      run: node bin/verify.mjs --group lint
     typecheck:
-      run: pnpm typecheck
+      run: node bin/verify.mjs --group typecheck
+    build:
+      run: node bin/verify.mjs --group build
     test:
-      run: pnpm test:coverage
-    build-exports:
-      run: pnpm build && pnpm check:exports
-    checks:
-      run: pnpm check:node-version
+      run: node bin/verify.mjs --group test

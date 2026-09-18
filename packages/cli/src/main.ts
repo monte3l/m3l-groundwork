@@ -5,13 +5,18 @@
  *
  * Two modes, auto-detected from the target directory (`--adopt`/`--fresh`
  * force either): **fresh** writes the baseline into an empty directory, as
- * before. **adopt** surveys an already-established project and writes only
- * a report -- see `mode.ts`, `survey/survey.ts`, `conflicts.ts`, and
- * `report.ts`. Adopt mode never touches a project file; see `runAdopt`.
+ * before, and installs any `--pack` requested. **adopt** surveys an
+ * already-established project and writes only a report -- see `mode.ts`,
+ * `survey/survey.ts`, `conflicts.ts`, and `report.ts`. Adopt mode never
+ * touches a project file, including a pack's: it surveys every pack under
+ * `templates/packs/` into the report and defers installation to
+ * `/customize`; see `runAdopt`.
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { CapCounts } from "./caps.js";
+import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
 import { emitTemplate } from "./emit.js";
 import {
   installCustomizeSkill,
@@ -26,6 +31,14 @@ import {
   resolveCliVersion,
   writeInventory,
 } from "./inventory.js";
+import type { PackSurvey } from "./inventory.js";
+import {
+  listPackNames,
+  loadPack,
+  installPack,
+  observeWiring,
+  stagePackFiles,
+} from "./packs.js";
 import { renderReport } from "./report.js";
 import type { TokenTable } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
@@ -39,6 +52,8 @@ export interface CliOptions {
   fresh: boolean;
   help: boolean;
   version: boolean;
+  listPacks: boolean;
+  packs: string[];
 }
 
 const USAGE = [
@@ -49,6 +64,8 @@ const USAGE = [
   "  --force                 Overwrite a non-empty target directory (fresh mode only)",
   "  --adopt                 Force adopt mode, even if the target looks empty",
   "  --fresh                 Force fresh-bootstrap mode, even if the target looks pre-existing",
+  "  --pack <name>           Install an opt-in pack from templates/packs/ (fresh mode only; repeatable)",
+  "  --list-packs            Print every available pack and exit",
   "  --help                  Print this message",
   "  --version               Print the CLI's version",
   "",
@@ -56,17 +73,25 @@ const USAGE = [
   "empty or missing directory bootstraps fresh; a directory that already",
   "looks like a project (package.json, .git, or loose source files) is",
   "surveyed and adopted instead -- see .groundwork/adoption-report.md.",
+  "",
+  "A pack requested in adopt mode is not installed -- adopt mode never",
+  "writes project files. Every available pack is surveyed into the report",
+  "regardless; run /customize to install one.",
 ].join("\n");
 
-// --name takes a value; every other recognized flag is a bare boolean.
+// --name takes a single value; --pack is repeatable. Every other
+// recognized flag is a bare boolean.
 const VALUE_FLAGS = new Set(["--name"]);
+const REPEATABLE_VALUE_FLAGS = new Set(["--pack"]);
 const HELP_FLAGS = new Set(["--help", "-h"]);
 const VERSION_FLAGS = new Set(["--version", "-v"]);
+const LIST_PACKS_FLAGS = new Set(["--list-packs"]);
 
 interface TokenizedArgv {
   positional: string[];
   flags: Set<string>;
   values: Map<string, string>;
+  repeatableValues: Map<string, string[]>;
 }
 
 /** Splits argv into positionals, boolean flags, and value-flag pairs -- a value-flag's value is never mistaken for a positional. */
@@ -74,6 +99,7 @@ function tokenizeArgv(argv: string[]): TokenizedArgv {
   const positional: string[] = [];
   const flags = new Set<string>();
   const values = new Map<string, string>();
+  const repeatableValues = new Map<string, string[]>();
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -81,6 +107,17 @@ function tokenizeArgv(argv: string[]): TokenizedArgv {
 
     if (!arg.startsWith("-")) {
       positional.push(arg);
+      continue;
+    }
+
+    if (REPEATABLE_VALUE_FLAGS.has(arg)) {
+      const value = argv[i + 1];
+      if (value !== undefined) {
+        const existing = repeatableValues.get(arg) ?? [];
+        existing.push(value);
+        repeatableValues.set(arg, existing);
+        i++;
+      }
       continue;
     }
 
@@ -96,17 +133,18 @@ function tokenizeArgv(argv: string[]): TokenizedArgv {
     flags.add(arg);
   }
 
-  return { positional, flags, values };
+  return { positional, flags, values, repeatableValues };
 }
 
-/** Parses argv into structured options. Throws with USAGE on a missing target dir, unless --help/--version is present. */
+/** Parses argv into structured options. Throws with USAGE on a missing target dir, unless --help/--version/--list-packs is present. */
 export function parseArgs(argv: string[]): CliOptions {
-  const { positional, flags, values } = tokenizeArgv(argv);
+  const { positional, flags, values, repeatableValues } = tokenizeArgv(argv);
 
   const help = [...HELP_FLAGS].some((flag) => flags.has(flag));
   const version = [...VERSION_FLAGS].some((flag) => flags.has(flag));
+  const listPacks = [...LIST_PACKS_FLAGS].some((flag) => flags.has(flag));
 
-  if (help || version) {
+  if (help || version || listPacks) {
     return {
       targetDir: "",
       projectName: "",
@@ -116,6 +154,8 @@ export function parseArgs(argv: string[]): CliOptions {
       fresh: false,
       help,
       version,
+      listPacks,
+      packs: [],
     };
   }
 
@@ -126,6 +166,7 @@ export function parseArgs(argv: string[]): CliOptions {
 
   const targetDir = resolve(targetArg);
   const explicitName = values.get("--name");
+  const packs = [...new Set(repeatableValues.get("--pack") ?? [])].sort();
 
   return {
     targetDir,
@@ -136,6 +177,8 @@ export function parseArgs(argv: string[]): CliOptions {
     fresh: flags.has("--fresh"),
     help: false,
     version: false,
+    listPacks: false,
+    packs,
   };
 }
 
@@ -153,6 +196,39 @@ function buildTokens(projectName: string): TokenTable {
   return { PROJECT_NAME: projectName, YEAR: String(new Date().getFullYear()) };
 }
 
+function formatCounts(counts: CapCounts): string {
+  return `${counts.agents} agents, ${counts.skills} skills, ${counts.hooks} hooks, ${counts.workflows} workflows, ${counts.scripts} scripts`;
+}
+
+/** The post-`--pack`-install caps summary line(s) printed to fresh-mode's console output. */
+export function formatCapsSummary(
+  baseline: CapCounts,
+  installed: { name: string; budget: CapCounts }[],
+): string {
+  const total: CapCounts = { ...baseline };
+  const lines = [
+    `templates/core: ${formatCounts(baseline)} (caps: ${formatCounts(CAP_LIMITS)})`,
+  ];
+
+  for (const { name, budget } of installed) {
+    lines.push(`+ ${name}: ${formatCounts(budget)}`);
+    total.agents += budget.agents;
+    total.skills += budget.skills;
+    total.hooks += budget.hooks;
+    total.workflows += budget.workflows;
+    total.scripts += budget.scripts;
+  }
+
+  const overCap = (
+    ["agents", "skills", "hooks", "workflows", "scripts"] as (keyof CapCounts)[]
+  ).filter((key) => total[key] > CAP_LIMITS[key]);
+
+  lines.push(
+    `= ${formatCounts(total)}${overCap.length > 0 ? ` ⚠ over cap: ${overCap.join(", ")}` : ""}`,
+  );
+  return lines.join("\n");
+}
+
 function runFresh(options: CliOptions): void {
   if (!isEmptyOrMissing(options.targetDir) && !options.force) {
     throw new Error(
@@ -168,6 +244,26 @@ function runFresh(options: CliOptions): void {
   console.log(
     `wrote ${result.filesWritten.length} files to ${options.targetDir}`,
   );
+
+  const installedPacks: { name: string; budget: CapCounts }[] = [];
+  for (const name of options.packs) {
+    const pack = loadPack(name);
+    if (!pack.manifest.modes.includes("fresh")) {
+      throw new Error(
+        `pack "${name}" does not support fresh mode (modes: ${pack.manifest.modes.join(", ")})`,
+      );
+    }
+    const packResult = installPack(pack, options.targetDir, tokens);
+    console.log(
+      `installed pack "${name}" (${packResult.filesWritten.length} files)`,
+    );
+    installedPacks.push({ name, budget: packResult.budget });
+  }
+  if (installedPacks.length > 0) {
+    console.log(
+      formatCapsSummary(countBaselineCaps(templatesCoreDir()), installedPacks),
+    );
+  }
 
   const pluginResult = installCustomizeSkill(options.targetDir);
   console.log(
@@ -190,7 +286,9 @@ function runFresh(options: CliOptions): void {
  * `inventory.json` and `adoption-report.md`. Never touches a project file:
  * the one addition is a purely-additive, collision-guarded copy of the
  * `/customize` skill (see `installCustomizeSkillGuarded`), so the report
- * can point straight at a working next step.
+ * can point straight at a working next step. Every pack under
+ * `templates/packs/` is surveyed (not just those named by `--pack`, which
+ * this mode ignores) and staged, unapplied, at `.groundwork/packs/<name>/`.
  */
 function runAdopt(options: CliOptions, detection: ModeDetection): void {
   if (options.force) {
@@ -206,15 +304,37 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   const tokens = buildTokens(options.projectName);
   const conflicts = planConflicts(templateRoot, options.targetDir, tokens);
 
+  const groundworkDir = join(options.targetDir, ".groundwork");
+
+  const packs: PackSurvey[] = listPackNames().map((name) => {
+    const pack = loadPack(name);
+    const fileConflicts = planConflicts(
+      pack.filesDir,
+      options.targetDir,
+      tokens,
+    );
+    const wiringObservations = observeWiring(options.targetDir, pack.manifest);
+    stagePackFiles(pack, groundworkDir);
+    return {
+      name: pack.manifest.name,
+      modes: pack.manifest.modes,
+      budget: pack.manifest.budget,
+      fileConflicts,
+      wiring: pack.manifest.wiring,
+      wiringObservations,
+      adoptNotes: pack.manifest.adoptNotes,
+    };
+  });
+
   const inventory = buildInventory({
     detection,
     templateRoot,
     targetDir: options.targetDir,
     survey,
     conflicts,
+    packs,
   });
 
-  const groundworkDir = join(options.targetDir, ".groundwork");
   const inventoryPath = writeInventory(inventory, groundworkDir);
 
   const reportPath = join(groundworkDir, "adoption-report.md");
@@ -222,6 +342,11 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
 
   console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);
   console.log(`wrote ${relative(options.targetDir, reportPath)}`);
+  if (packs.length > 0) {
+    console.log(
+      `staged ${packs.length} pack(s) at .groundwork/packs/ for /customize`,
+    );
+  }
 
   const pluginResult = installCustomizeSkillGuarded(options.targetDir);
   if (pluginResult.location === "already-present") {
@@ -249,6 +374,20 @@ export function main(argv: string[]): void {
   }
   if (options.version) {
     console.log(resolveCliVersion());
+    return;
+  }
+  if (options.listPacks) {
+    const names = listPackNames();
+    if (names.length === 0) {
+      console.log("no packs available");
+    } else {
+      for (const name of names) {
+        const pack = loadPack(name);
+        console.log(
+          `${name} (modes: ${pack.manifest.modes.join(", ")}) -- ${pack.manifest.description}`,
+        );
+      }
+    }
     return;
   }
 

@@ -14,11 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Each lane job below invokes `node bin/verify.mjs --step <id>` naming an
-  # id from bin/lib/verify-steps.mjs. This is the whole parity guarantee:
-  # the local command `pnpm verify` and every job here read the same step
-  # list, so there is nothing here that can drift from what a contributor
-  # runs locally before pushing.
+  # Each lane job below invokes `node bin/verify.mjs --group <name>`, naming
+  # one of the five fixed groups from bin/lib/verify-steps.mjs. This is the
+  # whole parity guarantee: the local `lefthook.yml` pre-push lanes and every
+  # job here read the same step list by group, so a step -- core or
+  # pack-contributed -- can never run in one place and not the other.
   format:
     name: Format check
     runs-on: ubuntu-latest
@@ -31,7 +31,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node bin/verify.mjs --step format
+      - run: node bin/verify.mjs --group format
 
   lint:
     name: Lint
@@ -45,7 +45,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node bin/verify.mjs --step lint
+      - run: node bin/verify.mjs --group lint
 
   typecheck:
     name: Type check
@@ -59,7 +59,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node bin/verify.mjs --step typecheck
+      - run: node bin/verify.mjs --group typecheck
 
   build:
     name: Build
@@ -73,9 +73,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node bin/verify.mjs --step build
-      - run: node bin/verify.mjs --step exports
-      - run: node bin/verify.mjs --step node-version
+      - run: node bin/verify.mjs --group build
 
   test:
     name: Test (coverage)
@@ -89,7 +87,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node bin/verify.mjs --step test
+      - run: node bin/verify.mjs --group test
 
   verify:
     name: verify
