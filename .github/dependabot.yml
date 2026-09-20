@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+  # Keeps the action majors in .github/workflows/ from going stale. GitHub
+  # moves JS actions onto new Node runtimes on its own schedule, so a major
+  # behind starts warning well before it breaks. npm updates are deliberately
+  # not enabled: a weekly PR per devDependency across this monorepo is more
+  # churn than one maintainer wants. Add it later with `groups:` batching.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
