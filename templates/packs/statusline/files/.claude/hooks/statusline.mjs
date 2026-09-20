@@ -275,16 +275,6 @@ export function readHead(readFile, startDir) {
 }
 
 /**
- * @param {(path: string) => string | null} readFile see {@link readHead}.
- * @param {unknown} startDir see {@link readHead}.
- * @returns {string | null} the branch name, or null when it can't be resolved
- *   or HEAD is detached (see {@link parseDetachedHead}).
- */
-export function resolveBranch(readFile, startDir) {
-  return parseHeadRef(readHead(readFile, startDir));
-}
-
-/**
  * Builds a `{ id, priority, text, minWidth }` row segment, or `null` when
  * `text` is absent -- the shared shape every `format*Segment` function below
  * returns so `fitRow` can budget/drop them uniformly. Higher `priority`
