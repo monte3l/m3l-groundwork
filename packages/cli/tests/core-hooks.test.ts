@@ -11,9 +11,16 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -105,4 +112,39 @@ describe("baseline guards run through a symlinked hooks directory", () => {
     expect(status).toBe(2);
     expect(stderr).toContain("main");
   });
+});
+
+describe("no shipped script compares process.argv[1] to import.meta.url directly", () => {
+  // The behavioural tests above cover a sample; this sweep is what stops the
+  // next hook, gate or pack script from reintroducing the fail-open check.
+  const templatesDir = join(here, "..", "..", "..", "templates");
+
+  function scripts(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        return entry.name === "node_modules" ? [] : scripts(path);
+      }
+      return entry.name.endsWith(".mjs") ? [path] : [];
+    });
+  }
+
+  const files = scripts(templatesDir).filter((path) =>
+    readFileSync(path, "utf8").includes("process.argv[1]"),
+  );
+
+  it("finds the scripts it is meant to police", () => {
+    expect(files.length).toBeGreaterThan(10);
+  });
+
+  it.each(files.map((path) => [relative(templatesDir, path), path]))(
+    "%s resolves argv[1] with realpathSync",
+    (_name, path) => {
+      const source = readFileSync(path, "utf8");
+      expect(source).not.toMatch(
+        /process\.argv\[1\]\s*===\s*fileURLToPath\(import\.meta\.url\)/,
+      );
+      expect(source).toContain("realpathSync(process.argv[1])");
+    },
+  );
 });
