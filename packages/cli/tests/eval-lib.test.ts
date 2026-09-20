@@ -45,6 +45,19 @@ const lib = (await import(
     corpus: unknown;
     outDir: string;
   }) => number;
+  writeSkillPlugin: (params: {
+    skillsDir: string;
+    outDir: string;
+    name: string;
+    description: string;
+  }) => void;
+  writeToolchainPlugin: (params: {
+    skillsDir: string;
+    casesDir: string;
+    outDir: string;
+    cliPath: string;
+  }) => number;
+  CLI_PLACEHOLDER: string;
   evalArgs: (options: Record<string, unknown>) => string[];
   summarizeRun: (result: unknown) => {
     cases: { name: string; score: number; delta: number | null }[];
@@ -200,6 +213,230 @@ describe("writeHarnessPlugin", () => {
         outDir: join(dir, "out"),
       }),
     ).toThrow(/starting-work/);
+  });
+});
+
+describe("writeSkillPlugin", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "eval-lib-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("writes the manifest it was given and copies the skills", () => {
+    const skillsDir = join(dir, "src");
+    mkdirSync(join(skillsDir, "one"), { recursive: true });
+    writeFileSync(join(skillsDir, "one", "SKILL.md"), "---\nname: one\n---\n");
+    const out = join(dir, "out");
+    lib.writeSkillPlugin({
+      skillsDir,
+      outDir: out,
+      name: "my-plugin",
+      description: "A description.",
+    });
+    expect(
+      JSON.parse(
+        readFileSync(join(out, ".claude-plugin", "plugin.json"), "utf8"),
+      ),
+    ).toEqual({
+      name: "my-plugin",
+      version: "0.0.0",
+      description: "A description.",
+      author: { name: "m3l-groundwork" },
+    });
+    expect(existsSync(join(out, "skills", "one", "SKILL.md"))).toBe(true);
+  });
+
+  it("leaves writeHarnessPlugin's manifest byte-identical after the extraction", () => {
+    const skillsDir = join(dir, "src");
+    mkdirSync(join(skillsDir, "starting-work"), { recursive: true });
+    writeFileSync(join(skillsDir, "starting-work", "SKILL.md"), "---\n---\n");
+    const out = join(dir, "out");
+    lib.writeHarnessPlugin({ skillsDir, corpus: [good], outDir: out });
+    expect(
+      JSON.parse(
+        readFileSync(join(out, ".claude-plugin", "plugin.json"), "utf8"),
+      ),
+    ).toEqual({
+      name: "m3l-baseline-harness",
+      version: "0.0.0",
+      description:
+        "Throwaway wrapper over templates/core's skills, generated to evaluate their triggering.",
+      author: { name: "m3l-groundwork" },
+    });
+  });
+});
+
+describe("writeToolchainPlugin", () => {
+  let dir: string;
+  let skillsDir: string;
+  let casesDir: string;
+  const cliPath = "/opt/m3l/packages/cli/bin/m3l-groundwork.mjs";
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "eval-lib-"));
+    skillsDir = join(dir, "skills-src");
+    casesDir = join(dir, "cases");
+    mkdirSync(join(skillsDir, "typescript-guidance"), { recursive: true });
+    writeFileSync(
+      join(skillsDir, "typescript-guidance", "SKILL.md"),
+      "---\nname: typescript-guidance\n---\n",
+    );
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function writeCase(name: string, omit: string[] = []): void {
+    const caseDir = join(casesDir, name);
+    mkdirSync(join(caseDir, "graders"), { recursive: true });
+    const files: Record<string, string> = {
+      "case.yaml": "name: x\n",
+      "prompt.md": "hi\n",
+      "fixture.sh": `#!/bin/sh\nCLI="${lib.CLI_PLACEHOLDER}"\nnode "$CLI" .\n`,
+    };
+    for (const [file, content] of Object.entries(files)) {
+      if (!omit.includes(file)) writeFileSync(join(caseDir, file), content);
+    }
+    if (!omit.includes("graders")) {
+      writeFileSync(join(caseDir, "graders", "g.md"), "---\ntype: llm\n---\n");
+    } else {
+      rmSync(join(caseDir, "graders"), { recursive: true });
+    }
+  }
+
+  it("wraps the skills and installs each authored case with the CLI path baked in", () => {
+    writeCase("repair");
+    const out = join(dir, "out");
+    const count = lib.writeToolchainPlugin({
+      skillsDir,
+      casesDir,
+      outDir: out,
+      cliPath,
+    });
+    expect(count).toBe(1);
+    expect(
+      JSON.parse(
+        readFileSync(join(out, ".claude-plugin", "plugin.json"), "utf8"),
+      ) as { name: string },
+    ).toMatchObject({ name: "m3l-baseline-toolchain" });
+    expect(
+      existsSync(join(out, "skills", "typescript-guidance", "SKILL.md")),
+    ).toBe(true);
+    const fixture = readFileSync(
+      join(out, "evals", "repair", "fixture.sh"),
+      "utf8",
+    );
+    expect(fixture).toContain(`CLI="${cliPath}"`);
+    expect(fixture).not.toContain(lib.CLI_PLACEHOLDER);
+    expect(existsSync(join(out, "evals", "repair", "graders", "g.md"))).toBe(
+      true,
+    );
+  });
+
+  it("installs every case directory it finds", () => {
+    writeCase("one");
+    writeCase("two");
+    expect(
+      lib.writeToolchainPlugin({
+        skillsDir,
+        casesDir,
+        outDir: join(dir, "out"),
+        cliPath,
+      }),
+    ).toBe(2);
+  });
+
+  it("does not modify the authored case it copies from", () => {
+    writeCase("repair");
+    lib.writeToolchainPlugin({
+      skillsDir,
+      casesDir,
+      outDir: join(dir, "out"),
+      cliPath,
+    });
+    expect(
+      readFileSync(join(casesDir, "repair", "fixture.sh"), "utf8"),
+    ).toContain(lib.CLI_PLACEHOLDER);
+  });
+
+  it.each(["case.yaml", "prompt.md", "fixture.sh", "graders"])(
+    "throws when a case is missing %s",
+    (missing) => {
+      writeCase("repair", [missing]);
+      expect(() =>
+        lib.writeToolchainPlugin({
+          skillsDir,
+          casesDir,
+          outDir: join(dir, "out"),
+          cliPath,
+        }),
+      ).toThrow(new RegExp(`missing ${missing}`));
+    },
+  );
+
+  it("throws when there are no cases, rather than evaluating nothing", () => {
+    mkdirSync(casesDir, { recursive: true });
+    expect(() =>
+      lib.writeToolchainPlugin({
+        skillsDir,
+        casesDir,
+        outDir: join(dir, "out"),
+        cliPath,
+      }),
+    ).toThrow(/no cases found/);
+  });
+
+  it("throws when a fixture never uses the CLI placeholder", () => {
+    writeCase("repair");
+    writeFileSync(join(casesDir, "repair", "fixture.sh"), "#!/bin/sh\ntrue\n");
+    expect(() =>
+      lib.writeToolchainPlugin({
+        skillsDir,
+        casesDir,
+        outDir: join(dir, "out"),
+        cliPath,
+      }),
+    ).toThrow(/never uses __M3L_CLI__/);
+  });
+
+  it.each(['/a"b', "/a$b", "/a`b", "/a b", "/a\\b"])(
+    "rejects a CLI path that could break out of the quoted shell assignment: %s",
+    (bad) => {
+      writeCase("repair");
+      expect(() =>
+        lib.writeToolchainPlugin({
+          skillsDir,
+          casesDir,
+          outDir: join(dir, "out"),
+          cliPath: bad,
+        }),
+      ).toThrow(/plain path/);
+    },
+  );
+
+  it("accepts the repo's real authored case", () => {
+    const out = join(dir, "real");
+    expect(
+      lib.writeToolchainPlugin({
+        skillsDir: corePath,
+        casesDir: join(repoRoot, "evals", "core-toolchain"),
+        outDir: out,
+        cliPath,
+      }),
+    ).toBeGreaterThan(0);
+    expect(readdirSync(join(out, "evals"))).toContain("toolchain-repair");
+    const graders = readdirSync(
+      join(out, "evals", "toolchain-repair", "graders"),
+    );
+    expect(graders.sort()).toEqual([
+      "holds-the-floor.md",
+      "names-the-findings.md",
+      "never-edits.md",
+      "skill-fired.md",
+    ]);
   });
 });
 

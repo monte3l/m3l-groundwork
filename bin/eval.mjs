@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 /**
  * The behavioural half of harness grading: runs Anthropic's `claude plugin
- * eval` against (1) `packages/plugin`, the /customize skill, and (2) a
- * generated wrapper over `templates/core`'s skills that measures whether each
- * one fires on the right prompts. Unlike `pnpm check:harness` this makes real
+ * eval` against (1) `packages/plugin`, the /customize skill, (2) a generated
+ * wrapper over `templates/core`'s skills that measures whether each one fires
+ * on the right prompts, and (3) that same wrapper carrying authored cases from
+ * `evals/core-toolchain/` that run a skill against a deliberately degraded
+ * project (the `toolchain` suite). Unlike `pnpm check:harness` this makes real
  * model calls -- it needs the `claude` CLI, credentials, network, and money --
  * so it is NEVER part of `pnpm verify`, and skips cleanly (exit 0) when
  * `claude` is not installed.
  *
- *   node bin/eval.mjs [--suite plugin|harness|all] [--runs N] [--max-cost-usd N]
+ *   node bin/eval.mjs [--suite plugin|harness|toolchain|all] [--runs N] [--max-cost-usd N]
  *                     [--model M] [--judge-model M] [--ablation none|with-without]
  *                     [--threshold 0..1] [--case GLOB] [-j N] [--check] [--update]
  *                     [--keep-temp]
@@ -37,9 +39,10 @@ import {
   summarizeRun,
   withSuiteScores,
   writeHarnessPlugin,
+  writeToolchainPlugin,
 } from "./lib/eval-lib.mjs";
 
-const SUITES = ["plugin", "harness"];
+const SUITES = ["plugin", "harness", "toolchain"];
 
 function parseArgs(argv) {
   const opts = {
@@ -79,7 +82,7 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (opts.suite !== "all" && !SUITES.includes(opts.suite)) {
-    throw new Error(`--suite must be plugin, harness, or all`);
+    throw new Error(`--suite must be plugin, harness, toolchain, or all`);
   }
   if (!Number.isInteger(opts.runs) || opts.runs < 1) {
     throw new Error("--runs must be a positive integer");
@@ -169,18 +172,30 @@ try {
   for (const name of suites) {
     let target;
     let extra = {};
-    if (name === "plugin") {
+    if (name === "plugin" || name === "toolchain") {
       // The scaffolds run the built CLI, so it must be current.
       const build = spawnSync("pnpm", ["build"], {
         cwd: root,
         stdio: "inherit",
       });
       if (build.status !== 0) throw new Error("pnpm build failed");
-      target = resolve(root, "packages", "plugin");
-      // Write/Edit are granted because the workspace is throwaway and /customize's
-      // Step 0.3 writes findings back into .groundwork/; the case's graders
-      // forbid touching anything outside it.
+      // Write/Edit are granted because the workspace is throwaway. For
+      // `plugin`, /customize's Step 0.3 writes findings back into
+      // .groundwork/ and the case's graders forbid touching anything outside
+      // it; for `toolchain`, the graders forbid editing at all.
       extra = { scaffold: true, allowTools: ["Write", "Edit"] };
+    }
+    if (name === "plugin") {
+      target = resolve(root, "packages", "plugin");
+    } else if (name === "toolchain") {
+      target = mkdtempSync(join(tmpdir(), "m3l-toolchain-plugin-"));
+      tempDirs.push(target);
+      writeToolchainPlugin({
+        skillsDir: resolve(root, "templates", "core", ".claude", "skills"),
+        casesDir: resolve(root, "evals", "core-toolchain"),
+        outDir: target,
+        cliPath: resolve(root, "packages", "cli", "bin", "m3l-groundwork.mjs"),
+      });
     } else {
       target = mkdtempSync(join(tmpdir(), "m3l-harness-plugin-"));
       tempDirs.push(target);
