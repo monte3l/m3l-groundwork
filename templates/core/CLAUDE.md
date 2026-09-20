@@ -93,7 +93,10 @@ CI to catch it after the fact.
 ## Definition of Done
 
 `pnpm verify` passes; a public API change carries a Conventional Commit with
-the correct semver impact; new/changed exports have TSDoc and tests.
+the correct semver impact; new/changed exports have TSDoc and tests. If you
+touched the harness itself (hooks, agents, skills, rules, `settings.json`),
+`pnpm verify`'s `harness` step (`bin/check-harness.mjs`) must stay green: it
+fails on broken wiring and only warns on quality.
 
 ## Forbidden Patterns
 

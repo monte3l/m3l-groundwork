@@ -25,6 +25,11 @@ export const VERIFY_STEPS = [
     name: "Check Node version pin",
     cmd: ["node", "bin/check-node-version.mjs"],
   },
+  {
+    id: "harness",
+    name: "Check emitted harness",
+    cmd: ["node", "bin/check-harness.mjs"],
+  },
 ];
 
 /** Look up one step by id, or `undefined` if no step has that id. */

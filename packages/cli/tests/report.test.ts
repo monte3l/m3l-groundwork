@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderReport } from "../src/report.js";
 import type { Inventory } from "../src/inventory.js";
+import type { HarnessGrade } from "../src/harness/types.js";
 import type { ProjectSurvey } from "../src/survey/survey.js";
 
 function baseSurvey(overrides: Partial<ProjectSurvey> = {}): ProjectSurvey {
@@ -67,6 +68,21 @@ function baseSurvey(overrides: Partial<ProjectSurvey> = {}): ProjectSurvey {
   };
 }
 
+const TALLY = { checked: 0, failed: 0 };
+const CLEAN_GRADE: HarnessGrade = {
+  findings: [],
+  structural: { checked: 12, failed: 0 },
+  rubric: {
+    settings: TALLY,
+    hooks: { checked: 4, failed: 0 },
+    skills: TALLY,
+    agents: TALLY,
+    rules: TALLY,
+    "claude-md": TALLY,
+  },
+  rubricScore: 1,
+};
+
 function baseInventory(
   templateRoot: string,
   overrides: Partial<Inventory> = {},
@@ -81,6 +97,14 @@ function baseInventory(
     survey: baseSurvey(),
     conflicts: [],
     packs: [],
+    harnessGrade: CLEAN_GRADE,
+    harnessConformance: {
+      identical: 0,
+      divergent: 0,
+      absent: 0,
+      divergentFiles: [],
+      absentFiles: [],
+    },
     ...overrides,
   };
 }
@@ -151,6 +175,7 @@ describe("renderReport", () => {
     expect(report).toContain("jest.config.js");
     expect(report).toContain("## Existing Claude Code harness");
     expect(report).toContain("reviewer");
+    expect(report).toContain("## Harness grade");
     expect(report).toContain("## Human-facing docs & guidelines");
     expect(report).toContain("CONTRIBUTING.md");
     expect(report).toContain("## Baseline caps after a merge (approximate)");
@@ -177,6 +202,85 @@ describe("renderReport", () => {
     });
     const report = renderReport(baseInventory(templateRoot, { survey }));
     expect(report).toContain("No `.claude/` directory found");
+  });
+
+  it("renders the harness grade as three separate measurements, with findings split by level", () => {
+    const grade: HarnessGrade = {
+      ...CLEAN_GRADE,
+      structural: { checked: 12, failed: 1 },
+      rubric: { ...CLEAN_GRADE.rubric, hooks: { checked: 4, failed: 1 } },
+      rubricScore: 0.75,
+      findings: [
+        {
+          ruleId: "hook-dangling",
+          level: "structural",
+          category: "hooks",
+          subject: ".claude/hooks/gone.mjs",
+          message: "is named by a hook registration but does not exist on disk",
+        },
+        {
+          ruleId: "hook-timeout",
+          level: "rubric",
+          category: "hooks",
+          subject: "PreToolUse hook",
+          message: "has no `timeout`",
+        },
+      ],
+    };
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        harnessGrade: grade,
+        harnessConformance: {
+          identical: 3,
+          divergent: 1,
+          absent: 2,
+          divergentFiles: [".claude/agents/reviewer.md"],
+          absentFiles: [],
+        },
+      }),
+    );
+
+    expect(report).toContain("**Wiring (structural):** 11 of 12 checks pass.");
+    expect(report).toContain("**Quality (rubric):** 75% over 4 checks");
+    expect(report).toContain(
+      "3 identical, 1 divergent, 2 absent. Informational only",
+    );
+    const wiring = report.split("### Wiring findings")[1] ?? "";
+    expect(wiring.split("### Quality findings")[0]).toContain(
+      "- [hook-dangling] .claude/hooks/gone.mjs",
+    );
+    expect(report.split("### Quality findings (advisory)")[1]).toContain(
+      "- [hook-timeout] PreToolUse hook",
+    );
+    expect(report).toContain("- .claude/agents/reviewer.md");
+  });
+
+  it("says None under each findings heading for a clean grade", () => {
+    const report = renderReport(baseInventory(templateRoot));
+    const grade = report
+      .split("## Harness grade")[1]
+      ?.split("## Human-facing")[0];
+    expect(grade).toContain("### Wiring findings\n\nNone.");
+    expect(grade).toContain("### Quality findings (advisory)\n\nNone.");
+  });
+
+  it("has nothing to grade when there is neither a .claude/ directory nor a CLAUDE.md", () => {
+    const survey = baseSurvey({
+      harness: {
+        present: false,
+        settingsFile: undefined,
+        agents: [],
+        skills: [],
+        hooks: [],
+        rules: [],
+        commands: [],
+        hasSettingsLocal: false,
+        hasClaudeMd: false,
+        claudeMdHeadings: [],
+      },
+    });
+    const report = renderReport(baseInventory(templateRoot, { survey }));
+    expect(report).toContain("nothing to grade");
   });
 
   it("reports no docs found when the docs survey is empty", () => {

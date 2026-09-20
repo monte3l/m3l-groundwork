@@ -41,6 +41,14 @@ describe("classifyPath", () => {
     );
   });
 
+  it("classifies the harness grader's bin/ files as harness-domain despite the bin/*.mjs typescript globs", () => {
+    expect(classifyPath("bin/check-harness.mjs")).toBe("harness");
+    expect(classifyPath("bin/lib/harness-rules.mjs")).toBe("harness");
+    expect(classifyPath("bin/lib/frontmatter.mjs")).toBe("harness");
+    expect(classifyPath("bin/check-exports.mjs")).toBe("typescript");
+    expect(classifyPath("bin/lib/report.mjs")).toBe("typescript");
+  });
+
   it("classifies explicitly neutral files as neutral, not uncovered", () => {
     expect(classifyPath("README.md")).toBe("neutral");
   });

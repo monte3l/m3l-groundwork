@@ -33,6 +33,12 @@ export const CORE_STEPS = [
   },
   { id: "lint", group: "lint", name: "Lint", cmd: ["pnpm", "lint"] },
   {
+    id: "harness",
+    group: "lint",
+    name: "Check Claude Code harness",
+    cmd: ["node", "bin/check-harness.mjs"],
+  },
+  {
     id: "typecheck",
     group: "typecheck",
     name: "Typecheck",

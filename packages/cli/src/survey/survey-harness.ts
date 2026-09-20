@@ -6,6 +6,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fieldText, parseFrontmatter } from "../harness/frontmatter.js";
 import type {
   HarnessAgent,
   HarnessRule,
@@ -13,16 +14,21 @@ import type {
   HarnessSurvey,
 } from "./types.js";
 
-/** Extracts a single frontmatter field's scalar (unquoted) value, or undefined. */
+/**
+ * Reads one frontmatter field as text (a list is joined with `, `), or
+ * `undefined` when the file has no frontmatter, the field is absent, or its
+ * value is empty. Goes through the shared YAML-subset reader so a folded
+ * `description: >-` block -- the shape every baseline skill uses -- yields
+ * its text rather than the literal `>-`.
+ */
 function extractFrontmatterField(
   content: string,
   field: string,
 ): string | undefined {
-  const frontmatterMatch = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (frontmatterMatch?.[1] === undefined) return undefined;
-  const fieldPattern = new RegExp(`^${field}:\\s*(.+)$`, "m");
-  const match = fieldPattern.exec(frontmatterMatch[1]);
-  return match?.[1]?.trim().replace(/^["']|["']$/g, "");
+  const parsed = parseFrontmatter(content);
+  if (!parsed.ok) return undefined;
+  const text = fieldText(parsed.fields, field);
+  return text === undefined || text === "" ? undefined : text;
 }
 
 function listMarkdownFiles(dir: string): string[] {

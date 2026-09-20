@@ -30,6 +30,7 @@
     "knip": "knip",
     "check:exports": "node bin/check-exports.mjs",
     "check:node-version": "node bin/check-node-version.mjs",
+    "check:harness": "node bin/check-harness.mjs",
     "verify": "node bin/verify.mjs",
     "prepare": "lefthook install"
   },

@@ -23,6 +23,7 @@ import {
   installCustomizeSkillGuarded,
 } from "./plugin.js";
 import { gitInit, runInstall } from "./git.js";
+import { gradeHarness } from "./harness/grade.js";
 import { detectMode, resolveMode } from "./mode.js";
 import { surveyProject } from "./survey/survey.js";
 import { planConflicts } from "./conflicts.js";
@@ -333,6 +334,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     survey,
     conflicts,
     packs,
+    harnessGrade: gradeHarness(options.targetDir),
   });
 
   const inventoryPath = writeInventory(inventory, groundworkDir);

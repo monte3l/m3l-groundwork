@@ -3,20 +3,24 @@
  * `.groundwork/inventory.json` -- the machine-readable handoff
  * `/customize`'s Step 0 reads instead of re-deriving the survey itself.
  * Schema-versioned so a future CLI release can tell an old inventory apart
- * from a current one; `/customize` must tolerate a `schemaVersion: 1`
- * inventory (written before packs existed, so it carries no `packs` field)
- * rather than crash on one.
+ * from a current one; `/customize` must tolerate an older inventory
+ * rather than crash on one -- `schemaVersion: 1` predates packs (no `packs`
+ * field), and `schemaVersion` below 3 predates the harness grade (no
+ * `harnessGrade`/`harnessConformance`).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapCounts } from "./caps.js";
 import type { FileConflict } from "./conflicts.js";
+import { summarizeHarnessConformance } from "./harness/conformance.js";
+import type { HarnessConformance } from "./harness/conformance.js";
+import type { HarnessGrade } from "./harness/types.js";
 import type { ModeDetection } from "./mode.js";
 import type { PackWiring } from "./packs.js";
 import type { ProjectSurvey } from "./survey/survey.js";
 
-export const INVENTORY_SCHEMA_VERSION = 2;
+export const INVENTORY_SCHEMA_VERSION = 3;
 
 export interface PackSurvey {
   name: string;
@@ -41,6 +45,10 @@ export interface Inventory {
   survey: ProjectSurvey;
   conflicts: FileConflict[];
   packs: PackSurvey[];
+  /** Wiring integrity and rubric quality of the project's existing harness. Absent when schemaVersion is below 3. */
+  harnessGrade: HarnessGrade;
+  /** How far the existing harness has drifted from the baseline's -- information, never a defect. Absent when schemaVersion is below 3. */
+  harnessConformance: HarnessConformance;
 }
 
 /** Resolves this CLI package's own `package.json`, relative to this module's runtime location. */
@@ -78,6 +86,7 @@ export interface BuildInventoryParams {
   survey: ProjectSurvey;
   conflicts: FileConflict[];
   packs: PackSurvey[];
+  harnessGrade: HarnessGrade;
 }
 
 /** Builds the inventory object. Does not write anything -- see `writeInventory`. */
@@ -92,6 +101,8 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
     survey: params.survey,
     conflicts: params.conflicts,
     packs: params.packs,
+    harnessGrade: params.harnessGrade,
+    harnessConformance: summarizeHarnessConformance(params.conflicts),
   };
 }
 
