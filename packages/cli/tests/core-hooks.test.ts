@@ -9,7 +9,15 @@
  * check. `templates/**` is excluded from this repo's vitest discovery, so the
  * hooks are run by path rather than imported.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
@@ -35,6 +43,28 @@ const hooksDir = join(
   "hooks",
 );
 
+/**
+ * The parent environment minus the variables git itself calls
+ * repository-local (`git rev-parse --local-env-vars`: `GIT_DIR`,
+ * `GIT_WORK_TREE`, `GIT_INDEX_FILE`, ...). A git hook, or a session in a linked
+ * worktree, can export an absolute `GIT_DIR`; a child that inherited it would
+ * ignore its own `cwd` and run `git init` / `git commit` against the
+ * developer's real repository instead of the fixture.
+ */
+function envWithoutRepoLocals(): NodeJS.ProcessEnv {
+  const listed = spawnSync("git", ["rev-parse", "--local-env-vars"], {
+    encoding: "utf8",
+  });
+  const local = new Set(
+    listed.status === 0
+      ? listed.stdout.split("\n").filter(Boolean)
+      : ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"],
+  );
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !local.has(name)),
+  );
+}
+
 function run(
   script: string,
   payload: unknown,
@@ -42,6 +72,7 @@ function run(
   const result = spawnSync("node", [script], {
     input: JSON.stringify(payload),
     encoding: "utf8",
+    env: envWithoutRepoLocals(),
   });
   return { status: result.status, stderr: result.stderr };
 }
@@ -58,6 +89,10 @@ describe("baseline guards run through a symlinked hooks directory", () => {
 
   afterAll(() => {
     rmSync(scratch, { recursive: true, force: true });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("guard-no-commonjs still blocks a require() call", () => {
@@ -80,8 +115,12 @@ describe("baseline guards run through a symlinked hooks directory", () => {
     expect(status).toBe(2);
   });
 
-  it("guard-branch-isolation (which shells out to git) still blocks a src write on main", () => {
-    const repo = join(scratch, "repo");
+  /** Builds a throwaway repo on `main` and asks the guard, through the symlink, to allow a `src/` write. */
+  function srcWriteOnMain(repoName: string): {
+    status: number | null;
+    stderr: string;
+  } {
+    const repo = join(scratch, repoName);
     mkdirSync(join(repo, "src"), { recursive: true });
     const git = (...args: string[]): void => {
       const result = spawnSync(
@@ -95,22 +134,48 @@ describe("baseline guards run through a symlinked hooks directory", () => {
           "commit.gpgsign=false",
           ...args,
         ],
-        { cwd: repo, encoding: "utf8" },
+        { cwd: repo, encoding: "utf8", env: envWithoutRepoLocals() },
       );
       expect(result.status, result.stderr).toBe(0);
     };
     git("init", "-b", "main");
     git("commit", "--allow-empty", "-m", "init");
 
-    const { status, stderr } = run(
-      join(linkedHooks, "guard-branch-isolation.mjs"),
-      {
-        tool_name: "Write",
-        tool_input: { file_path: join(repo, "src", "a.ts"), content: "" },
-      },
-    );
+    return run(join(linkedHooks, "guard-branch-isolation.mjs"), {
+      tool_name: "Write",
+      tool_input: { file_path: join(repo, "src", "a.ts"), content: "" },
+    });
+  }
+
+  it("guard-branch-isolation (which shells out to git) still blocks a src write on main", () => {
+    const { status, stderr } = srcWriteOnMain("repo");
     expect(status).toBe(2);
     expect(stderr).toContain("main");
+  });
+
+  it("is not fooled by an inherited GIT_DIR, and never touches the repository it points at", () => {
+    // A decoy stands in for "the developer's real repo": if the fixture ever
+    // ran git against the inherited GIT_DIR, the damage lands here, not there.
+    const decoy = join(scratch, "decoy");
+    mkdirSync(decoy);
+    const init = spawnSync("git", ["init", "-b", "main"], {
+      cwd: decoy,
+      encoding: "utf8",
+      env: envWithoutRepoLocals(),
+    });
+    expect(init.status, init.stderr).toBe(0);
+
+    vi.stubEnv("GIT_DIR", join(decoy, ".git"));
+    const { status, stderr } = srcWriteOnMain("repo-with-inherited-git-dir");
+    expect(status).toBe(2);
+    expect(stderr).toContain("main");
+
+    const commits = spawnSync(
+      "git",
+      ["-C", decoy, "rev-list", "--all", "--count"],
+      { encoding: "utf8", env: envWithoutRepoLocals() },
+    );
+    expect(commits.stdout.trim()).toBe("0");
   });
 });
 
