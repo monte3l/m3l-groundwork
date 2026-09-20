@@ -257,8 +257,8 @@ steps) before considering any task here done.
 - **Continuous integration (`.github/`).** `ci.yml` has five lane jobs
   (`format`/`lint`/`typecheck`/`build`/`test`), each `node bin/verify.mjs
 --group <name>`, plus an `e2e` job (`pnpm build` then `pnpm test:e2e`) and
-  a `verify` aggregator -- the one check to require if branch protection is
-  ever configured. The aggregator demands an explicit `success` from every
+  a `verify` aggregator -- the check the `main` ruleset gates on (see "Git
+  Workflow"). The aggregator demands an explicit `success` from every
   lane, since testing only for `failure` reports green over a cancelled or
   skipped one. Two rules keep `gate-lane-parity` (the toolchain grader)
   working against this repo: **never name a step id in a workflow** (name a
@@ -292,13 +292,41 @@ bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
 substantially assisted a commit.
 
 CI runs on every push and PR to `main` (see "Continuous integration" above),
-but no branch-protection ruleset is configured on the GitHub repo yet, and
-nothing in this repo's own hooks blocks a direct commit to `main` the way
-`guard-branch-isolation.mjs` does for `templates/core`'s _emitted_ projects
-(that guard ships in the baseline; it doesn't apply to building the
-bootstrapper itself). Prefer a feature branch + PR for anything non-trivial
-regardless -- there's just no automated gate enforcing it today. If a ruleset
-is added, require `verify` (the aggregator) and `Dependency Review`.
+and a repository ruleset named `main` enforces the rest. It targets
+`~DEFAULT_BRANCH` with an empty `bypass_actors` list -- nobody, the org owner
+included, can push to `main` directly, force-push it, or delete it while the
+ruleset is active. Every change lands through a pull request whose `verify`
+(the aggregator), `Dependency Review` and `CodeQL` checks are green, whose
+review threads are resolved, and whose commits are all signed. Each required
+check is pinned to its producing app (`integration_id`), so a same-named
+status from anywhere else can't satisfy it.
+
+Three choices are deliberate, not defaults. **Approvals are 0**: one
+maintainer cannot approve their own PR, so requiring one would only force a
+standing bypass. **Rebase-merge is not an allowed method**: GitHub rewrites
+those commits and has no key to sign them, so under required signatures the
+button would always error; merge and squash remain. **Branches need not be
+up to date before merging** (`strict` is off): with weekly Dependabot PRs,
+no auto-merge and no merge queue, strict mode would re-run every lane, e2e
+included, once per remaining PR after every merge.
+
+Signing is machine-local: `commit.gpgsign` is in `~/.gitconfig` but
+`user.signingkey` is tracked nowhere in this repo, so on a fresh box
+`git commit` fails outright (`gpg failed to sign the data`) until the key is
+configured. Fix the key -- never `commit.gpgsign=false`, which produces
+commits the ruleset rejects only at merge time. Nothing in this repo's own
+hooks blocks a local commit to `main` the way `guard-branch-isolation.mjs`
+does for `templates/core`'s _emitted_ projects (that guard ships in the
+baseline; it doesn't apply to building the bootstrapper itself); the ruleset
+is the remote-side catch and only bites at push time, so branch first.
+
+The ruleset is configured with `gh api`, not committed as JSON: GitHub never
+reads a checked-in export, so it would drift silently, and a gate to keep it
+in sync would be exactly the "checks documentation about the repo itself"
+kind that `templates/core`'s caps pin at zero. Read the live state with
+`gh api repos/monte3l/m3l-groundwork/rules/branches/main`. Maintenance that
+needs a force-push means `PUT`ting the ruleset to `enforcement=disabled` and
+back (a logged toggle), not adding a bypass actor.
 
 ## Testing
 
