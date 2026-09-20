@@ -7,6 +7,7 @@
  * Blocks by exiting 2 with a message on stderr.
  */
 import process from "node:process";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const PATTERNS = [
@@ -62,8 +63,21 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+// Deliberately inlined in every hook rather than shared: caps.ts counts
+// .claude/hooks/*.mjs files against a hard limit, so a helper module would
+// cost a hook slot. `import.meta.url` is symlink-resolved but `process.argv[1]`
+// is not, so comparing them directly is false under any symlinked path and the
+// guard body would never run -- exit 0, i.e. fail open.
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
 // Main execution -- only run when invoked directly, not when imported for testing.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isEntryPoint()) {
   const raw = await readStdin();
   let input;
   try {
