@@ -45,6 +45,15 @@ interface Statusline {
   sanitizeDisplayText: (text: string) => string;
   zoneForPercentage: (pct: number | null) => string;
   parseHeadRef: (content: unknown) => string | null;
+  parseDetachedHead: (content: unknown) => string | null;
+  readHead: (
+    readFile: (path: string) => string | null,
+    startDir: unknown,
+  ) => string | null;
+  formatBranchSegment: (
+    branch: string | null,
+    detachedSha?: string | null,
+  ) => { text: string } | null;
   renderStatusLine: (payload: unknown, env?: object) => string;
 }
 
@@ -184,6 +193,53 @@ describe("parseHeadRef", () => {
     expect(
       statusline.parseHeadRef("9fceb02d0ae598e95dc970b74767f19372d61af8\n"),
     ).toBeNull();
+  });
+});
+
+describe("detached HEAD", () => {
+  const sha = "9fceb02d0ae598e95dc970b74767f19372d61af8";
+
+  it("reports a short commit id, never a branch name", () => {
+    expect(statusline.parseDetachedHead(`${sha}\n`)).toBe("9fceb02");
+    expect(statusline.parseDetachedHead(`${"a".repeat(64)}\n`)).toBe("aaaaaaa");
+    expect(statusline.parseHeadRef(sha)).toBeNull();
+  });
+
+  it("is null for a branch ref and for garbage", () => {
+    expect(statusline.parseDetachedHead("ref: refs/heads/main\n")).toBeNull();
+    expect(statusline.parseDetachedHead("not a sha")).toBeNull();
+    expect(statusline.parseDetachedHead(null)).toBeNull();
+  });
+
+  it("reads HEAD through a linked worktree's gitdir pointer too", () => {
+    const files: Record<string, string> = {
+      "/wt/.git": "gitdir: /repo/.git/worktrees/wt\n",
+      "/repo/.git/worktrees/wt/HEAD": `${sha}\n`,
+    };
+    const head = statusline.readHead((path) => files[path] ?? null, "/wt");
+    expect(statusline.parseDetachedHead(head)).toBe("9fceb02");
+  });
+
+  it("keeps the branch segment during a rebase or bisect instead of dropping it", () => {
+    const segment = statusline.formatBranchSegment(null, "9fceb02");
+    expect(segment?.text.replace(ANSI, "")).toBe("detached @ 9fceb02");
+  });
+
+  it("prefers a real branch, and shows nothing when there is neither", () => {
+    expect(
+      statusline
+        .formatBranchSegment("feat/x", "9fceb02")
+        ?.text.replace(ANSI, ""),
+    ).toContain("feat/x");
+    expect(statusline.formatBranchSegment(null, null)).toBeNull();
+  });
+
+  it("renders in the session row end to end", () => {
+    const out = statusline.renderStatusLine(
+      { session_name: "s" },
+      { detachedSha: "9fceb02", COLUMNS: "120" },
+    );
+    expect(out.replace(ANSI, "")).toContain("detached @ 9fceb02");
   });
 });
 

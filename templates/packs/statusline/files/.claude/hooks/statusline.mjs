@@ -184,6 +184,19 @@ export function parseHeadRef(headContent) {
 }
 
 /**
+ * @param {unknown} headContent raw `.git/HEAD` file content.
+ * @returns {string | null} the abbreviated commit id when HEAD is detached (a
+ *   rebase, a bisect, `git checkout <sha>`) -- a bare SHA-1 or SHA-256 hex id
+ *   where a branch would be a `ref:` line -- or null. Kept apart from
+ *   {@link parseHeadRef} so a commit id can never be mistaken for a branch name.
+ */
+export function parseDetachedHead(headContent) {
+  if (typeof headContent !== "string") return null;
+  const sha = headContent.trim();
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(sha) ? sha.slice(0, 7) : null;
+}
+
+/**
  * @param {unknown} content raw `.git` file content (linked worktree /
  *   submodule case).
  * @returns {string | null} the pointed-to gitdir path, or null.
@@ -230,7 +243,7 @@ export function resolveWorkspaceRoot(readFile, startDir) {
 }
 
 /**
- * Resolves the current branch from the workspace root {@link resolveWorkspaceRoot}
+ * Reads the raw `HEAD` file from the workspace root {@link resolveWorkspaceRoot}
  * finds by walking upward from `startDir` -- handling both a `.git` directory
  * (the normal case) and a `.git` file pointing at the real gitdir (the
  * linked-worktree / submodule case).
@@ -239,17 +252,15 @@ export function resolveWorkspaceRoot(readFile, startDir) {
  *   returns the file content or null when unreadable/absent.
  * @param {unknown} startDir directory to start the upward walk from; a
  *   non-string or empty value returns null rather than throwing.
- * @returns {string | null} the branch name, or null when it can't be
- *   resolved.
+ * @returns {string | null} the `HEAD` file's content, or null when it can't
+ *   be resolved.
  */
-export function resolveBranch(readFile, startDir) {
+export function readHead(readFile, startDir) {
   const dir = resolveWorkspaceRoot(readFile, startDir);
   if (dir === null) return null;
 
   const headContent = readFile(join(dir, ".git", "HEAD"));
-  if (typeof headContent === "string") {
-    return parseHeadRef(headContent);
-  }
+  if (typeof headContent === "string") return headContent;
 
   const gitEntry = readFile(join(dir, ".git"));
   if (typeof gitEntry === "string") {
@@ -257,10 +268,20 @@ export function resolveBranch(readFile, startDir) {
     if (pointer === null || pointer.length === 0) return null;
     const resolvedGitDir = isAbsolute(pointer) ? pointer : join(dir, pointer);
     const linkedHead = readFile(join(resolvedGitDir, "HEAD"));
-    return typeof linkedHead === "string" ? parseHeadRef(linkedHead) : null;
+    return typeof linkedHead === "string" ? linkedHead : null;
   }
 
   return null;
+}
+
+/**
+ * @param {(path: string) => string | null} readFile see {@link readHead}.
+ * @param {unknown} startDir see {@link readHead}.
+ * @returns {string | null} the branch name, or null when it can't be resolved
+ *   or HEAD is detached (see {@link parseDetachedHead}).
+ */
+export function resolveBranch(readFile, startDir) {
+  return parseHeadRef(readHead(readFile, startDir));
 }
 
 /**
@@ -336,12 +357,23 @@ export function formatSessionNameSegment(payload) {
 
 /**
  * @param {string | null} branchName the resolved branch, or null.
+ * @param {string | null} [detachedSha] the abbreviated commit id when HEAD is
+ *   detached; only shown when there is no branch, so a rebase or bisect keeps
+ *   its git segment instead of silently losing it.
  * @returns {RowSegment | null} the branch segment. `main` is flagged as a
  *   warning: the baseline's workflow is feature branches and PRs, never work
  *   directly on `main`.
  */
-export function formatBranchSegment(branchName) {
-  if (!isNonEmptyString(branchName)) return null;
+export function formatBranchSegment(branchName, detachedSha = null) {
+  if (!isNonEmptyString(branchName)) {
+    if (!isNonEmptyString(detachedSha)) return null;
+    return seg(
+      "branch",
+      95,
+      `${YELLOW}detached @ ${sanitizeDisplayText(detachedSha)}${RESET}`,
+      8,
+    );
+  }
   const text =
     branchName === "main"
       ? `${RED}⚠ main${RESET}`
@@ -774,7 +806,7 @@ export function formatMemorySegment(env) {
 
 /**
  * @param {unknown} payload
- * @param {{ branch?: unknown } | undefined} env
+ * @param {{ branch?: unknown, detachedSha?: unknown } | undefined} env
  * @param {number} columns
  * @returns {string} the session row: session name, branch, worktree, agent,
  *   origin repo.
@@ -784,7 +816,10 @@ export function buildSessionRow(payload, env, columns) {
     "session",
     [
       formatSessionNameSegment(payload),
-      formatBranchSegment(typeof env?.branch === "string" ? env.branch : null),
+      formatBranchSegment(
+        typeof env?.branch === "string" ? env.branch : null,
+        typeof env?.detachedSha === "string" ? env.detachedSha : null,
+      ),
       formatWorktreeSegment(payload),
       formatAgentSegment(payload),
       formatOriginRepoSegment(payload),
@@ -880,9 +915,10 @@ export function buildWorkRow(payload, env, columns) {
  *   freemem?: unknown;
  *   totalmem?: unknown;
  *   branch?: unknown;
+ *   detachedSha?: unknown;
  *   COLUMNS?: unknown;
  * }} [env] local-only, non-payload context: current time (ms), free/total
- *   memory (bytes), the resolved git branch name, and the terminal `COLUMNS`
+ *   memory (bytes), the resolved git branch name (or, on a detached HEAD, its short commit id), and the terminal `COLUMNS`
  *   width. Defaults to `{}` so a bare `renderStatusLine(payload)` call works.
  * @returns {string} the full, always-five-line status-line output.
  */
@@ -907,6 +943,17 @@ function safeReadFile(path) {
   } catch {
     return null;
   }
+}
+
+/**
+ * @param {string | null} headContent raw `HEAD` file content.
+ * @returns {{ branch: string | null, detachedSha: string | null }}
+ */
+function resolveHeadState(headContent) {
+  return {
+    branch: parseHeadRef(headContent),
+    detachedSha: parseDetachedHead(headContent),
+  };
 }
 
 /**
@@ -942,7 +989,7 @@ if (isEntryPoint()) {
       pick(payload, "workspace", "current_dir") ?? pick(payload, "cwd");
     output = renderStatusLine(payload, {
       now: Date.now(),
-      branch: resolveBranch(safeReadFile, startDir),
+      ...resolveHeadState(readHead(safeReadFile, startDir)),
       COLUMNS: process.env["COLUMNS"],
       ...resolveMemory({
         platform: process.platform,
