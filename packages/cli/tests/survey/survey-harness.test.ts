@@ -78,6 +78,32 @@ describe("surveyHarness", () => {
     expect(survey.commands).toEqual(["deploy.md"]);
   });
 
+  it("reads a folded `>-` skill description as its text, not the literal `>-`", () => {
+    mkdirSync(join(dir, ".claude", "skills", "folded"), { recursive: true });
+    writeFileSync(
+      join(dir, ".claude", "skills", "folded", "SKILL.md"),
+      "---\nname: folded\ndescription: >-\n  The pre-work decision gate: inspects\n  git state before any write.\n---\n# folded\n",
+    );
+    expect(surveyHarness(dir).skills).toEqual([
+      {
+        name: "folded",
+        description:
+          "The pre-work decision gate: inspects git state before any write.",
+      },
+    ]);
+  });
+
+  it("joins a rule's block-list `paths` instead of keeping only the first item", () => {
+    mkdirSync(join(dir, ".claude", "rules"), { recursive: true });
+    writeFileSync(
+      join(dir, ".claude", "rules", "scoped.md"),
+      '---\npaths:\n  - "src/**"\n  - "tests/**"\n---\nbody\n',
+    );
+    expect(surveyHarness(dir).rules).toEqual([
+      { name: "scoped", paths: "src/**, tests/**" },
+    ]);
+  });
+
   it("falls back to the directory name when a skill has no frontmatter name", () => {
     mkdirSync(join(dir, ".claude", "skills", "untitled"), { recursive: true });
     writeFileSync(

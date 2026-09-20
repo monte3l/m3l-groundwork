@@ -1,0 +1,107 @@
+[
+  {
+    "skill": "starting-work",
+    "query": "I want to implement a new feature: add a slugify helper that turns a title into a URL slug. Let's get going.",
+    "should_trigger": true
+  },
+  {
+    "skill": "starting-work",
+    "query": "Fix the bug where the tokenizer drops the last token of every input.",
+    "should_trigger": true
+  },
+  {
+    "skill": "starting-work",
+    "query": "Explain how the Node.js event loop schedules timers versus promises.",
+    "should_trigger": false
+  },
+  {
+    "skill": "writing-commits",
+    "query": "Commit this change: I renamed getUser to fetchUser and updated the three call sites.",
+    "should_trigger": true
+  },
+  {
+    "skill": "writing-commits",
+    "query": "Stage everything and write a commit for the work I just finished.",
+    "should_trigger": true
+  },
+  {
+    "skill": "writing-commits",
+    "query": "Summarize what changed in the repository over the last week.",
+    "should_trigger": false
+  },
+  {
+    "skill": "creating-prs",
+    "query": "Open a pull request for the work on this branch.",
+    "should_trigger": true
+  },
+  {
+    "skill": "creating-prs",
+    "query": "Ship this for review and get it merged.",
+    "should_trigger": true
+  },
+  {
+    "skill": "creating-prs",
+    "query": "What is the difference between a merge commit and a rebase?",
+    "should_trigger": false
+  },
+  {
+    "skill": "finishing-work",
+    "query": "The PR just merged. Wrap this up and clean up the branch.",
+    "should_trigger": true
+  },
+  {
+    "skill": "finishing-work",
+    "query": "Delete the local branches that have already been merged and prune stale remote refs.",
+    "should_trigger": true
+  },
+  {
+    "skill": "finishing-work",
+    "query": "How do I set up branch protection rules on GitHub?",
+    "should_trigger": false
+  },
+  {
+    "skill": "triaging-ci",
+    "query": "Why did CI fail on my last push? Debug the run.",
+    "should_trigger": true
+  },
+  {
+    "skill": "triaging-ci",
+    "query": "The build is red on main. Find the root cause.",
+    "should_trigger": true
+  },
+  {
+    "skill": "triaging-ci",
+    "query": "Write a GitHub Actions workflow that caches pnpm dependencies between runs.",
+    "should_trigger": false
+  },
+  {
+    "skill": "typescript-guidance",
+    "query": "What does the TypeScript team recommend for verbatimModuleSyntax, and is our tsconfig still current?",
+    "should_trigger": true
+  },
+  {
+    "skill": "typescript-guidance",
+    "query": "Are we behind on TypeScript compiler flags? Sweep our config against upstream guidance.",
+    "should_trigger": true
+  },
+  {
+    "skill": "typescript-guidance",
+    "query": "Write a function that debounces a callback by a given number of milliseconds.",
+    "should_trigger": false
+  },
+  {
+    "skill": "harness-guidance",
+    "query": "What does Anthropic recommend for Claude Code hooks, and is our harness up to date?",
+    "should_trigger": true
+  },
+  {
+    "skill": "harness-guidance",
+    "query": "Are our subagent model pins current? Sweep the .claude directory against official guidance.",
+    "should_trigger": true
+  },
+  {
+    "skill": "harness-guidance",
+    "query": "Rename the variable foo to bar throughout src/index.ts.",
+    "should_trigger": false
+  }
+]

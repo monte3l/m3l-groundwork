@@ -65,6 +65,16 @@ may or may not touch.
    docs/ADR files the survey indexed. Dispatch this as parallel read-only
    `Explore` agents, one per discovery area (shape/toolchain, harness, docs),
    so you aggregate their findings rather than reading everything yourself.
+   The harness agent also starts from `inventory.harnessGrade` (the report's
+   `## Harness grade` section): a deterministic, offline check of the
+   existing `.claude/` wiring. Its **wiring findings** (a hook registration
+   naming a missing file, a skill or agent with unreadable frontmatter, a
+   `CLAUDE.md` path that no longer exists) are facts to verify against the
+   real files, not verdicts to take on trust. Its **quality findings** are
+   advisory. `inventory.harnessConformance` counts how far the harness has
+   drifted from the baseline's — information only, since divergence from the
+   baseline is the point of adopting. An inventory with `schemaVersion` below
+   3 carries neither field; skip this and continue.
 3. **Write the findings back** into `.groundwork/adoption-report.md`,
    replacing the CLI's index-level sections ("a `lefthook.yml` exists")
    with semantic ones ("pre-push runs lint and typecheck; tests do not
@@ -74,8 +84,9 @@ may or may not touch.
    project?_ — the free-text option is the point of this question, not a
    formality — (b) the conflict resolutions from the inventory's conflict
    table, batched by facet (toolchain config, harness) rather than one
-   question per file — and (c) **which pack(s) to install**, from
-   `inventory.packs`. For each pack, show its `budget`, its
+   question per file (the harness facet's batch also carries any wiring
+   findings you confirmed in the deep read, offered as fixes to make) — and
+   (c) **which pack(s) to install**, from `inventory.packs`. For each pack, show its `budget`, its
    `wiringObservations` (facts about how it would land — e.g. "no
    `bin/lib/verify-steps.packs.json` found: no `bin/verify.mjs`-shaped gate
    runner detected", or "`.claude/settings.json` already sets a top-level

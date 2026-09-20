@@ -129,6 +129,66 @@ function renderDocsSection(inventory: Inventory): string {
   return lines.join("\n");
 }
 
+/** The harness grade: wiring integrity, rubric quality, and drift from the baseline -- three separate measurements. */
+function renderHarnessGradeSection(inventory: Inventory): string {
+  const { harnessGrade: grade, harnessConformance: conformance } = inventory;
+  const harness = inventory.survey.harness;
+  const lines = ["## Harness grade", ""];
+
+  if (!harness.present && !harness.hasClaudeMd) {
+    lines.push(
+      "No `.claude/` directory or `CLAUDE.md` found -- nothing to grade.",
+    );
+    return lines.join("\n");
+  }
+
+  const rubricChecked = Object.values(grade.rubric).reduce(
+    (sum, tally) => sum + tally.checked,
+    0,
+  );
+  lines.push(
+    `- **Wiring (structural):** ${grade.structural.checked - grade.structural.failed} of ${grade.structural.checked} checks pass.`,
+    `- **Quality (rubric):** ${Math.round(grade.rubricScore * 100)}% over ${rubricChecked} checks -- advisory, never a blocker.`,
+    `- **Drift from the baseline harness:** ${conformance.identical} identical, ${conformance.divergent} divergent, ${conformance.absent} absent. ` +
+      "Informational only -- `/customize` rewrites the baseline on purpose, so divergence is not a defect.",
+  );
+
+  const structural = grade.findings.filter((f) => f.level === "structural");
+  const rubric = grade.findings.filter((f) => f.level === "rubric");
+
+  lines.push("", "### Wiring findings", "");
+  if (structural.length === 0) {
+    lines.push("None.");
+  } else {
+    for (const finding of structural) {
+      lines.push(
+        `- [${finding.ruleId}] ${finding.subject} -- ${finding.message}`,
+      );
+    }
+  }
+
+  lines.push("", "### Quality findings (advisory)", "");
+  if (rubric.length === 0) {
+    lines.push("None.");
+  } else {
+    for (const finding of rubric) {
+      lines.push(
+        `- [${finding.ruleId}] ${finding.subject} -- ${finding.message}`,
+      );
+    }
+  }
+
+  if (harness.present && conformance.divergentFiles.length > 0) {
+    lines.push(
+      "",
+      "### Baseline harness files this project has changed",
+      "",
+      ...conformance.divergentFiles.map((file) => `- ${file}`),
+    );
+  }
+  return lines.join("\n");
+}
+
 function renderCapsSection(inventory: Inventory): string {
   const { baseline, postMerge } = estimatePostMergeCaps(inventory);
   const hasPacks = inventory.packs.length > 0;
@@ -284,6 +344,8 @@ export function renderReport(inventory: Inventory): string {
     renderToolchainSection(inventory),
     "",
     renderHarnessSection(inventory),
+    "",
+    renderHarnessGradeSection(inventory),
     "",
     renderDocsSection(inventory),
     "",

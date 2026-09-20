@@ -131,7 +131,7 @@ describe("adopt mode end-to-end", () => {
         readFileSync(inventoryPath, "utf8"),
       ) as Inventory;
 
-      expect(inventory.schemaVersion).toBe(2);
+      expect(inventory.schemaVersion).toBe(3);
       expect(inventory.survey.toolchain.testRunner.tool).toBe("jest");
       expect(
         inventory.survey.harness.agents.some(
@@ -167,6 +167,16 @@ describe("adopt mode end-to-end", () => {
       expect(report).toContain("## Could not be determined");
       expect(report).toContain("## Available packs");
       expect(report).toContain("harness-extras");
+
+      // The fixture's foo agent has frontmatter but no `name`/`description`:
+      // the harness grade must surface that as a wiring finding, in both the
+      // inventory /customize reads and the report a human reads.
+      expect(
+        inventory.harnessGrade.findings.map((f) => `${f.ruleId}:${f.subject}`),
+      ).toContain("agent-shape:.claude/agents/foo.md");
+      expect(inventory.harnessGrade.structural.failed).toBeGreaterThan(0);
+      expect(report).toContain("## Harness grade");
+      expect(report).toContain("[agent-shape] .claude/agents/foo.md");
       expect(report).not.toContain(
         "Nothing -- every file the survey looked at parsed cleanly.",
       );

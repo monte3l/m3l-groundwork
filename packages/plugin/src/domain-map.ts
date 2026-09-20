@@ -65,6 +65,19 @@ export const TYPESCRIPT_DOMAIN_GLOBS = [
   "tests/**",
 ] as const;
 
+/**
+ * Harness-grader files that live under `bin/`. `bin/*.mjs` and
+ * `bin/lib/*.mjs` are typescript-domain globs, so without this list the
+ * grader's own rules would be swept by `typescript-guidance` -- wrong,
+ * because they encode Claude Code harness guidance. Consulted before the
+ * typescript list in `classifyPath`.
+ */
+export const HARNESS_OVERRIDE_GLOBS = [
+  "bin/check-harness.mjs",
+  "bin/lib/harness-rules.mjs",
+  "bin/lib/frontmatter.mjs",
+] as const;
+
 /** Every `.claude/`-facing file `harness-guidance` is responsible for. */
 export const HARNESS_DOMAIN_GLOBS = [
   ".claude/settings.json",
@@ -106,6 +119,7 @@ export function classifyPath(
     harness?: readonly string[];
   },
 ): DomainClassification {
+  if (matchesAnyGlob(path, HARNESS_OVERRIDE_GLOBS)) return "harness";
   if (matchesAnyGlob(path, TYPESCRIPT_DOMAIN_GLOBS)) return "typescript";
   if (matchesAnyGlob(path, HARNESS_DOMAIN_GLOBS)) return "harness";
   if (matchesAnyGlob(path, NEUTRAL_GLOBS)) return "neutral";

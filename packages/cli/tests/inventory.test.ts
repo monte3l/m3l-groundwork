@@ -15,7 +15,23 @@ import {
   INVENTORY_SCHEMA_VERSION,
 } from "../src/inventory.js";
 import type { Inventory } from "../src/inventory.js";
+import type { HarnessGrade } from "../src/harness/types.js";
 import type { ProjectSurvey } from "../src/survey/survey.js";
+
+const EMPTY_TALLY = { checked: 0, failed: 0 };
+const EMPTY_GRADE: HarnessGrade = {
+  findings: [],
+  structural: EMPTY_TALLY,
+  rubric: {
+    settings: EMPTY_TALLY,
+    hooks: EMPTY_TALLY,
+    skills: EMPTY_TALLY,
+    agents: EMPTY_TALLY,
+    rules: EMPTY_TALLY,
+    "claude-md": EMPTY_TALLY,
+  },
+  rubricScore: 1,
+};
 
 const EMPTY_SURVEY: ProjectSurvey = {
   shape: {
@@ -110,6 +126,7 @@ describe("buildInventory / writeInventory", () => {
       survey: EMPTY_SURVEY,
       conflicts: [],
       packs: [],
+      harnessGrade: EMPTY_GRADE,
     });
 
     expect(inventory.schemaVersion).toBe(INVENTORY_SCHEMA_VERSION);
@@ -117,6 +134,32 @@ describe("buildInventory / writeInventory", () => {
     expect(inventory.templateRoot).toBe("/tmp/templates/core");
     expect(inventory.survey).toBe(EMPTY_SURVEY);
     expect(inventory.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("carries the harness grade verbatim and derives conformance from the conflict plan, counting only harness paths", () => {
+    const inventory = buildInventory({
+      detection: { mode: "adopt", signal: "found package.json" },
+      templateRoot: "/tmp/templates/core",
+      targetDir: "/tmp/project",
+      survey: EMPTY_SURVEY,
+      conflicts: [
+        { relPath: ".claude/settings.json", status: "identical", keyDiffs: [] },
+        { relPath: ".claude/agents/a.md", status: "divergent", keyDiffs: [] },
+        { relPath: "CLAUDE.md", status: "absent", keyDiffs: [] },
+        { relPath: "tsconfig.json", status: "divergent", keyDiffs: [] },
+      ],
+      packs: [],
+      harnessGrade: EMPTY_GRADE,
+    });
+
+    expect(inventory.harnessGrade).toBe(EMPTY_GRADE);
+    expect(inventory.harnessConformance).toEqual({
+      identical: 1,
+      divergent: 1,
+      absent: 1,
+      divergentFiles: [".claude/agents/a.md"],
+      absentFiles: ["CLAUDE.md"],
+    });
   });
 
   it("writes inventory.json into the groundwork directory and returns its path", () => {
@@ -127,6 +170,7 @@ describe("buildInventory / writeInventory", () => {
       survey: EMPTY_SURVEY,
       conflicts: [],
       packs: [],
+      harnessGrade: EMPTY_GRADE,
     });
 
     const path = writeInventory(inventory, join(groundworkDir, "nested"));
