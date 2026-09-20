@@ -80,6 +80,22 @@ function baseInventory(
     targetDir: "/proj",
     survey: baseSurvey(),
     conflicts: [],
+    packs: [],
+    ...overrides,
+  };
+}
+
+function basePackSurvey(
+  overrides: Partial<Inventory["packs"][number]> = {},
+): Inventory["packs"][number] {
+  return {
+    name: "harness-extras",
+    modes: ["fresh", "adopt"],
+    budget: { agents: 1, skills: 0, hooks: 3, workflows: 0, scripts: 0 },
+    fileConflicts: [],
+    wiring: { settings: {}, packageScripts: {}, verifySteps: [] },
+    wiringObservations: ["no .claude/settings.json found"],
+    adoptNotes: "some note about a gate dependency",
     ...overrides,
   };
 }
@@ -229,6 +245,56 @@ describe("renderReport", () => {
     const report = renderReport(baseInventory(templateRoot));
     expect(report).toContain(
       "Nothing -- every file the survey looked at parsed cleanly.",
+    );
+  });
+
+  it("reports no packs found when templates/packs has nothing", () => {
+    const report = renderReport(baseInventory(templateRoot));
+    expect(report).toContain("## Available packs");
+    expect(report).toContain("No packs found under `templates/packs/`.");
+    // No packs -- the caps table stays at its original column count.
+    expect(report).not.toContain("+ all packs");
+  });
+
+  it("lists a pack's budget, wiring observations, and adopt notes", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, { packs: [basePackSurvey()] }),
+    );
+    expect(report).toContain("### harness-extras");
+    expect(report).toContain("Modes: fresh, adopt");
+    expect(report).toContain(
+      "Budget: 1 agent(s), 0 skill(s), 3 hook(s), 0 workflow(s), 0 script(s)",
+    );
+    expect(report).toContain("no .claude/settings.json found");
+    expect(report).toContain("Adopt notes: some note about a gate dependency");
+  });
+
+  it("adds a + all packs column to the caps table when any pack is listed", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, { packs: [basePackSurvey()] }),
+    );
+    expect(report).toContain("+ all packs");
+    expect(report).toContain('"+ all packs" sums every pack listed below');
+  });
+
+  it("lists a pack's own divergent file conflicts in a table", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        packs: [
+          basePackSurvey({
+            fileConflicts: [
+              {
+                relPath: "bin/file-budget-baseline.json",
+                status: "divergent",
+                keyDiffs: undefined,
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(report).toContain(
+      "| bin/file-budget-baseline.json | (whole file) |",
     );
   });
 });

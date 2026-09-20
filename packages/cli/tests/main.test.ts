@@ -60,6 +60,39 @@ describe("parseArgs", () => {
     expect(parseArgs(["--version"]).version).toBe(true);
     expect(parseArgs(["-v"]).version).toBe(true);
   });
+
+  it("defaults packs to an empty array", () => {
+    expect(parseArgs(["/tmp/some-project"]).packs).toEqual([]);
+  });
+
+  it("collects a repeated --pack flag into a sorted, deduplicated array", () => {
+    const options = parseArgs([
+      "/tmp/some-project",
+      "--pack",
+      "harness-extras",
+      "--pack",
+      "harness-extras",
+      "--pack",
+      "another-pack",
+    ]);
+    expect(options.packs).toEqual(["another-pack", "harness-extras"]);
+  });
+
+  it("does not treat --pack's value as the target directory", () => {
+    const options = parseArgs([
+      "--pack",
+      "harness-extras",
+      "/tmp/some-project",
+    ]);
+    expect(options.targetDir).toBe("/tmp/some-project");
+    expect(options.packs).toEqual(["harness-extras"]);
+  });
+
+  it("recognizes --list-packs without requiring a target directory", () => {
+    const options = parseArgs(["--list-packs"]);
+    expect(options.listPacks).toBe(true);
+    expect(options.targetDir).toBe("");
+  });
 });
 
 describe("templatesCoreDir", () => {

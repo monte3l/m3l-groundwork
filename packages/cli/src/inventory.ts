@@ -1,17 +1,35 @@
 /**
- * Serializes a survey + conflict plan into `.groundwork/inventory.json` --
- * the machine-readable handoff `/customize`'s Step 0 reads instead of
- * re-deriving the survey itself. Schema-versioned so a future CLI release
- * can tell an old inventory apart from a current one.
+ * Serializes a survey + conflict plan + pack survey into
+ * `.groundwork/inventory.json` -- the machine-readable handoff
+ * `/customize`'s Step 0 reads instead of re-deriving the survey itself.
+ * Schema-versioned so a future CLI release can tell an old inventory apart
+ * from a current one; `/customize` must tolerate a `schemaVersion: 1`
+ * inventory (written before packs existed, so it carries no `packs` field)
+ * rather than crash on one.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { CapCounts } from "./caps.js";
 import type { FileConflict } from "./conflicts.js";
 import type { ModeDetection } from "./mode.js";
+import type { PackWiring } from "./packs.js";
 import type { ProjectSurvey } from "./survey/survey.js";
 
-export const INVENTORY_SCHEMA_VERSION = 1;
+export const INVENTORY_SCHEMA_VERSION = 2;
+
+export interface PackSurvey {
+  name: string;
+  modes: string[];
+  budget: CapCounts;
+  /** File collisions a pack's `files/` tree would have against the target -- the same shape `conflicts` uses for `templates/core`. */
+  fileConflicts: FileConflict[];
+  /** The pack's declared wiring, verbatim and unapplied -- adopt mode never applies it. */
+  wiring: PackWiring;
+  /** Index-level facts about how the wiring would land, never a verdict. */
+  wiringObservations: string[];
+  adoptNotes: string | undefined;
+}
 
 export interface Inventory {
   schemaVersion: number;
@@ -22,6 +40,7 @@ export interface Inventory {
   targetDir: string;
   survey: ProjectSurvey;
   conflicts: FileConflict[];
+  packs: PackSurvey[];
 }
 
 /** Resolves this CLI package's own `package.json`, relative to this module's runtime location. */
@@ -58,6 +77,7 @@ export interface BuildInventoryParams {
   targetDir: string;
   survey: ProjectSurvey;
   conflicts: FileConflict[];
+  packs: PackSurvey[];
 }
 
 /** Builds the inventory object. Does not write anything -- see `writeInventory`. */
@@ -71,6 +91,7 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
     targetDir: params.targetDir,
     survey: params.survey,
     conflicts: params.conflicts,
+    packs: params.packs,
   };
 }
 

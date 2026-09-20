@@ -5,13 +5,13 @@ description: >-
   bootstrap, interviews the owner (project kind, runtime target, test
   strictness, CI depth, which reviewer agents to keep) and applies
   deterministic edits; for an adopted pre-existing project, first reconciles
-  the CLI's `.groundwork/` survey against the real repository and confirms
-  what to add and how to resolve conflicts. Either way it then runs a live
-  guidance pass over official TypeScript and Anthropic sources to validate
-  and refine the result against current upstream recommendations. Use for
-  /customize, "tailor this project", "adopt this project", "set up this
-  scaffold for my project", or right after a fresh or adopted m3l-groundwork
-  bootstrap.
+  the CLI's `.groundwork/` survey against the real repository, confirms what
+  to add, how to resolve conflicts, and which optional `templates/packs/`
+  pack(s) to install. Either way it then runs a live guidance pass over
+  official TypeScript and Anthropic sources to validate and refine the
+  result against current upstream recommendations. Use for /customize,
+  "tailor this project", "adopt this project", "set up this scaffold for my
+  project", or right after a fresh or adopted m3l-groundwork bootstrap.
 ---
 
 # customize
@@ -72,16 +72,28 @@ may or may not touch.
 4. **Confirm.** Give a short summary in chat, then ask **one**
    `AskUserQuestion` covering: (a) _did this miss anything about your
    project?_ — the free-text option is the point of this question, not a
-   formality — and (b) the conflict resolutions from the inventory's
-   conflict table, batched by facet (toolchain config, harness) rather than
-   one question per file.
+   formality — (b) the conflict resolutions from the inventory's conflict
+   table, batched by facet (toolchain config, harness) rather than one
+   question per file — and (c) **which pack(s) to install**, from
+   `inventory.packs`. For each pack, show its `budget`, its
+   `wiringObservations` (facts about how it would land — e.g. "no
+   `bin/lib/verify-steps.packs.json` found: no `bin/verify.mjs`-shaped gate
+   runner detected"), and its `adoptNotes` verbatim; a pack whose gate
+   dependency the project doesn't have is still offered for its other
+   artifacts, with that limitation stated plainly rather than silently
+   dropped. This is index-level evidence from the CLI, not a kind-based
+   judgment — see Step 3's note on revisiting it once the interview confirms
+   the project's kind.
 5. **Record the confirmed decisions** to `.groundwork/adoption-decisions.json`
    so a compacted or resumed session doesn't silently lose them and re-ask.
 
 ## Step 1 — Interview
 
-**Fresh bootstrap:** ask all of the following in **one** `AskUserQuestion`
-call, each with a sensible default marked "(Recommended)":
+**Fresh bootstrap:** ask the following in **two** `AskUserQuestion` calls
+(the tool caps a single call at four questions), each with a sensible
+default marked "(Recommended)":
+
+Call one (four questions):
 
 1. **Project kind** — library / CLI / frontend or web app / service.
 2. **Runtime target** — Node / browser / both.
@@ -89,6 +101,9 @@ call, each with a sensible default marked "(Recommended)":
    baseline) / warn only.
 4. **CI depth** — minimal / standard (default; matches the baseline) /
    thorough.
+
+Call two (one question):
+
 5. **Which baseline agents to keep** — multi-select over `Explore`,
    `test-author`, `code-implementer`, `code-reviewer`,
    `silent-failure-hunter` (all kept by default).
@@ -101,6 +116,11 @@ user confirms or corrects each one. This is why the CLI's survey deliberately
 never names a `ProjectKind` itself (see its own `types.ts`): the inference
 happens once, here, visibly, with its reasoning attached — not buried in an
 offline heuristic no one reviews.
+
+Packs are **not** re-asked here — Step 0.4 already collected that decision
+(adopt mode) or the CLI already installed at bootstrap time via `--pack`
+(fresh mode, nothing left to ask). Step 3 below is where a confirmed kind can
+revise a pack decision made before the interview ran.
 
 ## Step 2 — Plan facets (deterministic)
 
@@ -141,12 +161,19 @@ Round 2's two skill invocations will be told to emphasize.
 - **Agents not kept**: delete their `.claude/agents/<name>.md` file. Never
   delete `Explore`, `test-author`, or `code-implementer` even if unselected
   — they're load-bearing for the hub-and-spoke loop `CLAUDE.md` documents.
+- **Packs**: nothing to do here. A fresh bootstrap's packs were installed
+  (or not) by the CLI at `m3l-groundwork <dir> --pack <name>` invocation
+  time, before this skill ever ran — there is no fresh-mode install path in
+  `/customize` itself. To add a pack after the fact, re-run the CLI against
+  this now-non-empty directory (it auto-detects adopt mode) and run
+  `/customize` again; its Step 0 will offer the pack through the adopt path
+  below.
 
 **Adopt mode** re-expresses each of the same five outcomes against whatever
 the project actually has, instead of a named baseline path — "tests must not
 hard-fail `pre-push`" is applied to _the gate the inventory found_ (jest in
 CI, husky locally, whatever it is), not to `lefthook.yml`/`ci.yml` by name.
-Concretely, adopt-mode Round 1 applies exactly two things, both already
+Concretely, adopt-mode Round 1 applies exactly three things, all already
 confirmed in Step 0.4:
 
 - The **approved additions** — files `templates/core` (at
@@ -155,6 +182,27 @@ confirmed in Step 0.4:
 - The **approved conflict resolutions** — for each divergent file the user
   decided on, apply that decision (keep theirs / take groundwork's / merge
   the named keys).
+- The **approved packs** — installed from `.groundwork/packs/<name>/` (the
+  CLI's staged, self-contained copy — never `inventory.templateRoot`, which
+  may not exist by the time this runs). Before installing, call
+  `recommendPacks(answers)` from `pack-map.ts` (alongside this file, same
+  copy mechanism as `kind-facet-map.ts`) with the now-confirmed
+  `InterviewAnswers` and compare its verdict against Step 0.4's decision. For
+  `harness-extras` this never disagrees (its recommendation doesn't vary by
+  kind), but a future kind-scoped pack might — if it does, surface the
+  conflict rather than silently overriding the user's Step 0.4 answer,
+  mirroring Step 4's "the one exception" rule for guidance findings. To
+  install: copy `.groundwork/packs/<name>/files/` into the project (respecting
+  any approved per-file conflict decision the same way the baseline's own
+  additions are applied), then translate `pack.json`'s `wiring` by hand
+  against what Step 0.2's deep read already found — a `.claude/settings.json`
+  hook fragment merges the same way the baseline's own hook entries would;
+  `wiring.verifySteps` becomes a step in whatever this project's real gate
+  runner is (a `package.json` script plus a line in its `lefthook.yml`/
+  `.husky/pre-push`/CI workflow, written by hand to match its actual shape)
+  — or, if the project has no such gate runner at all, install the pack's
+  other artifacts and state plainly in Step 6 that the gate was not wired,
+  rather than inventing a runner the project never asked for.
 
 Nothing else is touched. A project file the user didn't approve a change to
 stays exactly as it was.
@@ -215,4 +263,6 @@ deterministically, what Round 2's two sweeps found and applied (or "skipped
 — no network"), and the current state of both trackers (`last-verified=` and
 outstanding drift, if any). **In adopt mode**, add: what Step 0 found that
 the CLI's report missed (if anything), which conflicts were resolved and
-how, and any domain-map coverage gap Step 4 surfaced.
+how, any domain-map coverage gap Step 4 surfaced, and **which packs were
+installed and what each wired** (or, for a pack whose gate had no runner to
+attach to, that it was skipped and why).

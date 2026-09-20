@@ -1,17 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyPath } from "../src/domain-map.js";
 
-const templatesCoreDir = join(
+const templatesDir = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
   "..",
   "templates",
-  "core",
 );
+const templatesCoreDir = join(templatesDir, "core");
+const templatesPacksDir = join(templatesDir, "packs");
 
 function listFiles(dir: string, root: string): string[] {
   const out: string[] = [];
@@ -91,6 +92,28 @@ describe("the real templates/core tree", () => {
   it("has no file that falls outside both guidance sweeps' domains", () => {
     const files = listFiles(templatesCoreDir, templatesCoreDir);
     const uncovered = files.filter((f) => classifyPath(f) === "uncovered");
+    expect(uncovered, `uncovered files: ${uncovered.join(", ")}`).toEqual([]);
+  });
+});
+
+describe("every templates/packs/*/files tree", () => {
+  it("has no file that falls outside both guidance sweeps' domains", () => {
+    if (!existsSync(templatesPacksDir)) return;
+
+    const packNames = readdirSync(templatesPacksDir, {
+      withFileTypes: true,
+    }).filter((entry) => entry.isDirectory());
+
+    const uncovered: string[] = [];
+    for (const pack of packNames) {
+      const filesDir = join(templatesPacksDir, pack.name, "files");
+      if (!existsSync(filesDir)) continue;
+      for (const f of listFiles(filesDir, filesDir)) {
+        if (classifyPath(f) === "uncovered") {
+          uncovered.push(`${pack.name}/files/${f}`);
+        }
+      }
+    }
     expect(uncovered, `uncovered files: ${uncovered.join(", ")}`).toEqual([]);
   });
 });
