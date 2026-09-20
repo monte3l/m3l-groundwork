@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Deterministic TypeScript + Claude Code project bootstrapper, with an adaptive /customize pass over live TypeScript and Anthropic guidance.",
   "author": "Enrico Lionello",
+  "license": "MIT",
   "keywords": [
     "typescript",
     "claude-code",

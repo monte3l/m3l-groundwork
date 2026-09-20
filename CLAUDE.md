@@ -69,6 +69,10 @@ packages/plugin/        Phase B: the /customize skill
   src/                    kind-facet-map.ts, domain-map.ts, pack-map.ts, index.ts
   tests/                  unit tests for all three
 
+.github/                THIS repo's own CI (not the baseline's): ci.yml (five
+                         verify lanes + e2e + the `verify` aggregator),
+                         dependency-review.yml, dependabot.yml
+
 templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          toolchain, .claude/ harness, CI workflows, and
                          placeholder src/tests. See its own CLAUDE.md.
@@ -91,13 +95,13 @@ Run any task with `pnpm <script>`.
 | `pnpm format` / `format:check` | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm test` / `test:coverage`  | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `pnpm test:e2e`                | The real acceptance test, both modes: `bootstrap.e2e.test.ts` bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify` (slow, ~15-20s, network-touching -- a real `pnpm install`); `adopt.e2e.test.ts` runs adopt mode against a fixture pre-existing project and asserts nothing outside `.groundwork/` and `.claude/skills/customize/` changed; `packs.e2e.test.ts` bootstraps with `--pack harness-extras` and asserts the emitted project's own `pnpm verify` (including the pack's gate) is green; `packs-statusline.e2e.test.ts` does the same for `--pack statusline` and also executes the emitted scripts against a real payload. None are part of `pnpm test`. |
-| `pnpm knip`                    | Unused-dependency / unused-export hygiene, both packages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `pnpm knip`                    | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `pnpm check:exports`           | publint + attw against this repo's own root (a private package -- skips cleanly with a warning)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm check:harness`           | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm check:toolchain`         | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `pnpm eval`                    | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), and on `typescript-guidance` against a deliberately degraded project (the `toolchain` suite); needs `claude`, credentials, network. Skips cleanly without `claude`. See "Behavioural evals" below                                                                                                                                                                                                                                                                                                                                                            |
-| `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`), in the order `lefthook`'s `pre-push` runs them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 Run `pnpm verify` (or just push -- `lefthook`'s `pre-push` runs the same
@@ -246,9 +250,25 @@ steps) before considering any task here done.
   is what lets a pack register a gate (appended to
   `bin/lib/verify-steps.packs.json`, a plain JSON array) without either
   YAML file changing. The same pattern applies in the emitted baseline
-  (`templates/core/bin/lib/verify-steps.mjs`). Add a new baseline gate to
-  `CORE_STEPS` here, not as a bespoke script invocation in either YAML
-  file.
+  (`templates/core/bin/lib/verify-steps.mjs`, which adds `CORE_STEPS` and the
+  pack-contributed steps this repo's own list has no use for). Add a new
+  gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
+  bespoke script invocation in either YAML file.
+- **Continuous integration (`.github/`).** `ci.yml` has five lane jobs
+  (`format`/`lint`/`typecheck`/`build`/`test`), each `node bin/verify.mjs
+--group <name>`, plus an `e2e` job (`pnpm build` then `pnpm test:e2e`) and
+  a `verify` aggregator -- the one check to require if branch protection is
+  ever configured. The aggregator demands an explicit `success` from every
+  lane, since testing only for `failure` reports green over a cancelled or
+  skipped one. Two rules keep `gate-lane-parity` (the toolchain grader)
+  working against this repo: **never name a step id in a workflow** (name a
+  group), and **never matrix the lanes** -- `--group ${{ matrix.group }}`
+  reads as dynamic, and because the grader concatenates every workflow file
+  into one surface, that one line switches the check off for all of them.
+  `pnpm eval` never runs in CI (paid model calls). **CodeQL is GitHub-managed
+  default setup and has no file in this repo -- do not add a `codeql.yml`**,
+  it collides with default setup. `bin/check-node-version.mjs` is live here
+  now: every workflow takes Node from `node-version-file: .node-version`.
 - **A pack never edits YAML or JavaScript.** It extends three JSON files
   the baseline already reads at runtime (`.claude/settings.json`,
   `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json`) via the pure
@@ -271,12 +291,14 @@ Conventional Commits, enforced by the `commit-msg` hook
 bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
 substantially assisted a commit.
 
-No branch-protection ruleset is configured on the GitHub repo yet, and nothing
-in this repo's own hooks blocks a direct commit to `main` the way
+CI runs on every push and PR to `main` (see "Continuous integration" above),
+but no branch-protection ruleset is configured on the GitHub repo yet, and
+nothing in this repo's own hooks blocks a direct commit to `main` the way
 `guard-branch-isolation.mjs` does for `templates/core`'s _emitted_ projects
 (that guard ships in the baseline; it doesn't apply to building the
 bootstrapper itself). Prefer a feature branch + PR for anything non-trivial
-regardless -- there's just no automated gate enforcing it today.
+regardless -- there's just no automated gate enforcing it today. If a ruleset
+is added, require `verify` (the aggregator) and `Dependency Review`.
 
 ## Testing
 
@@ -330,6 +352,13 @@ removed from `templates/core`.
   (it auto-detects adopt mode), then run `/customize`. Works, but is
   indirect -- a dedicated additive install mode is real future work.
 - No npm publishing, release automation, or version bumping.
+- **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it: it
+  has no version-file input and reads Node from `package.json`'s
+  `devEngines.runtime`, which would create a second Node pin beside
+  `.node-version`. Hardcoding `runtime: node@N` in YAML is worse -- it
+  evades `check-node-version.mjs`, whose regex only matches `node-version:`.
+  Adopting it means teaching that gate (and its `templates/core` twin) about
+  both forms first.
 - `.claude/` harness support (agents/hooks/skills for working _in this repo_
   specifically, as opposed to what it emits) does not exist yet. If this
   repo is ever edited from inside a Claude Code session that has its own
