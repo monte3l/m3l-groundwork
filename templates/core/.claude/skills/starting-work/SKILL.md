@@ -1,10 +1,13 @@
 ---
 name: starting-work
 description: >-
-  The pre-work decision gate: inspects git state, recommends branch
-  (feat/fix <slug>) and push target, decides whether a PR is required — all
-  confirmed before any write. Invoke for "implement", "build", "fix",
-  "refactor", even unnamed. Skip for research/questions.
+  The pre-work decision gate for any task that will change code. Invoke it
+  FIRST -- before reading, investigating, or editing anything -- for
+  "implement", "build", "add", "fix the bug where ...", "refactor", or any
+  request to change behavior, even when the change is unnamed or you have not
+  seen the code yet. Inspects git state, recommends a branch (feat/fix <slug>)
+  and push target, and decides whether a PR is required, all confirmed before
+  any write. Skip for research and questions that change nothing.
 ---
 
 # starting-work

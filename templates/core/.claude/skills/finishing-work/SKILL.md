@@ -1,10 +1,14 @@
 ---
 name: finishing-work
 description: >-
-  Runs the post-merge close-out tail creating-prs doesn't: return to main and
-  pull, delete the merged branch, prune stale remote refs, prompt for a work
-  log. Use for /finishing-work, "clean up after this PR", "the PR merged,
-  wrap this up", or when a merged branch/refs linger. GitHub stance: gh CLI.
+  Runs the post-merge close-out tail creating-prs doesn't: verifies the PR
+  actually merged, returns to main and pulls, deletes the merged local
+  branches, prunes stale remote refs, and prompts for a work log. Use for
+  /finishing-work, "clean up after this PR", "the PR merged, wrap this up",
+  "delete the merged branches", "prune stale remote refs", or when a merged
+  branch or stale refs linger -- even when it sounds like a one-line git
+  command, because deleting a branch that never merged loses work and this
+  skill checks first. GitHub stance: gh CLI.
 ---
 
 # finishing-work
