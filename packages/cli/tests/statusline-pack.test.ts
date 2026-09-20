@@ -58,6 +58,8 @@ const ANSI = /\x1b\[[0-9;]*m/g;
 
 let statusline: Statusline;
 let layout: {
+  displayWidth: (text: string) => number;
+  truncateToWidth: (text: string, maxWidth: number) => string;
   fitRow: (
     segments: {
       id: string;
@@ -182,6 +184,39 @@ describe("parseHeadRef", () => {
     expect(
       statusline.parseHeadRef("9fceb02d0ae598e95dc970b74767f19372d61af8\n"),
     ).toBeNull();
+  });
+});
+
+describe("displayWidth", () => {
+  // Cell counts as a terminal draws them, not as codepoints sum.
+  it.each([
+    // Emoji-presentation glyphs are two cells; text-presentation symbols from
+    // the same Unicode blocks are one. `⚠` is what the branch segment shows on main.
+    ["⚡", 2],
+    ["🌿 feat", 7],
+    ["⚠ main", 6],
+    ["✓ ➜ ↳ ↻", 7],
+    // U+FE0F asks for emoji presentation, widening a narrow base to two cells.
+    ["⚠\uFE0F", 2],
+    ["1\uFE0F\u20E3", 2],
+    // A ZWJ sequence is one glyph.
+    ["\u{1F468}\u200D\u{1F4BB}", 2],
+    // East Asian Wide text is not emoji, and must keep counting two.
+    ["日本", 4],
+    ["가", 2],
+    // Bar glyphs, combining marks and escapes.
+    ["█░", 2],
+    ["e\u0301", 1],
+    ["\x1b[31mabc\x1b[0m", 3],
+  ])("measures %j as %i cells", (text, cells) => {
+    expect(layout.displayWidth(text)).toBe(cells);
+  });
+});
+
+describe("truncateToWidth", () => {
+  it("never cuts inside a ZWJ sequence", () => {
+    const family = "\u{1F468}\u200D\u{1F4BB}";
+    expect(layout.truncateToWidth(`${family}abc`, 3)).toBe(`${family}…`);
   });
 });
 

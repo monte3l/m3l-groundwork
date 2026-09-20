@@ -53,10 +53,26 @@ const WIDE_RANGES = [
   [0xf9_00, 0xfa_ff],
   [0xff_00, 0xff_60],
   [0xff_e0, 0xff_e6],
-  [0x1f_3_00, 0x1f_a_ff],
-  [0x26_00, 0x27_bf],
   [0x2_00_00, 0x3_ff_fd],
 ];
+
+/**
+ * Codepoints a terminal draws two cells wide because the font renders them as
+ * an emoji, not a text glyph. Asked of the engine's own Unicode tables rather
+ * than a hand-kept range: the old blanket `U+2600-27BF` / `U+1F300-1FAFF` ranges
+ * were wrong in both directions (`⚠ U+26A0`, `✓ U+2713` and `➜ U+279C` are one
+ * cell, only the `Emoji_Presentation` subset of those blocks is two), and a
+ * table would go stale as Unicode adds emoji. A property escape is built into
+ * V8, so it costs no dependency. It does not cover East Asian Wide text, which
+ * is why `WIDE_RANGES` stays.
+ */
+const EMOJI_PRESENTATION_RE = /^\p{Emoji_Presentation}$/u;
+
+/** Codepoints that *can* be drawn as an emoji when followed by U+FE0F. */
+const EMOJI_CAPABLE_RE = /^\p{Emoji}$/u;
+
+const ZERO_WIDTH_JOINER = 0x20_0d;
+const VARIATION_SELECTOR_16 = 0xfe_0f;
 
 /**
  * @param {number} code a Unicode codepoint.
@@ -69,8 +85,10 @@ function inRanges(code, ranges) {
 }
 
 /**
- * The display width of a single codepoint, per this module's East
- * Asian/Nerd-Font/combining-mark width table.
+ * The display width of a single codepoint on its own, per this module's East
+ * Asian/emoji/Nerd-Font/combining-mark rules. Sequence-dependent codepoints
+ * (a ZWJ, or a VS16 that widens the glyph before it) are resolved by
+ * {@link clusters}, not here.
  *
  * @param {string} cp a single codepoint (as produced by iterating a string
  *   with `[...str]`).
@@ -78,17 +96,66 @@ function inRanges(code, ranges) {
  */
 function codepointWidth(cp) {
   const code = cp.codePointAt(0) ?? 0;
-  if (code === 0xfe_0f || inRanges(code, COMBINING_RANGES)) return 0;
+  if (
+    code === VARIATION_SELECTOR_16 ||
+    code === ZERO_WIDTH_JOINER ||
+    inRanges(code, COMBINING_RANGES)
+  ) {
+    return 0;
+  }
   if (inRanges(code, PUA_RANGES)) return 1;
-  if (inRanges(code, WIDE_RANGES)) return 2;
+  if (EMOJI_PRESENTATION_RE.test(cp) || inRanges(code, WIDE_RANGES)) return 2;
   return 1;
 }
 
 /**
+ * Splits escape-free text into terminal cells' worth of glyphs: one entry per
+ * visible glyph, with anything that only modifies the glyph before it folded
+ * into that entry. Folding matters twice over -- the width is right (a
+ * `👨‍💻` ZWJ sequence is two cells, not the four its three codepoints sum
+ * to; `⚠️` is two because U+FE0F asks for emoji presentation), and
+ * {@link truncateToWidth} can never cut a sequence in half.
+ *
+ * Not handled: a regional-indicator flag pair (`🇮🇹`) is two cells but
+ * measures four, and the width of an emoji sequence is taken from its first
+ * codepoint. Both only ever over-count, so a row drops a segment early rather
+ * than wrapping.
+ *
+ * @param {string} text text containing no ANSI/OSC-8 sequences.
+ * @returns {Array<{ raw: string, width: 0 | 1 | 2 }>}
+ */
+function clusters(text) {
+  /** @type {Array<{ raw: string, width: 0 | 1 | 2 }>} */
+  const out = [];
+  let afterJoiner = false;
+  for (const cp of text) {
+    const code = cp.codePointAt(0) ?? 0;
+    const previous = out.at(-1);
+
+    if (previous !== undefined && (afterJoiner || codepointWidth(cp) === 0)) {
+      previous.raw += cp;
+      if (
+        code === VARIATION_SELECTOR_16 &&
+        previous.width === 1 &&
+        EMOJI_CAPABLE_RE.test([...previous.raw][0] ?? "")
+      ) {
+        previous.width = 2;
+      }
+      afterJoiner = code === ZERO_WIDTH_JOINER;
+      continue;
+    }
+
+    out.push({ raw: cp, width: codepointWidth(cp) });
+    afterJoiner = code === ZERO_WIDTH_JOINER;
+  }
+  return out;
+}
+
+/**
  * The terminal-column width of `str` once ANSI/OSC-8 escape sequences are
- * stripped, accounting for zero-width combining marks, Nerd Font/PUA
- * single-width glyphs, and East Asian Wide/emoji-presentation double-width
- * codepoints.
+ * stripped, accounting for zero-width combining marks and joiners, emoji
+ * sequences, Nerd Font/PUA single-width glyphs, and East Asian Wide/emoji
+ * double-width codepoints.
  *
  * @param {string} str
  * @returns {number}
@@ -96,9 +163,7 @@ function codepointWidth(cp) {
 export function displayWidth(str) {
   const stripped = str.replace(ESCAPE_SEQUENCE_RE, "");
   let width = 0;
-  for (const cp of stripped) {
-    width += codepointWidth(cp);
-  }
+  for (const cluster of clusters(stripped)) width += cluster.width;
   return width;
 }
 
@@ -122,8 +187,8 @@ function tokenize(str) {
   let match = ESCAPE_SEQUENCE_RE.exec(str);
   while (match !== null) {
     if (match.index > cursor) {
-      for (const cp of str.slice(cursor, match.index)) {
-        tokens.push({ type: "char", raw: cp, width: codepointWidth(cp) });
+      for (const { raw, width } of clusters(str.slice(cursor, match.index))) {
+        tokens.push({ type: "char", raw, width });
       }
     }
     tokens.push({ type: "esc", raw: match[0] });
@@ -131,8 +196,8 @@ function tokenize(str) {
     match = ESCAPE_SEQUENCE_RE.exec(str);
   }
   if (cursor < str.length) {
-    for (const cp of str.slice(cursor)) {
-      tokens.push({ type: "char", raw: cp, width: codepointWidth(cp) });
+    for (const { raw, width } of clusters(str.slice(cursor))) {
+      tokens.push({ type: "char", raw, width });
     }
   }
   return tokens;
