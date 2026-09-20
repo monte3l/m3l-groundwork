@@ -28,6 +28,16 @@ describe("recommendPacks", () => {
     }
   });
 
+  it("recommends statusline with non-empty evidence, for every project kind", () => {
+    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+      const statusline = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "statusline",
+      );
+      expect(statusline?.recommended).toBe(true);
+      expect(statusline?.because.length).toBeGreaterThan(0);
+    }
+  });
+
   it("gives every recommendation non-empty evidence", () => {
     for (const rec of recommendPacks(BASE_ANSWERS)) {
       expect(rec.because.length).toBeGreaterThan(0);

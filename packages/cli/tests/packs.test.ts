@@ -209,6 +209,74 @@ describe("installPack", () => {
     expect(existsSync(join(targetDir, ".claude", "settings.json"))).toBe(true);
   });
 
+  it("merges top-level settings keys without adding an empty hooks block", () => {
+    writeManifest(packsRoot, "status", {
+      wiring: {
+        settings: {},
+        settingsTopLevel: { statusLine: { type: "command", command: "s.mjs" } },
+        packageScripts: {},
+        verifySteps: [],
+      },
+    });
+    const pack = loadPack("status", packsRoot);
+    installPack(pack, targetDir, {});
+    const settings = JSON.parse(
+      readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(settings).toEqual({
+      statusLine: { type: "command", command: "s.mjs" },
+    });
+  });
+
+  it("keeps the baseline's hooks and $schema and is idempotent when a top-level pack is installed twice", () => {
+    mkdirSync(join(targetDir, ".claude"), { recursive: true });
+    writeFileSync(
+      join(targetDir, ".claude", "settings.json"),
+      JSON.stringify({ $schema: "s", hooks: { Stop: [] } }),
+    );
+    writeManifest(packsRoot, "status", {
+      wiring: {
+        settings: {},
+        settingsTopLevel: { statusLine: { type: "command", command: "s.mjs" } },
+        packageScripts: {},
+        verifySteps: [],
+      },
+    });
+    const pack = loadPack("status", packsRoot);
+    installPack(pack, targetDir, {});
+    const first = readFileSync(
+      join(targetDir, ".claude", "settings.json"),
+      "utf8",
+    );
+    installPack(pack, targetDir, {});
+    expect(
+      readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
+    ).toBe(first);
+    expect(Object.keys(JSON.parse(first) as object)).toEqual([
+      "$schema",
+      "hooks",
+      "statusLine",
+    ]);
+  });
+
+  it("throws rather than overwrite a differing top-level key already in settings.json", () => {
+    mkdirSync(join(targetDir, ".claude"), { recursive: true });
+    writeFileSync(
+      join(targetDir, ".claude", "settings.json"),
+      JSON.stringify({ statusLine: { type: "command", command: "mine.sh" } }),
+    );
+    writeManifest(packsRoot, "status", {
+      wiring: {
+        settings: {},
+        settingsTopLevel: { statusLine: { type: "command", command: "s.mjs" } },
+        packageScripts: {},
+        verifySteps: [],
+      },
+    });
+    const pack = loadPack("status", packsRoot);
+    expect(() => installPack(pack, targetDir, {})).toThrow(/collision/);
+  });
+
   it("merges package.json scripts and throws on a differing collision", () => {
     writeManifest(packsRoot, "scripted", {
       wiring: {
@@ -340,6 +408,35 @@ describe("observeWiring", () => {
     ).toBe(true);
   });
 
+  it("reports whether a top-level settings key is already set", () => {
+    const withStatusLine = manifest({
+      wiring: {
+        settings: {},
+        settingsTopLevel: { statusLine: { type: "command", command: "s" } },
+        packageScripts: {},
+        verifySteps: [],
+      },
+    });
+    mkdirSync(join(targetDir, ".claude"), { recursive: true });
+    writeFileSync(
+      join(targetDir, ".claude", "settings.json"),
+      JSON.stringify({ hooks: {} }),
+    );
+    expect(observeWiring(targetDir, withStatusLine)).toContain(
+      '.claude/settings.json has no top-level "statusLine" yet',
+    );
+
+    writeFileSync(
+      join(targetDir, ".claude", "settings.json"),
+      JSON.stringify({ statusLine: { type: "command", command: "mine" } }),
+    );
+    expect(
+      observeWiring(targetDir, withStatusLine).some((o) =>
+        o.includes('already sets a top-level "statusLine"'),
+      ),
+    ).toBe(true);
+  });
+
   it("reports an unparseable settings.json", () => {
     mkdirSync(join(targetDir, ".claude"), { recursive: true });
     writeFileSync(join(targetDir, ".claude", "settings.json"), "{not json");
@@ -385,5 +482,58 @@ describe("the real harness-extras pack", () => {
     expect(existsSync(pack.filesDir)).toBe(true);
     // packsRootDir()'s default resolves to the real templates/packs tree.
     expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
+  });
+});
+
+describe("the real statusline pack", () => {
+  it("loads cleanly and declares its two top-level settings keys, no hooks and no gate", () => {
+    expect(listPackNames()).toContain("statusline");
+    const pack = loadPack("statusline");
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.verifySteps).toEqual([]);
+    expect(Object.keys(pack.manifest.wiring.settingsTopLevel ?? {})).toEqual([
+      "statusLine",
+      "subagentStatusLine",
+    ]);
+    for (const value of Object.values(
+      pack.manifest.wiring.settingsTopLevel ?? {},
+    )) {
+      expect(JSON.stringify(value)).toContain(
+        "$CLAUDE_PROJECT_DIR/.claude/hooks/",
+      );
+    }
+  });
+
+  it("installs alongside harness-extras: every hook registration and both top-level keys survive together", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-both-"));
+    try {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      mkdirSync(join(targetDir, "bin", "lib"), { recursive: true });
+      writeFileSync(join(targetDir, "bin", "lib", "agent-roster.mjs"), "");
+      writeFileSync(join(targetDir, "bin", "lib", "report.mjs"), "");
+      writeFileSync(
+        join(targetDir, ".claude", "settings.json"),
+        JSON.stringify({ $schema: "s", hooks: {} }),
+      );
+      installPack(loadPack("harness-extras"), targetDir, {});
+      installPack(loadPack("statusline"), targetDir, {});
+      const settings = JSON.parse(
+        readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(Object.keys(settings)).toEqual([
+        "$schema",
+        "hooks",
+        "statusLine",
+        "subagentStatusLine",
+      ]);
+      expect(Object.keys(settings["hooks"] as object).sort()).toEqual([
+        "PreCompact",
+        "PreToolUse",
+        "SessionStart",
+      ]);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
   });
 });

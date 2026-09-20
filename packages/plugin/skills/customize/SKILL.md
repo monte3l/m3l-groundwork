@@ -78,7 +78,8 @@ may or may not touch.
    `inventory.packs`. For each pack, show its `budget`, its
    `wiringObservations` (facts about how it would land — e.g. "no
    `bin/lib/verify-steps.packs.json` found: no `bin/verify.mjs`-shaped gate
-   runner detected"), and its `adoptNotes` verbatim; a pack whose gate
+   runner detected", or "`.claude/settings.json` already sets a top-level
+   `statusLine`"), and its `adoptNotes` verbatim; a pack whose gate
    dependency the project doesn't have is still offered for its other
    artifacts, with that limitation stated plainly rather than silently
    dropped. This is index-level evidence from the CLI, not a kind-based
@@ -188,7 +189,7 @@ confirmed in Step 0.4:
   `recommendPacks(answers)` from `pack-map.ts` (alongside this file, same
   copy mechanism as `kind-facet-map.ts`) with the now-confirmed
   `InterviewAnswers` and compare its verdict against Step 0.4's decision. For
-  `harness-extras` this never disagrees (its recommendation doesn't vary by
+  both shipped packs this never disagrees (neither recommendation varies by
   kind), but a future kind-scoped pack might — if it does, surface the
   conflict rather than silently overriding the user's Step 0.4 answer,
   mirroring Step 4's "the one exception" rule for guidance findings. To
@@ -197,6 +198,13 @@ confirmed in Step 0.4:
   additions are applied), then translate `pack.json`'s `wiring` by hand
   against what Step 0.2's deep read already found — a `.claude/settings.json`
   hook fragment merges the same way the baseline's own hook entries would;
+  `wiring.settingsTopLevel` is a set of top-level keys (e.g. `statusLine`)
+  planted whole, and only when the project doesn't already define that key —
+  when it does, show the existing value and ask, since the CLI's own
+  `mergeSettingsTopLevel` treats a differing value as a hard error and this
+  hand-applied path must not be laxer than the automated one (also check
+  `.claude/settings.local.json` and the user's `~/.claude/settings.json`,
+  either of which can shadow a project `statusLine`);
   `wiring.verifySteps` becomes a step in whatever this project's real gate
   runner is (a `package.json` script plus a line in its `lefthook.yml`/
   `.husky/pre-push`/CI workflow, written by hand to match its actual shape)

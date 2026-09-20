@@ -19,8 +19,9 @@ templates/packs/<name>/
 ## The wiring contract
 
 **A pack never edits YAML or JavaScript.** It may add files under `files/`,
-and may extend exactly two JSON structures the baseline already reads at
-runtime: `.claude/settings.json` (hook registrations) and
+and may extend three JSON files the baseline already reads at runtime:
+`.claude/settings.json` (hook registrations, and top-level harness settings
+such as `statusLine`), `package.json` (`scripts`), and
 `bin/lib/verify-steps.packs.json` (gate steps, keyed to one of the five
 fixed verify groups `templates/core/bin/lib/verify-steps.mjs` defines —
 `format`/`lint`/`typecheck`/`build`/`test`). A gate registered this way runs
@@ -42,7 +43,13 @@ enumerate groups rather than individual steps.
   `bin/lib/agent-roster.mjs`). Checked at install time in fresh mode; a
   missing requirement is a hard install error, not a silent partial install.
 - `wiring.settings` — a `.claude/settings.json` hook fragment, merged
-  append-only and idempotently.
+  append-only and idempotently. Omit it, or leave it `{}`, for a pack that
+  registers no hooks.
+- `wiring.settingsTopLevel` — top-level `.claude/settings.json` keys that
+  aren't hook registrations (`statusLine`, `subagentStatusLine`, …), planted
+  whole. A key the project already defines with a different value is a hard
+  install error, never an overwrite; `hooks` is refused here, since it
+  belongs in `wiring.settings`. Optional.
 - `wiring.packageScripts` — `package.json` script additions. Most packs need
   none: a gate registers directly as `["node", "bin/check-x.mjs"]` in
   `wiring.verifySteps`, not as a `pnpm` script.
@@ -64,9 +71,10 @@ enumerate groups rather than individual steps.
 
 ## Available packs
 
-| Pack             | Contents                                                                                                                                                                                               |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `harness-extras` | A type-design-analyzer agent, the compaction-handoff hook pair, a read-only Bash guard, and a per-file size ratchet gate — the four artifacts the original baseline build cut purely to hold its caps. |
+| Pack             | Contents                                                                                                                                                                                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness-extras` | A type-design-analyzer agent, the compaction-handoff hook pair, a read-only Bash guard, and a per-file size ratchet gate — the four artifacts the original baseline build cut purely to hold its caps.                                                              |
+| `statusline`     | A five-row Claude Code status line (session, model, context, quota, work) plus a per-subagent row renderer, both width-fit to the terminal. Registers top-level `statusLine`/`subagentStatusLine` settings, no hooks and no gate. Runs the same on macOS and Linux. |
 
 `github-ops` (dependabot/scan-alert triage skills) and `publishing` (a
 release workflow + npm-publish gates) are documented follow-ups, not yet

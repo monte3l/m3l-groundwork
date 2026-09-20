@@ -3,6 +3,7 @@ import {
   isRecord,
   mergePackageScripts,
   mergeSettingsHooks,
+  mergeSettingsTopLevel,
   mergeVerifySteps,
 } from "../src/merge-json.js";
 
@@ -221,5 +222,66 @@ describe("mergeVerifySteps", () => {
         { id: "file-budget", group: "test", name: "x", cmd: ["node", "y.mjs"] },
       ]),
     ).toThrow(/merge collision/);
+  });
+});
+
+describe("mergeSettingsTopLevel", () => {
+  const statusLine = {
+    type: "command",
+    command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.mjs"',
+    padding: 1,
+  };
+
+  it("appends a new top-level key after the existing ones, preserving $schema and hooks in order", () => {
+    const merged = mergeSettingsTopLevel(
+      { $schema: "https://example.com/schema.json", hooks: { Stop: [] } },
+      { statusLine },
+    );
+    expect(Object.keys(merged)).toEqual(["$schema", "hooks", "statusLine"]);
+    expect(merged["statusLine"]).toEqual(statusLine);
+    expect(merged["hooks"]).toEqual({ Stop: [] });
+  });
+
+  it("creates the settings object from scratch when there is nothing to merge into", () => {
+    expect(mergeSettingsTopLevel(undefined, { statusLine })).toEqual({
+      statusLine,
+    });
+  });
+
+  it("is idempotent: merging the same fragment twice equals merging it once", () => {
+    const once = mergeSettingsTopLevel({ hooks: {} }, { statusLine });
+    expect(mergeSettingsTopLevel(once, { statusLine })).toEqual(once);
+  });
+
+  it("throws on a same-key-different-value collision instead of overwriting", () => {
+    expect(() =>
+      mergeSettingsTopLevel(
+        { statusLine: { type: "command", command: "other.sh" } },
+        { statusLine },
+      ),
+    ).toThrow(/collision.*"statusLine"/);
+  });
+
+  it("treats a key explicitly set to null as already defined, so it collides instead of being overwritten", () => {
+    expect(() =>
+      mergeSettingsTopLevel({ statusLine: null }, { statusLine }),
+    ).toThrow(/collision/);
+  });
+
+  it("does not mistake an inherited property name for an existing key", () => {
+    const merged = mergeSettingsTopLevel({}, { constructor: "x" });
+    expect(Object.hasOwn(merged, "constructor")).toBe(true);
+  });
+
+  it("rejects a fragment key of hooks, which mergeSettingsHooks owns", () => {
+    expect(() => mergeSettingsTopLevel({}, { hooks: { Stop: [] } })).toThrow(
+      /mergeSettingsHooks/,
+    );
+  });
+
+  it("does not mutate the existing settings object", () => {
+    const existing = { hooks: {} };
+    mergeSettingsTopLevel(existing, { statusLine });
+    expect(existing).toEqual({ hooks: {} });
   });
 });
