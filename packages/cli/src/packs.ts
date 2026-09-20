@@ -22,16 +22,20 @@ import {
   isRecord,
   mergePackageScripts,
   mergeSettingsHooks,
+  mergeSettingsTopLevel,
   mergeVerifySteps,
 } from "./merge-json.js";
 import type {
   SettingsHooksFragment,
+  SettingsTopLevelFragment,
   VerifyStepAddition,
 } from "./merge-json.js";
 import type { TokenTable } from "./tokens.js";
 
 export interface PackWiring {
   settings: SettingsHooksFragment;
+  /** Top-level `.claude/settings.json` keys that aren't hook registrations (`statusLine`). Optional: packs that only register hooks omit it. */
+  settingsTopLevel?: SettingsTopLevelFragment;
   packageScripts: Record<string, string>;
   verifySteps: VerifyStepAddition[];
 }
@@ -187,10 +191,18 @@ export function installPack(
   const existingSettings = existsSync(settingsPath)
     ? readJsonOrThrow(settingsPath)
     : {};
-  writeJson(
-    settingsPath,
-    mergeSettingsHooks(existingSettings, manifest.wiring.settings),
+  let settings: unknown = existingSettings;
+  // Only touch the hooks block when the pack registers hooks: merging an empty
+  // fragment would still write an empty `hooks: {}` into a settings file that
+  // had none.
+  if (Object.keys(manifest.wiring.settings).length > 0) {
+    settings = mergeSettingsHooks(settings, manifest.wiring.settings);
+  }
+  settings = mergeSettingsTopLevel(
+    settings,
+    manifest.wiring.settingsTopLevel ?? {},
   );
+  writeJson(settingsPath, settings);
 
   if (Object.keys(manifest.wiring.packageScripts).length > 0) {
     const pkgPath = join(targetDir, "package.json");
@@ -269,6 +281,13 @@ export function observeWiring(
           Array.isArray(existingEntries) && existingEntries.length > 0
             ? `.claude/settings.json already has a "${event}" entry (${existingEntries.length} registration(s))`
             : `.claude/settings.json has no "${event}" entry yet`,
+        );
+      }
+      for (const key of Object.keys(manifest.wiring.settingsTopLevel ?? {})) {
+        observations.push(
+          key in parsed.value
+            ? `.claude/settings.json already sets a top-level "${key}" -- installing this pack would collide with it, so replacing it is a decision for the user`
+            : `.claude/settings.json has no top-level "${key}" yet`,
         );
       }
     }

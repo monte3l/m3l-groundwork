@@ -1,7 +1,8 @@
 /**
  * Pure, deterministic merges over parsed JSON -- the entire mechanism that
- * lets a pack extend `.claude/settings.json`, `package.json`'s `scripts`,
- * and `bin/lib/verify-steps.packs.json` without `packages/cli` ever parsing
+ * lets a pack extend `.claude/settings.json` (its `hooks` block and a few
+ * top-level keys), `package.json`'s `scripts`, and
+ * `bin/lib/verify-steps.packs.json` without `packages/cli` ever parsing
  * YAML or JavaScript. Every merge is append-only (it never rebuilds an
  * object wholesale, which would risk reordering keys Prettier would
  * otherwise preserve) and idempotent (merging the same fragment twice
@@ -91,6 +92,47 @@ export function mergeSettingsHooks(
   }
 
   return { ...settings, hooks };
+}
+
+export type SettingsTopLevelFragment = Record<string, unknown>;
+
+/**
+ * Merges a pack's top-level `.claude/settings.json` keys (`statusLine`,
+ * `subagentStatusLine` -- settings that are not hook registrations) into an
+ * existing settings object. Disjoint from `mergeSettingsHooks`, which owns the
+ * `hooks` block: a fragment key of `hooks` is rejected outright rather than
+ * silently clobbering it. A key not yet present is appended; one already
+ * present with an identical value is a no-op; one present with a different
+ * value is a hard collision, never a silent overwrite -- an adopted project's
+ * own `statusLine` is the user's to replace deliberately.
+ */
+export function mergeSettingsTopLevel(
+  existing: unknown,
+  fragment: SettingsTopLevelFragment,
+): Record<string, unknown> {
+  const settings: Record<string, unknown> = isRecord(existing)
+    ? { ...existing }
+    : {};
+
+  for (const [key, value] of Object.entries(fragment)) {
+    if (key === "hooks") {
+      throw new Error(
+        'settings.json merge: "hooks" is owned by mergeSettingsHooks and cannot be set as a top-level key',
+      );
+    }
+    if (!Object.hasOwn(settings, key)) {
+      settings[key] = value;
+      continue;
+    }
+    if (JSON.stringify(settings[key]) !== JSON.stringify(value)) {
+      throw new Error(
+        `settings.json merge collision: "${key}" is already set with a different value`,
+      );
+    }
+    // Identical value already present -- idempotent no-op.
+  }
+
+  return settings;
 }
 
 interface ScriptCollision {

@@ -24,7 +24,7 @@
  * line every time the artifact is legitimately absent.
  */
 import process from "node:process";
-import { readFileSync, existsSync, unlinkSync } from "node:fs";
+import { readFileSync, existsSync, unlinkSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { HANDOFF_REL_PATH } from "./write-compact-handoff.mjs";
@@ -148,8 +148,21 @@ export function readHandoff(handoffPath) {
   }
 }
 
+// Deliberately inlined in every hook rather than shared: this pack's hook
+// budget is exactly its three hooks, so a helper module would cost a slot.
+// `import.meta.url` is symlink-resolved but `process.argv[1]` is not, so
+// comparing them directly is false under any symlinked path and the body would
+// never run -- exit 0.
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
 // Only run when invoked directly, not when imported for testing.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isEntryPoint()) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   let input;

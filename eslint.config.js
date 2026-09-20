@@ -19,8 +19,12 @@ export default tseslint.config(
     // Generated / vendored / emitted-payload content is never linted by this
     // config. templates/core/** is data -- files copied verbatim (with token
     // substitution) into a bootstrapped project; it is designed against
-    // THAT project's own toolchain, not this repo's, and templates/packs/
-    // is markdown only.
+    // THAT project's own toolchain, not this repo's. templates/packs/ is the
+    // same kind of payload: its .mjs artifacts are linted by the emitted
+    // project's templates/core/eslint.config.js, which scopes .claude/hooks/**
+    // with node globals this config has no equivalent of -- linting them
+    // here would give wrong verdicts. Each pack's e2e test is what runs that
+    // lint.
     ignores: [
       "**/dist/**",
       "**/node_modules/**",

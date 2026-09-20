@@ -29,7 +29,13 @@
  *   node bin/check-file-budget.mjs --ref <ref> # verify a committed ref instead of the working tree (no checkout/worktree required); incompatible with --update
  */
 import process from "node:process";
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  existsSync,
+  realpathSync,
+} from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -298,7 +304,18 @@ export function buildBaseline(entries) {
   );
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// `import.meta.url` is symlink-resolved but `process.argv[1]` is not, so
+// comparing them directly is false under any symlinked path and the gate would
+// never run -- exiting 0, a green check that checked nothing.
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   const argv = process.argv.slice(2);
   const reporter = createReporter(parseJsonFlag(argv));
   const ref = parseRefArg(argv);

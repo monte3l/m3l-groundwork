@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "name": "statusline",
+  "description": "A five-row Claude Code statusLine -- session, model, context, quota, work -- plus a per-subagent row renderer, both width-fit to the real terminal. statusLine is the only documented surface carrying live context-window pressure; no hook event receives token data.",
+  "modes": ["fresh", "adopt"],
+  "budget": {
+    "agents": 0,
+    "skills": 0,
+    "hooks": 3,
+    "workflows": 0,
+    "scripts": 0
+  },
+  "wiring": {
+    "settings": {},
+    "settingsTopLevel": {
+      "statusLine": {
+        "type": "command",
+        "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.mjs\"",
+        "refreshInterval": 30,
+        "padding": 1
+      },
+      "subagentStatusLine": {
+        "type": "command",
+        "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-statusline.mjs\""
+      }
+    },
+    "packageScripts": {},
+    "verifySteps": []
+  },
+  "adoptNotes": "The three scripts read only the stdin payload, .git/HEAD (via node:fs, never a git subprocess) and process.availableMemory()/os.totalmem(), so they install anywhere a .claude/ directory exists -- no dependency on the baseline's file layout, and no gate to wire. The one real adopt risk is the settings keys: a project that already defines a top-level statusLine or subagentStatusLine collides, and its existing value must be shown and decided on, never overwritten. A .claude/settings.local.json or the user's own ~/.claude/settings.json statusLine also shadows the project one -- check both before concluding the pack is wired. rate_limits.spend_limit and prompt_cache need Claude Code v2.1.251+, and the per-subagent model/contextWindowSize/effort fields need v2.1.205+/v2.1.214+; each renders only when present, so an older Claude Code degrades to fewer segments rather than breaking. The scripts behave the same on macOS and Linux; the memory segment uses process.availableMemory() (Node 22+), and on macOS with an older Node it is hidden rather than shown from os.freemem(), which undercounts there. Below roughly 40 columns the layout drops segments by priority rather than wrapping."
+}

@@ -16,6 +16,7 @@
  * costs a mid-task branch scramble.
  */
 import process from "node:process";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
@@ -81,8 +82,21 @@ export function buildContext(branch) {
   ].join("\n");
 }
 
+// Deliberately inlined in every hook rather than shared: caps.ts counts
+// .claude/hooks/*.mjs files against a hard limit, so a helper module would
+// cost a hook slot. `import.meta.url` is symlink-resolved but `process.argv[1]`
+// is not, so comparing them directly is false under any symlinked path and the
+// guard body would never run -- exit 0, i.e. fail open.
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
 // Only run when invoked directly, not when imported for testing.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isEntryPoint()) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   let input;

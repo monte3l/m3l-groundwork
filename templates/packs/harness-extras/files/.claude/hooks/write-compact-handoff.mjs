@@ -30,7 +30,13 @@
  * turn in progress.
  */
 import process from "node:process";
-import { writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
+import {
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  existsSync,
+  realpathSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -137,8 +143,21 @@ export function buildHandoff(cwd = root) {
   };
 }
 
+// Deliberately inlined in every hook rather than shared: this pack's hook
+// budget is exactly its three hooks, so a helper module would cost a slot.
+// `import.meta.url` is symlink-resolved but `process.argv[1]` is not, so
+// comparing them directly is false under any symlinked path and the body would
+// never run -- exit 0.
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
 // Only run when invoked directly, not when imported for testing.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isEntryPoint()) {
   // Drain stdin (Claude Code pipes the hook payload) even though this hook
   // doesn't need any field from it -- leaving it unread can leave the pipe
   // open under some harness/runtime combinations. `void` references the
