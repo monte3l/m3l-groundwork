@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "suites": {
+    "plugin": {
+      "adopt-reconcile": 1,
+      "fresh-interview": 1
+    },
+    "harness": {
+      "creating-prs-fires-1": 1,
+      "creating-prs-fires-2": 1,
+      "creating-prs-quiet-1": 1,
+      "finishing-work-fires-1": 1,
+      "finishing-work-fires-2": 1,
+      "finishing-work-quiet-1": 1,
+      "harness-guidance-fires-1": 1,
+      "harness-guidance-fires-2": 1,
+      "harness-guidance-quiet-1": 1,
+      "starting-work-fires-1": 1,
+      "starting-work-fires-2": 1,
+      "starting-work-quiet-1": 1,
+      "triaging-ci-fires-1": 1,
+      "triaging-ci-fires-2": 1,
+      "triaging-ci-quiet-1": 1,
+      "typescript-guidance-fires-1": 1,
+      "typescript-guidance-fires-2": 1,
+      "typescript-guidance-quiet-1": 1,
+      "writing-commits-fires-1": 1,
+      "writing-commits-fires-2": 1,
+      "writing-commits-quiet-1": 1
+    }
+  }
+}

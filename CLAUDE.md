@@ -92,6 +92,7 @@ Run any task with `pnpm <script>`.
 | `pnpm check:exports`           | publint + attw against this repo's own root (a private package -- skips cleanly with a warning)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm check:harness`           | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `pnpm eval`                    | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize` and on a generated wrapper over `templates/core`'s skills (triggering accuracy); needs `claude`, credentials, network. Skips cleanly without `claude`. See "Behavioural evals" below                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`), in the order `lefthook`'s `pre-push` runs them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
@@ -162,6 +163,23 @@ steps) before considering any task here done.
   The root `bin/check-harness.mjs` imports the emitted rule module directly
   rather than a copy, so this repo grades `templates/core` with exactly what
   ships.
+- **Behavioural evals (`pnpm eval`, `bin/eval.mjs`) are a separate, paid layer
+  from `check:harness`** and are deliberately not in `pnpm verify` or
+  `pre-push`: they make real model calls. Two suites, both driven by
+  `claude plugin eval`. `packages/plugin/evals/` grades `/customize` itself
+  (`fresh-interview`, `adopt-reconcile`); each case's `fixture.sh` runs this
+  repo's own **built** CLI to make a genuine fresh/adopted project, so
+  `pnpm eval` runs `pnpm build` first. `evals/core-harness/triggers.json` is a
+  `{skill, query, should_trigger}` corpus that `bin/lib/eval-lib.mjs` turns
+  into a throwaway plugin wrapping `templates/core`'s skills plus one case per
+  entry; `eval-lib.test.ts` fails if a baseline skill ships without a positive
+  and a negative entry. The interview is graded by an `llm` rubric rather than
+  a `tool_used: AskUserQuestion` grader because that tool is not available in
+  the eval sandbox (Claude falls back to plain-text questions). Under
+  `--ablation with-without` a `tool_used: Skill` grader stops counting toward
+  the score, so the suites default to `--ablation none`. `--check` ratchets
+  against `evals/baseline.json` and `--update` rewrites it -- record it at
+  `--runs 3` or more, because a one-run baseline flakes.
 - **`templates/core`'s caps bind the baseline only, verified by counting
   (`packages/cli/src/caps.ts`'s `countBaselineCaps`/`CAP_LIMITS`), not
   every installed pack on top of it:** ≤5 agents, ≤8 skills (7 in
