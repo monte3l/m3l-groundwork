@@ -24,6 +24,11 @@ import { fileURLToPath } from "node:url";
 
 export const GROUPS = ["format", "lint", "typecheck", "build", "test"];
 
+/**
+ * The gate steps this baseline ships, before any pack's are appended.
+ * @public Exported for the parity test that compares this file with its TypeScript twin in
+ * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ */
 export const CORE_STEPS = [
   {
     id: "format",
@@ -37,6 +42,18 @@ export const CORE_STEPS = [
     group: "lint",
     name: "Check Claude Code harness",
     cmd: ["node", "bin/check-harness.mjs"],
+  },
+  {
+    id: "toolchain",
+    group: "lint",
+    name: "Check TypeScript toolchain",
+    cmd: ["node", "bin/check-toolchain.mjs"],
+  },
+  {
+    id: "knip",
+    group: "lint",
+    name: "Check unused code and dependencies",
+    cmd: ["pnpm", "knip"],
   },
   {
     id: "typecheck",

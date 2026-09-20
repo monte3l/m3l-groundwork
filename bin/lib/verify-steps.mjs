@@ -30,6 +30,11 @@ export const VERIFY_STEPS = [
     name: "Check emitted harness",
     cmd: ["node", "bin/check-harness.mjs"],
   },
+  {
+    id: "toolchain",
+    name: "Check emitted toolchain",
+    cmd: ["node", "bin/check-toolchain.mjs"],
+  },
 ];
 
 /** Look up one step by id, or `undefined` if no step has that id. */

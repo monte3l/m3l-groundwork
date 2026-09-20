@@ -31,6 +31,7 @@
     "check:exports": "node bin/check-exports.mjs",
     "check:node-version": "node bin/check-node-version.mjs",
     "check:harness": "node bin/check-harness.mjs",
+    "check:toolchain": "node bin/check-toolchain.mjs",
     "eval": "node bin/eval.mjs",
     "verify": "node bin/verify.mjs",
     "prepare": "lefthook install"

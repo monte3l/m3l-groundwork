@@ -5,8 +5,9 @@
  * Schema-versioned so a future CLI release can tell an old inventory apart
  * from a current one; `/customize` must tolerate an older inventory
  * rather than crash on one -- `schemaVersion: 1` predates packs (no `packs`
- * field), and `schemaVersion` below 3 predates the harness grade (no
- * `harnessGrade`/`harnessConformance`).
+ * field), `schemaVersion` below 3 predates the harness grade (no
+ * `harnessGrade`/`harnessConformance`), and `schemaVersion` below 4 predates
+ * the toolchain grade (no `toolchainGrade`/`toolchainConformance`).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,8 +20,11 @@ import type { HarnessGrade } from "./harness/types.js";
 import type { ModeDetection } from "./mode.js";
 import type { PackWiring } from "./packs.js";
 import type { ProjectSurvey } from "./survey/survey.js";
+import { summarizeToolchainConformance } from "./toolchain/conformance.js";
+import type { ToolchainConformance } from "./toolchain/conformance.js";
+import type { ToolchainGrade } from "./toolchain/types.js";
 
-export const INVENTORY_SCHEMA_VERSION = 3;
+export const INVENTORY_SCHEMA_VERSION = 4;
 
 export interface PackSurvey {
   name: string;
@@ -49,6 +53,10 @@ export interface Inventory {
   harnessGrade: HarnessGrade;
   /** How far the existing harness has drifted from the baseline's -- information, never a defect. Absent when schemaVersion is below 3. */
   harnessConformance: HarnessConformance;
+  /** Wiring integrity and rubric quality of the project's TypeScript toolchain. Absent when schemaVersion is below 4. */
+  toolchainGrade: ToolchainGrade;
+  /** How far the project's toolchain files have drifted from the baseline's -- information, never a defect. Absent when schemaVersion is below 4. */
+  toolchainConformance: ToolchainConformance;
 }
 
 /** Resolves this CLI package's own `package.json`, relative to this module's runtime location. */
@@ -87,6 +95,7 @@ export interface BuildInventoryParams {
   conflicts: FileConflict[];
   packs: PackSurvey[];
   harnessGrade: HarnessGrade;
+  toolchainGrade: ToolchainGrade;
 }
 
 /** Builds the inventory object. Does not write anything -- see `writeInventory`. */
@@ -103,6 +112,8 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
     packs: params.packs,
     harnessGrade: params.harnessGrade,
     harnessConformance: summarizeHarnessConformance(params.conflicts),
+    toolchainGrade: params.toolchainGrade,
+    toolchainConformance: summarizeToolchainConformance(params.conflicts),
   };
 }
 

@@ -16,6 +16,7 @@ import {
 } from "../src/inventory.js";
 import type { Inventory } from "../src/inventory.js";
 import type { HarnessGrade } from "../src/harness/types.js";
+import type { ToolchainGrade } from "../src/toolchain/types.js";
 import type { ProjectSurvey } from "../src/survey/survey.js";
 
 const EMPTY_TALLY = { checked: 0, failed: 0 };
@@ -29,6 +30,20 @@ const EMPTY_GRADE: HarnessGrade = {
     agents: EMPTY_TALLY,
     rules: EMPTY_TALLY,
     "claude-md": EMPTY_TALLY,
+  },
+  rubricScore: 1,
+};
+
+const EMPTY_TOOLCHAIN_GRADE: ToolchainGrade = {
+  findings: [],
+  structural: EMPTY_TALLY,
+  rubric: {
+    tsconfig: EMPTY_TALLY,
+    modules: EMPTY_TALLY,
+    eslint: EMPTY_TALLY,
+    testing: EMPTY_TALLY,
+    gates: EMPTY_TALLY,
+    deps: EMPTY_TALLY,
   },
   rubricScore: 1,
 };
@@ -127,6 +142,7 @@ describe("buildInventory / writeInventory", () => {
       conflicts: [],
       packs: [],
       harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
     });
 
     expect(inventory.schemaVersion).toBe(INVENTORY_SCHEMA_VERSION);
@@ -150,6 +166,7 @@ describe("buildInventory / writeInventory", () => {
       ],
       packs: [],
       harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
     });
 
     expect(inventory.harnessGrade).toBe(EMPTY_GRADE);
@@ -162,6 +179,33 @@ describe("buildInventory / writeInventory", () => {
     });
   });
 
+  it("carries the toolchain grade verbatim and derives its conformance from toolchain paths only", () => {
+    const inventory = buildInventory({
+      detection: { mode: "adopt", signal: "found package.json" },
+      templateRoot: "/tmp/templates/core",
+      targetDir: "/tmp/project",
+      survey: EMPTY_SURVEY,
+      conflicts: [
+        { relPath: ".claude/agents/a.md", status: "divergent", keyDiffs: [] },
+        { relPath: "tsconfig.json", status: "divergent", keyDiffs: [] },
+        { relPath: "eslint.config.js", status: "absent", keyDiffs: [] },
+        { relPath: "package.json", status: "identical", keyDiffs: [] },
+      ],
+      packs: [],
+      harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+    });
+
+    expect(inventory.toolchainGrade).toBe(EMPTY_TOOLCHAIN_GRADE);
+    expect(inventory.toolchainConformance).toEqual({
+      identical: 1,
+      divergent: 1,
+      absent: 1,
+      divergentFiles: ["tsconfig.json"],
+      absentFiles: ["eslint.config.js"],
+    });
+  });
+
   it("writes inventory.json into the groundwork directory and returns its path", () => {
     const inventory = buildInventory({
       detection: { mode: "adopt", signal: "found package.json" },
@@ -171,6 +215,7 @@ describe("buildInventory / writeInventory", () => {
       conflicts: [],
       packs: [],
       harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
     });
 
     const path = writeInventory(inventory, join(groundworkDir, "nested"));

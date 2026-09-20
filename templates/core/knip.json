@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/index.ts", "bin/*.mjs"],
-  "project": ["src/**/*.ts", "bin/**/*.mjs"]
+  "entry": ["src/index.ts", "bin/*.mjs", ".claude/hooks/*.mjs"],
+  "project": ["src/**/*.ts", "bin/**/*.mjs", ".claude/hooks/**/*.mjs"],
+  "ignoreDependencies": ["@commitlint/config-conventional", "@commitlint/types"]
 }
