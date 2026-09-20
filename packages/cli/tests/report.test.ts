@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { renderReport } from "../src/report.js";
 import type { Inventory } from "../src/inventory.js";
 import type { HarnessGrade } from "../src/harness/types.js";
+import type { ToolchainGrade } from "../src/toolchain/types.js";
 import type { ProjectSurvey } from "../src/survey/survey.js";
 
 function baseSurvey(overrides: Partial<ProjectSurvey> = {}): ProjectSurvey {
@@ -83,6 +84,28 @@ const CLEAN_GRADE: HarnessGrade = {
   rubricScore: 1,
 };
 
+const CLEAN_TOOLCHAIN_GRADE: ToolchainGrade = {
+  findings: [],
+  structural: { checked: 9, failed: 0 },
+  rubric: {
+    tsconfig: { checked: 12, failed: 0 },
+    modules: TALLY,
+    eslint: TALLY,
+    testing: TALLY,
+    gates: TALLY,
+    deps: TALLY,
+  },
+  rubricScore: 1,
+};
+
+const NO_CONFORMANCE = {
+  identical: 0,
+  divergent: 0,
+  absent: 0,
+  divergentFiles: [],
+  absentFiles: [],
+};
+
 function baseInventory(
   templateRoot: string,
   overrides: Partial<Inventory> = {},
@@ -98,13 +121,9 @@ function baseInventory(
     conflicts: [],
     packs: [],
     harnessGrade: CLEAN_GRADE,
-    harnessConformance: {
-      identical: 0,
-      divergent: 0,
-      absent: 0,
-      divergentFiles: [],
-      absentFiles: [],
-    },
+    harnessConformance: NO_CONFORMANCE,
+    toolchainGrade: CLEAN_TOOLCHAIN_GRADE,
+    toolchainConformance: NO_CONFORMANCE,
     ...overrides,
   };
 }
@@ -253,6 +272,101 @@ describe("renderReport", () => {
       "- [hook-timeout] PreToolUse hook",
     );
     expect(report).toContain("- .claude/agents/reviewer.md");
+  });
+
+  it("renders the toolchain grade as three separate measurements, with findings split by level", () => {
+    const grade: ToolchainGrade = {
+      ...CLEAN_TOOLCHAIN_GRADE,
+      structural: { checked: 9, failed: 1 },
+      rubric: {
+        ...CLEAN_TOOLCHAIN_GRADE.rubric,
+        tsconfig: { checked: 12, failed: 3 },
+      },
+      rubricScore: 0.75,
+      findings: [
+        {
+          ruleId: "tsconfig-emit-coherence",
+          level: "structural",
+          category: "tsconfig",
+          subject: "tsconfig.build.json",
+          message: "is compiled by the `build` script but sets no outDir",
+        },
+        {
+          ruleId: "strict-flags",
+          level: "rubric",
+          category: "tsconfig",
+          subject: "tsconfig.json",
+          message: "noUncheckedIndexedAccess is not set (want true)",
+        },
+      ],
+    };
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        toolchainGrade: grade,
+        toolchainConformance: {
+          identical: 4,
+          divergent: 2,
+          absent: 1,
+          divergentFiles: ["tsconfig.base.json"],
+          absentFiles: ["vitest.config.ts"],
+        },
+      }),
+    );
+    const section =
+      report
+        .split("## Toolchain grade")[1]
+        ?.split("## Existing Claude Code")[0] ?? "";
+
+    expect(section).toContain("**Wiring (structural):** 8 of 9 checks pass.");
+    expect(section).toContain("**Quality (rubric):** 75% over 12 checks");
+    expect(section).toContain(
+      "4 identical, 2 divergent, 1 absent. Informational only",
+    );
+    expect(
+      section
+        .split("### Toolchain wiring findings")[1]
+        ?.split("### Toolchain quality")[0],
+    ).toContain("- [tsconfig-emit-coherence] tsconfig.build.json");
+    expect(
+      section.split("### Toolchain quality findings (advisory)")[1],
+    ).toContain(
+      "- [strict-flags] tsconfig.json -- noUncheckedIndexedAccess is not set",
+    );
+  });
+
+  it("says None under both toolchain headings for a clean toolchain grade", () => {
+    const report = renderReport(baseInventory(templateRoot));
+    const section =
+      report
+        .split("## Toolchain grade")[1]
+        ?.split("## Existing Claude Code")[0] ?? "";
+    expect(section).toContain("### Toolchain wiring findings\n\nNone.");
+    expect(section).toContain(
+      "### Toolchain quality findings (advisory)\n\nNone.",
+    );
+  });
+
+  it("says there is nothing to grade when no toolchain file was found", () => {
+    const empty = { checked: 0, failed: 0 };
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        toolchainGrade: {
+          findings: [],
+          structural: empty,
+          rubric: {
+            tsconfig: empty,
+            modules: empty,
+            eslint: empty,
+            testing: empty,
+            gates: empty,
+            deps: empty,
+          },
+          rubricScore: 1,
+        },
+      }),
+    );
+    expect(report).toContain("nothing to grade.");
+    expect(report).not.toContain("### Toolchain wiring findings");
   });
 
   it("says None under each findings heading for a clean grade", () => {

@@ -43,6 +43,7 @@ import {
 import { renderReport } from "./report.js";
 import type { TokenTable } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
+import { gradeToolchain } from "./toolchain/grade.js";
 
 export interface CliOptions {
   targetDir: string;
@@ -335,6 +336,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     conflicts,
     packs,
     harnessGrade: gradeHarness(options.targetDir),
+    toolchainGrade: gradeToolchain(options.targetDir),
   });
 
   const inventoryPath = writeInventory(inventory, groundworkDir);

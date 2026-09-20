@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
  * Everything else -- N (none), B (bad), E (cannot check), X/Y/R
  * (expired/revoked) -- is treated as unsigned/unverified.
  */
-export const VALID_SIGNATURE_CODES = new Set(["G", "U"]);
+const VALID_SIGNATURE_CODES = new Set(["G", "U"]);
 
 /**
  * Default git runner; returns stdout as a string. Injectable for tests.
@@ -131,7 +131,7 @@ export function outgoingCommits(runGit = defaultRunGit) {
  * @param {(args: string[]) => string} [runGit]
  * @returns {string}
  */
-export function commitSignatureCode(sha, runGit = defaultRunGit) {
+function commitSignatureCode(sha, runGit = defaultRunGit) {
   return runGit(["show", "--no-patch", "--format=%G?", sha]).trim();
 }
 

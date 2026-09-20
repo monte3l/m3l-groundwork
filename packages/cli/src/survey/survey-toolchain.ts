@@ -7,8 +7,9 @@
  * carries no YAML dependency.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { readJsoncFile } from "../jsonc.js";
+import { join } from "node:path";
+import { STRICT_FLAGS } from "../toolchain/rules.js";
+import { loadTsconfigChain } from "../toolchain/tsconfig-chain.js";
 import type {
   EslintSurvey,
   FormatterSurvey,
@@ -19,16 +20,8 @@ import type {
   WorkflowsSurvey,
 } from "./types.js";
 
-const STRICT_FLAG_NAMES = [
-  "strict",
-  "noUncheckedIndexedAccess",
-  "noImplicitOverride",
-  "exactOptionalPropertyTypes",
-  "verbatimModuleSyntax",
-  "isolatedModules",
-  "noPropertyAccessFromIndexSignature",
-  "noImplicitReturns",
-];
+/** Every flag the toolchain grader judges, so `effectiveFlags` and the grade cannot disagree. */
+const STRICT_FLAG_NAMES = [...STRICT_FLAGS, "allowUnreachableCode"];
 
 const ESLINT_PLUGIN_PATTERN =
   /["']((?:eslint-plugin-|@typescript-eslint\/)[a-z0-9-]+)["']/gi;
@@ -51,66 +44,47 @@ function findTsconfigPath(dir: string): string | undefined {
   return undefined;
 }
 
-/** Follows a tsconfig's `extends` chain, resolving Node-style relative paths, and merges compilerOptions root-first-overridden-by-child. */
-function resolveTsconfigChain(
-  entryPath: string,
-  undetermined: string[],
-): TsconfigSurvey {
-  const effectiveFlags: Record<string, unknown> = {};
-  let parsed = true;
-  let currentPath: string | undefined = entryPath;
-  const visited = new Set<string>();
-  const chain: string[] = [];
-
-  while (currentPath !== undefined && !visited.has(currentPath)) {
-    visited.add(currentPath);
-    chain.push(currentPath);
-
-    const result = readJsoncFile(currentPath);
-    if (!result.ok) {
-      parsed = false;
-      undetermined.push(`could not parse ${currentPath}: ${result.error}`);
-      break;
-    }
-
-    const value = result.value as Record<string, unknown>;
-    const extendsField = value["extends"];
-    currentPath =
-      typeof extendsField === "string"
-        ? resolve(
-            dirname(currentPath),
-            extendsField.endsWith(".json")
-              ? extendsField
-              : `${extendsField}.json`,
-          )
-        : undefined;
-  }
-
-  // Apply root-first so a child file's flags override its parent's.
-  for (const path of [...chain].reverse()) {
-    const result = readJsoncFile(path);
-    if (!result.ok) continue;
-    const value = result.value as Record<string, unknown>;
-    const compilerOptions = value["compilerOptions"];
-    if (typeof compilerOptions === "object" && compilerOptions !== null) {
-      for (const flag of STRICT_FLAG_NAMES) {
-        const flagValue = (compilerOptions as Record<string, unknown>)[flag];
-        if (flagValue !== undefined) {
-          effectiveFlags[flag] = flagValue;
-        }
-      }
-    }
-  }
-
-  return { files: chain, effectiveFlags, parsed };
-}
-
+/**
+ * Follows a tsconfig's `extends` chain with the resolver the toolchain grader
+ * shares, so the survey and the grade cannot disagree about a project's
+ * effective flags. `files` are absolute and child-first. A file that fails to
+ * parse, or a relative `extends` that points at nothing, is a parse failure; a
+ * bare package specifier that is not installed is only a note -- the flags it
+ * would contribute are simply absent.
+ */
 function surveyTsconfig(dir: string, undetermined: string[]): TsconfigSurvey {
   const entryPath = findTsconfigPath(dir);
   if (entryPath === undefined) {
     return { files: [], effectiveFlags: {}, parsed: false };
   }
-  return resolveTsconfigChain(entryPath, undetermined);
+
+  const chain = loadTsconfigChain(dir, "tsconfig.json");
+  let parsed = chain.parsed;
+  for (const file of chain.files) {
+    if (file.error !== undefined) {
+      undetermined.push(`could not parse ${file.abs}: ${file.error}`);
+    }
+  }
+  for (const link of chain.links) {
+    if (link.resolved) continue;
+    if (link.kind === "relative") {
+      parsed = false;
+      undetermined.push(
+        `could not parse ${link.attempted}: ${link.attempted} does not exist`,
+      );
+    } else {
+      undetermined.push(
+        `tsconfig extends "${link.specifier}" from ${link.from} could not be resolved (is it installed?) -- the flags it sets are not in the effective set`,
+      );
+    }
+  }
+
+  const effectiveFlags: Record<string, unknown> = {};
+  for (const flag of STRICT_FLAG_NAMES) {
+    const value = chain.options[flag];
+    if (value !== undefined) effectiveFlags[flag] = value;
+  }
+  return { files: chain.files.map((file) => file.abs), effectiveFlags, parsed };
 }
 
 function surveyEslint(dir: string): EslintSurvey {

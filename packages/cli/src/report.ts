@@ -129,6 +129,57 @@ function renderDocsSection(inventory: Inventory): string {
   return lines.join("\n");
 }
 
+/** The toolchain grade: wiring integrity, rubric quality, and drift from the baseline -- three separate measurements. */
+function renderToolchainGradeSection(inventory: Inventory): string {
+  const { toolchainGrade: grade, toolchainConformance: conformance } =
+    inventory;
+  const lines = ["## Toolchain grade", ""];
+
+  const rubricChecked = Object.values(grade.rubric).reduce(
+    (sum, tally) => sum + tally.checked,
+    0,
+  );
+  if (grade.structural.checked === 0 && rubricChecked === 0) {
+    lines.push(
+      "No TypeScript toolchain files (tsconfig, ESLint or vitest config, verify steps) found -- nothing to grade.",
+    );
+    return lines.join("\n");
+  }
+
+  lines.push(
+    `- **Wiring (structural):** ${grade.structural.checked - grade.structural.failed} of ${grade.structural.checked} checks pass.`,
+    `- **Quality (rubric):** ${Math.round(grade.rubricScore * 100)}% over ${rubricChecked} checks -- advisory, never a blocker.`,
+    `- **Drift from the baseline toolchain:** ${conformance.identical} identical, ${conformance.divergent} divergent, ${conformance.absent} absent. ` +
+      "Informational only -- `/customize` rewrites the baseline on purpose, so divergence is not a defect.",
+  );
+
+  const structural = grade.findings.filter((f) => f.level === "structural");
+  const rubric = grade.findings.filter((f) => f.level === "rubric");
+
+  lines.push("", "### Toolchain wiring findings", "");
+  if (structural.length === 0) {
+    lines.push("None.");
+  } else {
+    for (const finding of structural) {
+      lines.push(
+        `- [${finding.ruleId}] ${finding.subject} -- ${finding.message}`,
+      );
+    }
+  }
+
+  lines.push("", "### Toolchain quality findings (advisory)", "");
+  if (rubric.length === 0) {
+    lines.push("None.");
+  } else {
+    for (const finding of rubric) {
+      lines.push(
+        `- [${finding.ruleId}] ${finding.subject} -- ${finding.message}`,
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
 /** The harness grade: wiring integrity, rubric quality, and drift from the baseline -- three separate measurements. */
 function renderHarnessGradeSection(inventory: Inventory): string {
   const { harnessGrade: grade, harnessConformance: conformance } = inventory;
@@ -342,6 +393,7 @@ export function renderReport(inventory: Inventory): string {
     renderShapeSection(inventory),
     "",
     renderToolchainSection(inventory),
+    renderToolchainGradeSection(inventory),
     "",
     renderHarnessSection(inventory),
     "",

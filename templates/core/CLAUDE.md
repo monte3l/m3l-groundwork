@@ -19,18 +19,18 @@ TypeScript, `strict: true`, ESM only (`"type": "module"`), compiled with
 
 Run any task with `pnpm <script>`.
 
-| Script                         | What it does                                                    |
-| ------------------------------ | --------------------------------------------------------------- |
-| `pnpm build`                   | `tsc -b tsconfig.build.json` — emits `dist/`                    |
-| `pnpm typecheck`               | `tsc -b --force` over the tooling project (src + tests)         |
-| `pnpm lint`                    | ESLint over the whole repo                                      |
-| `pnpm format` / `format:check` | Prettier write / check                                          |
-| `pnpm test` / `test:coverage`  | Vitest, with or without the coverage gate                       |
-| `pnpm knip`                    | Unused-dependency / unused-export hygiene                       |
-| `pnpm check:exports`           | publint + are-the-types-wrong against a packed tarball          |
-| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI |
-| `pnpm verify`                  | Every gate above, in the same order CI runs them                |
-| `pnpm prepare`                 | Installs the lefthook git hooks                                 |
+| Script                         | What it does                                                                                                                                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                   | `tsc -b tsconfig.build.json` — emits `dist/`                                                                                                                                                             |
+| `pnpm typecheck`               | `tsc -b --force` over the tooling project (src + tests)                                                                                                                                                  |
+| `pnpm lint`                    | ESLint over the whole repo                                                                                                                                                                               |
+| `pnpm format` / `format:check` | Prettier write / check                                                                                                                                                                                   |
+| `pnpm test` / `test:coverage`  | Vitest, with or without the coverage gate                                                                                                                                                                |
+| `pnpm knip`                    | Unused-dependency / unused-export hygiene; a `verify` step. `knip.json` ignores `@commitlint/config-conventional` and `@commitlint/types`, which are loaded by a string and a JSDoc type knip cannot see |
+| `pnpm check:exports`           | publint + are-the-types-wrong against a packed tarball                                                                                                                                                   |
+| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                          |
+| `pnpm verify`                  | Every gate above, in the same order CI runs them                                                                                                                                                         |
+| `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                          |
 
 Run `pnpm verify` before considering any task done — it reproduces CI
 locally.
@@ -97,6 +97,14 @@ the correct semver impact; new/changed exports have TSDoc and tests. If you
 touched the harness itself (hooks, agents, skills, rules, `settings.json`),
 `pnpm verify`'s `harness` step (`bin/check-harness.mjs`) must stay green: it
 fails on broken wiring and only warns on quality.
+If you touched the TypeScript toolchain (`tsconfig*.json`, `eslint.config.js`,
+`vitest.config.ts`, `bin/lib/verify-steps.mjs`, the toolchain pins in
+`package.json`), the `toolchain` step (`bin/check-toolchain.mjs`) must stay
+green the same way: it fails on wiring `tsc` and ESLint do not catch (a build
+project that emits nowhere, a verify step naming a script that does not exist)
+and only warns on quality (a missing strict flag, an option TypeScript has
+deprecated). Never silence it by deleting the check or lowering a threshold --
+fix the config it points at.
 
 ## Forbidden Patterns
 

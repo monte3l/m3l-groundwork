@@ -5,7 +5,14 @@
  * process or touches the network, so it is unit-tested without spending a
  * cent (packages/cli/tests/eval-lib.test.ts).
  */
-import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 const SKILL_NAME = /^[\w-]+$/;
@@ -94,22 +101,13 @@ export function writeHarnessPlugin({ skillsDir, corpus, outDir }) {
     }
   }
 
-  mkdirSync(join(outDir, ".claude-plugin"), { recursive: true });
-  writeFileSync(
-    join(outDir, ".claude-plugin", "plugin.json"),
-    `${JSON.stringify(
-      {
-        name: "m3l-baseline-harness",
-        version: "0.0.0",
-        description:
-          "Throwaway wrapper over templates/core's skills, generated to evaluate their triggering.",
-        author: { name: "m3l-groundwork" },
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  cpSync(skillsDir, join(outDir, "skills"), { recursive: true });
+  writeSkillPlugin({
+    skillsDir,
+    outDir,
+    name: "m3l-baseline-harness",
+    description:
+      "Throwaway wrapper over templates/core's skills, generated to evaluate their triggering.",
+  });
 
   const cases = buildTriggerCases(entries);
   for (const { dir, prompt, grader } of cases) {
@@ -117,6 +115,97 @@ export function writeHarnessPlugin({ skillsDir, corpus, outDir }) {
     mkdirSync(join(caseDir, "graders"), { recursive: true });
     writeFileSync(join(caseDir, "prompt.md"), prompt);
     writeFileSync(join(caseDir, "graders", "skill-fired.md"), grader);
+  }
+  return cases.length;
+}
+
+/**
+ * Writes the throwaway plugin shell both generated suites share: a
+ * `plugin.json` and a copy of `templates/core`'s skills.
+ * @public Exported for the unit tests, which import this file by URL and so
+ * are invisible to knip.
+ * @param {{ skillsDir: string, outDir: string, name: string, description: string }} params
+ */
+export function writeSkillPlugin({ skillsDir, outDir, name, description }) {
+  mkdirSync(join(outDir, ".claude-plugin"), { recursive: true });
+  writeFileSync(
+    join(outDir, ".claude-plugin", "plugin.json"),
+    `${JSON.stringify(
+      {
+        name,
+        version: "0.0.0",
+        description,
+        author: { name: "m3l-groundwork" },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  cpSync(skillsDir, join(outDir, "skills"), { recursive: true });
+}
+
+/**
+ * Placeholder an authored `fixture.sh` uses for the built CLI's absolute path.
+ * The case is copied into a temp plugin dir, so a path relative to the case's
+ * own location would not survive the copy.
+ * @public Exported for the unit tests, which import this file by URL and so
+ * are invisible to knip.
+ */
+export const CLI_PLACEHOLDER = "__M3L_CLI__";
+
+/**
+ * Wraps `templates/core`'s skills as a throwaway plugin and installs the
+ * AUTHORED cases under `casesDir` (each a directory holding `case.yaml`,
+ * `prompt.md`, `fixture.sh` and `graders/`), so a skill can be evaluated
+ * against a scaffolded project. Each case's `fixture.sh` has `__M3L_CLI__`
+ * replaced with `cliPath`. Throws on a malformed case rather than skipping it:
+ * a dropped case is a hole in the measurement nobody would see.
+ * @param {{ skillsDir: string, casesDir: string, outDir: string, cliPath: string }} params
+ * @returns {number} how many cases were installed
+ */
+export function writeToolchainPlugin({ skillsDir, casesDir, outDir, cliPath }) {
+  if (/["$`\\\s]/.test(cliPath)) {
+    throw new Error(
+      `cliPath must be a plain path (no quotes, $, backticks, backslashes or whitespace): ${cliPath}`,
+    );
+  }
+  const cases = readdirSync(casesDir, { withFileTypes: true }).filter((e) =>
+    e.isDirectory(),
+  );
+  if (cases.length === 0) {
+    throw new Error(`no cases found under ${casesDir}`);
+  }
+  for (const { name } of cases) {
+    for (const required of [
+      "case.yaml",
+      "prompt.md",
+      "fixture.sh",
+      "graders",
+    ]) {
+      if (!existsSync(join(casesDir, name, required))) {
+        throw new Error(`case "${name}" is missing ${required}`);
+      }
+    }
+  }
+
+  writeSkillPlugin({
+    skillsDir,
+    outDir,
+    name: "m3l-baseline-toolchain",
+    description:
+      "Throwaway wrapper over templates/core's skills, generated to evaluate typescript-guidance against a degraded toolchain.",
+  });
+  for (const { name } of cases) {
+    const dest = join(outDir, "evals", name);
+    cpSync(join(casesDir, name), dest, { recursive: true });
+    const fixture = join(dest, "fixture.sh");
+    const source = readFileSync(fixture, "utf8");
+    if (!source.includes(CLI_PLACEHOLDER)) {
+      throw new Error(
+        `case "${name}" fixture.sh never uses ${CLI_PLACEHOLDER}`,
+      );
+    }
+    writeFileSync(fixture, source.replaceAll(CLI_PLACEHOLDER, cliPath));
   }
   return cases.length;
 }

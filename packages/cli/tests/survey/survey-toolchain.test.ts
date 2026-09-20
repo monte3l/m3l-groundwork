@@ -100,6 +100,98 @@ describe("surveyToolchain", () => {
     );
   });
 
+  it("follows the TypeScript 5 array form of extends, later entries winning", () => {
+    writeFileSync(
+      join(dir, "a.json"),
+      JSON.stringify({
+        compilerOptions: { strict: true, noImplicitReturns: true },
+      }),
+    );
+    writeFileSync(
+      join(dir, "b.json"),
+      JSON.stringify({ compilerOptions: { noImplicitReturns: false } }),
+    );
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      JSON.stringify({ extends: ["./a.json", "./b.json"] }),
+    );
+    const survey = surveyToolchain(dir, undetermined);
+    expect(survey.tsconfig.parsed).toBe(true);
+    expect(survey.tsconfig.files).toHaveLength(3);
+    expect(survey.tsconfig.effectiveFlags).toEqual({
+      strict: true,
+      noImplicitReturns: false,
+    });
+    expect(undetermined).toEqual([]);
+  });
+
+  it("resolves a bare-specifier extends under node_modules instead of misreading it as a relative path", () => {
+    mkdirSync(join(dir, "node_modules", "@tsconfig", "node24"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(dir, "node_modules", "@tsconfig", "node24", "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { strict: true } }),
+    );
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      JSON.stringify({ extends: "@tsconfig/node24/tsconfig.json" }),
+    );
+    const survey = surveyToolchain(dir, undetermined);
+    expect(survey.tsconfig.parsed).toBe(true);
+    expect(survey.tsconfig.effectiveFlags).toEqual({ strict: true });
+    expect(undetermined).toEqual([]);
+  });
+
+  it("notes an uninstalled bare-specifier extends without calling the chain unparsed", () => {
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      JSON.stringify({
+        extends: "@tsconfig/node24/tsconfig.json",
+        compilerOptions: { strict: true },
+      }),
+    );
+    const survey = surveyToolchain(dir, undetermined);
+    expect(survey.tsconfig.parsed).toBe(true);
+    expect(survey.tsconfig.effectiveFlags).toEqual({ strict: true });
+    expect(undetermined).toHaveLength(1);
+    expect(undetermined[0]).toContain("@tsconfig/node24/tsconfig.json");
+    expect(undetermined[0]).toContain("could not be resolved");
+  });
+
+  it("records a relative extends that points at nothing as a parse failure", () => {
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      JSON.stringify({ extends: "./gone.json" }),
+    );
+    const survey = surveyToolchain(dir, undetermined);
+    expect(survey.tsconfig.parsed).toBe(false);
+    expect(undetermined).toEqual([
+      `could not parse ${join(dir, "gone.json")}: ${join(dir, "gone.json")} does not exist`,
+    ]);
+  });
+
+  it("reports the full graded flag set, including the ones the survey once omitted", () => {
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          noFallthroughCasesInSwitch: true,
+          noUncheckedSideEffectImports: true,
+          allowUnreachableCode: false,
+          skipLibCheck: true,
+        },
+      }),
+    );
+    const survey = surveyToolchain(dir, undetermined);
+    expect(survey.tsconfig.effectiveFlags).toEqual({
+      noFallthroughCasesInSwitch: true,
+      noUncheckedSideEffectImports: true,
+      allowUnreachableCode: false,
+      skipLibCheck: true,
+    });
+  });
+
   it("detects a flat eslint config and its referenced plugins", () => {
     writeFileSync(
       join(dir, "eslint.config.js"),

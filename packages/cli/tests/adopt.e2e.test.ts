@@ -131,7 +131,7 @@ describe("adopt mode end-to-end", () => {
         readFileSync(inventoryPath, "utf8"),
       ) as Inventory;
 
-      expect(inventory.schemaVersion).toBe(3);
+      expect(inventory.schemaVersion).toBe(4);
       expect(inventory.survey.toolchain.testRunner.tool).toBe("jest");
       expect(
         inventory.survey.harness.agents.some(
@@ -180,6 +180,23 @@ describe("adopt mode end-to-end", () => {
       expect(report).not.toContain(
         "Nothing -- every file the survey looked at parsed cleanly.",
       );
+
+      // The toolchain grade: the fixture's legacy .eslintrc.cjs and its
+      // non-strict tsconfig chain surface as rubric findings, and -- because
+      // absence is never a defect -- the missing vitest config and verify
+      // steps produce none.
+      const toolchainIds = inventory.toolchainGrade.findings.map(
+        (f) => `${f.ruleId}:${f.subject}`,
+      );
+      expect(toolchainIds).toContain("eslint-flat-config:.eslintrc.cjs");
+      expect(toolchainIds).toContain("strict-flags:tsconfig.json");
+      expect(toolchainIds.some((id) => id.startsWith("coverage-gate:"))).toBe(
+        false,
+      );
+      expect(inventory.toolchainGrade.structural.failed).toBe(0);
+      expect(inventory.toolchainConformance.divergent).toBeGreaterThan(0);
+      expect(report).toContain("## Toolchain grade");
+      expect(report).toContain("[eslint-flat-config] .eslintrc.cjs");
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

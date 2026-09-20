@@ -41,7 +41,7 @@ export interface ShapeSurvey {
 }
 
 export interface TsconfigSurvey {
-  /** The extends chain, root file first, as resolved paths relative to the project dir. */
+  /** The extends chain, entry file first (child before parent), as absolute paths. */
   files: string[];
   /** The effective value of each strict-family flag this baseline cares about, after following `extends`. */
   effectiveFlags: Record<string, unknown>;

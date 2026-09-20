@@ -1,6 +1,7 @@
 // @ts-check
 import js from "@eslint/js";
-import tseslint from "typescript-eslint";
+import { defineConfig } from "eslint/config";
+import { configs } from "typescript-eslint";
 import { importX } from "eslint-plugin-import-x";
 import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import tsdoc from "eslint-plugin-tsdoc";
@@ -9,7 +10,7 @@ import globals from "globals";
 const CJS_DIRNAME = "__dir" + "name";
 const CJS_FILENAME = "__file" + "name";
 
-export default tseslint.config(
+export default defineConfig(
   {
     ignores: [
       "**/dist/**",
@@ -24,7 +25,7 @@ export default tseslint.config(
     ],
   },
   js.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
+  ...configs.recommendedTypeChecked,
   importX.flatConfigs.recommended,
   importX.flatConfigs.typescript,
   {
@@ -90,7 +91,7 @@ export default tseslint.config(
   },
   {
     files: ["**/*.mjs", "**/*.js"],
-    ...tseslint.configs.disableTypeChecked,
+    ...configs.disableTypeChecked,
   },
   {
     files: ["bin/**/*.mjs", ".claude/hooks/**/*.mjs"],

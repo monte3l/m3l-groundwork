@@ -54,6 +54,9 @@ packages/cli/          Phase A: the offline bootstrapper CLI
                           caps.ts, packs.ts, merge-json.ts
   src/harness/            the harness grader: frontmatter.ts, rules.ts, grade.ts,
                           conformance.ts, types.ts
+  src/toolchain/          the toolchain grader: rules.ts, grade.ts, conformance.ts,
+                          types.ts, tsconfig-chain.ts (the extends resolver the
+                          survey shares)
   src/survey/             survey.ts + one collector per discovery area
                           (survey-shape, survey-toolchain, survey-harness,
                           survey-docs), fs-walk.ts, types.ts
@@ -92,7 +95,8 @@ Run any task with `pnpm <script>`.
 | `pnpm check:exports`           | publint + attw against this repo's own root (a private package -- skips cleanly with a warning)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm check:harness`           | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `pnpm eval`                    | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize` and on a generated wrapper over `templates/core`'s skills (triggering accuracy); needs `claude`, credentials, network. Skips cleanly without `claude`. See "Behavioural evals" below                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `pnpm check:toolchain`         | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `pnpm eval`                    | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), and on `typescript-guidance` against a deliberately degraded project (the `toolchain` suite); needs `claude`, credentials, network. Skips cleanly without `claude`. See "Behavioural evals" below                                                                                                                                                                                                                                                                                                                                                            |
 | `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`), in the order `lefthook`'s `pre-push` runs them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
@@ -163,10 +167,51 @@ steps) before considering any task here done.
   The root `bin/check-harness.mjs` imports the emitted rule module directly
   rather than a copy, so this repo grades `templates/core` with exactly what
   ships.
+- **The toolchain grader has the same two-implementations shape, for the same
+  reason, and the same rule.** `packages/cli/src/toolchain/{rules,grade}.ts`
+  feeds adopt mode's `## Toolchain grade` report section and the inventory's
+  `toolchainGrade` (`schemaVersion` 4);
+  `templates/core/bin/lib/toolchain-rules.mjs` plus `bin/check-toolchain.mjs` is
+  the emitted twin every bootstrapped project runs as a `pnpm verify` step, and
+  the root `bin/check-toolchain.mjs` imports that emitted module rather than a
+  third copy. `tests/toolchain/toolchain-parity.test.ts` runs both over the real
+  baseline, an empty directory and broken projects, and asserts identical grades
+  -- change a rule in one, change the other in the same commit. Like the harness
+  gate it is a `CORE_STEPS` entry with **no** `package.json` script, so it costs
+  zero cap budget. It grades a **rubric**, not a diff against `templates/core`:
+  the baseline is expected to score zero structural findings and 100% rubric
+  (asserted by a test), and a project's deviation is reported against the rule.
+  Three properties are load-bearing. **Absence is never a defect**: a rule whose
+  subject does not exist (no `vitest.config.ts`, no verify steps) returns
+  `{ checked: 0 }`, because adopt mode runs it against arbitrary projects.
+  **It never executes project code**: `eslint.config.js`, `vitest.config.ts` and
+  `verify-steps.mjs` are read by regex over comment-stripped source, and a scrape
+  that cannot tell the answer returns `{ checked: 0 }` rather than a failure. And
+  **it does not restate what `tsc` or ESLint already reject** -- a structural rule
+  that only fires once `tsc` has failed adds nothing, which is why removed
+  options are a rubric warning about the _next_ major
+  (`tsconfig-option-lifecycle`), not a gate. For the same reason it keeps no
+  table of "current" package majors: whether a pin has fallen behind upstream is
+  `typescript-guidance`'s question, answered by a live sweep, and a closed-loop
+  gate restating it would go stale silently. The
+  tsconfig `extends` resolver (`toolchain/tsconfig-chain.ts`) is shared with
+  `survey-toolchain.ts`, so the survey's `effectiveFlags` and the grade cannot
+  disagree.
 - **Behavioural evals (`pnpm eval`, `bin/eval.mjs`) are a separate, paid layer
   from `check:harness`** and are deliberately not in `pnpm verify` or
-  `pre-push`: they make real model calls. Two suites, both driven by
-  `claude plugin eval`. `packages/plugin/evals/` grades `/customize` itself
+  `pre-push`: they make real model calls. Three suites, all driven by
+  `claude plugin eval`. The third, `toolchain`, runs `typescript-guidance` against
+  a bootstrapped project degraded only in ways `tsc` and ESLint cannot see
+  (`evals/core-toolchain/toolchain-repair/`): the fixture captures the gate's
+  output to `toolchain-gate.txt`, so the case needs no shell tool in the sandbox,
+  and graders check the skill names the findings, edits nothing, and holds the
+  floor rather than silencing the gate. The eval sandbox has **no web tools**, so
+  the case cannot measure upstream research; it measures use of the gate's
+  findings and honesty about that limit (a claim about upstream it could not have
+  fetched fails). The judge reads only the final message, hence the prompt's
+  request for one self-contained summary. Its `fixture.sh` is a template -- it uses
+  `__M3L_CLI__`, substituted by `writeToolchainPlugin` when the case is copied.
+  `packages/plugin/evals/` grades `/customize` itself
   (`fresh-interview`, `adopt-reconcile`); each case's `fixture.sh` runs this
   repo's own **built** CLI to make a genuine fresh/adopted project, so
   `pnpm eval` runs `pnpm build` first. `evals/core-harness/triggers.json` is a

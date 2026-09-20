@@ -75,6 +75,23 @@ may or may not touch.
    drifted from the baseline's — information only, since divergence from the
    baseline is the point of adopting. An inventory with `schemaVersion` below
    3 carries neither field; skip this and continue.
+
+   The toolchain agent likewise starts from `inventory.toolchainGrade` (the
+   report's `## Toolchain grade` section): a deterministic, offline check of
+   the tsconfig chain, ESLint and vitest config, verify-step wiring, and
+   toolchain pins. It reads files and never runs them, and it reads
+   `eslint.config.js`/`vitest.config.ts` by pattern rather than by evaluating
+   them -- so a **wiring finding** (a build project that emits nowhere, a
+   verify step naming a script or file that does not exist, a `.node-version`
+   that contradicts `engines.node`) is a fact to verify against the real files,
+   and a **quality finding** (a missing strict flag, an option TypeScript has
+   deprecated, ESLint without type-aware linting, a coverage gate that is not
+   per-file) is advisory. Absence is never a finding: a project with no vitest
+   config simply has no coverage-gate line. `inventory.toolchainConformance`
+   counts drift from the baseline's toolchain files -- information only. An
+   inventory with `schemaVersion` below 4 carries neither field; skip this and
+   continue.
+
 3. **Write the findings back** into `.groundwork/adoption-report.md`,
    replacing the CLI's index-level sections ("a `lefthook.yml` exists")
    with semantic ones ("pre-push runs lint and typecheck; tests do not
@@ -85,7 +102,8 @@ may or may not touch.
    formality — (b) the conflict resolutions from the inventory's conflict
    table, batched by facet (toolchain config, harness) rather than one
    question per file (the harness facet's batch also carries any wiring
-   findings you confirmed in the deep read, offered as fixes to make) — and
+   findings you confirmed in the deep read, offered as fixes to make, and the
+   toolchain facet's batch does the same for confirmed toolchain wiring findings) — and
    (c) **which pack(s) to install**, from `inventory.packs`. For each pack, show its `budget`, its
    `wiringObservations` (facts about how it would land — e.g. "no
    `bin/lib/verify-steps.packs.json` found: no `bin/verify.mjs`-shaped gate

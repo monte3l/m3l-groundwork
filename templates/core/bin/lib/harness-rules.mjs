@@ -17,6 +17,8 @@ import { fieldList, fieldText, parseFrontmatter } from "./frontmatter.mjs";
 /**
  * Model ids and aliases considered current. Bump alongside a harness-guidance
  * refresh sweep.
+ * @public Exported for the parity test that compares this file with its TypeScript twin in
+ * m3l-groundwork; nothing else in a bootstrapped project imports it.
  */
 export const CURRENT_MODELS = [
   "inherit",
@@ -757,7 +759,11 @@ const skillReferencesResolve = {
   },
 };
 
-/** Every rule, structural first. Order is the order findings are reported in. */
+/**
+ * Every rule, structural first. Order is the order findings are reported in.
+ * @public Exported for the parity test that compares this file with its TypeScript twin in
+ * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ */
 export const RULES = [
   settingsParses,
   hookDangling,
