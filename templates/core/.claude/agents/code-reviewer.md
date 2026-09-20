@@ -61,11 +61,16 @@ on it.
   constructed internally; composition over inheritance.
 - **ESM `.js` extension** on every relative import; **named exports only**;
   **no `any`**, no non-null `!`; no CommonJS.
-- A new `bin/**` self-invocation guard (`if (process.argv[1] === ...)`) must
-  use `fileURLToPath(import.meta.url)`, never `new URL(import.meta.url)
-.pathname` — the latter is percent-encoded while `process.argv[1]` is a
-  decoded path, so it silently never matches on a path with spaces/non-ASCII
-  characters.
+- A new self-invocation guard (`bin/**` or `.claude/hooks/**`) must compare
+  `realpathSync(process.argv[1])` to `fileURLToPath(import.meta.url)` -- never
+  `process.argv[1]` directly, and never `new URL(import.meta.url).pathname`.
+  `import.meta.url` is symlink-resolved but `process.argv[1]` is not, so a bare
+  comparison is false under any symlinked path and the guard body never runs:
+  a PreToolUse hook then exits 0, which means _allow_, and a verify gate goes
+  green having checked nothing. `.pathname` is percent-encoded while
+  `process.argv[1]` is a decoded path, so it also never matches on a path with
+  spaces or non-ASCII characters. Inline the helper; a shared module would cost
+  a hook slot against the baseline's cap.
 - The package's `exports` map is the public contract — flag any change to it
   as a semver event and check the Conventional Commit matches.
 - TSDoc on exported symbols.
