@@ -132,8 +132,10 @@ describe("resolveMemory (identical behaviour on macOS and Linux)", () => {
     ).toEqual({ freemem: 1.5 * GiB, totalmem: 2 * GiB });
   });
 
-  it("ignores an unlimited cgroup (0 on macOS, a huge sentinel on cgroup v1)", () => {
-    for (const constrainedMemory of [0, 9_223_372_036_854_771_712]) {
+  it("ignores an unlimited cgroup (0 on macOS, a huge sentinel on cgroup v1, UINT64_MAX on cgroup v2)", () => {
+    // 2 ** 64 is what process.constrainedMemory() returns on cgroup v2 with
+    // memory.max = "max" (observed on Ubuntu 24.04 aarch64, Node 24).
+    for (const constrainedMemory of [0, 9_223_372_036_854_771_712, 2 ** 64]) {
       expect(
         statusline.resolveMemory({
           platform: "linux",
