@@ -4,9 +4,12 @@ coverage/
 pnpm-lock.yaml
 CHANGELOG.md
 # Prettier normalizes Markdown `__emphasis__` to `**emphasis**`, which would
-# rewrite the intended bold __PROJECT_NAME__ token back into
-# ****PROJECT_NAME**** on every `pnpm format` run in this repo. The emitted
-# project's own .prettierignore does NOT carry this exclusion -- once
-# emitTemplate() substitutes the token for a real project name, formatting
-# that file is harmless again.
+# rewrite the intended bold __PROJECT_NAME__ token into ****PROJECT_NAME****
+# (or, where the token is the whole heading, into a **PROJECT_NAME** that
+# applyTokens -- a literal `__KEY__` replace -- can never match). Every
+# emitted Markdown file carrying a token has to be excluded here. The
+# emitted project's own .prettierignore does NOT carry these exclusions --
+# once emitTemplate() substitutes the token for a real project name,
+# formatting those files is harmless again.
 templates/core/CLAUDE.md
+templates/core/README.md

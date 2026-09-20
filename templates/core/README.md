@@ -1,4 +1,4 @@
-# **PROJECT_NAME**
+# __PROJECT_NAME__
 
 Bootstrapped by [m3l-groundwork](https://github.com/monte3l/m3l-groundwork) —
 a deterministic TypeScript + Claude Code project bootstrapper.
