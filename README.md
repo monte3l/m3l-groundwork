@@ -166,7 +166,9 @@ calls and never runs in CI.
 and published to npm through trusted publishing (no stored token). A PR that
 changes the CLI's user-visible behavior adds a changeset with `pnpm changeset`.
 Merging to `main` opens a "Version Packages" PR; merging that runs the full
-gate and publishes, with provenance, a git tag and a GitHub Release.
+gate, stages the package with provenance, and creates a git tag and a GitHub
+Release -- a maintainer still has to approve the staged version (2FA) before
+it's actually installable, npm's own recommended flow for trusted publishers.
 `@monte3l/groundwork-plugin` is never published to npm -- it ships only
 through the marketplace above, so a change to it is live the moment it lands
 on `main`; its `plugin.json` version just tracks the CLI's, for display. The

@@ -2,14 +2,26 @@
 /**
  * Put ahead of the real `pnpm` on PATH by the release workflow's `publish` job.
  * Everything passes straight through to pnpm except `publish`, which goes to
- * `npm publish` instead.
+ * `npm stage publish` instead.
  *
- * Why: `changeset publish` in a pnpm workspace publishes through `pnpm publish`,
- * and pnpm 12's native publish does its own OIDC exchange, which npmjs.com
- * rejects (`403 OIDC permission denied`) even for a correctly configured trusted
- * publisher. The npm CLI's exchange works. Routing only the publish keeps
- * changesets in charge of everything else it does around it -- the publish plan,
- * ordering, git tags, GitHub Releases -- instead of reimplementing any of that.
+ * Two independent reasons this can't be `pnpm publish`, stacked:
+ * 1. `changeset publish` in a pnpm workspace publishes through `pnpm publish`,
+ *    and pnpm 12's native publish does its own OIDC exchange, which npmjs.com
+ *    rejects (`403 OIDC permission denied`) even for a correctly configured
+ *    trusted publisher. The npm CLI's exchange works.
+ * 2. It can't be a direct `npm publish` either: `@monte3l/groundwork`'s trusted
+ *    publisher only allows `npm stage publish` (npm's own default, and explicit
+ *    recommendation, for any trusted publisher created since 2026-09-03 -- see
+ *    CLAUDE.md, "Releases"). A direct `npm publish` gets the exact same 403
+ *    "OIDC permission denied" as the pnpm case, for an unrelated reason: the
+ *    token exchange succeeds, but the registry refuses the specific action.
+ *
+ * Routing only the publish keeps changesets in charge of everything else it
+ * does around it -- the publish plan, ordering, git tags, GitHub Releases --
+ * instead of reimplementing any of that. A consequence worth knowing: those
+ * git tags and Releases are created the moment `npm stage publish` succeeds,
+ * which is *before* the package is actually live -- staging still needs a
+ * maintainer to run `npm stage approve <id>` (2FA, never automatable).
  *
  * `PNPM_SHIM_DIR` names this shim's own directory so it can be dropped from
  * PATH when looking for the real pnpm (otherwise it would find itself).
@@ -19,7 +31,7 @@
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { delimiter } from "node:path";
-import { pathWithout, toNpmPublishArgs } from "./lib/npm-publish-args.mjs";
+import { pathWithout, toNpmStagePublishArgs } from "./lib/npm-publish-args.mjs";
 
 const args = process.argv.slice(2);
 
@@ -28,7 +40,7 @@ let commandArgs;
 if (args[0] === "publish") {
   try {
     command = "npm";
-    commandArgs = toNpmPublishArgs(args.slice(1));
+    commandArgs = toNpmStagePublishArgs(args.slice(1));
   } catch (error) {
     console.error(
       `pnpm-publish-shim: ${error instanceof Error ? error.message : String(error)}`,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Translates the one `pnpm publish` invocation changesets makes for a packed
- * tarball into the equivalent `npm publish`, for `pnpm-publish-shim.mjs`.
+ * tarball into the equivalent `npm stage publish`, for `pnpm-publish-shim.mjs`.
  *
  * Changesets runs (see its `lib/pnpm.ts`):
  *   pnpm publish <tarball> [--json] --access <a> --tag <t> --no-git-checks [--otp <c>]
@@ -9,6 +9,15 @@
  * `--json` and `--no-git-checks` are pnpm-only and dropped. Anything not listed
  * is refused rather than guessed at: if changesets ever starts passing a flag
  * this does not understand, publishing must stop, not silently do something else.
+ *
+ * Staged, not direct: `@monte3l/groundwork`'s trusted publisher only allows
+ * `npm stage publish`, npm's own default (and explicit recommendation) for any
+ * trusted publisher created since 2026-09-03 -- a maintainer must separately run
+ * `npm stage approve <id>` (2FA, never automatable) before a staged version
+ * actually goes live. `npm stage publish` accepts the same `--access`/`--tag`/
+ * `--otp`/`--provenance` flags as `npm publish` ("parity with npm publish" per
+ * npm's own CLI reference); the command itself is `npm stage publish`, not a
+ * flag on `npm publish`.
  */
 
 const DROPPED = new Set(["--json", "--no-git-checks"]);
@@ -16,9 +25,9 @@ const WITH_VALUE = new Set(["--access", "--tag", "--otp"]);
 
 /**
  * @param {string[]} args the arguments following `pnpm publish`
- * @returns {string[]} the argument vector for `npm publish`
+ * @returns {string[]} the argument vector for `npm stage publish`
  */
-export function toNpmPublishArgs(args) {
+export function toNpmStagePublishArgs(args) {
   let tarball;
   const flags = [];
 
@@ -53,7 +62,9 @@ export function toNpmPublishArgs(args) {
 
   // Provenance is requested explicitly rather than relied on: npm's automatic
   // attestation for trusted publishing has been reported not to engage without it.
-  return ["publish", tarball, ...flags, "--provenance"];
+  // "stage", "publish" are two separate words (the npm-stage subcommand), not
+  // "stage-publish" or a flag -- see npm's own CLI reference for npm-stage.
+  return ["stage", "publish", tarball, ...flags, "--provenance"];
 }
 
 /**
