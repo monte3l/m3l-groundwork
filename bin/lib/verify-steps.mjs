@@ -44,6 +44,12 @@ export const VERIFY_STEPS = [
     cmd: ["node", "bin/check-toolchain.mjs"],
   },
   {
+    id: "plugin-version",
+    group: "lint",
+    name: "Check plugin version agreement",
+    cmd: ["node", "bin/check-plugin-version.mjs"],
+  },
+  {
     id: "typecheck",
     group: "typecheck",
     name: "Typecheck",
@@ -51,12 +57,15 @@ export const VERIFY_STEPS = [
   },
   // `build` precedes `exports` deliberately: stepsInGroup() preserves this
   // order, and check-exports.mjs reads dist/, which only exists after build.
+  // Only `packages/cli` is checked: it is the one published package -- the
+  // repo root and packages/plugin are both private and have no `exports`, so
+  // checking either would be a permanent no-op.
   { id: "build", group: "build", name: "Build", cmd: ["pnpm", "build"] },
   {
     id: "exports",
     group: "build",
     name: "Check package exports",
-    cmd: ["node", "bin/check-exports.mjs"],
+    cmd: ["node", "bin/check-exports.mjs", "--cwd", "packages/cli"],
   },
   {
     id: "node-version",

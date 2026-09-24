@@ -8,7 +8,14 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["**/*.e2e.test.ts"],
-    exclude: ["**/dist/**", "**/node_modules/**", "templates/**"],
+    exclude: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/templates/**",
+      "packages/cli/plugin/**",
+      // Same reason as vitest.config.ts.
+      "**/.claude/worktrees/**",
+    ],
     testTimeout: 300_000,
     hookTimeout: 300_000,
   },

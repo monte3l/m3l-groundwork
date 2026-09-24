@@ -7,6 +7,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
+import { restoreDotfilePath } from "./assets.js";
 import { parseJsonc } from "./jsonc.js";
 import { applyTokens } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
@@ -90,7 +91,9 @@ function walkTemplate(
 ): void {
   for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
     const sourcePath = join(currentDir, entry.name);
-    const relPath = applyTokens(relative(root, sourcePath), tokens);
+    const relPath = restoreDotfilePath(
+      applyTokens(relative(root, sourcePath), tokens),
+    );
 
     if (entry.isDirectory()) {
       walkTemplate(root, sourcePath, targetDir, tokens, results);

@@ -130,4 +130,13 @@ describe("planConflicts", () => {
       { relPath: "acme/nested/file.ts", status: "absent", keyDiffs: undefined },
     ]);
   });
+
+  it("compares a vendored _gitignore against the project's real .gitignore", () => {
+    writeFileSync(join(templateRoot, "_gitignore"), "node_modules/\n");
+    writeFileSync(join(targetDir, ".gitignore"), "node_modules/\n");
+    const result = planConflicts(templateRoot, targetDir, {});
+    expect(result).toEqual([
+      { relPath: ".gitignore", status: "identical", keyDiffs: undefined },
+    ]);
+  });
 });

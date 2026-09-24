@@ -31,6 +31,11 @@ export default defineConfig(
       "**/node_modules/**",
       "**/coverage/**",
       "templates/**",
+      "packages/cli/templates/**",
+      "packages/cli/plugin/**",
+      // A background agent's worktree (see .prettierignore) is a full
+      // second checkout under here; never lint it as part of this one.
+      ".claude/worktrees/**",
       "packages/plugin/skills/**/*.md",
     ],
   },
@@ -114,10 +119,11 @@ export default defineConfig(
     ...configs.disableTypeChecked,
   },
   {
-    // bin/**/*.mjs is plain Node ESM, not type-checked against a tsconfig
+    // bin/**/*.mjs (and packages/cli/scripts, the pack-time vendoring
+    // script) is plain Node ESM, not type-checked against a tsconfig
     // project -- it runs directly with `node`, so import-x's typed rules and
     // the projectService parser don't apply here.
-    files: ["**/bin/**/*.mjs"],
+    files: ["**/bin/**/*.mjs", "packages/cli/scripts/**/*.mjs"],
     languageOptions: {
       globals: { ...globals.node },
     },

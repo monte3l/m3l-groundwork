@@ -51,7 +51,8 @@ tooling `tsconfig.json` (src + tests, no emit) and a build-only
 packages/cli/          Phase A: the offline bootstrapper CLI
   src/                   main.ts, mode.ts, tokens.ts, emit.ts, git.ts, plugin.ts,
                           conflicts.ts, inventory.ts, report.ts, jsonc.ts,
-                          caps.ts, packs.ts, merge-json.ts
+                          caps.ts, packs.ts, merge-json.ts, assets.ts (the one
+                          place that locates templates/ and the plugin payload)
   src/harness/            the harness grader: frontmatter.ts, rules.ts, grade.ts,
                           conformance.ts, types.ts
   src/toolchain/          the toolchain grader: rules.ts, grade.ts, conformance.ts,
@@ -61,17 +62,28 @@ packages/cli/          Phase A: the offline bootstrapper CLI
                           (survey-shape, survey-toolchain, survey-harness,
                           survey-docs), fs-walk.ts, types.ts
   bin/                    m3l-groundwork.mjs -- the published entry point
+  scripts/                vendor-assets.mjs -- prepack/postpack: copies templates/
+                          and the plugin payload into the package for a pack
   tests/                  unit tests + bootstrap.e2e.test.ts + adopt.e2e.test.ts
-                          + packs.e2e.test.ts
+                          + packs.e2e.test.ts + pack.e2e.test.ts (the published
+                          tarball, run from outside the repo)
 
 packages/plugin/        Phase B: the /customize skill
   skills/customize/       SKILL.md (Step 0 is the adopt-mode reconcile step)
   src/                    kind-facet-map.ts, domain-map.ts, pack-map.ts, index.ts
   tests/                  unit tests for all three
 
+.changeset/             Changesets config, prerelease state (pre.json), and any
+                         pending changesets. See "Releases".
+
+.claude-plugin/         marketplace.json: lists the plugin as a relative-path
+                         source into packages/plugin -- never npm -- for
+                         `/plugin marketplace add`.
+
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
                          verify lanes + e2e + the `verify` aggregator),
-                         dependency-review.yml, dependabot.yml
+                         release.yml (see "Releases"), dependency-review.yml,
+                         dependabot.yml
 
 templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          toolchain, .claude/ harness, CI workflows, and
@@ -87,22 +99,24 @@ templates/packs/        Optional add-on bundles installed on top of the
 
 Run any task with `pnpm <script>`.
 
-| Script                         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm build`                   | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `pnpm typecheck`               | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `pnpm lint` / `lint:fix`       | ESLint over the whole repo (excludes `templates/**`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `pnpm format` / `format:check` | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `pnpm test` / `test:coverage`  | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `pnpm test:e2e`                | The real acceptance test, both modes: `bootstrap.e2e.test.ts` bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify` (slow, ~15-20s, network-touching -- a real `pnpm install`); `adopt.e2e.test.ts` runs adopt mode against a fixture pre-existing project and asserts nothing outside `.groundwork/` and `.claude/skills/customize/` changed; `packs.e2e.test.ts` bootstraps with `--pack harness-extras` and asserts the emitted project's own `pnpm verify` (including the pack's gate) is green; `packs-statusline.e2e.test.ts` does the same for `--pack statusline` and also executes the emitted scripts against a real payload. None are part of `pnpm test`. |
-| `pnpm knip`                    | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `pnpm check:exports`           | publint + attw against this repo's own root (a private package -- skips cleanly with a warning)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `pnpm check:harness`           | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `pnpm check:toolchain`         | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `pnpm eval`                    | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), and on `typescript-guidance` against a deliberately degraded project (the `toolchain` suite); needs `claude`, credentials, network. Skips cleanly without `claude`. See "Behavioural evals" below                                                                                                                                                                                                                                                                                                                                                            |
-| `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Script                                | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                          | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `pnpm typecheck`                      | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `pnpm lint` / `lint:fix`              | ESLint over the whole repo (excludes `templates/**`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `pnpm format` / `format:check`        | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `pnpm test` / `test:coverage`         | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `pnpm test:e2e`                       | The real acceptance test, both modes: `bootstrap.e2e.test.ts` bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify` (slow, ~15-20s, network-touching -- a real `pnpm install`); `adopt.e2e.test.ts` runs adopt mode against a fixture pre-existing project and asserts nothing outside `.groundwork/` and `.claude/skills/customize/` changed; `packs.e2e.test.ts` bootstraps with `--pack harness-extras` and asserts the emitted project's own `pnpm verify` (including the pack's gate) is green; `packs-statusline.e2e.test.ts` does the same for `--pack statusline` and also executes the emitted scripts against a real payload. `pack.e2e.test.ts` packs the CLI as a release would, unpacks the tarball outside the repo, and asserts it emits byte-identical output to the checkout (see "Releases"). None are part of `pnpm test`. |
+| `pnpm knip`                           | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `pnpm check:exports`                  | publint + attw against `packages/cli`'s packed tarball -- the one published package                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `pnpm check:plugin-version`           | `plugin.json`'s version matches the CLI's, `packages/plugin/package.json` stays private, and `marketplace.json`'s entry names it correctly and carries no npm source or version pin of its own                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `pnpm changeset` / `version:packages` | Add a changeset; version the packages (what the release workflow runs -- see "Releases")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `pnpm check:node-version`             | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `pnpm check:harness`                  | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `pnpm check:toolchain`                | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `pnpm eval`                           | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), and on `typescript-guidance` against a deliberately degraded project (the `toolchain` suite); needs `claude`, credentials, network. Skips cleanly without `claude`. See "Behavioural evals" below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `pnpm verify`                         | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `pnpm prepare`                        | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 Run `pnpm verify` (or just push -- `lefthook`'s `pre-push` runs the same
 steps) before considering any task here done.
@@ -111,11 +125,30 @@ steps) before considering any task here done.
 
 - **Token substitution is a plain string replace, not a template engine**
   (`packages/cli/src/tokens.ts`). `applyTokens` swaps `__KEY__` literals in
-  both file content and path segments. `templatesCoreDir()`
-  (`main.ts`) resolves `templates/core` relative to the _running_ module,
-  so it works identically from source (`vitest`) and from the built
-  `dist/main.js` the published `bin/m3l-groundwork.mjs` actually invokes --
-  don't hardcode a path assuming one or the other.
+  both file content and path segments.
+- **Where `templates/` and the plugin payload live is decided in exactly one
+  place: `resolveAsset()` in `packages/cli/src/assets.ts`.** Never write a
+  `join(here, "..", "..", "..")` walk again -- in a published tarball that
+  escapes the package. `templatesCoreDir()`, `packsRootDir()` and
+  `pluginDir()` are one-liners over it. It probes the **source checkout first**
+  (a positive marker: `pnpm-workspace.yaml` plus a `package.json` named
+  `m3l-groundwork` three directories up) and only then the copy vendored
+  beside `dist/`; the order is what stops a vendored copy left by a crashed
+  `pnpm pack` from being read stale on a dev machine, and the marker is what
+  stops an unscoped install from treating the consumer's own project root as
+  ours. `scripts/vendor-assets.mjs` (`prepack`/`postpack`) does the copying.
+- **npm-family tooling strips `.gitignore`, `.npmrc` and `.npmignore` from a
+  tarball whatever `files` says** (measured: `pnpm pack` keeps `.gitignore` but
+  drops `.npmrc`; `npm pack` drops all three). The vendored copy therefore
+  stores them as `_gitignore`, `_npmrc`, `_npmignore`, and every walker over
+  the template tree restores the real name via `restoreDotfilePath`
+  (`emit.ts`, `conflicts.ts`). **A new walker over `templates/` must do the
+  same**, or a published install silently loses those files. The name list and
+  both directions of the mapping live in `assets.ts`; `vendor-assets.mjs`
+  imports them from the build, so `pnpm build` must precede `pnpm pack`.
+  `templates/core/package.json` is _not_ escaped -- `caps.ts` reads it
+  directly -- so publint prints a known, harmless warning that its `exports`
+  field is ignored.
 - **The CLI has zero runtime dependencies it can avoid**, and makes no
   network call beyond the package install it runs at the end of fresh mode
   (`packages/cli/src/git.ts`'s `runInstall`; adopt mode makes none at all).
@@ -269,6 +302,12 @@ steps) before considering any task here done.
   default setup and has no file in this repo -- do not add a `codeql.yml`**,
   it collides with default setup. `bin/check-node-version.mjs` is live here
   now: every workflow takes Node from `node-version-file: .node-version`.
+  `release.yml` follows the same two rules and adds a third: **it never writes
+  the text `verify.mjs`**. The grader reads a workflow as text, so a bare or
+  dynamic invocation there switches `gate-lane-parity` off for `ci.yml` too --
+  measured, not assumed: the structural check count drops 42 to 37 and no
+  finding is raised. Its `pack` job runs `pnpm verify` instead, which the
+  scraper cannot see and which is a full run of every group anyway.
 - **A pack never edits YAML or JavaScript.** It extends three JSON files
   the baseline already reads at runtime (`.claude/settings.json`,
   `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json`) via the pure
@@ -289,7 +328,8 @@ Single-maintainer project on GitHub (`monte3l/m3l-groundwork`, public).
 Conventional Commits, enforced by the `commit-msg` hook
 (`bin/lint-commit.mjs`) -- same convention `templates/core` emits into every
 bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
-substantially assisted a commit.
+substantially assisted a commit. The release workflow's version PR and commit
+use `chore(release): version packages` so they satisfy the same convention.
 
 CI runs on every push and PR to `main` (see "Continuous integration" above),
 and a repository ruleset named `main` enforces the rest. It targets
@@ -328,6 +368,102 @@ kind that `templates/core`'s caps pin at zero. Read the live state with
 needs a force-push means `PUT`ting the ruleset to `enforcement=disabled` and
 back (a logged toggle), not adding a bypass actor.
 
+## Releases
+
+Only `@monte3l/groundwork` (the CLI, `packages/cli`) ships to npm.
+`@monte3l/groundwork-plugin` (`/customize`, `packages/plugin`) is `private`
+and never published there -- it distributes only through the Claude Code
+marketplace, `.claude-plugin/marketplace.json`'s single entry, whose `source`
+is a **relative path** into `packages/plugin` in this same repo, not an npm
+source -- the documented, no-registry way to ship a Claude Code plugin that
+lives in the same repo as its CLI, and there is no equivalent reason to run
+the plugin through a registry the way `npx @scope/pkg` needs one for the CLI.
+
+**The flow.** A PR with a user-visible change to the CLI adds a changeset
+(`pnpm changeset`) -- the plugin never takes one, since it has no release of
+its own. A push to `main` runs `release.yml`, whose `select-mode` job decides:
+with a changeset pending it opens a `chore(release): version packages` PR
+(`pnpm version:packages` = `changeset version`, then
+`bin/sync-plugin-version.mjs` copying the new CLI version into `plugin.json`,
+then a lockfile refresh); with none pending and an unpublished version it
+publishes. Publishing is `pack` (the full `pnpm verify`, then `pnpm test:e2e`,
+then `changesets/action/pack`) followed by `publish`, the only job holding
+`id-token: write`. The CLI gets provenance, a git tag and a GitHub Release
+with its changelog. A plugin-only change needs no release step at all: it is
+live for marketplace users (`/plugin marketplace update`) the moment it lands
+on `main`; `plugin.json`'s version just trails the CLI's for display.
+
+**Prerelease mode is on** (`.changeset/pre.json`, tag `next`): the CLI's
+versions are `0.1.0-next.N` on the `next` dist-tag, so the README says
+`npx @monte3l/groundwork@next`. Leave it with `pnpm changeset pre exit` plus a
+normal version PR, then drop `@next` from the README. Changesets itself warns
+against sitting in pre mode on the default branch indefinitely.
+
+**One-time setup, done by hand, that this design depends on.** npm cannot
+configure a trusted publisher for a package that does not exist yet, so
+`@monte3l/groundwork` was first published once as a `0.0.0` placeholder with a
+temporary token (`@monte3l/groundwork-plugin` needs none of this -- it never
+touches npm). That is also why `latest` points at `0.0.0` until the first
+stable release. The trusted publisher is bound to the workflow filename
+`release.yml` (the bare name, not a path): **renaming or moving that file
+breaks publishing** until it is reconfigured on npmjs.com. The repo also needs
+_Allow GitHub Actions to create and approve pull requests_ enabled, or the
+version job cannot open its PR.
+
+**The version PR authenticates as a GitHub App, not the default
+`GITHUB_TOKEN`.** `main`'s branch ruleset (see "Git Workflow" above) requires
+`verify`, `Dependency Review` and `CodeQL` on every PR, with an empty
+bypass list -- including this one. A PR opened with the default
+`GITHUB_TOKEN` never triggers `pull_request`-event workflows (GitHub's own
+anti-recursion rule), so those three checks would never post and the PR could
+never merge. `release.yml`'s `version` job instead mints a one-hour
+installation token from a GitHub App installed on just this repo
+(`actions/create-github-app-token@v3`, reading the `APP_CLIENT_ID` /
+`APP_PRIVATE_KEY` repo secrets) and passes it as `changesets/action/version`'s
+`github-token`. That makes the PR behave like any human-opened one: the same
+three checks run and satisfy the ruleset through its normal path, and the
+`version` job's own `permissions:` stays `contents: read` -- the App token
+does the actual writing, scoped to exactly `contents: write` +
+`pull-requests: write` on the App itself. This is what both GitHub's own docs
+("GITHUB_TOKEN") and changesets' own automating guide recommend for this
+exact situation -- an App token over a PAT (shorter-lived, not tied to a
+person) or a ruleset bypass (which would skip the checks rather than
+satisfy them, undermining the empty `bypass_actors` list "Git Workflow"
+describes).
+
+**Things that look wrong but are deliberate.**
+
+- **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to `npm publish`.**
+  Changesets publishes through `pnpm publish` in a pnpm workspace, and pnpm 12's
+  native publish is rejected by npmjs.com's OIDC exchange (403 "OIDC permission
+  denied"; still unfixed through pnpm 12.5.1 when this was written). The shim
+  translates only changesets' exact invocation and refuses any flag it does not
+  recognise; everything else passes through to pnpm. Delete it, and the workflow
+  step that installs it, once pnpm's publish authenticates.
+- **Changesets, not a hand-written publish script, owns the publish plan, tags
+  and Releases.** Tarballs are packed in one job and published in another so the
+  OIDC token is never present where build or test code runs. The `publish` job
+  installs with `--ignore-scripts` and pins `npm@^11.5.1` (trusted publishing
+  needs >= 11.5.1) rather than `latest`.
+- **No package-manager cache in `release.yml`**, and no `cancel-in-progress`: a
+  restored cache is an input an attacker can poison in the jobs that publish,
+  and a half-published release is worse than a queued one.
+
+**Versions that must agree.** `packages/plugin/.claude-plugin/plugin.json`'s
+version tracks `packages/cli/package.json`'s (`bin/sync-plugin-version.mjs`
+edits the text in place, not re-serializing JSON, so Prettier stays
+satisfied). `check-plugin-version` (the `lint`-group gate,
+`bin/check-plugin-version.mjs`) fails on that drift, and separately asserts
+`packages/plugin/package.json` stays `private` and that
+`.claude-plugin/marketplace.json`'s entry names the plugin correctly, points
+at a non-npm source, and carries no version pin of its own -- three structural
+guards against this design quietly regrowing the npm-publish shape it
+deliberately dropped.
+
+**Not done, worth knowing.** A GitHub `environment` with required reviewers on
+the `publish` job would add a human approval before every release (it would
+also need to match the trusted-publisher configuration on npmjs.com).
+
 ## Testing
 
 `pnpm test:coverage`'s v8 coverage gate is `perFile: true` at 80% across all
@@ -356,7 +492,9 @@ done.
 `pnpm verify` passes here; `pnpm test:e2e` passes if the change touched
 `packages/cli/src/`, `templates/core/`, or the `/customize` skill; the
 baseline's caps (above) still hold if a `.claude/` file was added or
-removed from `templates/core`.
+removed from `templates/core`. Anything that changes what the CLI's tarball
+ships or how it locates its data is proved by `pack.e2e.test.ts`, not by
+running the CLI from the checkout, where every path resolves regardless.
 
 ## Known gaps (deliberately out of scope so far)
 
@@ -374,12 +512,13 @@ removed from `templates/core`.
   (`reviewing-dependabot-prs`, `triaging-scan-alerts` -- the most
   m3l-coupled of the original nine candidates) and a `publishing` pack (a
   release workflow, `check-publish-version`, `check-dts-deps` -- needs a
-  registry/scope/`publishConfig` story the baseline doesn't have yet).
+  registry/scope/`publishConfig` story the baseline doesn't have yet; this repo
+  now has one to copy -- see "Releases" -- but `templates/core` is also at its
+  three-workflow cap).
 - **No standalone "add a pack to an already-bootstrapped project" flag.**
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is
   indirect -- a dedicated additive install mode is real future work.
-- No npm publishing, release automation, or version bumping.
 - **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it: it
   has no version-file input and reads Node from `package.json`'s
   `devEngines.runtime`, which would create a second Node pin beside
@@ -395,11 +534,22 @@ removed from `templates/core`.
   positive here purely because this repo happens to share that directory
   shape (`packages/cli/src/`, `packages/plugin/tests/`) -- that is a
   property of whatever session is doing the editing, not of this repo.
+  What _does_ already exist is `.claude/worktrees/`, created ad hoc whenever
+  a background agent runs with `isolation: "worktree"`: a full second
+  checkout of this repo, uncommitted state included. `.prettierignore`,
+  `eslint.config.js` and both vitest configs exclude it explicitly -- without
+  that, prettier fails on a sibling session's in-progress formatting and
+  every test in the repo runs twice. Add the same exclusion to any new
+  file-discovery config (a future ESLint plugin config, a coverage include
+  list) rather than assuming the existing excludes cover it.
 - **Adopt mode's `inventory.json` records `templateRoot` as an absolute
   path.** If the CLI ran from a location that no longer exists by the time
   `/customize` runs (a deleted temp checkout, a different machine), the
   approved additions can't be read; `/customize`'s Step 0 should report this
-  and ask for a re-run rather than guessing at the baseline's contents.
+  and ask for a re-run rather than guessing at the baseline's contents. Now that
+  the CLI is published this points into the installed package -- under `npx`,
+  npm's `_npx` cache -- which persists until the cache is cleaned but is not a
+  path the user chose.
 - **Adopt mode's post-merge cap counts (in `report.ts`) are an estimate, not
   a reconciliation.** It assumes no name overlap between the baseline's
   agents/skills/hooks and the project's own -- good enough to flag "you may

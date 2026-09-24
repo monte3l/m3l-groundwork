@@ -7,7 +7,12 @@ export default defineConfig({
     exclude: [
       "**/dist/**",
       "**/node_modules/**",
-      "templates/**",
+      "**/templates/**",
+      // A background agent's worktree (see .prettierignore) is a full
+      // second checkout under here, with its own tests/ trees -- without
+      // this every test in the repo runs twice, once per copy.
+      "**/.claude/worktrees/**",
+      "packages/cli/plugin/**",
       // The end-to-end bootstrap test spawns real child processes (git,
       // pnpm install) into a temp directory and is slow by design; it is
       // run explicitly via `test:e2e`, not as part of the default unit run.

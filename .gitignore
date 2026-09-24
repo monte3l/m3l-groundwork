@@ -5,6 +5,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Copied into packages/cli for the length of a `pnpm pack` (prepack/postpack)
+packages/cli/templates/
+packages/cli/plugin/
+
 # Test / coverage artifacts
 coverage/
 

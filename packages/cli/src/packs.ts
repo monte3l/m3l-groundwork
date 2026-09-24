@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { emitTemplate } from "./emit.js";
 import { parseJsonc } from "./jsonc.js";
@@ -58,14 +58,7 @@ export interface Pack {
 
 /** `templates/packs`, resolved the same way `templatesCoreDir()` resolves `templates/core`. */
 export function packsRootDir(): string {
-  return join(
-    dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "..",
-    "..",
-    "templates",
-    "packs",
-  );
+  return resolveAsset({ repo: "templates/packs", local: "templates/packs" });
 }
 
 /** Names of every pack directory that has a `pack.json` under `root`, sorted for deterministic install order. `root` defaults to `templates/packs`, overridable for tests. */

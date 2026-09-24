@@ -1,0 +1,13 @@
+{
+  "name": "monte3l",
+  "owner": {
+    "name": "Enrico Lionello"
+  },
+  "plugins": [
+    {
+      "name": "m3l-groundwork-customize",
+      "description": "The /customize skill: interviews a bootstrapped project's owner, tailors the baseline to the answers, then runs a live guidance pass over official TypeScript and Anthropic sources.",
+      "source": "./packages/plugin"
+    }
+  ]
+}

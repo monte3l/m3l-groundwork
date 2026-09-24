@@ -1,9 +1,29 @@
 {
-  "name": "@m3l-groundwork/plugin",
-  "version": "0.1.0",
+  "name": "@monte3l/groundwork-plugin",
+  "version": "0.0.0",
   "private": true,
+  "description": "The Claude Code plugin shipped into a bootstrapped project: the /customize skill (interview, kind-to-facet mapping, guidance pass, tracker seeding). Distributed only through the Claude Code marketplace (.claude-plugin/marketplace.json) -- never published to npm.",
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "skill",
+    "typescript"
+  ],
+  "homepage": "https://github.com/monte3l/m3l-groundwork#readme",
+  "bugs": {
+    "url": "https://github.com/monte3l/m3l-groundwork/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monte3l/m3l-groundwork.git",
+    "directory": "packages/plugin"
+  },
+  "license": "MIT",
+  "author": "Enrico Lionello",
   "type": "module",
-  "description": "The Claude Code plugin shipped into a bootstrapped project: the /customize skill (interview, kind-to-facet mapping, guidance pass, tracker seeding).",
+  "engines": {
+    "node": ">=24"
+  },
   "devDependencies": {
     "typescript": "^6.0.3"
   }

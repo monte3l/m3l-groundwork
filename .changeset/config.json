@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "monte3l/m3l-groundwork" }
+  ],
+  "commit": false,
+  "access": "public",
+  "baseBranch": "main"
+}
