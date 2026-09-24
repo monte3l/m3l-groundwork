@@ -7,13 +7,12 @@
  * setup step.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { resolveAsset } from "./assets.js";
 
-/** Resolves the m3l-groundwork plugin package directory relative to this module. */
+/** Resolves the plugin payload for a source checkout (`packages/plugin`) or a published tarball (`plugin/`). */
 function pluginDir(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, "..", "..", "..", "packages", "plugin");
+  return resolveAsset({ repo: "packages/plugin", local: "plugin" });
 }
 
 export interface InstallPluginResult {

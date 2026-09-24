@@ -3,6 +3,13 @@ dist/
 coverage/
 pnpm-lock.yaml
 CHANGELOG.md
+# A worktree the harness creates for a background agent (Agent tool
+# `isolation: "worktree"`, or /EnterWorktree) lands under here as a full,
+# independent checkout -- including its own copy of every file this repo
+# already scans. Without this, prettier double-visits (and can fail on) that
+# copy's own uncommitted state, which is a different session's WIP, not this
+# repo's content.
+.claude/worktrees/
 # Prettier normalizes Markdown `__emphasis__` to `**emphasis**`, which would
 # rewrite the intended bold __PROJECT_NAME__ token into ****PROJECT_NAME****
 # (or, where the token is the whole heading, into a **PROJECT_NAME** that

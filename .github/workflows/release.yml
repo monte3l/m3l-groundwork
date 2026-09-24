@@ -1,0 +1,175 @@
+name: Release
+
+# Changesets, split into four jobs so the one credential that can publish is
+# held by a job that never runs build, test or repo-script code:
+#
+#   select-mode  reads the repo and decides: "version", "publish" or "none"
+#   version      opens or updates the "Version Packages" PR
+#   pack         builds, runs every gate, and packs the tarballs
+#   publish      uploads those tarballs to npm via trusted publishing (OIDC)
+#
+# This is the shape the changesets docs recommend for trusted publishing.
+# `publish` holds `id-token: write`; `pack` holds nothing beyond `contents:
+# read`. Nothing in `publish` executes code from the repo other than the
+# changesets CLI and the pnpm shim below, and it installs with --ignore-scripts.
+#
+# npm trusted publishers are configured per package, against this exact file
+# name (`release.yml`, not a path). See CLAUDE.md, "Releases".
+on:
+  push:
+    branches: [main]
+
+# Reset, then grant per job.
+permissions: {}
+
+# Releases must not be cancelled midway, so no cancel-in-progress here (unlike
+# ci.yml): a half-published release is worse than a queued one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  select-mode:
+    name: Select mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      mode: ${{ steps.select-mode.outputs.mode }}
+      publish-plan-artifact-id: ${{ steps.select-mode.outputs.publish-plan-artifact-id }}
+    permissions:
+      contents: read # actions/checkout
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      # Same setup as ci.yml. `.node-version` is the single Node pin, so this
+      # file must never carry a literal version (`pnpm check:node-version`).
+      # No package-manager cache anywhere in this file: a restored cache is an
+      # input an attacker can poison, and these jobs are the ones that publish.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - id: select-mode
+        uses: changesets/action/select-mode@v2
+
+  version:
+    name: Open version PR
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'version'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # actions/checkout; the app token below does the actual writing
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      # `main`'s branch ruleset requires `verify`, `Dependency Review` and
+      # `CodeQL` on every PR with no bypass actor (see CLAUDE.md, "Git
+      # Workflow") -- including this one. A PR opened with the default
+      # GITHUB_TOKEN would never trigger those `pull_request`-event workflows
+      # (GitHub's own anti-recursion rule) and could therefore never merge, so
+      # this mints a short-lived token from a GitHub App installed on this repo
+      # instead. The app-token approach, not a PAT or a ruleset bypass, is what
+      # both GitHub's own docs and changesets' own automating guide recommend
+      # for exactly this case -- see CLAUDE.md, "Releases". The App needs only
+      # `contents: write` and `pull-requests: write`; its token auto-expires in
+      # an hour and this action revokes it when the job ends.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          # Both created as repo secrets (`gh secret set`), not vars: the
+          # client ID isn't sensitive on its own, but keeping both next to
+          # each other avoids a second place to remember to update.
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      # `version:packages` also syncs plugin.json and marketplace.json to the
+      # new version and refreshes the lockfile (see package.json).
+      - uses: changesets/action/version@v2
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: pnpm version:packages
+          commit-message: "chore(release): version packages"
+          pr-title: "chore(release): version packages"
+
+  pack:
+    name: Verify and pack
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
+    permissions:
+      contents: read # actions/checkout
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      # The whole gate, then the end-to-end suite, before a tarball exists.
+      # `pnpm verify` is one full run of every group, the same steps ci.yml
+      # spreads across its lanes -- this is a single full run rather than a
+      # per-lane invocation, so it deliberately does not name a group.
+      # test:e2e includes the packed-tarball test: it packs the CLI, unpacks
+      # it outside the repo and runs it, which is the only check that the
+      # published artifact works.
+      - run: pnpm verify
+      - run: pnpm test:e2e
+      - id: pack
+        uses: changesets/action/pack@v2
+        with:
+          publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
+
+  publish:
+    name: Publish to npm
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # changesets/action/publish pushes tags and creates GitHub Releases
+      id-token: write # npm trusted publishing (OIDC) and provenance
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      # Only the changesets CLI is needed here, not any package's lifecycle scripts.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Trusted publishing needs npm >= 11.5.1. Pinned to the 11 line rather
+      # than `latest`: this job holds the OIDC token.
+      - run: npm install --global "npm@^11.5.1"
+      # changesets publishes through `pnpm publish` in a pnpm workspace, and
+      # pnpm 12's native publish is rejected by npmjs.com's OIDC exchange
+      # (403 "OIDC permission denied"). This puts a `pnpm` ahead of the real
+      # one that forwards everything except `publish`, which goes to
+      # `npm publish`. See bin/pnpm-publish-shim.mjs; remove both once pnpm's
+      # own publish authenticates.
+      - name: Route publish through the npm CLI
+        run: |
+          shim_dir="$RUNNER_TEMP/pnpm-shim"
+          mkdir -p "$shim_dir"
+          printf '#!/bin/sh\nexport PNPM_SHIM_DIR=%s\nexec node "%s/bin/pnpm-publish-shim.mjs" "$@"\n' \
+            "$shim_dir" "$GITHUB_WORKSPACE" > "$shim_dir/pnpm"
+          chmod +x "$shim_dir/pnpm"
+          echo "$shim_dir" >> "$GITHUB_PATH"
+      - uses: changesets/action/publish@v2
+        with:
+          pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}

@@ -1,7 +1,9 @@
 /**
  * Copies `templates/core` into a target directory, applying token
  * substitution to both file contents and path segments (so a token in a
- * directory or file NAME, not just its content, is honored).
+ * directory or file NAME, not just its content, is honored). A published
+ * tarball stores `.gitignore`/`.npmrc` as `_gitignore`/`_npmrc` (npm strips
+ * the real names); they are restored here -- see `assets.ts`.
  */
 import {
   readdirSync,
@@ -11,6 +13,7 @@ import {
   copyFileSync,
 } from "node:fs";
 import { join, relative, dirname, extname } from "node:path";
+import { restoreDotfilePath } from "./assets.js";
 import { applyTokens } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
 
@@ -42,7 +45,9 @@ function walk(
 ): void {
   for (const entry of readdirSync(currentSourceDir, { withFileTypes: true })) {
     const sourcePath = join(currentSourceDir, entry.name);
-    const relPath = applyTokens(relative(root, sourcePath), tokens);
+    const relPath = restoreDotfilePath(
+      applyTokens(relative(root, sourcePath), tokens),
+    );
     const targetPath = join(targetRoot, relPath);
 
     if (entry.isDirectory()) {

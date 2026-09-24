@@ -42,14 +42,30 @@ each change with you, and only then edits your project.
 ## Requirements
 
 - **Node 24+**. `.node-version` is the authority.
-- **pnpm 12.4.0**, pinned through `packageManager` in `package.json`.
+- **pnpm**. Fresh mode ends with a `pnpm install` in the new project (skip it
+  with `--skip-install`), and this repo pins 12.4.0 through `packageManager`.
 - **git**.
 - **Claude Code**, for Phase B only. The CLI itself does not need it.
 
 ## Install and run
 
-Nothing here is published to npm: `packages/cli` and `packages/plugin` are
-both `private: true`. Clone, build, and run the CLI from the checkout.
+The CLI is published to npm as [`@monte3l/groundwork`](https://www.npmjs.com/package/@monte3l/groundwork).
+It is a prerelease (0.x): releases ship on the `next` dist-tag, so name the
+tag explicitly. Drop `@next` once a stable release exists.
+
+```bash
+# a new project
+npx @monte3l/groundwork@next my-new-project
+
+# a new project with an optional pack
+npx @monte3l/groundwork@next my-new-project --pack statusline
+
+# an existing project (adopt mode is auto-detected)
+npx @monte3l/groundwork@next ../existing-project
+```
+
+To run it from a checkout instead (or to work on it), build it and call the
+built entry point directly:
 
 ```bash
 git clone https://github.com/monte3l/m3l-groundwork.git
@@ -57,14 +73,15 @@ cd m3l-groundwork
 pnpm install
 pnpm build
 
-# a new project
 node packages/cli/bin/m3l-groundwork.mjs ../my-new-project
+```
 
-# a new project with an optional pack
-node packages/cli/bin/m3l-groundwork.mjs ../my-new-project --pack statusline
+The `/customize` skill is also available as a Claude Code plugin, for use in
+a project that was not bootstrapped by this CLI:
 
-# an existing project (adopt mode is auto-detected)
-node packages/cli/bin/m3l-groundwork.mjs ../existing-project
+```
+/plugin marketplace add monte3l/m3l-groundwork
+/plugin install m3l-groundwork-customize@monte3l
 ```
 
 | Flag                    | Effect                                                                        |
@@ -142,6 +159,19 @@ bootstraps throwaway projects with the built CLI and runs their own
 `pnpm verify`; run it yourself after any change to `packages/cli/src/`,
 `templates/core/` or the `/customize` skill. `pnpm eval` makes paid model
 calls and never runs in CI.
+
+### Releasing
+
+`@monte3l/groundwork` is released with [Changesets](https://github.com/changesets/changesets)
+and published to npm through trusted publishing (no stored token). A PR that
+changes the CLI's user-visible behavior adds a changeset with `pnpm changeset`.
+Merging to `main` opens a "Version Packages" PR; merging that runs the full
+gate and publishes, with provenance, a git tag and a GitHub Release.
+`@monte3l/groundwork-plugin` is never published to npm -- it ships only
+through the marketplace above, so a change to it is live the moment it lands
+on `main`; its `plugin.json` version just tracks the CLI's, for display. The
+design, and the one-time setup it depends on, are in
+[`CLAUDE.md`](CLAUDE.md#releases).
 
 [`CLAUDE.md`](CLAUDE.md) is the full reference: architecture, the command
 table, conventions, and known gaps.

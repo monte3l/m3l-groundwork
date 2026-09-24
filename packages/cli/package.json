@@ -1,18 +1,57 @@
 {
-  "name": "@m3l-groundwork/cli",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@monte3l/groundwork",
+  "version": "0.0.0",
+  "description": "Deterministic Phase A bootstrapper: writes the m3l-groundwork baseline (toolchain + Claude Code harness) into a new directory, or surveys an existing project read-only. No prompts, no network beyond the package install.",
+  "keywords": [
+    "typescript",
+    "claude-code",
+    "bootstrap",
+    "scaffold",
+    "cli"
+  ],
+  "homepage": "https://github.com/monte3l/m3l-groundwork#readme",
+  "bugs": {
+    "url": "https://github.com/monte3l/m3l-groundwork/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monte3l/m3l-groundwork.git",
+    "directory": "packages/cli"
+  },
+  "license": "MIT",
+  "author": "Enrico Lionello",
   "type": "module",
-  "description": "Deterministic Phase A bootstrapper: writes the m3l-groundwork baseline (toolchain + Claude Code harness) into a new directory. No prompts, no network beyond the package install.",
+  "engines": {
+    "node": ">=24"
+  },
   "bin": {
     "m3l-groundwork": "bin/m3l-groundwork.mjs"
   },
+  "main": "./dist/main.js",
+  "types": "./dist/main.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/main.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
+    "!dist/**/*.map",
+    "!dist/.tsbuildinfo",
     "bin",
-    "templates"
+    "templates",
+    "plugin"
   ],
-  "scripts": {},
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "prepack": "node scripts/vendor-assets.mjs vendor",
+    "postpack": "node scripts/vendor-assets.mjs clean"
+  },
   "dependencies": {},
   "devDependencies": {
     "typescript": "^6.0.3"

@@ -13,8 +13,8 @@
  * `/customize`; see `runAdopt`.
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, basename } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative, resolve, basename } from "node:path";
+import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
 import { emitTemplate } from "./emit.js";
@@ -184,10 +184,9 @@ export function parseArgs(argv: string[]): CliOptions {
   };
 }
 
-/** Resolves `templates/core` relative to this module, whether run from source or dist. */
+/** Resolves `templates/core` for a source checkout or a published tarball -- see `assets.ts`. */
 export function templatesCoreDir(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, "..", "..", "..", "templates", "core");
+  return resolveAsset({ repo: "templates/core", local: "templates/core" });
 }
 
 function isEmptyOrMissing(dir: string): boolean {

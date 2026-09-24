@@ -48,6 +48,19 @@ describe("emitTemplate", () => {
     expect(existsSync(join(targetDir, "src", "nested", "file.ts"))).toBe(true);
   });
 
+  it("writes a vendored _gitignore/_npmrc under their real dotfile names", () => {
+    writeFileSync(join(sourceDir, "_gitignore"), "node_modules/\n");
+    writeFileSync(join(sourceDir, "_npmrc"), "engine-strict=true\n");
+
+    const result = emitTemplate(sourceDir, targetDir, {});
+
+    expect(result.filesWritten.sort()).toEqual([".gitignore", ".npmrc"]);
+    expect(readFileSync(join(targetDir, ".gitignore"), "utf8")).toBe(
+      "node_modules/\n",
+    );
+    expect(existsSync(join(targetDir, "_gitignore"))).toBe(false);
+  });
+
   it("substitutes a token appearing in a path segment", () => {
     mkdirSync(join(sourceDir, "__PROJECT_NAME__"), { recursive: true });
     writeFileSync(join(sourceDir, "__PROJECT_NAME__", "readme.md"), "hi");

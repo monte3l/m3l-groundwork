@@ -11,8 +11,8 @@
       "project": ["bin/**/*.mjs"]
     },
     "packages/cli": {
-      "entry": ["src/main.ts", "bin/*.mjs"],
-      "project": ["src/**/*.ts", "bin/**/*.mjs"]
+      "entry": ["src/main.ts", "bin/*.mjs", "scripts/*.mjs"],
+      "project": ["src/**/*.ts", "bin/**/*.mjs", "scripts/**/*.mjs"]
     },
     "packages/plugin": {
       "entry": ["src/index.ts"],
