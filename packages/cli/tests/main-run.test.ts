@@ -259,8 +259,11 @@ describe("main", () => {
         .spyOn(console, "log")
         .mockImplementation(() => undefined);
       main(["--version"]);
+      // Not a plain X.Y.Z: this project is in Changesets prerelease mode
+      // (.changeset/pre.json), so the real version is X.Y.Z-next.N most of
+      // the time -- see resolveCliVersion's own test in inventory.test.ts.
       expect(logSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/^\d+\.\d+\.\d+$/),
+        expect.stringMatching(/^\d+\.\d+\.\d+(-[0-9A-Za-z-.]+)?$/),
       );
       logSpy.mockRestore();
     });

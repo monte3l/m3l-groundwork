@@ -102,7 +102,11 @@ describe("resolveCliVersion", () => {
   });
 
   it("reads a version string from this package's own package.json", () => {
-    expect(resolveCliVersion()).toMatch(/^\d+\.\d+\.\d+$/);
+    // Not a plain X.Y.Z: this project is in Changesets prerelease mode
+    // (.changeset/pre.json), so the real version is X.Y.Z-next.N most of
+    // the time -- CI #13 failed on exactly this assumption the first time
+    // a real version bump landed.
+    expect(resolveCliVersion()).toMatch(/^\d+\.\d+\.\d+(-[0-9A-Za-z-.]+)?$/);
   });
 
   it("reports unknown when the package.json doesn't exist", () => {
