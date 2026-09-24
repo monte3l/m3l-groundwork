@@ -17,7 +17,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const binDir = join(here, "..", "..", "..", "bin");
 
 interface PublishArgsLib {
-  toNpmPublishArgs(args: string[]): string[];
+  toNpmStagePublishArgs(args: string[]): string[];
   pathWithout(
     pathValue: string | undefined,
     dir: string | undefined,
@@ -29,10 +29,10 @@ const lib = (await import(
   pathToFileURL(join(binDir, "lib", "npm-publish-args.mjs")).href
 )) as PublishArgsLib;
 
-describe("toNpmPublishArgs", () => {
+describe("toNpmStagePublishArgs", () => {
   it("translates changesets' exact pnpm invocation", () => {
     expect(
-      lib.toNpmPublishArgs([
+      lib.toNpmStagePublishArgs([
         "../.changeset-pack/pkg-1.0.0.tgz",
         "--json",
         "--access",
@@ -42,6 +42,7 @@ describe("toNpmPublishArgs", () => {
         "--no-git-checks",
       ]),
     ).toEqual([
+      "stage",
       "publish",
       "../.changeset-pack/pkg-1.0.0.tgz",
       "--access",
@@ -54,8 +55,15 @@ describe("toNpmPublishArgs", () => {
 
   it("accepts the tarball in any position and forwards an OTP", () => {
     expect(
-      lib.toNpmPublishArgs(["--access", "public", "--otp", "123456", "a.tgz"]),
+      lib.toNpmStagePublishArgs([
+        "--access",
+        "public",
+        "--otp",
+        "123456",
+        "a.tgz",
+      ]),
     ).toEqual([
+      "stage",
       "publish",
       "a.tgz",
       "--access",
@@ -67,28 +75,28 @@ describe("toNpmPublishArgs", () => {
   });
 
   it("refuses a flag it does not know rather than guessing", () => {
-    expect(() => lib.toNpmPublishArgs(["a.tgz", "--dry-run"])).toThrow(
+    expect(() => lib.toNpmStagePublishArgs(["a.tgz", "--dry-run"])).toThrow(
       /unsupported flag --dry-run/,
     );
   });
 
   it("refuses a value-taking flag with no value", () => {
-    expect(() => lib.toNpmPublishArgs(["a.tgz", "--tag"])).toThrow(
+    expect(() => lib.toNpmStagePublishArgs(["a.tgz", "--tag"])).toThrow(
       /--tag needs a value/,
     );
-    expect(() => lib.toNpmPublishArgs(["a.tgz", "--tag", "--access"])).toThrow(
-      /--tag needs a value/,
-    );
+    expect(() =>
+      lib.toNpmStagePublishArgs(["a.tgz", "--tag", "--access"]),
+    ).toThrow(/--tag needs a value/);
   });
 
   it("refuses to publish a directory: only tarballs", () => {
-    expect(() => lib.toNpmPublishArgs(["--access", "public"])).toThrow(
+    expect(() => lib.toNpmStagePublishArgs(["--access", "public"])).toThrow(
       /no tarball given/,
     );
   });
 
   it("refuses two positional arguments", () => {
-    expect(() => lib.toNpmPublishArgs(["a.tgz", "b.tgz"])).toThrow(
+    expect(() => lib.toNpmStagePublishArgs(["a.tgz", "b.tgz"])).toThrow(
       /second argument: b\.tgz/,
     );
   });
@@ -168,7 +176,7 @@ describe("pnpm-publish-shim, wired the way the workflow wires it", () => {
     expect(logged()).toEqual(["pnpm --version", "pnpm info @scope/pkg --json"]);
   });
 
-  it("sends publish to npm, translated, and never to pnpm", () => {
+  it("sends a staged publish to npm, translated, and never to pnpm", () => {
     const result = pnpm(
       "publish",
       "pkg.tgz",
@@ -182,7 +190,7 @@ describe("pnpm-publish-shim, wired the way the workflow wires it", () => {
 
     expect(result.status).toBe(0);
     expect(logged()).toEqual([
-      "npm publish pkg.tgz --access public --tag latest --provenance",
+      "npm stage publish pkg.tgz --access public --tag latest --provenance",
     ]);
   });
 

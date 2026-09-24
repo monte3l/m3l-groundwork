@@ -389,9 +389,11 @@ then a lockfile refresh); with none pending and an unpublished version it
 publishes. Publishing is `pack` (the full `pnpm verify`, then `pnpm test:e2e`,
 then `changesets/action/pack`) followed by `publish`, the only job holding
 `id-token: write`. The CLI gets provenance, a git tag and a GitHub Release
-with its changelog. A plugin-only change needs no release step at all: it is
-live for marketplace users (`/plugin marketplace update`) the moment it lands
-on `main`; `plugin.json`'s version just trails the CLI's for display.
+with its changelog -- **at the moment `npm stage publish` succeeds, not at the
+moment the package is actually live**; see "staged, not direct" below. A
+plugin-only change needs no release step at all: it is live for marketplace
+users (`/plugin marketplace update`) the moment it lands on `main`;
+`plugin.json`'s version just trails the CLI's for display.
 
 **Prerelease mode is on** (`.changeset/pre.json`, tag `next`): the CLI's
 versions are `0.1.0-next.N` on the `next` dist-tag, so the README says
@@ -408,7 +410,11 @@ stable release. The trusted publisher is bound to the workflow filename
 `release.yml` (the bare name, not a path): **renaming or moving that file
 breaks publishing** until it is reconfigured on npmjs.com. The repo also needs
 _Allow GitHub Actions to create and approve pull requests_ enabled, or the
-version job cannot open its PR.
+version job cannot open its PR. The trusted publisher's **allowed actions is
+staged-only** (`npm stage publish`, no direct `npm publish`) -- npm's own
+default for any trusted publisher created since 2026-09-03, and its explicit
+recommendation over direct publish; see "staged, not direct" below for what
+that costs and why it was kept rather than switched off.
 
 **The version PR authenticates as a GitHub App, not the default
 `GITHUB_TOKEN`.** `main`'s branch ruleset (see "Git Workflow" above) requires
@@ -433,18 +439,41 @@ describes).
 
 **Things that look wrong but are deliberate.**
 
-- **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to `npm publish`.**
-  Changesets publishes through `pnpm publish` in a pnpm workspace, and pnpm 12's
-  native publish is rejected by npmjs.com's OIDC exchange (403 "OIDC permission
-  denied"; still unfixed through pnpm 12.5.1 when this was written). The shim
-  translates only changesets' exact invocation and refuses any flag it does not
-  recognise; everything else passes through to pnpm. Delete it, and the workflow
-  step that installs it, once pnpm's publish authenticates.
+- **Staged, not direct.** `@monte3l/groundwork`'s trusted publisher only allows
+  `npm stage publish`, not `npm publish` -- npmjs.com's own recommended,
+  stronger setting, and its default for any trusted publisher created after
+  2026-09-03 (this one was). A maintainer must separately run
+  `npm stage approve <id>` (2FA, on the CLI or npmjs.com -- **never
+  automatable**, by npm's own design) before a version is actually
+  installable. `npm stage list --package @monte3l/groundwork` finds the id;
+  the `publish` job's last step tries this too, best-effort, but that job
+  never holds a login session so it may print nothing. The alternative --
+  checking "allow npm publish" -- was considered and rejected: this package
+  is a solo-maintainer pre-1.0 CLI, not the "high-impact, widely-used"
+  case npm is targeting, but the version PR is already a real, reviewed gate
+  before anything reaches `publish` at all, and the `publish` job's own
+  containment (no build/test code, `--ignore-scripts`) already limits what a
+  compromised token could do -- staging adds a second, stronger gate on top
+  of a design that already had one. That trade means accepting the ordering
+  cost above: the git tag and GitHub Release exist for a few minutes to
+  however long approval takes, before `npm install` actually resolves the
+  version.
+- **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to `npm stage
+publish`.** Two stacked reasons, not one: changesets publishes through
+  `pnpm publish` in a pnpm workspace, and pnpm 12's native publish is
+  rejected by npmjs.com's OIDC exchange (403 "OIDC permission denied"; still
+  unfixed through pnpm 12.5.1 when this was written) -- and separately, a
+  _direct_ `npm publish` would get the identical 403 for the unrelated
+  staged-only reason above. The shim translates only changesets' exact
+  invocation and refuses any flag it does not recognise; everything else
+  passes through to pnpm. Delete the pnpm-OIDC half of this once pnpm's
+  publish authenticates; the staged-vs-direct half stays regardless.
 - **Changesets, not a hand-written publish script, owns the publish plan, tags
   and Releases.** Tarballs are packed in one job and published in another so the
   OIDC token is never present where build or test code runs. The `publish` job
-  installs with `--ignore-scripts` and pins `npm@^11.5.1` (trusted publishing
-  needs >= 11.5.1) rather than `latest`.
+  installs with `--ignore-scripts` and pins `npm@^11.15.0` (`npm stage publish`
+  needs >= 11.15.0, Node >= 22.14.0 -- already covered by `.node-version`'s 24)
+  rather than `latest`.
 - **No package-manager cache in `release.yml`**, and no `cancel-in-progress`: a
   restored cache is an input an attacker can poison in the jobs that publish,
   and a half-published release is worse than a queued one.
@@ -460,9 +489,13 @@ at a non-npm source, and carries no version pin of its own -- three structural
 guards against this design quietly regrowing the npm-publish shape it
 deliberately dropped.
 
-**Not done, worth knowing.** A GitHub `environment` with required reviewers on
-the `publish` job would add a human approval before every release (it would
-also need to match the trusted-publisher configuration on npmjs.com).
+**Not done, worth knowing.** Staged publishing gates going live, but not the
+tag/Release ordering problem above -- both are already created by the time a
+maintainer even sees there's something to approve. A GitHub `environment`
+with required reviewers on the `publish` job would gate the job itself, before
+`npm stage publish` (and therefore the tag/Release) ever runs, closing that
+gap -- at the cost of a second approval on top of npm's own, and needing to
+stay in sync with whatever the trusted-publisher configuration expects.
 
 ## Testing
 

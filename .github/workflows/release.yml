@@ -153,15 +153,18 @@ jobs:
           package-manager-cache: false
       # Only the changesets CLI is needed here, not any package's lifecycle scripts.
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      # Trusted publishing needs npm >= 11.5.1. Pinned to the 11 line rather
-      # than `latest`: this job holds the OIDC token.
-      - run: npm install --global "npm@^11.5.1"
+      # `npm stage publish` needs npm >= 11.15.0 (Node >= 22.14.0, already
+      # covered by .node-version's 24). Pinned to the 11 line rather than
+      # `latest`: this job holds the OIDC token.
+      - run: npm install --global "npm@^11.15.0"
       # changesets publishes through `pnpm publish` in a pnpm workspace, and
       # pnpm 12's native publish is rejected by npmjs.com's OIDC exchange
       # (403 "OIDC permission denied"). This puts a `pnpm` ahead of the real
       # one that forwards everything except `publish`, which goes to
-      # `npm publish`. See bin/pnpm-publish-shim.mjs; remove both once pnpm's
-      # own publish authenticates.
+      # `npm stage publish` (see bin/pnpm-publish-shim.mjs -- the trusted
+      # publisher only allows staged publishing, npm's own default since
+      # 2026-09-03; a direct `npm publish` gets the same 403 for a different
+      # reason). Remove both once pnpm's own publish authenticates.
       - name: Route publish through the npm CLI
         run: |
           shim_dir="$RUNNER_TEMP/pnpm-shim"
@@ -173,3 +176,15 @@ jobs:
       - uses: changesets/action/publish@v2
         with:
           pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
+      # Staging succeeds unattended; going live needs a maintainer's 2FA
+      # (`npm stage approve <id>`, on the CLI or npmjs.com -- never
+      # automatable, by design). Best-effort convenience only: this job never
+      # logs in with a token (it publishes purely via the OIDC exchange
+      # scoped to the publish call itself), so `npm stage list` may have
+      # nothing to authenticate as and print nothing useful -- `|| true`
+      # means that possibility never fails the job. `npm stage list
+      # --package @monte3l/groundwork` from a logged-in machine is the
+      # reliable way to find what's waiting.
+      - name: List pending stages (best effort)
+        if: always()
+        run: npm stage list --package @monte3l/groundwork || true
