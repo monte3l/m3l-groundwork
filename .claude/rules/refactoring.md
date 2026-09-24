@@ -1,0 +1,52 @@
+---
+paths:
+  - "src/**"
+  - "**/tests/**"
+  - "**/*.test.ts"
+---
+
+# Refactoring rules (source & tests)
+
+> This file is the terse checklist that auto-loads when you change existing code.
+
+Refactoring changes internal structure **without changing observable behavior**.
+It is not feature, performance, or behavior work — those are separate commits.
+
+- **Test safety net first.** A passing suite must exist before you refactor; if the
+  area lacks tests, **add characterization tests** capturing current behavior first.
+- **State the goal.** Name the problem you are removing (duplication, complexity,
+  naming, weak types). No identified problem → no refactor.
+- **Small isolated steps**, each one focused operation, **committed individually**
+  with a `refactor:` commit. Rerun the full suite after each
+  step; a failure is a regression — revert before continuing.
+- **Opportunistic / Boy-Scout:** leave touched code better than you found it, and
+  do a preparatory refactor first when it makes the change you came to do simpler —
+  but **keep it bounded** (don't chase one cleanup into a rewrite) and in its own
+  commit, separate from the feature/fix.
+- **A refactor MUST NOT** add features, change observable behavior, add a
+  dependency, or change a public interface unless that is the explicit purpose.
+- **Semver hazard:** changing an exported signature or the `exports` map is a
+  breaking change, not a free refactor — keep the public surface stable or plan
+  the major bump. New capability surfaces through the existing barrel/entry
+  point, never a new subpath added casually.
+- **Tests are production code:** rename a test when its behavior is renamed, delete
+  tests that no longer assert a contract, refactor a shared fixture once (not every
+  caller), and update a mock target the moment the impl's I/O primitive changes (a
+  stale mock silently intercepts nothing).
+- **Moving code out from under a test can leave it vacuous with no gate
+  catching it.** Extracting or relocating the behavior a test exercises,
+  without re-deriving what the test still actually reaches, can leave it
+  green while asserting nothing real — and a fixture edited to match the new
+  code is not automatically a test of the behavior that changed; confirm it
+  still fails when the new behavior is wrong, not just that it passes when
+  the code is right.
+- **A full test-file rewrite must name what it must NOT touch.** A general
+  instruction ("don't drop tests for unchanged functions") is easy to satisfy
+  partially in a large rewrite without anyone noticing which specific cases got
+  lost — enumerate the functions whose existing coverage must survive
+  untouched, not just restate the rule.
+- **Removing a lint suppression cannot be its own commit.** `reportUnusedDisableDirectives:
+"error"` (`eslint.config.js`) makes a stale `eslint-disable-next-line` a lint error
+  the instant the finding it suppressed no longer fires — so the change that
+  clears the underlying issue and the deletion of its suppression comment must
+  land in the same commit, never split across two.

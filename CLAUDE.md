@@ -73,6 +73,12 @@ packages/plugin/        Phase B: the /customize skill
   src/                    kind-facet-map.ts, domain-map.ts, pack-map.ts, index.ts
   tests/                  unit tests for all three
 
+.claude/                THIS repo's own harness (not the baseline's): agents/,
+                         hooks/, rules/, skills/, settings.json -- installed by
+                         self-adopting `templates/core`'s harness plus the
+                         `statusline` pack. See "Agent Operating Model".
+                         worktrees/ is unrelated -- see "Known gaps".
+
 .changeset/             Changesets config, prerelease state (pre.json), and any
                          pending changesets. See "Releases".
 
@@ -84,6 +90,11 @@ packages/plugin/        Phase B: the /customize skill
                          verify lanes + e2e + the `verify` aggregator),
                          release.yml (see "Releases"), dependency-review.yml,
                          dependabot.yml
+
+docs/research/          THIS repo's own trackers (not the baseline's):
+                         typescript-refresh.md / harness-refresh.md, read and
+                         written by /customize's Round 2 guidance sweeps when
+                         run against this repo itself.
 
 templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          toolchain, .claude/ harness, CI workflows, and
@@ -368,6 +379,49 @@ kind that `templates/core`'s caps pin at zero. Read the live state with
 needs a force-push means `PUT`ting the ruleset to `enforcement=disabled` and
 back (a logged toggle), not adding a bypass actor.
 
+## Agent Operating Model
+
+This repo runs on `templates/core`'s own harness -- installed onto its own
+root by adopting itself (see "Known gaps" for how), same shape as every
+project it bootstraps, with one adaptation: `packages/*/src/**` and
+`packages/*/tests/**` in every path-shape rule below, not a flat `src/`/`tests/`,
+matching this repo's real two-package layout.
+
+**Hub-and-spoke is mandatory and hook-enforced, deliberately, with no opt-out.**
+The hub plans and dispatches to spokes, and never writes `packages/*/src/`
+or `packages/*/tests/` itself -- enforced unconditionally by
+`.claude/hooks/guard-hub-src-writes.mjs` (blocks any Write/Edit whose
+PreToolUse payload carries no `agent_type`, i.e. every direct top-level
+edit) and `guard-branch-isolation.mjs` (the same block specifically on
+`main`), plus `disallowedTools: Agent` on every spoke. This was a deliberate
+choice among real alternatives (installing the harness minus these two
+hooks, or holding off entirely) confirmed with the maintainer during the
+self-adoption's Step 0 -- not a default nobody looked at. For a piece of
+work with a clear contract:
+
+1. `test-author` writes failing tests from the contract (RED phase), and
+   confirms they fail for the right reason.
+2. `code-implementer` makes them pass with the minimal correct
+   implementation, then refactors while green (GREEN phase).
+3. Read-only review spokes (`code-reviewer` always; `silent-failure-hunter`
+   when the diff has error-handling paths) run in parallel over the diff.
+   Must-fix findings route back to `code-implementer`, and the loop repeats
+   until clean.
+
+Full dispatch-sizing and recovery guidance:
+`.claude/rules/agent-dispatch.md` (auto-loads when editing
+`.claude/skills/**` or `.claude/agents/**`). Path-scoped rules auto-load on
+matching files the same way: `.claude/rules/src.md` on `packages/*/src/**`,
+`.claude/rules/tests.md` on `**/tests/**`/`**/*.test.ts`,
+`.claude/rules/refactoring.md` on both (behavior-preserving changes).
+
+**Forbidden patterns, hook-enforced:** `any` implied by CommonJS constructs,
+a missing `.js` extension on a relative import, a hand-edit to `dist/` or
+`coverage/`, a `packages/*/src/`/`tests/` write while on `main`, a real
+secret written to disk (`guard-secret-writes.mjs`). **Conscious-care only,
+no automated guard:** no `any` in a public API, never swallow an error
+silently, no top-level side effects, never `git push --force`.
+
 ## Releases
 
 Only `@monte3l/groundwork` (the CLI, `packages/cli`) ships to npm.
@@ -527,7 +581,11 @@ done.
 baseline's caps (above) still hold if a `.claude/` file was added or
 removed from `templates/core`. Anything that changes what the CLI's tarball
 ships or how it locates its data is proved by `pack.e2e.test.ts`, not by
-running the CLI from the checkout, where every path resolves regardless.
+running the CLI from the checkout, where every path resolves regardless. If
+you touched this repo's _own_ `.claude/` (agents, hooks, skills, rules,
+`settings.json` at root, not `templates/core/`), `node bin/check-harness.mjs`
+must stay green the same way it does for the baseline: structural failures
+gate, rubric findings only warn.
 
 ## Known gaps (deliberately out of scope so far)
 
@@ -559,15 +617,15 @@ running the CLI from the checkout, where every path resolves regardless.
   evades `check-node-version.mjs`, whose regex only matches `node-version:`.
   Adopting it means teaching that gate (and its `templates/core` twin) about
   both forms first.
-- `.claude/` harness support (agents/hooks/skills for working _in this repo_
-  specifically, as opposed to what it emits) does not exist yet. If this
-  repo is ever edited from inside a Claude Code session that has its own
-  PreToolUse write-time guards configured, a hook whose path-shape rule is
-  scoped to something like `packages/*/src/**`/`**/tests/**` can false-
-  positive here purely because this repo happens to share that directory
-  shape (`packages/cli/src/`, `packages/plugin/tests/`) -- that is a
-  property of whatever session is doing the editing, not of this repo.
-  What _does_ already exist is `.claude/worktrees/`, created ad hoc whenever
+- **`.claude/` harness support for working _in this repo_ (as opposed to what
+  it emits) is now installed** -- see "Agent Operating Model" below for what
+  and why. It arrived by running this repo's own published CLI against
+  itself (`npx @monte3l/groundwork@next .`, adopt mode) and its own
+  `/customize` skill, the same path any adopter follows -- self-hosting as
+  the first real end-to-end proof of both, not a hand-rolled install. Root's
+  own `bin/check-harness.mjs` grades it (58 structural checks, 100% rubric)
+  with the exact rule module `templates/core`'s twin uses.
+  What _does_ already exist independently is `.claude/worktrees/`, created ad hoc whenever
   a background agent runs with `isolation: "worktree"`: a full second
   checkout of this repo, uncommitted state included. `.prettierignore`,
   `eslint.config.js` and both vitest configs exclude it explicitly -- without
