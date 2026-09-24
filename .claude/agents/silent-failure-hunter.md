@@ -3,8 +3,8 @@ name: silent-failure-hunter
 description: Read-only error-handling auditor. Hunts for silent failures — swallowed exceptions, unchained causes, empty catch blocks, optional-chaining that masks errors, and retry/poll logic that exhausts without surfacing — against this project's error hierarchy and error-handling rules. Use after implementing or changing any code that has try/catch, async/await, optional chaining on fallible calls, or retry/poll loops. Complements code-reviewer (general quality).
 tools: Read, Grep, Glob, Bash
 disallowedTools: Agent
-model: claude-sonnet-5
-effort: high
+model: claude-opus-5-5
+effort: medium
 maxTurns: 40
 color: yellow
 ---

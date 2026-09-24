@@ -4,8 +4,8 @@ description: Writer spoke for the TDD build pipeline. Given a contract and a set
 tools: Read, Write, Edit, Grep, Glob, Bash, mcp__context7__resolve-library-id, mcp__context7__query-docs
 disallowedTools: Agent
 mcpServers: [context7]
-model: claude-sonnet-5
-effort: high
+model: claude-opus-5-5
+effort: medium
 permissionMode: acceptEdits
 maxTurns: 40
 color: cyan
