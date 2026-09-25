@@ -495,6 +495,18 @@ describe("renderReport", () => {
     expect(report).toContain('"+ all packs" sums every pack listed below');
   });
 
+  it("includes both the CLI version and the inventory schema version in the header", () => {
+    // schemaVersion 7 is distinct from any digit in cliVersion ("0.1.0") or
+    // generatedAt's year, so a match on "7" in the header can only come from
+    // schemaVersion being rendered.
+    const report = renderReport(
+      baseInventory(templateRoot, { schemaVersion: 7 }),
+    );
+    const header = report.split("\n").slice(0, 5).join("\n");
+    expect(header).toContain("0.1.0");
+    expect(header).toMatch(/schema[^\n]*7/i);
+  });
+
   it("lists a pack's own divergent file conflicts in a table", () => {
     const report = renderReport(
       baseInventory(templateRoot, {

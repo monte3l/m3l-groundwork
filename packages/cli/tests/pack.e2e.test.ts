@@ -10,10 +10,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -109,6 +111,55 @@ describe("published tarball end-to-end", () => {
         readFileSync(join(fromCheckout, file), "utf8"),
       );
     }
+  });
+
+  it("exits with status 2 (a usage error) on an unrecognized flag", () => {
+    let thrown: unknown;
+    try {
+      execFileSync("node", [installedBin, "/tmp/does-not-matter", "--bogus"], {
+        stdio: "pipe",
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeDefined();
+    expect((thrown as { status: number }).status).toBe(2);
+  });
+
+  it("exits with status 1 (a runtime error, not a usage error) on a non-empty target without --force", () => {
+    const nonEmpty = join(scratch, "not-empty");
+    mkdirSync(nonEmpty, { recursive: true });
+    writeFileSync(join(nonEmpty, "existing-file.txt"), "already here");
+
+    let thrown: unknown;
+    try {
+      execFileSync("node", [installedBin, nonEmpty], { stdio: "pipe" });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeDefined();
+    expect((thrown as { status: number }).status).toBe(1);
+  });
+
+  it("packs a package.json with no main/types entry point and no '.' export", () => {
+    const packageJson = JSON.parse(
+      readFileSync(
+        join(scratch, "extracted", "package", "package.json"),
+        "utf8",
+      ),
+    ) as {
+      main?: string;
+      types?: string;
+      exports?: Record<string, unknown>;
+    };
+
+    expect(Object.hasOwn(packageJson, "main")).toBe(false);
+    expect(Object.hasOwn(packageJson, "types")).toBe(false);
+    expect(packageJson.exports).toBeDefined();
+    expect(Object.hasOwn(packageJson.exports ?? {}, ".")).toBe(false);
+    expect(Object.hasOwn(packageJson.exports ?? {}, "./package.json")).toBe(
+      true,
+    );
   });
 
   it("adopts an existing project, comparing against the real dotfile names", () => {

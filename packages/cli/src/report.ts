@@ -386,7 +386,7 @@ export function renderReport(inventory: Inventory): string {
   const sections = [
     "# Adoption report",
     "",
-    `Generated ${inventory.generatedAt} by m3l-groundwork ${inventory.cliVersion}.`,
+    `Generated ${inventory.generatedAt} by m3l-groundwork ${inventory.cliVersion} (inventory schema ${inventory.schemaVersion}).`,
     "",
     `**Mode:** adopt -- ${inventory.modeSignal}`,
     "",
