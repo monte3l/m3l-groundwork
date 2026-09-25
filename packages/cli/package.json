@@ -36,7 +36,8 @@
     "!dist/.tsbuildinfo",
     "bin",
     "templates",
-    "plugin"
+    "plugin",
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public",

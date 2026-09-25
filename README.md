@@ -91,6 +91,9 @@ a project that was not bootstrapped by this CLI:
 /plugin install m3l-groundwork-customize@monte3l
 ```
 
+`npx` leaves nothing installed globally -- it only populates its own
+download cache (`npm cache clean` clears it, if you want that back too).
+
 | Flag                    | Effect                                                                        |
 | ----------------------- | ----------------------------------------------------------------------------- |
 | `--name <project-name>` | Override the project name (default: the target directory's basename).         |
@@ -184,6 +187,20 @@ design, and the one-time setup it depends on, are in
 
 [`CLAUDE.md`](CLAUDE.md) is the full reference: architecture, the command
 table, conventions, and known gaps.
+
+### Project docs
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) -- how to contribute.
+- [`GOVERNANCE.md`](GOVERNANCE.md) -- decision-making, roles, and access
+  continuity.
+- [`ROADMAP.md`](ROADMAP.md) -- what's planned, and what isn't.
+- [`SECURITY.md`](SECURITY.md) -- reporting a vulnerability, and how to
+  verify a release.
+- [`docs/architecture.md`](docs/architecture.md) -- a high-level map of the
+  two phases.
+- [`docs/assurance-case.md`](docs/assurance-case.md) -- the threat model and
+  security design argument.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 ## Versioning policy
 

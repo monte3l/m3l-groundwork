@@ -2,8 +2,9 @@
 /**
  * `prepack` / `postpack` for `@monte3l/groundwork`. A published tarball cannot
  * reach outside its own package, but the CLI's data lives at the repo root
- * (`templates/`) and in a sibling package (`packages/plugin`), so `vendor`
- * copies both in for the duration of a pack and `clean` removes them again.
+ * (`templates/`, `LICENSE`) and in a sibling package (`packages/plugin`), so
+ * `vendor` copies them all in for the duration of a pack and `clean` removes
+ * them again.
  *
  * `assets.ts` probes the source checkout first, so a copy left behind by a
  * pack that crashed before `postpack` is never read from inside the checkout.
@@ -28,6 +29,11 @@ import { fileURLToPath } from "node:url";
 const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = join(pkgRoot, "..", "..");
 const vendoredDirs = [join(pkgRoot, "templates"), join(pkgRoot, "plugin")];
+// The repo's own LICENSE, not this package's -- packages/cli has never had
+// its own, so without this the published tarball ships with none at all
+// (OpenSSF Best Practices' `license_location` is about the repo, but a
+// published artifact missing its license is a real, separate packaging gap).
+const vendoredLicense = join(pkgRoot, "LICENSE");
 
 const mode = process.argv[2];
 
@@ -47,6 +53,7 @@ function copyEscaped(from, to, escapeDotfileName) {
 
 function clean() {
   for (const dir of vendoredDirs) rmSync(dir, { recursive: true, force: true });
+  rmSync(vendoredLicense, { force: true });
 }
 
 if (mode === "clean") {
@@ -61,7 +68,12 @@ if (mode === "clean") {
   }
   const templates = join(repoRoot, "templates");
   const plugin = join(repoRoot, "packages", "plugin");
-  for (const source of [join(templates, "core"), join(plugin, "skills")]) {
+  const license = join(repoRoot, "LICENSE");
+  for (const source of [
+    join(templates, "core"),
+    join(plugin, "skills"),
+    license,
+  ]) {
     if (!existsSync(source)) {
       console.error(
         `vendor-assets: ${source} is missing -- this must run from the source checkout`,
@@ -83,6 +95,7 @@ if (mode === "clean") {
     join(pkgRoot, "plugin", "src"),
     escapeDotfileName,
   );
+  cpSync(license, vendoredLicense);
 } else {
   console.error("usage: vendor-assets.mjs <vendor|clean>");
   process.exit(1);

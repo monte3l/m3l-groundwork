@@ -8,6 +8,7 @@ dist/
 # Copied into packages/cli for the length of a `pnpm pack` (prepack/postpack)
 packages/cli/templates/
 packages/cli/plugin/
+packages/cli/LICENSE
 
 # Test / coverage artifacts
 coverage/

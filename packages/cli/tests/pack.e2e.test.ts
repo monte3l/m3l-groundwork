@@ -64,6 +64,17 @@ describe("published tarball end-to-end", () => {
   it("removes its vendored copies from the checkout once packing finishes", () => {
     expect(existsSync(join(cliDir, "templates"))).toBe(false);
     expect(existsSync(join(cliDir, "plugin"))).toBe(false);
+    expect(existsSync(join(cliDir, "LICENSE"))).toBe(false);
+  });
+
+  it("ships the repo's own LICENSE file inside the tarball", () => {
+    const shippedLicense = join(scratch, "extracted", "package", "LICENSE");
+    expect(existsSync(shippedLicense)).toBe(true);
+
+    const rootLicense = join(cliDir, "..", "..", "LICENSE");
+    expect(readFileSync(shippedLicense, "utf8")).toBe(
+      readFileSync(rootLicense, "utf8"),
+    );
   });
 
   it("lists all three packs from the vendored templates/packs", () => {

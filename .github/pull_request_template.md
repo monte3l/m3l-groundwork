@@ -7,6 +7,9 @@
 - [ ] `pnpm verify` passes
 - [ ] `pnpm test:e2e` passes (required if this touches `packages/cli/src/`,
       `templates/core/`, or `packages/plugin/skills/customize/`)
+- [ ] Every commit is signed off (DCO, `git commit -s`) and GPG-signed
+- [ ] New functionality has tests; a bug fix includes a regression test
+      that fails without the fix
 - [ ] A changeset is included (`pnpm changeset`), if this is a user-visible
       change to `@monte3l/groundwork` -- the plugin never takes one
 - [ ] Baseline caps still hold (`pnpm check:harness`, `pnpm check:toolchain`),
