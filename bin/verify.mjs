@@ -19,8 +19,16 @@ import {
 
 const args = process.argv.slice(2);
 const stepIndex = args.indexOf("--step");
+if (stepIndex !== -1 && !args[stepIndex + 1]) {
+  console.error("verify: --step requires a value");
+  process.exit(1);
+}
 const requestedId = stepIndex === -1 ? null : args[stepIndex + 1];
 const groupIndex = args.indexOf("--group");
+if (groupIndex !== -1 && !args[groupIndex + 1]) {
+  console.error("verify: --group requires a value");
+  process.exit(1);
+}
 const requestedGroup = groupIndex === -1 ? null : args[groupIndex + 1];
 
 if (requestedGroup && !GROUPS.includes(requestedGroup)) {

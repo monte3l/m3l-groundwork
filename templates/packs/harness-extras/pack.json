@@ -61,5 +61,5 @@
       }
     ]
   },
-  "adoptNotes": "check-file-budget.mjs's ROOTS default assumes a flat src/+tests/ layout and its ceilings are this baseline's defaults -- in an adopted project, re-point ROOTS at the project's real source layout (or drop the gate) before wiring it. The hooks and the agent have no such dependency and install anywhere a .claude/ directory exists. The verify step assumes a bin/verify.mjs-shaped gate runner; if the project has none, install the other artifacts and report the gate as not installable rather than inventing one."
+  "adoptNotes": "check-file-budget.mjs's ROOTS default assumes a flat src/+tests/ layout and its ceilings are this baseline's defaults -- in an adopted project, re-point ROOTS at the project's real source layout (or drop the gate) before wiring it. The hooks and the agent have no such dependency and install anywhere a .claude/ directory exists. The verify step assumes a bin/verify.mjs-shaped gate runner; if the project has none, install the other artifacts and report the gate as not installable rather than inventing one. The PreCompact hook writes tmp/compact-handoff.json -- fresh mode's baseline .gitignore already lists tmp/ unconditionally, but an adopted project's own .gitignore was never touched by adopt mode, so add tmp/ there too before this pack's hooks run, or the handoff artifact can end up committed."
 }

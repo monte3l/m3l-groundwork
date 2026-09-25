@@ -20,16 +20,44 @@ import {
 } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+
+/** Flips the case of every letter -- guaranteed to differ from the input
+ * (as long as it contains at least one letter) while still denoting the
+ * SAME path on a case-insensitive-but-case-preserving filesystem. */
+function invertCase(value: string): string {
+  return value
+    .split("")
+    .map((ch) =>
+      ch === ch.toUpperCase() ? ch.toLowerCase() : ch.toUpperCase(),
+    )
+    .join("");
+}
+
+/** True when this filesystem resolves a wrongly-cased spelling of a real,
+ * existing path to the same file (macOS APFS by default). */
+function isFilesystemCaseInsensitive(): boolean {
+  const probe = mkdtempSync(join(tmpdir(), "core-hooks-case-probe-"));
+  try {
+    const wrong = invertCase(probe);
+    return wrong !== probe && existsSync(wrong);
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+}
+
+const caseInsensitiveFs = isFilesystemCaseInsensitive();
 
 const here = dirname(fileURLToPath(import.meta.url));
 const hooksDir = join(
@@ -152,6 +180,101 @@ describe("baseline guards run through a symlinked hooks directory", () => {
     expect(status).toBe(2);
     expect(stderr).toContain("main");
   });
+
+  it("guard-branch-isolation still blocks a src write on main when the target directory does not exist yet", () => {
+    // Deliberately does NOT pre-create src/newdir -- unlike srcWriteOnMain
+    // above, which does create `src/`. `defaultGitFor` binds its git runner
+    // to `dirname(resolve(filePath))`; when that directory doesn't exist,
+    // every `git -C <dir> ...` call fails and returns "" (defaultGitFor's
+    // catch), so `isMainOrDetachedOnMain` can't tell it's on `main` at all
+    // and the hook currently falls through to allow (status 0) instead of
+    // blocking.
+    const repo = join(scratch, "repo-newdir");
+    mkdirSync(repo, { recursive: true });
+    const git = (...args: string[]): void => {
+      const result = spawnSync(
+        "git",
+        [
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.com",
+          "-c",
+          "commit.gpgsign=false",
+          ...args,
+        ],
+        { cwd: repo, encoding: "utf8", env: envWithoutRepoLocals() },
+      );
+      expect(result.status, result.stderr).toBe(0);
+    };
+    git("init", "-b", "main");
+    git("commit", "--allow-empty", "-m", "init");
+
+    const { status, stderr } = run(
+      join(linkedHooks, "guard-branch-isolation.mjs"),
+      {
+        tool_name: "Write",
+        tool_input: {
+          file_path: join(repo, "src", "newdir", "a.ts"),
+          content: "",
+        },
+      },
+    );
+    expect(status).toBe(2);
+    expect(stderr).toContain("main");
+  });
+
+  it.skipIf(!caseInsensitiveFs)(
+    "guard-branch-isolation still blocks a src write on main when file_path is spelled with different case than the real repo directory",
+    () => {
+      // Same repo-on-main fixture as srcWriteOnMain (src/ IS pre-created),
+      // but the hook is invoked with a wrongly-cased spelling of the repo's
+      // real, canonical-case directory. `git rev-parse --show-toplevel`
+      // still resolves to the CORRECT canonical case, but the hook's own
+      // re-check (`isProtectedPath(scopedPath, worktreeRoot)`) resolves
+      // `fileDir` with plain `realpathSync` (which does not correct case on
+      // a case-insensitive filesystem), so the literal string prefix
+      // comparison against the correctly-cased `worktreeRoot` fails and the
+      // hook currently falls through to allow (status 0) instead of
+      // blocking.
+      const repo = join(scratch, "repo-case-mismatch");
+      mkdirSync(join(repo, "src"), { recursive: true });
+      const canonicalRepo = realpathSync.native(repo);
+      const wronglyCasedRepo = invertCase(canonicalRepo);
+
+      const git = (...args: string[]): void => {
+        const result = spawnSync(
+          "git",
+          [
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            ...args,
+          ],
+          { cwd: repo, encoding: "utf8", env: envWithoutRepoLocals() },
+        );
+        expect(result.status, result.stderr).toBe(0);
+      };
+      git("init", "-b", "main");
+      git("commit", "--allow-empty", "-m", "init");
+
+      const { status, stderr } = run(
+        join(linkedHooks, "guard-branch-isolation.mjs"),
+        {
+          tool_name: "Write",
+          tool_input: {
+            file_path: join(wronglyCasedRepo, "src", "a.ts"),
+            content: "",
+          },
+        },
+      );
+      expect(status).toBe(2);
+      expect(stderr).toContain("main");
+    },
+  );
 
   it("is not fooled by an inherited GIT_DIR, and never touches the repository it points at", () => {
     // A decoy stands in for "the developer's real repo": if the fixture ever

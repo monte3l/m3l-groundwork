@@ -338,7 +338,7 @@ if (isEntryPoint()) {
     reporter.fail(
       ref
         ? `Could not scan the tracked roots at ${ref}: ${message}`
-        : `Could not scan ${relative(root, root)}: ${message}`,
+        : `Could not scan the tracked roots: ${message}`,
     );
     reporter.finish();
     process.exit(1);
