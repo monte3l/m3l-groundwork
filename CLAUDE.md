@@ -359,16 +359,26 @@ steps) before considering any task here done.
   opened/updated PR with `contents: read` only -- Claude posts a comment, it
   cannot push code, submit a formal GitHub review, or approve a PR, so it
   cannot satisfy or bypass `main`'s required checks or its 0-approval rule
-  either way. `claude-pr-review.yml` pins `claude_args: --model claude-opus-5-5`
-  (there is no `model:` input -- the action's own `action.yml` has none);
-  `claude.yml` is left on the action's default. Two reasons, not one: no
-  official source states whether the action's undocumented default can
-  change silently between action releases, which matters for an unattended,
+  either way. `claude-pr-review.yml` pins
+  `claude_args: --model claude-opus-5-5 --fallback-model claude-sonnet-5`
+  (there is no `model:`/`fallback_model:` input -- both are deprecated
+  action inputs, per claude-code-action's own docs/usage.md, in favor of
+  configuring both through `claude_args`); `claude.yml` is left on the
+  action's default. Two reasons for pinning at all, not one: no official
+  source states whether the action's undocumented default can change
+  silently between action releases, which matters for an unattended,
   repeated job the way it doesn't for `claude.yml`'s interactive, humanly-
   invoked sessions; and Opus 5.5 is Anthropic's own explicit recommendation
   for agentic code review specifically (a third-party eval measured a 72%
   known-bug catch rate against the prior Opus generation's 56%, with fewer
-  false alarms). `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs
+  false alarms). The fallback only triggers on an overload/unavailable/
+  non-retryable-server-error response, never on an auth, billing,
+  rate-limit, or policy failure -- a real, currently-unfixed gap
+  (anthropics/claude-code-action#594, redirected to and auto-closed
+  `not_planned` as anthropics/claude-code#8413) -- but it's worth having
+  for the failure mode it does cover, and Sonnet 5 is a separate model pool
+  from Opus so it isn't overloaded by the same demand spike.
+  `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs
   (the changesets version-PR, Dependabot) and fork PRs explicitly, rather
   than relying on the action's own internal bot/permission checks, so a run
   that would just fail on missing secrets never starts. **One-time setup,

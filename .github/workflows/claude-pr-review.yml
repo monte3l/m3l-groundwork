@@ -59,8 +59,29 @@ jobs:
           # default since it's an interactive, human-invoked session where
           # a model choice is visible in the moment, not a repeated
           # unattended run.
+          #
+          # `--fallback-model` (both `model:` and `fallback_model:` are
+          # deprecated action inputs -- claude-code-action's docs/usage.md
+          # says to configure both through `claude_args` now) tries the
+          # listed model(s), in order, only when the primary is overloaded,
+          # unavailable, or returns another non-retryable server error --
+          # never for an auth, billing, rate-limit, request-size, transport,
+          # or org-policy failure, which is a real, currently-unfixed gap:
+          # anthropics/claude-code-action#594 was closed by redirecting to
+          # anthropics/claude-code#8413, which was itself auto-closed
+          # `not_planned` for inactivity, not resolved. Sonnet 5 is this
+          # repo's other current, generally-capable model tier
+          # (`CURRENT_MODELS` in packages/cli/src/harness/rules.ts) and a
+          # separate model pool from Opus, so it isn't overloaded by the
+          # same demand spike; this trades the Opus-level review accuracy
+          # above for a completed review over a silently-skipped one on
+          # exactly the failure modes the flag does cover. The switch is
+          # scoped to this one action invocation (Claude Code's fallback
+          # lasts for the current turn only), so it doesn't relax anything
+          # about which model claude.yml's separate, unattached session uses.
           claude_args: |
             --model claude-opus-5-5
+            --fallback-model claude-sonnet-5
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
