@@ -2,7 +2,7 @@
   "name": "@monte3l/groundwork-plugin",
   "version": "0.0.0",
   "private": true,
-  "description": "The Claude Code plugin shipped into a bootstrapped project: the /customize skill (interview, kind-to-facet mapping, guidance pass, tracker seeding). Distributed only through the Claude Code marketplace (.claude-plugin/marketplace.json) -- never published to npm.",
+  "description": "A Claude Code plugin providing the /customize skill: it interviews you about a project bootstrapped by @monte3l/groundwork and tailors it to your answers. Installed through the Claude Code marketplace, not npm.",
   "keywords": [
     "claude-code",
     "claude-code-plugin",

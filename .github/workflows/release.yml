@@ -1,20 +1,42 @@
 name: Release
 
-# Changesets, split into four jobs so the one credential that can publish is
-# held by a job that never runs build, test or repo-script code:
+# What this does: on every push to `main`, this workflow either opens a PR
+# that bumps package versions and changelogs, or -- once that PR has merged
+# -- packs and publishes the CLI to npm. It runs
+# [Changesets](https://github.com/changesets/changesets), the tool this repo
+# uses to track pending releases (each PR that changes the CLI's user-facing
+# behavior adds a small Markdown file under `.changeset/` describing the
+# change and its version bump; this workflow reads those files to decide
+# what to do next).
 #
-#   select-mode  reads the repo and decides: "version", "publish" or "none"
-#   version      opens or updates the "Version Packages" PR
-#   pack         builds, runs every gate, and packs the tarballs
-#   publish      uploads those tarballs to npm via trusted publishing (OIDC)
+# The flow, one job each:
+#   1. select-mode  reads the repo and decides: "version", "publish", or "none"
+#   2. version      opens or updates the "Version Packages" PR
+#   3. pack         builds, runs every gate, and packs the tarballs
+#   4. publish      uploads those tarballs to npm via trusted publishing
 #
-# This is the shape the changesets docs recommend for trusted publishing.
-# `publish` holds `id-token: write`; `pack` holds nothing beyond `contents:
-# read`. Nothing in `publish` executes code from the repo other than the
-# changesets CLI and the pnpm shim below, and it installs with --ignore-scripts.
+# "Trusted publishing" is npm's passwordless publish mechanism: instead of a
+# long-lived npm token stored as a secret, this workflow proves its identity
+# to npm via OIDC (OpenID Connect -- a short-lived, cryptographically signed
+# token GitHub Actions mints for the running job, which npm verifies against
+# the trusted-publisher config for this exact repo and workflow file). This
+# is the shape the changesets docs recommend for trusted publishing: the one
+# job that holds the OIDC token (`publish`, via `id-token: write`) never runs
+# build, test, or repo-script code -- it only runs the changesets CLI and the
+# pnpm shim below, with `--ignore-scripts`. `pack` holds nothing beyond
+# `contents: read`.
+#
+# "Staged" publish (vs. a "direct" one) means `npm stage publish` uploads the
+# tarball and creates the version, but it isn't installable yet until a
+# maintainer separately approves it with 2FA (`npm stage approve`) -- npm's
+# own stronger default over a direct `npm publish`, which would make the
+# version live immediately. "Provenance" is the signed, publicly verifiable
+# record npm attaches to a trusted-published package, linking it back to the
+# exact commit and workflow run that built it.
 #
 # npm trusted publishers are configured per package, against this exact file
-# name (`release.yml`, not a path). See CLAUDE.md, "Releases".
+# name (`release.yml`, not a path). See CLAUDE.md, "Releases", for the full
+# design rationale.
 on:
   push:
     branches: [main]

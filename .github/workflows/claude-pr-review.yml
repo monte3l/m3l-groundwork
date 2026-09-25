@@ -1,6 +1,12 @@
 name: Claude PR Review
 
-# Automated review on every opened/updated PR. Read-only on repo contents
+# What this does: automatically posts a Claude-written review comment on
+# every pull request when it's opened or pushed to, checking the same
+# things a human reviewer would (see the prompt below). It never approves,
+# blocks, or pushes code -- it only comments -- and it skips bot-authored
+# and fork pull requests.
+#
+# Read-only on repo contents
 # (contents: read) -- Claude posts a review comment, it never pushes code,
 # and it cannot submit a formal GitHub review or approve a PR (Anthropic's
 # own docs/capabilities-and-limitations.md), so it cannot satisfy or bypass

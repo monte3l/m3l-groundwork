@@ -1,5 +1,10 @@
 name: Dependency Review
 
+# What this does: on every pull request into `main`, scans the dependency
+# changes the PR introduces (new or updated packages) and fails if any of
+# them carries a high-severity known vulnerability or a license outside the
+# allowed list below. Runs GitHub's own `dependency-review-action`; nothing
+# here is installed or built, so it's fast and has no build-time footprint.
 on:
   pull_request:
     branches: [main]

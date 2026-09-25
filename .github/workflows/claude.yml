@@ -1,6 +1,10 @@
 name: Claude Code
 
-# Responds to @claude mentions on issues, PR reviews, and review comments.
+# What this does: lets anyone mention "@claude" in an issue, a PR review, or
+# a review comment to ask Claude Code to make a change or answer a question,
+# interactively. It runs whenever one of those events contains "@claude" in
+# its text, and does nothing otherwise.
+#
 # Interactive mode only (no `prompt` input) -- Claude commits to a branch and
 # links back to a PR-creation page; it never opens a PR itself, so this
 # never bypasses the "every change lands through a human-opened PR" rule in
@@ -34,9 +38,11 @@ jobs:
       pull-requests: write
       issues: write
       # Required even with claude_code_oauth_token auth: the default GitHub
-      # App authentication path uses this to fetch a GitHub OIDC token for
-      # its own token exchange, separate from how the action authenticates
-      # to Anthropic (docs/setup.md, anthropics/claude-code-action).
+      # App authentication path uses this to fetch a GitHub OIDC token (OIDC
+      # -- OpenID Connect -- is a short-lived, cryptographically signed
+      # identity token GitHub Actions can mint for the running job, used
+      # here for its own token exchange) separate from how the action
+      # authenticates to Anthropic (docs/setup.md, anthropics/claude-code-action).
       id-token: write
       actions: read # lets Claude read CI results on the PR it's tagged in
     steps:
