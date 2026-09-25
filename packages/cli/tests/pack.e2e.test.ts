@@ -66,6 +66,16 @@ describe("published tarball end-to-end", () => {
     expect(existsSync(join(cliDir, "plugin"))).toBe(false);
   });
 
+  it("ships the repo's own LICENSE file inside the tarball", () => {
+    const shippedLicense = join(scratch, "extracted", "package", "LICENSE");
+    expect(existsSync(shippedLicense)).toBe(true);
+
+    const rootLicense = join(cliDir, "..", "..", "LICENSE");
+    expect(readFileSync(shippedLicense, "utf8")).toBe(
+      readFileSync(rootLicense, "utf8"),
+    );
+  });
+
   it("lists all three packs from the vendored templates/packs", () => {
     const output = execFileSync("node", [installedBin, "--list-packs"], {
       encoding: "utf8",
