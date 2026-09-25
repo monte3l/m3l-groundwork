@@ -252,6 +252,6 @@
   "test_branch_coverage80_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/vitest.config.ts's v8 coverage gate: 80% branch coverage, per file.",
   "hardened_site_status": "Met",
   "hardened_site_justification": "GitHub (repository) and npmjs.com (download site) both serve CSP, HSTS, X-Content-Type-Options: nosniff, and X-Frame-Options -- verified with `curl -sI` against https://github.com/monte3l/m3l-groundwork and https://www.npmjs.com/package/@monte3l/groundwork.",
-  "security_review_status": "Unmet",
-  "security_review_justification": "A review is drafted at https://github.com/monte3l/m3l-groundwork/blob/main/docs/security-review.md but its human sign-off (the criterion requires an actual performed review, not only a written one) is not yet completed; will flip to Met once the maintainer signs off there."
+  "security_review_status": "Met",
+  "security_review_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/docs/security-review.md -- reviewed and signed off by the maintainer on 2026-09-26, considering the security requirements and boundary from docs/assurance-case.md."
 }

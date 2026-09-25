@@ -77,4 +77,4 @@ series -- see [`ROADMAP.md`](../ROADMAP.md)), whichever comes first.
 
 ---
 
-_Performed and signed off by: **[maintainer to complete: name, date, and a one-line confirmation that the manual review above was actually carried out, not only drafted]**._
+_Performed and signed off by: **Enrico Lionello, 2026-09-26** -- confirmed the manual review above (the threat model, trust-boundary checks, and findings table) was actually carried out against the real repository, not only drafted._
