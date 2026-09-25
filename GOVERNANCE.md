@@ -28,12 +28,12 @@ actually runs today, not an aspirational one.
 
 ## Roles
 
-| Role                  | Held by                                                             | Responsibilities                                                                                                                                                                    |
-| --------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Maintainer**        | [Enrico Lionello](https://github.com/enri3l), GitHub org owner       | Reviews and merges PRs, triages issues, makes release and design decisions, holds the `npm-publish` environment's required-reviewer approval and the `npm stage approve` 2FA step. |
-| **Security contact**  | The maintainer                                                        | Receives and triages reports via [private vulnerability reporting](SECURITY.md#reporting-a-vulnerability); follows the [response process](SECURITY.md#response-process).            |
-| **Release approver**  | The maintainer                                                        | Approves the `npm-publish` deployment gate and runs `npm stage approve` after a staged publish (see [`CLAUDE.md`](CLAUDE.md#releases)) -- neither step is automatable by design.     |
-| **Contributor**       | Anyone opening an issue or PR                                        | Follows [`CONTRIBUTING.md`](CONTRIBUTING.md); has no merge or release authority.                                                                                                     |
+| Role                 | Held by                                                        | Responsibilities                                                                                                                                                                   |
+| -------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Maintainer**       | [Enrico Lionello](https://github.com/enri3l), GitHub org owner | Reviews and merges PRs, triages issues, makes release and design decisions, holds the `npm-publish` environment's required-reviewer approval and the `npm stage approve` 2FA step. |
+| **Security contact** | The maintainer                                                 | Receives and triages reports via [private vulnerability reporting](SECURITY.md#reporting-a-vulnerability); follows the [response process](SECURITY.md#response-process).           |
+| **Release approver** | The maintainer                                                 | Approves the `npm-publish` deployment gate and runs `npm stage approve` after a staged publish (see [`CLAUDE.md`](CLAUDE.md#releases)) -- neither step is automatable by design.   |
+| **Contributor**      | Anyone opening an issue or PR                                  | Follows [`CONTRIBUTING.md`](CONTRIBUTING.md); has no merge or release authority.                                                                                                   |
 
 Adding a second maintainer means, at minimum: a GitHub org owner invite, npm
 package-maintainer access on `@monte3l/groundwork`, and a reviewer seat on
