@@ -140,6 +140,14 @@ jobs:
     needs: pack
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Gates the git tag, the GitHub Release, and `npm stage publish` behind a
+    # required reviewer (see CLAUDE.md, "Releases" -- "Not done, worth
+    # knowing"): without this, all three already exist by the time a
+    # maintainer even sees there's a staged version to approve with
+    # `npm stage approve`. The environment (created once, by hand, via
+    # `gh api`) has no branch restriction beyond `main` and no wait timer --
+    # it exists to require a person, not to add a delay.
+    environment: npm-publish
     permissions:
       contents: write # changesets/action/publish pushes tags and creates GitHub Releases
       id-token: write # npm trusted publishing (OIDC) and provenance

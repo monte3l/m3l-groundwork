@@ -562,13 +562,16 @@ at a non-npm source, and carries no version pin of its own -- three structural
 guards against this design quietly regrowing the npm-publish shape it
 deliberately dropped.
 
-**Not done, worth knowing.** Staged publishing gates going live, but not the
-tag/Release ordering problem above -- both are already created by the time a
-maintainer even sees there's something to approve. A GitHub `environment`
-with required reviewers on the `publish` job would gate the job itself, before
-`npm stage publish` (and therefore the tag/Release) ever runs, closing that
-gap -- at the cost of a second approval on top of npm's own, and needing to
-stay in sync with whatever the trusted-publisher configuration expects.
+**The `npm-publish` environment closes the tag/Release ordering gap.**
+`release.yml`'s `publish` job has `environment: npm-publish`, a GitHub
+environment (created once, by hand, via `gh api` -- not committed as JSON,
+same reasoning as the branch ruleset above) with one required reviewer (the
+maintainer, self-review allowed since there's only one) and deployments
+restricted to `main`. This pauses the job itself -- before the git tag, the
+GitHub Release, or `npm stage publish` exist -- rather than only gating
+`npm stage approve` afterward, which is the second, independent approval
+this design accepts on top of npm's own staged-publish gate. Read the live
+state with `gh api repos/monte3l/m3l-groundwork/environments/npm-publish`.
 
 ## Testing
 
