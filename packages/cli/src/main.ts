@@ -68,8 +68,8 @@ const USAGE = [
   "  --fresh                 Force fresh-bootstrap mode, even if the target looks pre-existing",
   "  --pack <name>           Install an opt-in pack from templates/packs/ (fresh mode only; repeatable)",
   "  --list-packs            Print every available pack and exit",
-  "  --help                  Print this message",
-  "  --version               Print the CLI's version",
+  "  --help, -h              Print this message",
+  "  --version, -v           Print the CLI's version",
   "",
   "With no --adopt/--fresh override, the target directory is inspected: an",
   "empty or missing directory bootstraps fresh; a directory that already",
@@ -88,6 +88,31 @@ const REPEATABLE_VALUE_FLAGS = new Set(["--pack"]);
 const HELP_FLAGS = new Set(["--help", "-h"]);
 const VERSION_FLAGS = new Set(["--version", "-v"]);
 const LIST_PACKS_FLAGS = new Set(["--list-packs"]);
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+  "--skip-install",
+  "--force",
+  "--adopt",
+  "--fresh",
+  ...LIST_PACKS_FLAGS,
+  ...HELP_FLAGS,
+  ...VERSION_FLAGS,
+]);
+
+/**
+ * Thrown for a bad invocation (unknown flag, missing target dir, missing flag
+ * value, contradictory mode flags) -- distinguished from a runtime error so the
+ * CLI exits 2, not 1.
+ *
+ * @example
+ * ```sh
+ * npx @monte3l/groundwork@next ./my-app --bogus
+ * # stderr: unrecognized option: --bogus (followed by the usage text)
+ * echo $? # 2 -- a runtime failure exits 1 instead
+ * ```
+ */
+export class CliUsageError extends Error {
+  override readonly name = "CliUsageError";
+}
 
 interface TokenizedArgv {
   positional: string[];
@@ -114,24 +139,29 @@ function tokenizeArgv(argv: string[]): TokenizedArgv {
 
     if (REPEATABLE_VALUE_FLAGS.has(arg)) {
       const value = argv[i + 1];
-      if (value !== undefined) {
-        const existing = repeatableValues.get(arg) ?? [];
-        existing.push(value);
-        repeatableValues.set(arg, existing);
-        i++;
+      if (value === undefined || value.startsWith("-")) {
+        throw new CliUsageError(`${arg} requires a value\n\n${USAGE}`);
       }
+      const existing = repeatableValues.get(arg) ?? [];
+      existing.push(value);
+      repeatableValues.set(arg, existing);
+      i++;
       continue;
     }
 
     if (VALUE_FLAGS.has(arg)) {
       const value = argv[i + 1];
-      if (value !== undefined) {
-        values.set(arg, value);
-        i++;
+      if (value === undefined || value.startsWith("-")) {
+        throw new CliUsageError(`${arg} requires a value\n\n${USAGE}`);
       }
+      values.set(arg, value);
+      i++;
       continue;
     }
 
+    if (!BOOLEAN_FLAGS.has(arg)) {
+      throw new CliUsageError(`unrecognized option: ${arg}\n\n${USAGE}`);
+    }
     flags.add(arg);
   }
 
@@ -161,9 +191,20 @@ export function parseArgs(argv: string[]): CliOptions {
     };
   }
 
+  if (flags.has("--adopt") && flags.has("--fresh")) {
+    throw new CliUsageError(
+      `--adopt and --fresh are mutually exclusive\n\n${USAGE}`,
+    );
+  }
+
   const targetArg = positional[0];
   if (targetArg === undefined) {
-    throw new Error(USAGE);
+    throw new CliUsageError(USAGE);
+  }
+  if (positional.length > 1) {
+    throw new CliUsageError(
+      `unexpected argument(s): ${positional.slice(1).join(" ")}\n\n${USAGE}`,
+    );
   }
 
   const targetDir = resolve(targetArg);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { basename } from "node:path";
-import { parseArgs, templatesCoreDir } from "../src/main.js";
+import { CliUsageError, parseArgs, templatesCoreDir } from "../src/main.js";
 
 describe("parseArgs", () => {
   it("throws with usage text when no target directory is given", () => {
@@ -92,6 +92,79 @@ describe("parseArgs", () => {
     const options = parseArgs(["--list-packs"]);
     expect(options.listPacks).toBe(true);
     expect(options.targetDir).toBe("");
+  });
+});
+
+describe("parseArgs (CliUsageError)", () => {
+  it("throws CliUsageError (not a plain Error) with usage text and the short-alias hints when no target directory is given", () => {
+    expect(() => parseArgs([])).toThrow(CliUsageError);
+    expect(() => parseArgs([])).toThrow(/usage: m3l-groundwork/i);
+    expect(() => parseArgs([])).toThrow(/--help, -h/);
+    expect(() => parseArgs([])).toThrow(/--version, -v/);
+  });
+
+  it("throws CliUsageError naming the flag for an unrecognized option", () => {
+    expect(() => parseArgs(["/tmp/x", "--bogus"])).toThrow(CliUsageError);
+    expect(() => parseArgs(["/tmp/x", "--bogus"])).toThrow(
+      /unrecognized option: --bogus/,
+    );
+  });
+
+  it("throws CliUsageError when --name has no following value", () => {
+    expect(() => parseArgs(["/tmp/x", "--name"])).toThrow(CliUsageError);
+    expect(() => parseArgs(["/tmp/x", "--name"])).toThrow(
+      /--name requires a value/,
+    );
+  });
+
+  it("throws CliUsageError when --pack has no following value", () => {
+    expect(() => parseArgs(["/tmp/x", "--pack"])).toThrow(CliUsageError);
+    expect(() => parseArgs(["/tmp/x", "--pack"])).toThrow(
+      /--pack requires a value/,
+    );
+  });
+
+  it("throws CliUsageError when --adopt and --fresh are both given", () => {
+    expect(() => parseArgs(["/tmp/x", "--adopt", "--fresh"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--adopt", "--fresh"])).toThrow(
+      /--adopt and --fresh are mutually exclusive/,
+    );
+  });
+
+  it("throws CliUsageError when --name's following token looks like another flag rather than a value", () => {
+    expect(() => parseArgs(["/tmp/x", "--name", "--force"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--name", "--force"])).toThrow(
+      /--name requires a value/,
+    );
+  });
+
+  it("throws CliUsageError when --pack's following token looks like another flag rather than a value", () => {
+    expect(() => parseArgs(["/tmp/x", "--pack", "--adopt"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--pack", "--adopt"])).toThrow(
+      /--pack requires a value/,
+    );
+  });
+
+  it("throws CliUsageError naming the surplus argument when more than one positional is given", () => {
+    expect(() => parseArgs(["/tmp/x", "/tmp/y"])).toThrow(CliUsageError);
+    expect(() => parseArgs(["/tmp/x", "/tmp/y"])).toThrow(
+      /unexpected argument\(s\): \/tmp\/y/,
+    );
+  });
+
+  it("throws CliUsageError for a surplus positional left over after a value-flag consumes its value", () => {
+    expect(() => parseArgs(["--name", "my", "app", "/tmp/x"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["--name", "my", "app", "/tmp/x"])).toThrow(
+      /unexpected argument\(s\)/,
+    );
   });
 });
 
