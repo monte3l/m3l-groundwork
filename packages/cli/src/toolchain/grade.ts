@@ -7,7 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readJsoncFile, stripJsoncNoise } from "../jsonc.js";
+import { readJsoncFile, stripJsComments } from "../jsonc.js";
 import { walkBounded } from "../survey/fs-walk.js";
 import { RULES } from "./rules.js";
 import type {
@@ -62,7 +62,7 @@ function readRaw(path: string): string | undefined {
 /** File text with comments stripped, or `undefined` when unreadable. */
 function readSource(path: string): string | undefined {
   try {
-    return stripJsoncNoise(readFileSync(path, "utf8"));
+    return stripJsComments(readFileSync(path, "utf8"));
   } catch {
     return undefined;
   }
@@ -96,6 +96,11 @@ function scrapeGateSteps(text: string): {
  * Reads every `verify.mjs` invocation out of one YAML surface as data: the
  * `--group`/`--step` each names. YAML is scraped, never parsed. An invocation
  * naming neither (a matrix, or a bare full run) marks the surface `dynamic`.
+ * Comments are stripped per line before any `\` line continuation is joined,
+ * so a comment ending in `\` cannot swallow the next line. A quoted value is
+ * read unquoted. A mention inside an `echo` (in the same shell command, not an
+ * earlier `&&`/`;`/`|` segment) or inside a step's `name:` with no `run:`
+ * before it on the line is not an invocation.
  */
 function scrapeLaneInvocations(text: string): {
   seen: boolean;
@@ -107,14 +112,23 @@ function scrapeLaneInvocations(text: string): {
   const steps: string[] = [];
   let dynamic = false;
   let seen = false;
-  for (const raw of text.split("\n")) {
-    const line = raw.replace(/(^|\s)#.*$/, "");
+  const logicalLines = text
+    .split("\n")
+    .map((raw) => raw.replace(/(^|\s)#.*$/, ""))
+    .join("\n")
+    .replace(/\\\r?\n[ \t]*/g, " ")
+    .split("\n");
+  for (const line of logicalLines) {
     const at = line.indexOf("verify.mjs");
     if (at === -1) continue;
+    const prefix = line.slice(0, at);
+    const lastSegment = prefix.split(/&&|\|\||[;|]/).pop() ?? "";
+    if (/\becho\b/.test(lastSegment)) continue;
+    if (/\bname\s*:/.test(prefix) && !/\brun\s*:/.test(prefix)) continue;
     seen = true;
     const rest = line.slice(at);
-    const group = /--group[ =]+([A-Za-z][\w-]*)/.exec(rest);
-    const step = /--step[ =]+([A-Za-z][\w-]*)/.exec(rest);
+    const group = /--group[ =]+["']?([A-Za-z][\w-]*)["']?/.exec(rest);
+    const step = /--step[ =]+["']?([A-Za-z][\w-]*)["']?/.exec(rest);
     if (group?.[1] !== undefined) groups.push(group[1]);
     else if (step?.[1] !== undefined) steps.push(step[1]);
     else dynamic = true;

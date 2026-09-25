@@ -29,6 +29,11 @@ export interface HarnessSnapshot {
   settings: { present: boolean; error: string | undefined; parsed: unknown };
   /** `.claude/settings.local.json`, parsed, or `undefined` when absent/unparseable. */
   settingsLocal: unknown;
+  /**
+   * Why `.claude/settings.local.json` failed to parse, or `undefined` when it
+   * parsed or is absent -- the distinction `settingsLocal` alone cannot make.
+   */
+  settingsLocalError: string | undefined;
   /** Hook filename to source text. */
   hooks: Map<string, string>;
   /** Agent filename (with `.md`) to text. */
@@ -85,6 +90,11 @@ const DESCRIPTION_MIN = 40;
 const DESCRIPTION_MAX = 1024;
 const BARE_ENTRY_POINT =
   /process\.argv\[1\]\s*===\s*fileURLToPath\(import\.meta\.url\)/;
+// Contains `realpathSync(process.argv[1])`, but compares it to a URL-encoded
+// pathname rather than an OS path -- the two never agree under a symlinked
+// or percent-encoded path, so this form fails open too.
+const URL_PATHNAME_ENTRY_POINT =
+  /realpathSync\(process\.argv\[1\]\)\s*===\s*new URL\(import\.meta\.url\)\.pathname/;
 const HOOK_PATH = /\.claude\/hooks\/([A-Za-z0-9_.-]+)/g;
 const CLAUDE_PATH = /\.claude\/[A-Za-z0-9_.*/-]+/g;
 const REFERENCE_PATH = /\breferences\/[A-Za-z0-9_./-]+\.md/g;
@@ -234,12 +244,33 @@ const settingsParses: HarnessRule = {
   }),
 };
 
+const settingsLocalParses: HarnessRule = {
+  id: "settings-local-parses",
+  level: "structural",
+  category: "settings",
+  check: (s) => ({
+    checked: s.settingsLocalError === undefined ? 0 : 1,
+    failures:
+      s.settingsLocalError === undefined
+        ? []
+        : [
+            {
+              subject: ".claude/settings.local.json",
+              message: `does not parse: ${s.settingsLocalError}`,
+            },
+          ],
+  }),
+};
+
 const hookDangling: HarnessRule = {
   id: "hook-dangling",
   level: "structural",
   category: "hooks",
   check: (s) => {
-    if (s.settings.error !== undefined) return { checked: 0, failures: [] };
+    // A broken settings.local.json hides its registrations; judging off
+    // settings.json alone would misreport them.
+    if (s.settings.error !== undefined || s.settingsLocalError !== undefined)
+      return { checked: 0, failures: [] };
     const referenced = registeredHookFiles(s);
     return {
       checked: referenced.size,
@@ -258,7 +289,10 @@ const hookOrphan: HarnessRule = {
   level: "structural",
   category: "hooks",
   check: (s) => {
-    if (s.settings.error !== undefined) return { checked: 0, failures: [] };
+    // A broken settings.local.json hides its registrations; judging off
+    // settings.json alone would misreport them.
+    if (s.settings.error !== undefined || s.settingsLocalError !== undefined)
+      return { checked: 0, failures: [] };
     const referenced = reachableHookFiles(s);
     const hookFiles = [...s.hooks.keys()].filter(
       (name) => name.endsWith(".mjs") || name.endsWith(".js"),
@@ -290,12 +324,13 @@ const hookEntrypoint: HarnessRule = {
         .filter(
           ([, source]) =>
             BARE_ENTRY_POINT.test(source) ||
+            URL_PATHNAME_ENTRY_POINT.test(source) ||
             !source.includes("realpathSync(process.argv[1])"),
         )
         .map(([name]) => ({
           subject: `.claude/hooks/${name}`,
           message:
-            "compares process.argv[1] to import.meta.url without realpathSync -- false under any symlinked path, so the hook fails open",
+            "does not compare realpathSync(process.argv[1]) to fileURLToPath(import.meta.url) -- false under a symlinked or URL-encoded path, so the hook fails open",
         })),
     };
   },
@@ -631,6 +666,7 @@ const skillReferencesResolve: HarnessRule = {
 /** Every rule, structural first. Order is the order findings are reported in. */
 export const RULES: readonly HarnessRule[] = [
   settingsParses,
+  settingsLocalParses,
   hookDangling,
   hookOrphan,
   hookEntrypoint,

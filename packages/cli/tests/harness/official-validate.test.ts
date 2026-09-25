@@ -58,6 +58,28 @@ function stubClaude(stdout: string): void {
   chmodSync(script, 0o755);
 }
 
+/**
+ * Installs a stub `claude` that answers differently depending on which
+ * directory it was asked to validate -- `reportOfficialValidation` invokes it
+ * once per scanned surface (`.claude/skills`, then `.claude/agents`), always
+ * as `claude plugin validate --strict --json <target>`, so the target is the
+ * command's 5th positional argument (`$5` in `/bin/sh`) and always ends in
+ * either `skills` or `agents`.
+ */
+function stubClaudeByTarget(bySuffix: {
+  skills: string;
+  agents: string;
+}): void {
+  const script = join(binDir, "claude");
+  const branch = (suffix: "skills" | "agents"): string =>
+    `  *${suffix})\n    cat <<'STUB_EOF_${suffix.toUpperCase()}'\n${bySuffix[suffix]}\nSTUB_EOF_${suffix.toUpperCase()}\n    ;;`;
+  writeFileSync(
+    script,
+    `#!/bin/sh\ntarget="$5"\ncase "$target" in\n${branch("skills")}\n${branch("agents")}\nesac\n`,
+  );
+  chmodSync(script, 0o755);
+}
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "official-validate-root-"));
   binDir = mkdtempSync(join(tmpdir(), "official-validate-bin-"));
@@ -132,5 +154,47 @@ describe("reportOfficialValidation", () => {
     const { reporter, lines } = collect();
     reportOfficialValidation(root, reporter);
     expect(lines).toEqual([]);
+  });
+
+  it("does not throw when an entry in `contents` is null, and warns instead of crashing", () => {
+    stubClaude(JSON.stringify({ contents: [null] }));
+    const { reporter, lines } = collect();
+    expect(() => {
+      reportOfficialValidation(root, reporter);
+    }).not.toThrow();
+    expect(lines.some((line) => line.startsWith("warn"))).toBe(true);
+  });
+
+  it("does not throw when a `contents` entry carries findings but no `file`, and warns instead of crashing", () => {
+    // A malformed entry that still has a real errors array -- reading
+    // entry.file to build the reported path must not call path.relative
+    // with `undefined` and throw ERR_INVALID_ARG_TYPE.
+    stubClaude(
+      JSON.stringify({
+        contents: [{ errors: [{ path: "frontmatter", message: "broken" }] }],
+      }),
+    );
+    const { reporter, lines } = collect();
+    expect(() => {
+      reportOfficialValidation(root, reporter);
+    }).not.toThrow();
+    expect(lines.some((line) => line.startsWith("warn"))).toBe(true);
+  });
+
+  it("does not print a misleading 'no findings' line when only one of the two scanned directories is unreadable", () => {
+    // .claude/skills answers clean (a real report, zero findings);
+    // .claude/agents answers unreadable. `ran` must not stay pinned true from
+    // the first directory and paper over the second directory's failure with
+    // an "ok ... no findings" line that never accounted for it.
+    stubClaudeByTarget({
+      skills: JSON.stringify({ success: true, contents: [] }),
+      agents: "not json",
+    });
+    const { reporter, lines } = collect();
+    reportOfficialValidation(root, reporter);
+    expect(lines).toContain(
+      "warn claude plugin validate gave no readable report for .claude/agents",
+    );
+    expect(lines).not.toContain("ok claude plugin validate: no findings");
   });
 });

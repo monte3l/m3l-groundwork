@@ -75,15 +75,14 @@ function loadSnapshot(root: string): HarnessSnapshot {
       };
     });
 
-  const settingsLocalResult = readJsoncFile(
+  const settingsLocal = readSettings(
     join(root, ".claude", "settings.local.json"),
   );
 
   return {
     settings: readSettings(join(root, ".claude", "settings.json")),
-    settingsLocal: settingsLocalResult.ok
-      ? settingsLocalResult.value
-      : undefined,
+    settingsLocal: settingsLocal.parsed,
+    settingsLocalError: settingsLocal.error,
     hooks: readEach(/^\.claude\/hooks\/[^/]+$/, ".claude/hooks/"),
     agents: readEach(/^\.claude\/agents\/[^/]+\.md$/, ".claude/agents/"),
     skills,
