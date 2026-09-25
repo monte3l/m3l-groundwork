@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, test } from "vitest";
 import {
   existsSync,
   mkdtempSync,
@@ -103,6 +103,102 @@ describe("listPackNames / loadPack", () => {
     expect(() => loadPack("future", packsRoot)).toThrow(
       /unsupported pack\.json schemaVersion/,
     );
+  });
+
+  it("throws when the manifest's own name field contains a path-traversal segment, even though the directory name (the call argument) is safe", () => {
+    // packDir is built from the CALL argument ("safe-dir"), not from
+    // manifest.name -- so this manifest loads successfully today with no
+    // validation at all of the internal name field, even though that field
+    // is later used to build a filesystem path in stagePackFiles.
+    writeManifest(packsRoot, "safe-dir", { name: "../escape" });
+    expect(() => loadPack("safe-dir", packsRoot)).toThrow(/pack name/i);
+  });
+
+  it("throws when the manifest's own name field doesn't match the directory it was loaded from", () => {
+    // packDir is resolved from the CALL argument ("real-dir"). manifest.name
+    // ("different-name") is shape-valid (passes PACK_NAME_PATTERN) but never
+    // cross-checked against the directory it lives in -- so two pack
+    // directories could declare the same internal name while living at
+    // different paths, and stagePackFiles/installPack key their staging path
+    // and rmSync cleanup on manifest.name alone. This must be a DIFFERENT
+    // failure than the shape-only check above (which fires on a malformed
+    // name, not a mismatched one), so assert on both names appearing in the
+    // message rather than just /pack name/i.
+    writeManifest(packsRoot, "real-dir", { name: "different-name" });
+    expect(() => loadPack("real-dir", packsRoot)).toThrow(/name/i);
+    expect(() => loadPack("real-dir", packsRoot)).toThrow(
+      /real-dir.*different-name|different-name.*real-dir/,
+    );
+  });
+
+  it("throws when pack.json's budget is missing a required CapCounts key", () => {
+    // Written as a raw object literal (not through writeManifest/PackManifest)
+    // specifically to omit the `scripts` key entirely -- a malformed budget
+    // shape that would otherwise silently propagate into report.ts's
+    // sumPackBudgets arithmetic as `undefined`, poisoning the sum to NaN.
+    const packDir = join(packsRoot, "budget-missing-key");
+    mkdirSync(join(packDir, "files"), { recursive: true });
+    writeFileSync(
+      join(packDir, "pack.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "budget-missing-key",
+        description: "a test pack with an incomplete budget",
+        modes: ["fresh", "adopt"],
+        budget: { agents: 1, skills: 0, hooks: 0, workflows: 0 },
+        wiring: { settings: {}, packageScripts: {}, verifySteps: [] },
+      }),
+    );
+    expect(() => loadPack("budget-missing-key", packsRoot)).toThrow(/budget/i);
+  });
+
+  test.each([
+    [
+      "a negative number",
+      { agents: 1, skills: 0, hooks: 0, workflows: 0, scripts: -1 },
+    ],
+    [
+      "a non-numeric value",
+      { agents: 1, skills: 0, hooks: 0, workflows: 0, scripts: "zero" },
+    ],
+  ])(
+    "throws when pack.json's budget has %s for a CapCounts field",
+    (_label, budget) => {
+      const dirName = `budget-invalid-${String(_label).replace(/\s+/g, "-")}`;
+      const packDir = join(packsRoot, dirName);
+      mkdirSync(join(packDir, "files"), { recursive: true });
+      writeFileSync(
+        join(packDir, "pack.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          name: dirName,
+          description: "a test pack with an invalid budget field",
+          modes: ["fresh", "adopt"],
+          budget,
+          wiring: { settings: {}, packageScripts: {}, verifySteps: [] },
+        }),
+      );
+      expect(() => loadPack(dirName, packsRoot)).toThrow(/budget/i);
+    },
+  );
+
+  it("throws when pack.json has no modes array at all", () => {
+    const packDir = join(packsRoot, "no-modes");
+    mkdirSync(join(packDir, "files"), { recursive: true });
+    // Written as a raw object literal (not through writeManifest/PackManifest)
+    // specifically to omit the `modes` key entirely, rather than setting it
+    // to undefined against a typed field.
+    writeFileSync(
+      join(packDir, "pack.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "no-modes",
+        description: "a test pack with no modes key",
+        budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+        wiring: { settings: {}, packageScripts: {}, verifySteps: [] },
+      }),
+    );
+    expect(() => loadPack("no-modes", packsRoot)).toThrow(/modes/i);
   });
 });
 
@@ -347,6 +443,37 @@ describe("stagePackFiles", () => {
           ),
         ),
       ).toBe(true);
+    } finally {
+      rmSync(packsRoot, { recursive: true, force: true });
+      rmSync(groundworkDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("stagePackFiles clears stale staged files", () => {
+  it("removes a file staged by a previous pack version that the current version no longer has", () => {
+    const packsRoot = mkdtempSync(join(tmpdir(), "packs-stage-stale-root-"));
+    const groundworkDir = mkdtempSync(join(tmpdir(), "packs-stage-stale-gw-"));
+    try {
+      writeManifest(packsRoot, "evolve");
+      mkdirSync(join(packsRoot, "evolve", "files"), { recursive: true });
+      writeFileSync(join(packsRoot, "evolve", "files", "a.txt"), "a\n");
+      writeFileSync(join(packsRoot, "evolve", "files", "b.txt"), "b\n");
+
+      const packV1 = loadPack("evolve", packsRoot);
+      stagePackFiles(packV1, groundworkDir);
+      expect(
+        existsSync(join(groundworkDir, "packs", "evolve", "files", "b.txt")),
+      ).toBe(true);
+
+      // Simulate a newer pack version that dropped b.txt.
+      rmSync(join(packsRoot, "evolve", "files", "b.txt"));
+      const packV2 = loadPack("evolve", packsRoot);
+      stagePackFiles(packV2, groundworkDir);
+
+      expect(
+        existsSync(join(groundworkDir, "packs", "evolve", "files", "b.txt")),
+      ).toBe(false);
     } finally {
       rmSync(packsRoot, { recursive: true, force: true });
       rmSync(groundworkDir, { recursive: true, force: true });

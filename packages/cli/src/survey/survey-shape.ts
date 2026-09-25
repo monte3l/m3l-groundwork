@@ -32,14 +32,20 @@ const FRAMEWORK_DEP_NAMES = [
   "hono",
 ];
 
-function readPackageJson(dir: string): Record<string, unknown> | undefined {
+function readPackageJson(
+  dir: string,
+  undetermined: string[],
+): Record<string, unknown> | undefined {
   const path = join(dir, "package.json");
   if (!existsSync(path)) {
     return undefined;
   }
   try {
     return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
+  } catch (error) {
+    undetermined.push(
+      `could not parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return undefined;
   }
 }
@@ -197,9 +203,13 @@ function collectKindEvidence(
   };
 }
 
-/** Surveys codebase shape at `dir`. Offline, read-only, records evidence rather than verdicts. */
-export function surveyShape(dir: string): ShapeSurvey {
-  const packageJson = readPackageJson(dir);
+/**
+ * Surveys codebase shape at `dir`. Offline, read-only, records evidence
+ * rather than verdicts. Appends anything it could not parse (a malformed
+ * `package.json`) to `undetermined`; an absent file is not recorded.
+ */
+export function surveyShape(dir: string, undetermined: string[]): ShapeSurvey {
+  const packageJson = readPackageJson(dir, undetermined);
   const monorepo = detectMonorepo(dir, packageJson);
 
   return {

@@ -35,8 +35,16 @@ export function detectMode(dir: string): ModeDetection {
     return { mode: "adopt", signal: "found package.json" };
   }
 
-  if (entries.some((entry) => entry.isDirectory() && entry.name === ".git")) {
-    return { mode: "adopt", signal: "found a .git directory" };
+  // A worktree or submodule checkout has `.git` as a file (`gitdir: <path>`),
+  // not a directory -- both mean an established repository.
+  const gitEntry = entries.find((entry) => entry.name === ".git");
+  if (gitEntry !== undefined) {
+    return {
+      mode: "adopt",
+      signal: gitEntry.isDirectory()
+        ? "found a .git directory"
+        : "found a .git file (a worktree or submodule)",
+    };
   }
 
   const looseSource = entries.find(

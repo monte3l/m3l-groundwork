@@ -34,7 +34,7 @@ vi.mock("../src/plugin.js", () => ({
   installCustomizeSkillGuarded: installCustomizeSkillGuardedMock,
 }));
 
-const { main } = await import("../src/main.js");
+const { main, CliUsageError } = await import("../src/main.js");
 
 describe("main", () => {
   let targetDir: string;
@@ -204,7 +204,23 @@ describe("main", () => {
       expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
     });
 
-    it("surveys every pack and stages it, unapplied, regardless of --pack", () => {
+    // Contract 1: --force in adopt mode is a usage error (exit 2), not a
+    // plain runtime Error (exit 1) -- it is a contradictory flag/mode
+    // combination knowable from argv alone, once mode is resolved, the same
+    // class of mistake --adopt+--fresh already is.
+    it("rejects --force in adopt mode with CliUsageError, not a plain Error", () => {
+      const projectDir = join(targetDir, "existing-project2-usage");
+      mkdirSync(projectDir);
+      writeFileSync(join(projectDir, "package.json"), "{}");
+
+      expect(() => main([projectDir, "--force"])).toThrow(CliUsageError);
+      expect(() => main([projectDir, "--force"])).toThrow(
+        /--force has no effect in adopt mode/,
+      );
+      expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
+    });
+
+    it("surveys every pack and stages it, unapplied, when no --pack is given", () => {
       const projectDir = join(targetDir, "existing-project3");
       mkdirSync(projectDir);
       writeFileSync(
@@ -212,8 +228,7 @@ describe("main", () => {
         JSON.stringify({ name: "acme", type: "module" }),
       );
 
-      // --pack is passed but must be ignored -- adopt mode never installs.
-      main([projectDir, "--pack", "harness-extras"]);
+      main([projectDir]);
 
       const inventory = JSON.parse(
         readFileSync(join(projectDir, ".groundwork", "inventory.json"), "utf8"),
@@ -239,6 +254,42 @@ describe("main", () => {
         ),
       ).toBe(true);
       expect(existsSync(join(projectDir, ".claude"))).toBe(false);
+    });
+
+    // Contract 1: --pack in adopt mode is rejected up front as a usage
+    // error, rather than silently ignored while the survey proceeds to
+    // stage every pack regardless (the OLD contract, dropped by this fix --
+    // see the previous test for its replacement covering the no--pack
+    // case).
+    it("rejects --pack in adopt mode as a usage error, rather than silently ignoring it", () => {
+      const projectDir = join(targetDir, "existing-project3-pack-usage");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+
+      expect(() => main([projectDir, "--pack", "harness-extras"])).toThrow(
+        CliUsageError,
+      );
+      expect(() => main([projectDir, "--pack", "harness-extras"])).toThrow(
+        /no effect in adopt mode/,
+      );
+      expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
+    });
+
+    // Contract 2: --adopt against a target directory that does not exist
+    // yet is a clean usage error, not an uncaught filesystem exception --
+    // resolveMode checks existence before forcing adopt, so a missing
+    // target never reaches surveyProject's readdirSync call.
+    it("rejects --adopt against a nonexistent target directory as a usage error, not a raw filesystem exception", () => {
+      const missing = join(targetDir, "does-not-exist-yet");
+
+      expect(() => main([missing, "--adopt"])).toThrow(CliUsageError);
+      expect(() => main([missing, "--adopt"])).toThrow(
+        /does not exist -- --adopt needs an existing project to survey/,
+      );
+      expect(existsSync(missing)).toBe(false);
     });
   });
 

@@ -76,9 +76,9 @@ const USAGE = [
   "looks like a project (package.json, .git, or loose source files) is",
   "surveyed and adopted instead -- see .groundwork/adoption-report.md.",
   "",
-  "A pack requested in adopt mode is not installed -- adopt mode never",
-  "writes project files. Every available pack is surveyed into the report",
-  "regardless; run /customize to install one.",
+  "--pack and --force are rejected in adopt mode -- adopt mode never writes",
+  "project files. Every available pack is surveyed into the report",
+  "automatically; run /customize to install one.",
 ].join("\n");
 
 // --name takes a single value; --pack is repeatable. Every other
@@ -153,6 +153,9 @@ function tokenizeArgv(argv: string[]): TokenizedArgv {
       const value = argv[i + 1];
       if (value === undefined || value.startsWith("-")) {
         throw new CliUsageError(`${arg} requires a value\n\n${USAGE}`);
+      }
+      if (values.has(arg)) {
+        throw new CliUsageError(`${arg} given more than once\n\n${USAGE}`);
       }
       values.set(arg, value);
       i++;
@@ -324,21 +327,39 @@ function runFresh(options: CliOptions): void {
 }
 
 /**
+ * Rejects flags and targets adopt mode cannot honor, as usage errors (exit
+ * 2) rather than silently ignoring them: a missing target directory (there
+ * is nothing to survey), `--force` (adopt mode never writes project files),
+ * and `--pack` (every pack is surveyed automatically).
+ */
+function assertAdoptUsage(options: CliOptions): void {
+  if (!existsSync(options.targetDir)) {
+    throw new CliUsageError(
+      `${options.targetDir} does not exist -- --adopt needs an existing project to survey (use fresh mode, or omit --adopt, to bootstrap a new one)\n\n${USAGE}`,
+    );
+  }
+  if (options.force) {
+    throw new CliUsageError(
+      `--force has no effect in adopt mode -- adopt mode never writes project files; run /customize to reconcile instead.\n\n${USAGE}`,
+    );
+  }
+  if (options.packs.length > 0) {
+    throw new CliUsageError(
+      `--pack has no effect in adopt mode -- every pack is surveyed automatically; run /customize to install one.\n\n${USAGE}`,
+    );
+  }
+}
+
+/**
  * Surveys an already-established project and writes `.groundwork/` --
  * `inventory.json` and `adoption-report.md`. Never touches a project file:
  * the one addition is a purely-additive, collision-guarded copy of the
  * `/customize` skill (see `installCustomizeSkillGuarded`), so the report
  * can point straight at a working next step. Every pack under
- * `templates/packs/` is surveyed (not just those named by `--pack`, which
- * this mode ignores) and staged, unapplied, at `.groundwork/packs/<name>/`.
+ * `templates/packs/` is surveyed (`main` rejects `--pack` in this mode, see
+ * `assertAdoptUsage`) and staged, unapplied, at `.groundwork/packs/<name>/`.
  */
 function runAdopt(options: CliOptions, detection: ModeDetection): void {
-  if (options.force) {
-    throw new Error(
-      "--force has no effect in adopt mode -- adopt mode never writes project files; run /customize to reconcile instead.",
-    );
-  }
-
   console.log(`adopt mode: ${detection.signal}`);
 
   const survey = surveyProject(options.targetDir);
@@ -442,6 +463,7 @@ export function main(argv: string[]): void {
   });
 
   if (resolved.mode === "adopt") {
+    assertAdoptUsage(options);
     runAdopt(options, resolved);
   } else {
     runFresh(options);

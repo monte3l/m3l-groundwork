@@ -11,6 +11,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -75,6 +76,27 @@ export function listPackNames(root: string = packsRootDir()): string[] {
     .sort();
 }
 
+/** A pack's own `name` becomes a path segment under `.groundwork/packs/`, so it must be a bare lowercase identifier: no separators, no `..`. */
+const PACK_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+const CAP_KEYS = [
+  "agents",
+  "skills",
+  "hooks",
+  "workflows",
+  "scripts",
+] as const satisfies readonly (keyof CapCounts)[];
+
+/** True when `budget` has an own non-negative integer for every {@link CapCounts} key (one read per key). */
+function isValidBudget(budget: unknown): budget is CapCounts {
+  if (!isRecord(budget)) return false;
+  return CAP_KEYS.every((key) => {
+    if (!Object.hasOwn(budget, key)) return false;
+    const value: unknown = budget[key];
+    return Number.isInteger(value) && (value as number) >= 0;
+  });
+}
+
 /** Loads and validates one pack's manifest from under `root` (default `templates/packs`, overridable for tests). Throws, naming the available packs, if unknown or malformed. */
 export function loadPack(name: string, root: string = packsRootDir()): Pack {
   const packDir = join(root, name);
@@ -98,6 +120,42 @@ export function loadPack(name: string, root: string = packsRootDir()): Pack {
   if (manifest.schemaVersion !== 1) {
     throw new Error(
       `pack "${name}": unsupported pack.json schemaVersion ${JSON.stringify(manifest.schemaVersion)}`,
+    );
+  }
+  const manifestName: unknown = manifest.name;
+  if (
+    typeof manifestName !== "string" ||
+    !PACK_NAME_PATTERN.test(manifestName)
+  ) {
+    throw new Error(
+      `pack "${name}": pack.json's pack name ${JSON.stringify(manifestName)} must match ${String(PACK_NAME_PATTERN)} (a bare lowercase identifier, no path separators)`,
+    );
+  }
+  const modes: unknown = manifest.modes;
+  if (
+    !Array.isArray(modes) ||
+    modes.length === 0 ||
+    !modes.every((mode) => typeof mode === "string")
+  ) {
+    throw new Error(
+      `pack "${name}": pack.json's modes must be a non-empty array of strings`,
+    );
+  }
+  const wiring: unknown = manifest.wiring;
+  if (!isRecord(wiring)) {
+    throw new Error(`pack "${name}": pack.json's wiring must be an object`);
+  }
+  const budget: unknown = manifest.budget;
+  if (!isValidBudget(budget)) {
+    throw new Error(
+      `pack "${name}": pack.json's budget must set ${CAP_KEYS.join(", ")} to non-negative integers`,
+    );
+  }
+  // stagePackFiles keys its staging path (and its rmSync cleanup) on
+  // manifest.name, so a mismatch would let two pack directories collide.
+  if (manifestName !== name) {
+    throw new Error(
+      `pack "${name}": pack.json's name "${manifestName}" does not match its directory name "${name}"`,
     );
   }
 
@@ -237,6 +295,9 @@ export function installPack(
  */
 export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
   const destDir = join(groundworkDir, "packs", pack.manifest.name);
+  // Clear a previous staging first, so a file a newer pack version dropped
+  // doesn't linger beside the current payload.
+  rmSync(join(destDir, "files"), { recursive: true, force: true });
   const { filesWritten } = emitTemplate(
     pack.filesDir,
     join(destDir, "files"),

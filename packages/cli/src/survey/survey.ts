@@ -19,10 +19,10 @@ export function surveyProject(dir: string): ProjectSurvey {
   const undetermined: string[] = [];
 
   return {
-    shape: surveyShape(dir),
+    shape: surveyShape(dir, undetermined),
     toolchain: surveyToolchain(dir, undetermined),
     harness: surveyHarness(dir),
     docs: surveyDocs(dir),
-    undetermined,
+    undetermined: [...new Set(undetermined)],
   };
 }

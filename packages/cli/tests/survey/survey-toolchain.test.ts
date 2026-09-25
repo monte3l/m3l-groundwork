@@ -308,4 +308,26 @@ describe("surveyToolchain", () => {
     writeFileSync(join(dir, "package.json"), "{not json");
     expect(surveyToolchain(dir, undetermined).scripts).toEqual({});
   });
+
+  // Contract 6: a package.json that exists but fails to parse must be
+  // recorded in `undetermined`, never silently dropped (see CLAUDE.md's
+  // "Adopt mode's contract": "Anything a collector can't parse goes into
+  // ProjectSurvey.undetermined rather than being silently dropped") --
+  // surveyToolchain's own private readPackageJson threads a parse failure
+  // through into `undetermined`, the same way surveyTsconfig already does.
+  it("records a malformed package.json in undetermined rather than silently ignoring it", () => {
+    writeFileSync(join(dir, "package.json"), "{not valid json");
+
+    const survey = surveyToolchain(dir, undetermined);
+
+    expect(undetermined.some((entry) => entry.includes("package.json"))).toBe(
+      true,
+    );
+    // Absent-package.json defaults must still hold -- the fix should add
+    // the undetermined entry without breaking the existing tolerant
+    // fallback behavior (scripts stays empty, test runner falls back to
+    // "unknown" rather than crashing).
+    expect(survey.scripts).toEqual({});
+    expect(survey.testRunner.tool).toBe("unknown");
+  });
 });

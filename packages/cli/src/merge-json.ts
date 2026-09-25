@@ -13,6 +13,38 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Structural equality over parsed JSON: leaves by `Object.is`, arrays by
+ * length and per-index recursion, plain objects by the same key set (in any
+ * order) and per-key recursion. Unlike comparing `JSON.stringify` output, two
+ * objects whose keys were merely inserted in a different order are equal --
+ * which is what separates an idempotent re-merge from a real collision.
+ *
+ * @example
+ * ```ts
+ * deepEqual({ a: 1, b: [2] }, { b: [2], a: 1 }); // true
+ * deepEqual([1, 2], [2, 1]); // false
+ * ```
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, index) => deepEqual(item, b[index]))
+    );
+  }
+  if (isRecord(a) && isRecord(b)) {
+    const aKeys = Object.keys(a);
+    return (
+      aKeys.length === Object.keys(b).length &&
+      aKeys.every((key) => Object.hasOwn(b, key) && deepEqual(a[key], b[key]))
+    );
+  }
+  return Object.is(a, b);
+}
+
 interface SettingsHookCommand {
   type: string;
   command: string;
@@ -75,7 +107,7 @@ export function mergeSettingsHooks(
           (candidate) => candidate.command === hookCmd.command,
         );
         if (duplicate) {
-          if (JSON.stringify(duplicate) !== JSON.stringify(hookCmd)) {
+          if (!deepEqual(duplicate, hookCmd)) {
             throw new Error(
               `settings.json merge collision: "${event}" (matcher ${JSON.stringify(entry.matcher)}) already has a hook for "${hookCmd.command}" with different config`,
             );
@@ -124,7 +156,7 @@ export function mergeSettingsTopLevel(
       settings[key] = value;
       continue;
     }
-    if (JSON.stringify(settings[key]) !== JSON.stringify(value)) {
+    if (!deepEqual(settings[key], value)) {
       throw new Error(
         `settings.json merge collision: "${key}" is already set with a different value`,
       );
@@ -202,7 +234,7 @@ export function mergeVerifySteps(
       continue;
     }
     const existingStep = current[existingIndex];
-    if (JSON.stringify(existingStep) !== JSON.stringify(step)) {
+    if (!deepEqual(existingStep, step)) {
       throw new Error(
         `verify-steps.packs.json merge collision: step "${step.id}" is already registered with different config`,
       );

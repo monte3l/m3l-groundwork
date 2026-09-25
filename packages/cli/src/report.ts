@@ -256,13 +256,16 @@ function renderCapsSection(inventory: Inventory): string {
 
   const row = (
     label: string,
-    key: "agents" | "skills" | "hooks",
+    key: keyof CapCounts,
     existingCount: number,
     cap: number,
   ): string => {
+    // The shown total (and its over-cap flag) includes the "+ all packs"
+    // column, so a pack that tips a cap over is flagged, not just listed.
+    const total = postMerge[key] + (hasPacks ? packBudget[key] : 0);
     const cells = [label, String(baseline[key]), String(existingCount)];
     if (hasPacks) cells.push(`+${packBudget[key]}`);
-    cells.push(`${postMerge[key]}${overCap(postMerge[key], cap)}`, String(cap));
+    cells.push(`${total}${overCap(total, cap)}`, String(cap));
     return `| ${cells.join(" | ")} |`;
   };
 
@@ -288,6 +291,18 @@ function renderCapsSection(inventory: Inventory): string {
       "hooks",
       inventory.survey.harness.hooks.length,
       CAP_LIMITS.hooks,
+    ),
+    row(
+      "Workflows",
+      "workflows",
+      inventory.survey.toolchain.workflows.files.length,
+      CAP_LIMITS.workflows,
+    ),
+    row(
+      "Scripts",
+      "scripts",
+      Object.keys(inventory.survey.toolchain.scripts).length,
+      CAP_LIMITS.scripts,
     ),
     "",
     "This is an approximate count assuming no name overlap; `/customize`'s Step 0 resolves it for real.",

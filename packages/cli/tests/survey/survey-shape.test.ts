@@ -16,7 +16,7 @@ describe("surveyShape", () => {
   });
 
   it("reports unknown/none/unspecified/unknown for a directory with no package.json", () => {
-    const survey = surveyShape(dir);
+    const survey = surveyShape(dir, []);
     expect(survey.packageManager).toBe("unknown");
     expect(survey.monorepoTool).toBe("none");
     expect(survey.moduleType).toBe("unspecified");
@@ -34,22 +34,22 @@ describe("surveyShape", () => {
 
   it("detects each package manager from its lockfile", () => {
     writeFileSync(join(dir, "pnpm-lock.yaml"), "");
-    expect(surveyShape(dir).packageManager).toBe("pnpm");
+    expect(surveyShape(dir, []).packageManager).toBe("pnpm");
   });
 
   it("detects yarn from yarn.lock", () => {
     writeFileSync(join(dir, "yarn.lock"), "");
-    expect(surveyShape(dir).packageManager).toBe("yarn");
+    expect(surveyShape(dir, []).packageManager).toBe("yarn");
   });
 
   it("detects bun from bun.lockb", () => {
     writeFileSync(join(dir, "bun.lockb"), "");
-    expect(surveyShape(dir).packageManager).toBe("bun");
+    expect(surveyShape(dir, []).packageManager).toBe("bun");
   });
 
   it("detects npm from package-lock.json", () => {
     writeFileSync(join(dir, "package-lock.json"), "{}");
-    expect(surveyShape(dir).packageManager).toBe("npm");
+    expect(surveyShape(dir, []).packageManager).toBe("npm");
   });
 
   it("detects pnpm workspaces and extracts member globs", () => {
@@ -57,14 +57,14 @@ describe("surveyShape", () => {
       join(dir, "pnpm-workspace.yaml"),
       'packages:\n  - "packages/*"\n  - "apps/*"\n',
     );
-    const survey = surveyShape(dir);
+    const survey = surveyShape(dir, []);
     expect(survey.monorepoTool).toBe("pnpm-workspaces");
     expect(survey.workspaceGlobs).toEqual(["packages/*", "apps/*"]);
   });
 
   it("detects turbo, nx, and lerna by config file presence", () => {
     writeFileSync(join(dir, "turbo.json"), "{}");
-    expect(surveyShape(dir).monorepoTool).toBe("turbo");
+    expect(surveyShape(dir, []).monorepoTool).toBe("turbo");
   });
 
   it("detects npm workspaces from package.json's workspaces array", () => {
@@ -72,7 +72,7 @@ describe("surveyShape", () => {
       join(dir, "package.json"),
       JSON.stringify({ workspaces: ["packages/*"] }),
     );
-    const survey = surveyShape(dir);
+    const survey = surveyShape(dir, []);
     expect(survey.monorepoTool).toBe("npm-workspaces");
     expect(survey.workspaceGlobs).toEqual(["packages/*"]);
   });
@@ -88,7 +88,7 @@ describe("surveyShape", () => {
         dependencies: { express: "^4.0.0" },
       }),
     );
-    const survey = surveyShape(dir);
+    const survey = surveyShape(dir, []);
     expect(survey.moduleType).toBe("module");
     expect(survey.typescriptVersion).toBe("^5.4.0");
     expect(survey.kindEvidence.hasExportsMap).toBe(true);
@@ -102,7 +102,7 @@ describe("surveyShape", () => {
       join(dir, "package.json"),
       JSON.stringify({ type: "commonjs" }),
     );
-    expect(surveyShape(dir).moduleType).toBe("commonjs");
+    expect(surveyShape(dir, []).moduleType).toBe("commonjs");
   });
 
   it("falls back to dependencies for the typescript version when absent from devDependencies", () => {
@@ -110,17 +110,17 @@ describe("surveyShape", () => {
       join(dir, "package.json"),
       JSON.stringify({ dependencies: { typescript: "5.0.0" } }),
     );
-    expect(surveyShape(dir).typescriptVersion).toBe("5.0.0");
+    expect(surveyShape(dir, []).typescriptVersion).toBe("5.0.0");
   });
 
   it("tolerates a package.json that fails to parse", () => {
     writeFileSync(join(dir, "package.json"), "{not json");
-    expect(surveyShape(dir).moduleType).toBe("unspecified");
+    expect(surveyShape(dir, []).moduleType).toBe("unspecified");
   });
 
   it("prefers .node-version, then .nvmrc, then engines.node", () => {
     writeFileSync(join(dir, ".node-version"), "24\n");
-    expect(surveyShape(dir).nodeVersionPin).toEqual({
+    expect(surveyShape(dir, []).nodeVersionPin).toEqual({
       source: ".node-version",
       value: "24",
     });
@@ -128,7 +128,7 @@ describe("surveyShape", () => {
 
   it("falls back to .nvmrc when .node-version is absent", () => {
     writeFileSync(join(dir, ".nvmrc"), "20\n");
-    expect(surveyShape(dir).nodeVersionPin).toEqual({
+    expect(surveyShape(dir, []).nodeVersionPin).toEqual({
       source: ".nvmrc",
       value: "20",
     });
@@ -139,7 +139,7 @@ describe("surveyShape", () => {
       join(dir, "package.json"),
       JSON.stringify({ engines: { node: ">=18" } }),
     );
-    expect(surveyShape(dir).nodeVersionPin).toEqual({
+    expect(surveyShape(dir, []).nodeVersionPin).toEqual({
       source: "package.json#engines.node",
       value: ">=18",
     });
@@ -147,27 +147,49 @@ describe("surveyShape", () => {
 
   it("detects a src/ source layout over lib/ and root", () => {
     mkdirSync(join(dir, "src"));
-    expect(surveyShape(dir).sourceLayout).toBe("src");
+    expect(surveyShape(dir, []).sourceLayout).toBe("src");
   });
 
   it("detects a lib/ source layout when src/ is absent", () => {
     mkdirSync(join(dir, "lib"));
-    expect(surveyShape(dir).sourceLayout).toBe("lib");
+    expect(surveyShape(dir, []).sourceLayout).toBe("lib");
   });
 
   it("detects a root source layout from a loose .ts file", () => {
     writeFileSync(join(dir, "index.ts"), "export {};");
-    expect(surveyShape(dir).sourceLayout).toBe("root");
+    expect(surveyShape(dir, []).sourceLayout).toBe("root");
   });
 
   it("detects a tests/ directory over colocated tests", () => {
     mkdirSync(join(dir, "tests"));
-    expect(surveyShape(dir).testPlacement).toBe("tests-dir");
+    expect(surveyShape(dir, []).testPlacement).toBe("tests-dir");
   });
 
   it("detects colocated tests when no tests/ or test/ directory exists", () => {
     mkdirSync(join(dir, "src"));
     writeFileSync(join(dir, "src", "foo.test.ts"), "");
-    expect(surveyShape(dir).testPlacement).toBe("colocated");
+    expect(surveyShape(dir, []).testPlacement).toBe("colocated");
+  });
+
+  // Contract 6: a package.json that exists but fails to parse must be
+  // recorded in `undetermined`, never silently dropped (see CLAUDE.md's
+  // "Adopt mode's contract": "Anything a collector can't parse goes into
+  // ProjectSurvey.undetermined rather than being silently dropped") --
+  // surveyShape takes the same (dir, undetermined) two-arg shape as
+  // surveyToolchain, so a caller cannot forget to thread the array through.
+  it("records a malformed package.json in undetermined rather than silently ignoring it", () => {
+    writeFileSync(join(dir, "package.json"), "{not valid json");
+    const undetermined: string[] = [];
+
+    const survey = surveyShape(dir, undetermined);
+
+    expect(undetermined.some((entry) => entry.includes("package.json"))).toBe(
+      true,
+    );
+    // Absent-package.json defaults must still hold -- the fix should add
+    // the undetermined entry without breaking the existing tolerant
+    // fallback behavior.
+    expect(survey.moduleType).toBe("unspecified");
+    expect(survey.typescriptVersion).toBeUndefined();
   });
 });

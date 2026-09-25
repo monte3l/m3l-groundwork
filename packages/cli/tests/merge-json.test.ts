@@ -223,6 +223,39 @@ describe("mergeVerifySteps", () => {
       ]),
     ).toThrow(/merge collision/);
   });
+
+  // Confirmatory regression tests for deepEqual's array-comparison branches
+  // (deepEqual itself is not exported; these exercise it indirectly through
+  // mergeVerifySteps, whose `cmd` field is a natural array fixture). Per the
+  // dispatch, deepEqual's existing implementation is believed to already
+  // handle these correctly -- these are PASS-today tests proving that belief,
+  // not a RED-phase fix.
+  it("throws a collision when a same-id step's cmd array differs only in LENGTH", () => {
+    const existing = [
+      { id: "x-gate", group: "build", name: "x", cmd: ["node", "a.mjs"] },
+    ];
+    expect(() =>
+      mergeVerifySteps(existing, [
+        {
+          id: "x-gate",
+          group: "build",
+          name: "x",
+          cmd: ["node", "a.mjs", "--extra"],
+        },
+      ]),
+    ).toThrow(/merge collision/);
+  });
+
+  it("throws a collision when a same-id, same-length cmd array differs at some index", () => {
+    const existing = [
+      { id: "x-gate", group: "build", name: "x", cmd: ["node", "a.mjs"] },
+    ];
+    expect(() =>
+      mergeVerifySteps(existing, [
+        { id: "x-gate", group: "build", name: "x", cmd: ["node", "b.mjs"] },
+      ]),
+    ).toThrow(/merge collision/);
+  });
 });
 
 describe("mergeSettingsTopLevel", () => {
@@ -283,5 +316,26 @@ describe("mergeSettingsTopLevel", () => {
     const existing = { hooks: {} };
     mergeSettingsTopLevel(existing, { statusLine });
     expect(existing).toEqual({ hooks: {} });
+  });
+
+  // Confirmatory regression test for deepEqual's object-comparison branch:
+  // same key COUNT, different key NAMES must not be mistaken for equal
+  // objects just because `Object.keys(a).length === Object.keys(b).length`.
+  // Believed-correct existing behavior, not a RED-phase fix -- expected to
+  // PASS today.
+  it("throws a collision on same-key-count-different-key-names configs, not a false idempotent no-op", () => {
+    expect(() =>
+      mergeSettingsTopLevel({ config: { a: 1 } }, { config: { b: 1 } }),
+    ).toThrow(/collision/);
+  });
+
+  it("treats a value with a different key insertion order as identical, not a collision", () => {
+    // Same content, different key order -- a JSON.stringify-based equality
+    // check would see these as different strings and wrongly throw a hard
+    // collision even though the merge should be a semantic no-op.
+    const existing = { config: { a: 1, b: 2 } };
+    const fragment = { config: { b: 2, a: 1 } };
+    expect(() => mergeSettingsTopLevel(existing, fragment)).not.toThrow();
+    expect(mergeSettingsTopLevel(existing, fragment)).toEqual(existing);
   });
 });

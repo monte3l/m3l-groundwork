@@ -46,6 +46,20 @@ describe("detectMode", () => {
     });
   });
 
+  // Contract 5: a .git worktree/submodule checkout has a .git FILE (content
+  // "gitdir: <path>"), not a directory -- detectMode checks for both shapes
+  // and reports which one it found, distinct from the plain-directory case
+  // above.
+  it("detects adopt when .git is a file (a worktree or submodule checkout), not a directory", () => {
+    writeFileSync(join(dir, ".git"), "gitdir: ../.git/worktrees/foo\n");
+    writeFileSync(join(dir, "README.md"), "# hi\n");
+    const result = detectMode(dir);
+    expect(result.mode).toBe("adopt");
+    expect(result.signal).toMatch(
+      /found a \.git file \(a worktree or submodule\)/,
+    );
+  });
+
   it("detects adopt when a loose .ts file is present", () => {
     writeFileSync(join(dir, "index.ts"), "export {};");
     expect(detectMode(dir)).toEqual({

@@ -9,6 +9,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { restoreDotfilePath } from "./assets.js";
 import { parseJsonc } from "./jsonc.js";
+import { isRecord } from "./merge-json.js";
 import { applyTokens } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
 
@@ -35,8 +36,14 @@ function compareJsonKeys(
   if (!baseline.ok || !target.ok) {
     return undefined;
   }
-  const baselineValue = baseline.value as Record<string, unknown>;
-  const targetValue = target.value as Record<string, unknown>;
+  // Valid JSON need not be an object (`null`, a number, an array): a key-level
+  // compare is meaningless there, so take the same whole-file fallback as an
+  // unparseable file.
+  const baselineValue = baseline.value;
+  const targetValue = target.value;
+  if (!isRecord(baselineValue) || !isRecord(targetValue)) {
+    return undefined;
+  }
   const keys = new Set([
     ...Object.keys(baselineValue),
     ...Object.keys(targetValue),
