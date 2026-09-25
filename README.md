@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/monte3l/m3l-groundwork/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/monte3l/m3l-groundwork/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/monte3l/m3l-groundwork/badge)](https://securityscorecards.dev/viewer/?uri=github.com/monte3l/m3l-groundwork)
+[![Socket](https://badge.socket.dev/npm/package/@monte3l/groundwork)](https://socket.dev/npm/package/@monte3l/groundwork/overview)
 
 Deterministic TypeScript + Claude Code project bootstrapper, with an
 adaptive `/customize` pass over live TypeScript and Anthropic guidance.

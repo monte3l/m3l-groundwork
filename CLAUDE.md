@@ -337,7 +337,17 @@ steps) before considering any task here done.
   supply-chain risk a floating `@v7` doesn't. `scorecard.yml` runs
   `ossf/scorecard-action` weekly (plus on push to `main` and
   `workflow_dispatch`) and publishes results for the README badge; it is
-  read-only and not a required check.
+  read-only and not a required check. The README's Socket badge
+  (`badge.socket.dev`) is a deliberate complement, not a duplicate: it
+  scores the _published package's_ behavior (install scripts,
+  obfuscation, requested permissions), where Scorecard scores the
+  _repo's_ practices. Bundlephobia and Snyk were considered and
+  rejected: Bundlephobia measures browser-bundle size, which doesn't
+  apply to a bin-only CLI with no importable entry point (see
+  `packages/cli/package.json`'s `exports`), and Snyk overlaps with both
+  Socket and `dependency-review.yml`/Dependabot for a package that has
+  zero runtime dependencies to begin with -- one vulnerability-scanning
+  badge is enough.
 - **A pack never edits YAML or JavaScript.** It extends three JSON files
   the baseline already reads at runtime (`.claude/settings.json`,
   `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json`) via the pure
