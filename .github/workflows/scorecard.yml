@@ -1,0 +1,47 @@
+name: Scorecard
+
+# OpenSSF Scorecard, run on its own schedule rather than every push --
+# supply-chain posture doesn't change per-commit the way tests do, and a
+# weekly cadence is what the action's own docs recommend. Read-only: this
+# workflow only inspects the repo and uploads a report, it never writes to
+# it.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 4 * * 1" # every Monday
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # Required by ossf/scorecard-action's own documented minimum.
+      security-events: write # to upload SARIF results
+      id-token: write # to publish results and get a badge (publish_results: true)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@55891bbd73f2425e97637d96e306fc9d491d0b21 # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # This repo is public and a solo-maintainer project: publishing is
+          # what makes the badge in README.md resolve, and Scorecard's own
+          # docs say the published results contain nothing beyond what the
+          # analysis itself reads from this public repo.
+          publish_results: true
+
+      - uses: github/codeql-action/upload-sarif@7999b86c43a865dc79d8923397f35af22de63401 # v4
+        with:
+          sarif_file: results.sarif

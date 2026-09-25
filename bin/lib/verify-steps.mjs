@@ -50,6 +50,12 @@ export const VERIFY_STEPS = [
     cmd: ["node", "bin/check-plugin-version.mjs"],
   },
   {
+    id: "plugin-manifest",
+    group: "lint",
+    name: "Check plugin manifest validity",
+    cmd: ["node", "bin/check-plugin-manifest.mjs"],
+  },
+  {
     id: "typecheck",
     group: "typecheck",
     name: "Typecheck",

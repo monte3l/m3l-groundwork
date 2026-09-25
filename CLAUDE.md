@@ -87,9 +87,10 @@ packages/plugin/        Phase B: the /customize skill
                          `/plugin marketplace add`.
 
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
-                         verify lanes + e2e + the `verify` aggregator),
-                         release.yml (see "Releases"), dependency-review.yml,
-                         dependabot.yml
+                         verify lanes + e2e + node-current + the `verify`
+                         aggregator), release.yml (see "Releases"),
+                         dependency-review.yml, scorecard.yml, dependabot.yml,
+                         ISSUE_TEMPLATE/, pull_request_template.md
 
 docs/research/          THIS repo's own trackers (not the baseline's):
                          typescript-refresh.md / harness-refresh.md, read and
@@ -121,6 +122,7 @@ Run any task with `pnpm <script>`.
 | `pnpm knip`                           | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `pnpm check:exports`                  | publint + attw against `packages/cli`'s packed tarball -- the one published package                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `pnpm check:plugin-version`           | `plugin.json`'s version matches the CLI's, `packages/plugin/package.json` stays private, and `marketplace.json`'s entry names it correctly and carries no npm source or version pin of its own                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `pnpm check:plugin-manifest`          | Runs Anthropic's `claude plugin validate --strict` against the marketplace manifest and `packages/plugin`; skips cleanly with a warning when the `claude` CLI isn't installed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `pnpm changeset` / `version:packages` | Add a changeset; version the packages (what the release workflow runs -- see "Releases")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `pnpm check:node-version`             | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `pnpm check:harness`                  | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -300,25 +302,42 @@ steps) before considering any task here done.
   bespoke script invocation in either YAML file.
 - **Continuous integration (`.github/`).** `ci.yml` has five lane jobs
   (`format`/`lint`/`typecheck`/`build`/`test`), each `node bin/verify.mjs
---group <name>`, plus an `e2e` job (`pnpm build` then `pnpm test:e2e`) and
-  a `verify` aggregator -- the check the `main` ruleset gates on (see "Git
-  Workflow"). The aggregator demands an explicit `success` from every
-  lane, since testing only for `failure` reports green over a cancelled or
-  skipped one. Two rules keep `gate-lane-parity` (the toolchain grader)
-  working against this repo: **never name a step id in a workflow** (name a
-  group), and **never matrix the lanes** -- `--group ${{ matrix.group }}`
-  reads as dynamic, and because the grader concatenates every workflow file
-  into one surface, that one line switches the check off for all of them.
-  `pnpm eval` never runs in CI (paid model calls). **CodeQL is GitHub-managed
-  default setup and has no file in this repo -- do not add a `codeql.yml`**,
-  it collides with default setup. `bin/check-node-version.mjs` is live here
-  now: every workflow takes Node from `node-version-file: .node-version`.
-  `release.yml` follows the same two rules and adds a third: **it never writes
-  the text `verify.mjs`**. The grader reads a workflow as text, so a bare or
-  dynamic invocation there switches `gate-lane-parity` off for `ci.yml` too --
-  measured, not assumed: the structural check count drops 42 to 37 and no
-  finding is raised. Its `pack` job runs `pnpm verify` instead, which the
-  scraper cannot see and which is a full run of every group anyway.
+--group <name>`, plus an `e2e` job (`pnpm build` then `pnpm test:e2e`), a
+  `node-current` job (a full `pnpm verify` + `pnpm test:e2e` on whatever
+  Node.js currently calls its Current release line, so a drift against the
+  pinned `.node-version` surfaces before that line becomes the next LTS --
+  a separate job, never a matrix, for the same `gate-lane-parity` reason as
+  below), and a `verify` aggregator -- the check the `main` ruleset gates on
+  (see "Git Workflow"). The aggregator demands an explicit `success` from
+  every lane, since testing only for `failure` reports green over a
+  cancelled or skipped one. Two rules keep `gate-lane-parity` (the
+  toolchain grader) working against this repo: **never name a step id in a
+  workflow** (name a group), and **never matrix the lanes** --
+  `--group ${{ matrix.group }}` reads as dynamic, and because the grader
+  concatenates every workflow file into one surface, that one line
+  switches the check off for all of them. `pnpm eval` never runs in CI
+  (paid model calls). **CodeQL is GitHub-managed default setup and has no
+  file in this repo -- do not add a `codeql.yml`**, it collides with
+  default setup. `bin/check-node-version.mjs` is live here now: every
+  lane that runs the pinned toolchain takes Node from
+  `node-version-file: .node-version`; `node-current` is the one
+  deliberate, documented exception, and the gate's own regex (which only
+  rejects a hardcoded _digit_) already allows it. `release.yml` follows
+  the same two rules and adds a third: **it never writes the text
+  `verify.mjs`**. The grader reads a workflow as text, so a bare or
+  dynamic invocation there switches `gate-lane-parity` off for `ci.yml` too
+  -- measured, not assumed: the structural check count drops 42 to 37 and
+  no finding is raised. Its `pack` job runs `pnpm verify` instead, which
+  the scraper cannot see and which is a full run of every group anyway.
+  Every action in every workflow (including `scorecard.yml` below) is
+  pinned by commit SHA with a `# vX.Y.Z` comment naming the tag pinned to
+  -- Dependabot (`.github/dependabot.yml`) opens a PR to move the pin
+  forward, the same as it would for a floating tag, so this costs nothing
+  in maintenance and closes the "a compromised upstream tag" class of
+  supply-chain risk a floating `@v7` doesn't. `scorecard.yml` runs
+  `ossf/scorecard-action` weekly (plus on push to `main` and
+  `workflow_dispatch`) and publishes results for the README badge; it is
+  read-only and not a required check.
 - **A pack never edits YAML or JavaScript.** It extends three JSON files
   the baseline already reads at runtime (`.claude/settings.json`,
   `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json`) via the pure
