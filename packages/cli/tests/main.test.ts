@@ -166,6 +166,19 @@ describe("parseArgs (CliUsageError)", () => {
       /unexpected argument\(s\)/,
     );
   });
+
+  // Contract 3: a repeated --name is a usage error ("last one silently
+  // wins" is exactly the surprising-auto-detection shape this CLI's own
+  // usage-error design otherwise avoids for --adopt/--fresh) -- tokenizeArgv
+  // rejects a second --name rather than letting it overwrite the first.
+  it("throws CliUsageError when --name is given more than once", () => {
+    expect(() => parseArgs(["/tmp/x", "--name", "a", "--name", "b"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--name", "a", "--name", "b"])).toThrow(
+      /--name/,
+    );
+  });
 });
 
 describe("templatesCoreDir", () => {

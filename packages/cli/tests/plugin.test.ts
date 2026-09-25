@@ -164,4 +164,32 @@ describe("installCustomizeSkillGuarded", () => {
       ),
     ).toContain("a project-authored version");
   });
+
+  it("diverts to .groundwork/customize/ when SKILL.md matches but a backing data file has drifted", () => {
+    // SKILL.md is byte-identical to the source's, but domain-map.ts is not --
+    // the guard must not conclude "already-present" from SKILL.md alone.
+    mkdirSync(join(targetDir, ".claude", "skills", "customize"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
+      "---\nname: customize\n---\n# customize\n",
+    );
+    writeFileSync(
+      join(targetDir, ".claude", "skills", "customize", "kind-facet-map.ts"),
+      "export const x = 1;\n",
+    );
+    writeFileSync(
+      join(targetDir, ".claude", "skills", "customize", "domain-map.ts"),
+      "// stale\n",
+    );
+    writeFileSync(
+      join(targetDir, ".claude", "skills", "customize", "pack-map.ts"),
+      "export const z = 3;\n",
+    );
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).not.toBe("already-present");
+  });
 });

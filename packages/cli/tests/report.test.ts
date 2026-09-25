@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderReport } from "../src/report.js";
+import { CAP_LIMITS } from "../src/caps.js";
 import type { Inventory } from "../src/inventory.js";
 import type { HarnessGrade } from "../src/harness/types.js";
 import type { ToolchainGrade } from "../src/toolchain/types.js";
@@ -505,6 +506,60 @@ describe("renderReport", () => {
     const header = report.split("\n").slice(0, 5).join("\n");
     expect(header).toContain("0.1.0");
     expect(header).toMatch(/schema[^\n]*7/i);
+  });
+
+  it("renders a Workflows row in the caps table, over cap once a pack's declared budget is accounted for", () => {
+    // Baseline sits exactly at the workflows cap; the existing project's own
+    // survey has none. Without adding the pack's declared budget into the
+    // displayed post-merge total, this would show "at cap, not over" -- the
+    // exact gap this test proves.
+    mkdirSync(join(templateRoot, ".github", "workflows"), {
+      recursive: true,
+    });
+    for (let i = 0; i < CAP_LIMITS.workflows; i++) {
+      writeFileSync(
+        join(templateRoot, ".github", "workflows", `wf-${i}.yml`),
+        "",
+      );
+    }
+    const survey = baseSurvey();
+    const surveyWithNoExistingWorkflows = {
+      ...survey,
+      toolchain: {
+        ...survey.toolchain,
+        workflows: { files: [], needsReading: true },
+      },
+    };
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        survey: surveyWithNoExistingWorkflows,
+        packs: [
+          basePackSurvey({
+            budget: {
+              agents: 0,
+              skills: 0,
+              hooks: 0,
+              workflows: 1,
+              scripts: 0,
+            },
+          }),
+        ],
+      }),
+    );
+
+    const workflowsRow = report
+      .split("\n")
+      .find((line) => line.startsWith("| Workflows |"));
+    expect(workflowsRow).toBeDefined();
+    expect(workflowsRow).toContain("⚠ over cap");
+  });
+
+  it("renders a Scripts row in the caps table", () => {
+    const report = renderReport(baseInventory(templateRoot));
+    const scriptsRow = report
+      .split("\n")
+      .find((line) => line.startsWith("| Scripts |"));
+    expect(scriptsRow).toBeDefined();
   });
 
   it("lists a pack's own divergent file conflicts in a table", () => {

@@ -131,6 +131,23 @@ describe("planConflicts", () => {
     ]);
   });
 
+  it("falls back to a whole-file compare rather than crashing when the target's JSON parses to a non-object (null)", () => {
+    writeFileSync(
+      join(templateRoot, "package.json"),
+      JSON.stringify({ name: "x" }),
+    );
+    // "null" is valid JSON (parseJsonc succeeds) but parses to the value
+    // `null`, not an object -- compareJsonKeys must not blindly cast this to
+    // Record<string, unknown> and call Object.keys() on it.
+    writeFileSync(join(targetDir, "package.json"), "null");
+
+    expect(() => planConflicts(templateRoot, targetDir, {})).not.toThrow();
+
+    const result = planConflicts(templateRoot, targetDir, {});
+    expect(result[0]?.keyDiffs).toBeUndefined();
+    expect(result[0]?.status).toBe("divergent");
+  });
+
   it("compares a vendored _gitignore against the project's real .gitignore", () => {
     writeFileSync(join(templateRoot, "_gitignore"), "node_modules/\n");
     writeFileSync(join(targetDir, ".gitignore"), "node_modules/\n");

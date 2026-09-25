@@ -26,12 +26,18 @@ const STRICT_FLAG_NAMES = [...STRICT_FLAGS, "allowUnreachableCode"];
 const ESLINT_PLUGIN_PATTERN =
   /["']((?:eslint-plugin-|@typescript-eslint\/)[a-z0-9-]+)["']/gi;
 
-function readPackageJson(dir: string): Record<string, unknown> | undefined {
+function readPackageJson(
+  dir: string,
+  undetermined: string[],
+): Record<string, unknown> | undefined {
   const path = join(dir, "package.json");
   if (!existsSync(path)) return undefined;
   try {
     return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
+  } catch (error) {
+    undetermined.push(
+      `could not parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return undefined;
   }
 }
@@ -241,7 +247,7 @@ export function surveyToolchain(
   dir: string,
   undetermined: string[],
 ): ToolchainSurvey {
-  const packageJson = readPackageJson(dir);
+  const packageJson = readPackageJson(dir, undetermined);
   const scripts = surveyScripts(packageJson);
 
   return {

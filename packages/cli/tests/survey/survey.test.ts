@@ -38,4 +38,22 @@ describe("surveyProject", () => {
     const survey = surveyProject(dir);
     expect(survey.undetermined.length).toBeGreaterThan(0);
   });
+
+  // Contract 7: surveyShape and surveyToolchain each run their own private
+  // readPackageJson against the SAME package.json and independently push a
+  // "could not parse ..." message into the SHARED undetermined array
+  // surveyProject passes to both. A malformed package.json must therefore
+  // be reported exactly once in the aggregate result, not once per
+  // collector -- surveyProject is expected to de-duplicate the final array
+  // before returning it.
+  it("reports a malformed package.json exactly once, not once per collector", () => {
+    writeFileSync(join(dir, "package.json"), "{not valid json");
+
+    const survey = surveyProject(dir);
+
+    const packageJsonEntries = survey.undetermined.filter((msg) =>
+      msg.includes("package.json"),
+    );
+    expect(packageJsonEntries.length).toBe(1);
+  });
 });
