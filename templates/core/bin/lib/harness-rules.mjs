@@ -40,6 +40,11 @@ const DESCRIPTION_MAX = 1024;
 const PROJECT_WALK_DEPTH = 8;
 const BARE_ENTRY_POINT =
   /process\.argv\[1\]\s*===\s*fileURLToPath\(import\.meta\.url\)/;
+// Contains `realpathSync(process.argv[1])`, but compares it to a URL-encoded
+// pathname rather than an OS path -- the two never agree under a symlinked
+// or percent-encoded path, so this form fails open too.
+const URL_PATHNAME_ENTRY_POINT =
+  /realpathSync\(process\.argv\[1\]\)\s*===\s*new URL\(import\.meta\.url\)\.pathname/;
 const HOOK_PATH = /\.claude\/hooks\/([A-Za-z0-9_.-]+)/g;
 const CLAUDE_PATH = /\.claude\/[A-Za-z0-9_.*/-]+/g;
 const REFERENCE_PATH = /\breferences\/[A-Za-z0-9_./-]+\.md/g;
@@ -203,9 +208,8 @@ function loadSnapshot(root) {
 
   const settingsPath = join(root, ".claude", "settings.json");
   const settingsResult = readJsonc(settingsPath);
-  const settingsLocalResult = readJsonc(
-    join(root, ".claude", "settings.local.json"),
-  );
+  const settingsLocalPath = join(root, ".claude", "settings.local.json");
+  const settingsLocalResult = readJsonc(settingsLocalPath);
 
   return {
     settings: !existsSync(settingsPath)
@@ -216,6 +220,11 @@ function loadSnapshot(root) {
     settingsLocal: settingsLocalResult.ok
       ? settingsLocalResult.value
       : undefined,
+    // Only a file that exists can fail to parse -- an absent one is not an error.
+    settingsLocalError:
+      !settingsLocalResult.ok && existsSync(settingsLocalPath)
+        ? settingsLocalResult.error
+        : undefined,
     hooks: readEach(/^\.claude\/hooks\/[^/]+$/, ".claude/hooks/"),
     agents: readEach(/^\.claude\/agents\/[^/]+\.md$/, ".claude/agents/"),
     skills,
@@ -369,12 +378,33 @@ const settingsParses = {
   }),
 };
 
+const settingsLocalParses = {
+  id: "settings-local-parses",
+  level: "structural",
+  category: "settings",
+  check: (s) => ({
+    checked: s.settingsLocalError === undefined ? 0 : 1,
+    failures:
+      s.settingsLocalError === undefined
+        ? []
+        : [
+            {
+              subject: ".claude/settings.local.json",
+              message: `does not parse: ${s.settingsLocalError}`,
+            },
+          ],
+  }),
+};
+
 const hookDangling = {
   id: "hook-dangling",
   level: "structural",
   category: "hooks",
   check: (s) => {
-    if (s.settings.error !== undefined) return { checked: 0, failures: [] };
+    // A broken settings.local.json hides its registrations; judging off
+    // settings.json alone would misreport them.
+    if (s.settings.error !== undefined || s.settingsLocalError !== undefined)
+      return { checked: 0, failures: [] };
     const referenced = registeredHookFiles(s);
     return {
       checked: referenced.size,
@@ -393,7 +423,10 @@ const hookOrphan = {
   level: "structural",
   category: "hooks",
   check: (s) => {
-    if (s.settings.error !== undefined) return { checked: 0, failures: [] };
+    // A broken settings.local.json hides its registrations; judging off
+    // settings.json alone would misreport them.
+    if (s.settings.error !== undefined || s.settingsLocalError !== undefined)
+      return { checked: 0, failures: [] };
     const referenced = reachableHookFiles(s);
     const hookFiles = [...s.hooks.keys()].filter(
       (name) => name.endsWith(".mjs") || name.endsWith(".js"),
@@ -425,12 +458,13 @@ const hookEntrypoint = {
         .filter(
           ([, source]) =>
             BARE_ENTRY_POINT.test(source) ||
+            URL_PATHNAME_ENTRY_POINT.test(source) ||
             !source.includes("realpathSync(process.argv[1])"),
         )
         .map(([name]) => ({
           subject: `.claude/hooks/${name}`,
           message:
-            "compares process.argv[1] to import.meta.url without realpathSync -- false under any symlinked path, so the hook fails open",
+            "does not compare realpathSync(process.argv[1]) to fileURLToPath(import.meta.url) -- false under a symlinked or URL-encoded path, so the hook fails open",
         })),
     };
   },
@@ -767,6 +801,7 @@ const skillReferencesResolve = {
  */
 export const RULES = [
   settingsParses,
+  settingsLocalParses,
   hookDangling,
   hookOrphan,
   hookEntrypoint,
@@ -835,6 +870,7 @@ export function reportGrade(grade, reporter) {
 export function reportOfficialValidation(rootDir, reporter) {
   let ran = false;
   let findings = 0;
+  let unreadable = 0;
   for (const dir of [".claude/skills", ".claude/agents"]) {
     const target = join(rootDir, dir);
     if (!existsSync(target)) continue;
@@ -851,22 +887,49 @@ export function reportOfficialValidation(rootDir, reporter) {
     try {
       report = JSON.parse(result.stdout);
     } catch {
+      report = undefined;
+    }
+    // Anything other than a real report -- a spawn failure other than
+    // ENOENT (result.stdout is then null, and JSON.parse(null) parses as
+    // the value `null` rather than throwing), or a valid-JSON error payload
+    // with no `contents` array -- is treated the same as unreadable, never
+    // silently read as "zero findings" or allowed to crash on `.contents`.
+    if (!Array.isArray(report?.contents)) {
       reporter.warn(
         `claude plugin validate gave no readable report for ${dir}`,
       );
+      unreadable++;
       continue;
     }
     ran = true;
-    for (const entry of report.contents ?? []) {
-      for (const item of [...(entry.errors ?? []), ...(entry.warnings ?? [])]) {
-        findings++;
+    // Each entry and finding is external data too: a malformed one is
+    // reported and skipped, never allowed to crash the gate or vanish.
+    for (const entry of report.contents) {
+      if (!isRecord(entry) || typeof entry.file !== "string") {
         reporter.warn(
-          `[claude-validate] ${relative(rootDir, entry.file)} -- ${item.path}: ${item.message}`,
+          `claude plugin validate reported a malformed entry for ${dir} -- skipped`,
+        );
+        unreadable++;
+        continue;
+      }
+      const errors = Array.isArray(entry.errors) ? entry.errors : [];
+      const warnings = Array.isArray(entry.warnings) ? entry.warnings : [];
+      const file = relative(rootDir, entry.file);
+      for (const item of [...errors, ...warnings]) {
+        findings++;
+        if (!isRecord(item)) {
+          reporter.warn(
+            `[claude-validate] ${file} -- malformed finding (not an object)`,
+          );
+          continue;
+        }
+        reporter.warn(
+          `[claude-validate] ${file} -- ${String(item.path)}: ${String(item.message)}`,
         );
       }
     }
   }
-  if (ran && findings === 0) {
+  if (ran && findings === 0 && unreadable === 0) {
     reporter.ok("claude plugin validate: no findings");
   }
 }

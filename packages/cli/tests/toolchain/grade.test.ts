@@ -90,6 +90,40 @@ const VITEST_CONFIG = `export default {
 };
 `;
 
+/**
+ * Otherwise-clean, but the `ignores` array is single-quoted and sits BEFORE
+ * the `files: ["bin/**\/*.mjs"]` block. `readSource`'s JS-aware stripper
+ * (`stripJsComments`, see packages/cli/src/jsonc.ts) tracks `'`/`` ` `` in
+ * addition to `"`, so the `'dist/**'` entry's `/**` does not open a fake
+ * block comment, and the real `files: ["bin/**\/*.mjs"]` block that follows
+ * is read intact.
+ */
+const ESLINT_SINGLE_QUOTED_IGNORES = `import tseslint from "typescript-eslint";
+export default tseslint.config(
+  ...tseslint.configs.recommendedTypeChecked,
+  { languageOptions: { parserOptions: { projectService: true } } },
+  { ignores: ['dist/**', 'coverage/**'] },
+  { files: ["bin/**/*.mjs"] },
+);
+`;
+
+/**
+ * Otherwise-clean, but `coverage.exclude` is a single-quoted array sitting
+ * before `thresholds`. Same shape as {@link ESLINT_SINGLE_QUOTED_IGNORES}:
+ * the JS-aware stripper tracks the `'dist/**'` entry's quotes correctly, so
+ * its `/**` never opens a fake block comment and the real
+ * `thresholds: { ..., perFile: true }` block that follows is read intact.
+ */
+const VITEST_SINGLE_QUOTED_EXCLUDE = `export default {
+  test: {
+    coverage: {
+      exclude: ['dist/**', 'coverage/**'],
+      thresholds: { lines: 80, perFile: true },
+    },
+  },
+};
+`;
+
 const VERIFY_STEPS = `export const GROUPS = ["lint", "build"];
 export const CORE_STEPS = [
   { id: "lint", group: "lint", name: "Lint", cmd: ["pnpm", "lint"] },
@@ -193,6 +227,31 @@ describe("a clean project", () => {
     expect(result.findings).toEqual([]);
     expect(result.structural).toEqual({ checked: 0, failed: 0 });
     expect(result.rubricScore).toBe(1);
+  });
+});
+
+// readSource (grade.ts) strips comments out of eslint.config.js/vitest.config.ts
+// with stripJsComments, a JS-aware stripper that tracks `'`/`` ` `` in
+// addition to `"` -- so a single-quoted string carrying a `//`/`/*`-shaped
+// substring is never misread as a real comment, and nothing after it is
+// corrupted. These two tests assert exactly that: a rule sees the real
+// content that follows a single-quoted array, not a false positive from
+// corrupted source.
+describe("readSource must not corrupt single-quoted JS/TS source", () => {
+  it("a single-quoted ignores array in eslint.config.js does not swallow the real bin/** coverage block after it", () => {
+    writeCleanProject();
+    write("eslint.config.js", ESLINT_SINGLE_QUOTED_IGNORES);
+    expect(
+      grade().findings.filter((f) => f.ruleId === "eslint-covers-emitted-code"),
+    ).toEqual([]);
+  });
+
+  it("a single-quoted coverage.exclude array in vitest.config.ts does not swallow the real thresholds block after it", () => {
+    writeCleanProject();
+    write("vitest.config.ts", VITEST_SINGLE_QUOTED_EXCLUDE);
+    expect(
+      grade().findings.filter((f) => f.ruleId === "coverage-gate"),
+    ).toEqual([]);
   });
 });
 
@@ -413,6 +472,10 @@ describe("structural rules", () => {
     expect(idsFor("gate-lane-parity")).toEqual([]);
   });
 
+  // These two tests document a genuine, accepted limitation (a matrix
+  // expansion or a bare full-coverage run can't be read statically) --
+  // they must keep passing UNCHANGED after the three new parsing-bug tests
+  // below land; they are not bugs to fix.
   it("gate-lane-parity: a lane it cannot read statically is not judged", () => {
     writeCleanProject();
     write(
@@ -440,6 +503,128 @@ describe("structural rules", () => {
     );
     rmSync(join(root, ".github"), { recursive: true });
     expect(idsFor("gate-lane-parity")).toEqual([]);
+  });
+
+  it("gate-lane-parity: a quoted --group value is read as a real group name, not silently treated as dynamic", () => {
+    writeCleanProject();
+    // "ship" is not in GROUPS (lint, build) -- same shape as the existing
+    // "a lane naming a group that does not exist fails" test above, just
+    // quoted. The regex tolerates an optional surrounding quote around the
+    // value, so a quoted --group is read the same as a bare one rather than
+    // marking the whole lefthook.yml surface dynamic.
+    write(
+      "lefthook.yml",
+      LEFTHOOK + '    ship:\n      run: node bin/verify.mjs --group "ship"\n',
+    );
+    const finding = grade().findings.find(
+      (f) =>
+        f.ruleId === "gate-lane-parity" &&
+        f.subject === "lefthook.yml" &&
+        f.message.includes("ship is not in GROUPS"),
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain("ship is not in GROUPS (lint, build)");
+  });
+
+  it("gate-lane-parity: a line-continuation-split invocation is still read as one invocation", () => {
+    writeCleanProject();
+    // "ship" is not in GROUPS. The command is split across two lines with a
+    // trailing `\`, a real `run: |` shape. The continuation is joined into
+    // one logical line before scraping, so the --group token on the second
+    // physical line is read as part of the same invocation as the first.
+    write(
+      "lefthook.yml",
+      "pre-push:\n  commands:\n    all:\n      run: |\n        node bin/verify.mjs \\\n          --group ship\n",
+    );
+    const finding = grade().findings.find(
+      (f) =>
+        f.ruleId === "gate-lane-parity" &&
+        f.message.includes("ship is not in GROUPS"),
+    );
+    expect(finding).toBeDefined();
+  });
+
+  it("gate-lane-parity: a `name:` field merely mentioning verify.mjs must not suppress judgment of a real invocation in the same surface", () => {
+    writeCleanProject();
+    // Job "a"'s step name is plain text that happens to contain the string
+    // "verify.mjs" -- not an invocation. Job "b" runs a real, badly-named
+    // invocation ("ship" is not in GROUPS), on its own line with no `name:`
+    // text before it, so it is read as a real invocation rather than the
+    // `name:` mention marking the whole .github/workflows surface dynamic.
+    write(
+      ".github/workflows/ci.yml",
+      "jobs:\n  a:\n    steps:\n      - name: Explain verify.mjs\n        run: pnpm test\n  b:\n    steps:\n      - run: node bin/verify.mjs --group ship\n",
+    );
+    const finding = grade().findings.find(
+      (f) =>
+        f.ruleId === "gate-lane-parity" &&
+        f.subject === ".github/workflows" &&
+        f.message.includes("ship is not in GROUPS"),
+    );
+    expect(finding).toBeDefined();
+  });
+
+  it("[bug] gate-lane-parity: an `echo` log-grouping idiom before a real invocation on the same line must not suppress judgment of that invocation", () => {
+    // A GitHub Actions log-grouping idiom: a real `echo` call BEFORE the real
+    // invocation, on the same line. Today the name:/echo exclusion tests the
+    // ENTIRE line prefix before "verify.mjs", not just the shell-command
+    // segment that actually contains it, so the `echo` earlier in the line
+    // wrongly excludes the whole line -- and, since one unreadable line marks
+    // the entire surface dynamic, the whole surface -- from judgment.
+    writeCleanProject();
+    write(
+      "lefthook.yml",
+      'pre-push:\n  commands:\n    all:\n      run: echo "::group::x" && node bin/verify.mjs --group ship\n',
+    );
+    const finding = grade().findings.find(
+      (f) =>
+        f.ruleId === "gate-lane-parity" &&
+        f.message.includes("ship is not in GROUPS"),
+    );
+    expect(finding).toBeDefined();
+  });
+
+  it("[bug] gate-lane-parity: `name:` and `run:` on the same flow-mapping line must not suppress judgment of the real invocation", () => {
+    // Same over-broad-prefix mechanism as above, triggered by a YAML
+    // flow-mapping step where `name:` and `run:` sit on the same line. Today
+    // the `name:` token before "verify.mjs" wrongly excludes the real `run:`
+    // invocation that follows it on that same line.
+    writeCleanProject();
+    write(
+      ".github/workflows/ci.yml",
+      "jobs:\n  a:\n    steps:\n      - { name: Lint, run: node bin/verify.mjs --group ship }\n",
+    );
+    const finding = grade().findings.find(
+      (f) =>
+        f.ruleId === "gate-lane-parity" &&
+        f.message.includes("ship is not in GROUPS"),
+    );
+    expect(finding).toBeDefined();
+  });
+
+  it("[bug] gate-lane-parity: a comment ending in a line continuation must not swallow a real invocation on the next line", () => {
+    // Today the `\`-continuation join runs BEFORE comment-stripping, so a
+    // YAML comment ending in a trailing `\` gets joined with the NEXT
+    // physical line before that comment's leading `#` is stripped -- and the
+    // merged line's `#` then strips the WHOLE thing, including a real
+    // invocation that should have stood on its own.
+    writeCleanProject();
+    write(
+      "lefthook.yml",
+      "pre-push:\n  commands:\n    a:\n      run: |\n        # see C:\\\n        node bin/verify.mjs --group ship\n",
+    );
+    // Sanity: the file on disk actually carries a literal trailing backslash
+    // at the end of the comment line, immediately followed by a newline and
+    // the real invocation -- otherwise this test would not exercise the
+    // continuation-before-comment-strip ordering it claims to.
+    const written = readFileSync(join(root, "lefthook.yml"), "utf8");
+    expect(written).toContain("# see C:\\\n        node bin/verify.mjs");
+    const finding = grade().findings.find(
+      (f) =>
+        f.ruleId === "gate-lane-parity" &&
+        f.message.includes("ship is not in GROUPS"),
+    );
+    expect(finding).toBeDefined();
   });
 
   it("node-pin-coherence: a pin below the engines floor fails", () => {

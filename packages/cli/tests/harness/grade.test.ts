@@ -61,6 +61,14 @@ function ids(grade: HarnessGrade, level?: "structural" | "rubric"): string[] {
     .sort();
 }
 
+/** Every subject a given rule id reported, sorted. */
+function idsFor(grade: HarnessGrade, ruleId: string): string[] {
+  return grade.findings
+    .filter((finding) => finding.ruleId === ruleId)
+    .map((finding) => finding.subject)
+    .sort();
+}
+
 /** A harness that is clean under every rule. */
 function writeCleanHarness(): void {
   write(
@@ -176,6 +184,26 @@ describe("gradeHarness -- structural defects", () => {
     ]);
   });
 
+  // [H2] `realpathSync(process.argv[1]) === new URL(import.meta.url).pathname`
+  // LOOKS like it does the right thing (it calls realpathSync), but a plain
+  // OS filesystem path never equals a URL-encoded pathname component (e.g. a
+  // space becomes `%20`), so this comparison is always false -- the hook
+  // fails open exactly like the two forms already caught above. The rule
+  // recognizes this shape via URL_PATHNAME_ENTRY_POINT alongside
+  // BARE_ENTRY_POINT and the literal absence of
+  // `realpathSync(process.argv[1])`, so a hook containing that substring
+  // still gets flagged rather than slipping through with zero findings.
+  it("[H2] flags a hook that calls realpathSync but compares it to a URL .pathname, which never matches", () => {
+    writeCleanHarness();
+    write(
+      ".claude/hooks/guard.mjs",
+      "if (realpathSync(process.argv[1]) === new URL(import.meta.url).pathname) main();\n",
+    );
+    expect(idsFor(gradeHarness(root), "hook-entrypoint")).toEqual([
+      ".claude/hooks/guard.mjs",
+    ]);
+  });
+
   it("accepts a rule with no frontmatter (unconditional) but flags an empty `paths`", () => {
     writeCleanHarness();
     write(".claude/rules/always.md", "no frontmatter at all\n");
@@ -258,6 +286,50 @@ describe("gradeHarness -- structural defects", () => {
       settings([{ file: "local-only.mjs", timeout: 5 }]),
     );
     expect(ids(gradeHarness(root), "structural")).toEqual([]);
+  });
+});
+
+// [H3] `.claude/settings.local.json` gets no parse-failure signal at all:
+// `loadSnapshot` collapses "does not exist" and "exists but fails to parse"
+// into the same `settingsLocal: undefined`, unlike `.claude/settings.json`
+// (whose `settings.error` distinguishes the two and gates `hook-dangling` /
+// `hook-orphan` via `checked: 0`). A malformed settings.local.json should
+// report a `settings-local-parses` finding and make hook-dangling/hook-orphan
+// skip judgment (checked: 0) the same way a broken settings.json already does.
+describe("gradeHarness -- a malformed settings.local.json (settings-local-parses)", () => {
+  it("[H3] reports a settings-local-parses finding when settings.local.json fails to parse", () => {
+    writeCleanHarness();
+    write(".claude/settings.local.json", "{not valid json");
+    const grade = gradeHarness(root);
+    expect(idsFor(grade, "settings-local-parses")).toEqual([
+      ".claude/settings.local.json",
+    ]);
+  });
+
+  it("reports nothing for settings-local-parses when settings.local.json is simply absent", () => {
+    writeCleanHarness();
+    const grade = gradeHarness(root);
+    expect(idsFor(grade, "settings-local-parses")).toEqual([]);
+  });
+
+  it("[H3] skips hook-orphan judgment rather than misreporting a hook registered only in a broken settings.local.json", () => {
+    writeCleanHarness();
+    // Registered ONLY here -- settings.json (the clean harness's) never
+    // mentions it -- and the hook file genuinely exists on disk.
+    write(
+      ".claude/hooks/local-registered.mjs",
+      "// registered only in settings.local.json\n",
+    );
+    write(".claude/settings.local.json", "{not valid json");
+    const grade = gradeHarness(root);
+    // Today: settingsLocal silently becomes `undefined` (identical to "no
+    // registrations there"), so hook-orphan still runs off settings.json
+    // alone and wrongly reports this hook as unreferenced. The fixed
+    // behaviour skips hook-orphan (and hook-dangling) entirely while
+    // settings.local.json cannot be trusted, rather than misreporting.
+    expect(grade.findings.filter((f) => f.ruleId === "hook-orphan")).toEqual(
+      [],
+    );
   });
 });
 

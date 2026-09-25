@@ -293,6 +293,69 @@ function stripJsoncNoise(content) {
   return result.replace(/,(\s*[}\]])/g, "$1");
 }
 
+/**
+ * Strips `//` and block comments from JS/TS source, leaving `'`, `"` and
+ * `` ` `` string literals alone. Keeps trailing commas -- valid JS, and
+ * removing them is a JSON-only cleanup.
+ *
+ * A character scanner, not a parser: a regex literal containing a quote
+ * (`/["']/`) can be misread as opening a string, and a `${...}` expression
+ * inside a template literal containing its own backtick or quote can close
+ * the outer template early. Neither shape appears in this project's actual
+ * `eslint.config.js`/`vitest.config.ts`/`verify-steps.mjs` files.
+ */
+function stripJsComments(content) {
+  let result = "";
+  let quote;
+  let inLineComment = false;
+  let inBlockComment = false;
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i];
+    const next = content[i + 1];
+    if (inLineComment) {
+      if (ch === "\n") {
+        inLineComment = false;
+        result += ch;
+      }
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (quote !== undefined) {
+      result += ch;
+      if (ch === "\\") {
+        result += next ?? "";
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = undefined;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      result += ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    result += ch;
+  }
+  return result;
+}
+
 function readJsonc(path) {
   if (!existsSync(path)) return { ok: false, error: `${path} does not exist` };
   try {
@@ -311,7 +374,7 @@ function readJsonc(path) {
 /** File text with comments stripped, or `undefined` when unreadable. */
 function readSource(path) {
   try {
-    return stripJsoncNoise(readFileSync(path, "utf8"));
+    return stripJsComments(readFileSync(path, "utf8"));
   } catch {
     return undefined;
   }
@@ -469,20 +532,34 @@ function scrapeGateSteps(text) {
  * Reads every `verify.mjs` invocation out of one YAML surface as data: the
  * `--group`/`--step` each names. YAML is scraped, never parsed. An invocation
  * naming neither (a matrix, or a bare full run) marks the surface `dynamic`.
+ * Comments are stripped per line before any `\` line continuation is joined,
+ * so a comment ending in `\` cannot swallow the next line. A quoted value is
+ * read unquoted. A mention inside an `echo` (in the same shell command, not an
+ * earlier `&&`/`;`/`|` segment) or inside a step's `name:` with no `run:`
+ * before it on the line is not an invocation.
  */
 function scrapeLaneInvocations(text) {
   const groups = [];
   const steps = [];
   let dynamic = false;
   let seen = false;
-  for (const raw of text.split("\n")) {
-    const line = raw.replace(/(^|\s)#.*$/, "");
+  const logicalLines = text
+    .split("\n")
+    .map((raw) => raw.replace(/(^|\s)#.*$/, ""))
+    .join("\n")
+    .replace(/\\\r?\n[ \t]*/g, " ")
+    .split("\n");
+  for (const line of logicalLines) {
     const at = line.indexOf("verify.mjs");
     if (at === -1) continue;
+    const prefix = line.slice(0, at);
+    const lastSegment = prefix.split(/&&|\|\||[;|]/).pop() ?? "";
+    if (/\becho\b/.test(lastSegment)) continue;
+    if (/\bname\s*:/.test(prefix) && !/\brun\s*:/.test(prefix)) continue;
     seen = true;
     const rest = line.slice(at);
-    const group = /--group[ =]+([A-Za-z][\w-]*)/.exec(rest);
-    const step = /--step[ =]+([A-Za-z][\w-]*)/.exec(rest);
+    const group = /--group[ =]+["']?([A-Za-z][\w-]*)["']?/.exec(rest);
+    const step = /--step[ =]+["']?([A-Za-z][\w-]*)["']?/.exec(rest);
     if (group !== null) groups.push(group[1]);
     else if (step !== null) steps.push(step[1]);
     else dynamic = true;
