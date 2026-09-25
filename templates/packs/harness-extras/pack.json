@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "harness-extras",
-  "description": "Compaction handoff hooks, a read-only Bash guard, a type-design analyzer agent, and a file-budget gate -- cut from the baseline purely to fit its hard caps, not because they failed the generalization test.",
+  "description": "Adds four extra harness pieces on top of the baseline: a pair of hooks that carry a work summary across a context-window compaction, a hook that blocks non-read-only Bash commands, an agent that reviews type design, and a gate that caps how many files this project's Claude Code harness may contain.",
   "modes": ["fresh", "adopt"],
   "budget": {
     "agents": 1,

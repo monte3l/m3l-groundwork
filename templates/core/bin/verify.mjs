@@ -7,6 +7,10 @@
  * `lefthook.yml` each invoke `--group <name>`, never individual step ids, so
  * a new step -- core or pack-contributed -- is picked up by both without
  * either file changing.
+ *
+ * "Group" and "lane" are two different things: a group is one of the five
+ * fixed buckets above; a lane is the outside caller that runs a whole group
+ * at once -- one lefthook `pre-push` lane, or one CI job in `ci.yml`.
  */
 import process from "node:process";
 import { spawnSync } from "node:child_process";

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Bootstrapped by m3l-groundwork.",
+  "description": "TODO: describe __PROJECT_NAME__ (bootstrapped by m3l-groundwork).",
   "packageManager": "pnpm@12.4.0",
   "engines": {
     "node": ">=24"

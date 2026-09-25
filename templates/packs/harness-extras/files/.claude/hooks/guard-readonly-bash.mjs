@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
  * PreToolUse guard (Bash): restrict read-only spokes to non-mutating shell
- * commands.
+ * commands. A "spoke" here is a subagent the hub dispatches a piece of work
+ * to (see CLAUDE.md's Agent Operating Model); a "read-only spoke" is one
+ * whose job is to inspect the repo -- review it, research it, run a
+ * diagnostic -- and never change it.
  *
  * Every reviewer/research spoke in `.claude/agents/*.md` declares itself
  * read-only in its system prompt and may hold the `Bash` tool for

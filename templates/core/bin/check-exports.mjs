@@ -2,11 +2,17 @@
 /**
  * Real packaging correctness: packs the target package (`--cwd <dir>`,
  * default the repo root) with `pnpm pack`, then runs publint and
- * are-the-types-wrong (attw) against the resulting tarball. Skips cleanly
- * (exit 0, one warning) when the target has no `exports` field -- a project
- * that isn't published doesn't need this gate, and `/customize` removes the
- * step entirely for non-library project kinds rather than leaving a
- * permanently-skipped one behind.
+ * are-the-types-wrong (attw) against the resulting tarball -- checking the
+ * actual published artifact, not just the source tree. publint checks that
+ * `package.json` (its `exports` map, `main`/`module`/`types` fields, and
+ * which files are actually included) resolves the way consumers and
+ * bundlers expect. attw checks that the package's TypeScript type
+ * declarations actually match what each entry point resolves to at runtime
+ * -- e.g. that an ESM import doesn't quietly get pointed at CommonJS-shaped
+ * types. Skips cleanly (exit 0, one warning) when the target has no
+ * `exports` field -- a project that isn't published doesn't need this gate,
+ * and `/customize` removes the step entirely for non-library project kinds
+ * rather than leaving a permanently-skipped one behind.
  */
 import process from "node:process";
 import { execFileSync } from "node:child_process";

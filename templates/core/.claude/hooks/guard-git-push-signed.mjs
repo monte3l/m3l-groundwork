@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * PreToolUse guard (Bash): block a `git push` issued through the agent's Bash
- * tool when any outgoing commit is unsigned or has an invalid signature.
+ * PreToolUse guard (Bash): blocks a `git push` run through the agent's Bash
+ * tool when any outgoing commit is unsigned or has an invalid signature --
+ * and only on a machine where commit signing is already turned on.
  *
- * This is the FIRST Bash-matcher hook in the baseline -- every other
- * PreToolUse hook inspects `tool_input.file_path`; this one inspects
+ * This is the FIRST Bash-matcher hook in this project's harness -- every
+ * other PreToolUse hook inspects `tool_input.file_path`; this one inspects
  * `tool_input.command`.
  *
  * Opt-in, not always-on: `signingEnabled()` (bin/lib/signed-range.mjs) checks
@@ -39,11 +40,13 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-// Deliberately inlined in every hook rather than shared: caps.ts counts
-// .claude/hooks/*.mjs files against a hard limit, so a helper module would
-// cost a hook slot. `import.meta.url` is symlink-resolved but `process.argv[1]`
-// is not, so comparing them directly is false under any symlinked path and the
-// guard body would never run -- exit 0, i.e. fail open.
+// Kept as a duplicated, self-contained block in every hook file rather than
+// imported from a shared helper -- each hook stays a single independent
+// file, which keeps this project's hook count easy to reason about against
+// CLAUDE.md's hook budget. `import.meta.url` is symlink-resolved but
+// `process.argv[1]` is not, so comparing them directly would be false under
+// a symlinked invocation path -- and the guard below would then never run,
+// i.e. silently fail open (exit 0) instead of blocking.
 function isEntryPoint() {
   try {
     return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);

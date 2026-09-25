@@ -63,11 +63,13 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-// Deliberately inlined in every hook rather than shared: caps.ts counts
-// .claude/hooks/*.mjs files against a hard limit, so a helper module would
-// cost a hook slot. `import.meta.url` is symlink-resolved but `process.argv[1]`
-// is not, so comparing them directly is false under any symlinked path and the
-// guard body would never run -- exit 0, i.e. fail open.
+// Kept as a duplicated, self-contained block in every hook file rather than
+// imported from a shared helper -- each hook stays a single independent
+// file, which keeps this project's hook count easy to reason about against
+// CLAUDE.md's hook budget. `import.meta.url` is symlink-resolved but
+// `process.argv[1]` is not, so comparing them directly would be false under
+// a symlinked invocation path -- and the guard below would then never run,
+// i.e. silently fail open (exit 0) instead of blocking.
 function isEntryPoint() {
   try {
     return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
