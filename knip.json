@@ -7,8 +7,8 @@
   "ignoreBinaries": ["verify"],
   "workspaces": {
     ".": {
-      "entry": ["bin/*.mjs"],
-      "project": ["bin/**/*.mjs"]
+      "entry": ["bin/*.mjs", ".claude/hooks/*.mjs"],
+      "project": ["bin/**/*.mjs", ".claude/hooks/**/*.mjs"]
     },
     "packages/cli": {
       "entry": ["src/main.ts", "bin/*.mjs", "scripts/*.mjs"],
