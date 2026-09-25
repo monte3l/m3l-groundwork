@@ -90,11 +90,21 @@ function readPackSteps() {
   let raw;
   try {
     raw = readFileSync(path, "utf8");
-  } catch {
-    return [];
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw new Error(`verify-steps.packs.json: cannot read ${path}`, {
+      cause: error,
+    });
   }
 
-  const parsed = JSON.parse(raw);
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`verify-steps.packs.json: failed to parse ${path}`, {
+      cause: error,
+    });
+  }
   if (!Array.isArray(parsed)) {
     throw new Error("verify-steps.packs.json must be a JSON array of steps");
   }

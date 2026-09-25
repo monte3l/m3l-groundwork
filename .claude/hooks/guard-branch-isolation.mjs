@@ -26,11 +26,15 @@
  * Blocks by exiting 2 with a message on stderr.
  */
 import process from "node:process";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isProtectedPath } from "../../bin/lib/protected-paths.mjs";
+import {
+  canonicalize,
+  isAbsoluteLike,
+  isProtectedPath,
+} from "../../bin/lib/protected-paths.mjs";
 export { isProtectedPath };
 
 /**
@@ -98,13 +102,53 @@ if (isEntryPoint()) {
   }
 
   const filePath = input.tool_input?.file_path ?? "";
+  // Cheap, unscoped pre-check first (same cost as before this file's
+  // scoping fix): anything that can't possibly be a src/tests path by raw
+  // substring is dismissed with no git shell-out at all.
   if (!isProtectedPath(filePath)) process.exit(0);
 
-  const fileDir = dirname(resolve(filePath));
-  const git = defaultGitFor(fileDir);
+  // Bind git to the nearest EXISTING ancestor of the write target, not the
+  // target directory itself -- a Write creating a brand-new nested
+  // directory (e.g. `src/newdir/a.ts` where `newdir/` doesn't exist yet)
+  // means `git -C <that dir>` fails outright ("cannot change to ... No
+  // such file or directory"), which would silently break EVERY git call
+  // below, including branch detection -- the guard would then never learn
+  // it's on `main` at all and allow the write through unblocked. Any
+  // ancestor within the same worktree resolves the same repo root and
+  // branch, so walking up costs nothing in accuracy.
+  let probeDir = dirname(resolve(filePath));
+  while (!existsSync(probeDir)) {
+    const parent = dirname(probeDir);
+    if (parent === probeDir) break; // filesystem root; let git fail naturally
+    probeDir = parent;
+  }
+  const git = defaultGitFor(probeDir);
+  const worktreeRoot = git(["rev-parse", "--show-toplevel"]);
+  // Re-check scoped to the file's OWN worktree root (more accurate than a
+  // guess from CLAUDE_PROJECT_DIR/cwd, and what this guard already resolves
+  // everything else against): a checkout whose own path merely contains the
+  // substring "/src/" above the worktree root (e.g. a clone at
+  // ~/src/other-project) must not count as protected just because of that.
+  // A non-git directory leaves worktreeRoot "" and skips this re-check,
+  // same as the header comment's existing "never blocks" behavior. Both
+  // sides go through `canonicalize` (case-correct, symlinks resolved)
+  // before comparing -- see its own doc comment for why a raw string
+  // comparison isn't safe here (macOS's case-insensitive filesystem and its
+  // `/tmp`/`/var` symlinks both make two spellings of the identical file
+  // compare as different paths otherwise). Only attempted for an ABSOLUTE
+  // filePath: canonicalize() resolves a relative one against this process's
+  // own cwd, which isn't necessarily the anchor a relative payload was
+  // meant against -- the fast pre-check above already matched it correctly
+  // as-is, so a relative path just keeps that verdict.
+  if (
+    worktreeRoot !== "" &&
+    isAbsoluteLike(filePath) &&
+    !isProtectedPath(canonicalize(filePath), canonicalize(worktreeRoot))
+  ) {
+    process.exit(0);
+  }
 
   if (isMainOrDetachedOnMain(git)) {
-    const worktreeRoot = git(["rev-parse", "--show-toplevel"]);
     const inDifferentTree =
       worktreeRoot !== "" && resolve(worktreeRoot) !== resolve(process.cwd());
     const location = inDifferentTree

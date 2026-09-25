@@ -29,7 +29,11 @@
 import process from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { isProtectedPath } from "../../bin/lib/protected-paths.mjs";
+import {
+  canonicalize,
+  isAbsoluteLike,
+  isProtectedPath,
+} from "../../bin/lib/protected-paths.mjs";
 import { WRITER_SPOKES } from "../../bin/lib/agent-roster.mjs";
 
 /**
@@ -37,11 +41,12 @@ import { WRITER_SPOKES } from "../../bin/lib/agent-roster.mjs";
  *
  * @param {string | undefined} filePath  The file_path from the tool_input payload.
  * @param {unknown} agentType            The top-level agent_type from the payload.
+ * @param {string} [projectDir]          Scopes an absolute filePath to the project -- see isProtectedPath.
  * @returns {boolean} true = block, false = allow.
  */
-export function shouldBlockHubSrcWrite(filePath, agentType) {
+export function shouldBlockHubSrcWrite(filePath, agentType, projectDir) {
   if (!filePath || typeof filePath !== "string") return false;
-  if (!isProtectedPath(filePath)) return false;
+  if (!isProtectedPath(filePath, projectDir)) return false;
   if (
     typeof agentType === "string" &&
     agentType.length > 0 &&
@@ -77,7 +82,24 @@ if (isEntryPoint()) {
   }
   const filePath = input.tool_input?.file_path ?? "";
   const agentType = input.agent_type;
-  if (!shouldBlockHubSrcWrite(filePath, agentType)) process.exit(0);
+  // Canonicalized (case-correct, symlinks resolved) where the real
+  // filesystem can confirm it -- isProtectedPath's own case-insensitive
+  // comparison (see its doc comment) is the fallback for whatever a
+  // not-yet-existing path can't be canonicalized against.
+  const projectDir = canonicalize(
+    process.env.CLAUDE_PROJECT_DIR ?? process.cwd(),
+  );
+  // Only an ABSOLUTE filePath has a filesystem anchor worth canonicalizing --
+  // canonicalize() resolves a relative path against this hook's own cwd,
+  // which is not necessarily the project the write actually targets, and
+  // isProtectedPath already matches a relative filePath as-is (see its doc
+  // comment). Leaving a relative filePath unresolved here keeps that
+  // contract instead of silently changing what it's compared against.
+  const scopedFilePath =
+    filePath && isAbsoluteLike(filePath) ? canonicalize(filePath) : filePath;
+  if (!shouldBlockHubSrcWrite(scopedFilePath, agentType, projectDir)) {
+    process.exit(0);
+  }
   process.stderr.write(
     "guard-hub-src-writes: Hub-authored write to a guarded path detected.\n" +
       `  Path: ${filePath}\n` +

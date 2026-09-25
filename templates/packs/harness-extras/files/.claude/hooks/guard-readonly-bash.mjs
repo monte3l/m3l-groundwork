@@ -29,6 +29,17 @@
  * merely defers to code review, which remains the authoritative backstop).
  * Extend MUTATING_PATTERNS as new gaps are found rather than flipping to an
  * allowlist.
+ *
+ * Known, accepted gaps in the prefix-verb/nested-shell handling (deliberate,
+ * per the tradeoff above -- not oversights): a prefix verb's OWN value-taking
+ * flag (`sudo -u root rm x`, `env -C /tmp rm x`, `xargs -n 1 rm`) resolves the
+ * flag's value as the verb, missing the real command; `bash -c`/`sh -c`'s
+ * nested-command regex requires a standalone `-c` (misses combined short
+ * flags like `-lc`) and only inspects up to the closing quote (misses
+ * `bash -c '...' extra-arg`); other shells (`zsh`, `dash`) and `eval` are not
+ * recognized as nested-shell prefixes at all; `find`'s `-exec` check only
+ * inspects the immediate next token, missing `-execdir`/`-ok` and a chained
+ * `-exec sh -c '...'`.
  */
 import process from "node:process";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
@@ -44,13 +55,26 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** Extract the YAML frontmatter block's `name:` field, or `undefined`. */
+/**
+ * Extract the YAML frontmatter block's `name:` field, or `undefined`. CRLF
+ * line endings are normalized first -- the frontmatter delimiter regex only
+ * matches a bare `\n`, so an untouched CRLF file would never match at all,
+ * silently producing zero read-only agents (which, per this hook's actual
+ * usage, means the guard exits 0 -- allow -- for every agent). A quoted
+ * value (`name: "some-agent"`) has its quotes stripped so it compares
+ * correctly against `WRITER_SPOKES` and the incoming `agent_type`.
+ */
 function frontmatterName(filePath) {
-  const content = readFileSync(filePath, "utf8");
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  const content = readFileSync(filePath, "utf8")
+    .replace(/^\uFEFF/, "") // a leading BOM (a realistic artifact of a Windows editor)
+    .replace(/\r\n/g, "\n");
+  const match = content.match(/^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/);
   if (match === null) return undefined;
   const nameLine = match[1].split("\n").find((line) => /^name:\s*/.test(line));
-  return nameLine?.replace(/^name:\s*/, "").trim();
+  return nameLine
+    ?.replace(/^name:\s*/, "")
+    .trim()
+    .replace(/^["']|["']$/g, "");
 }
 
 /**
@@ -88,6 +112,45 @@ function baseName(token) {
   return parts[parts.length - 1];
 }
 
+// A "prefix verb" runs some OTHER command as its argument rather than
+// mutating anything itself -- without unwrapping it, the real command
+// hidden behind `sudo rm -rf x`, `env FOO=bar rm x`, or `xargs rm` is never
+// inspected at all, and passes as if it were the harmless prefix alone.
+const PREFIX_VERBS = new Set(["sudo", "env", "xargs", "command"]);
+
+/**
+ * Drops a chain of leading `VAR=value` assignments and prefix verbs (with
+ * their own flags/assignments) so the REAL command a prefix verb runs is
+ * what `parseSegment` resolves the verb/subcommand from.
+ *
+ * @param {string[]} tokens
+ * @returns {string[]}
+ */
+function stripPrefixVerbs(tokens) {
+  let i = 0;
+  while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) i++;
+  while (i < tokens.length && PREFIX_VERBS.has(baseName(tokens[i]))) {
+    // `command -v`/`-V` looks a name up (prints its path/description) and
+    // does not run it -- unlike every other use of `command` (and unlike
+    // `sudo`/`env`/`xargs`), the following token is never executed, so it
+    // must not be peeled off as the "real" verb.
+    if (
+      baseName(tokens[i]) === "command" &&
+      (tokens[i + 1] === "-v" || tokens[i + 1] === "-V")
+    ) {
+      break;
+    }
+    i++;
+    while (
+      i < tokens.length &&
+      (tokens[i].startsWith("-") || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]))
+    ) {
+      i++;
+    }
+  }
+  return tokens.slice(i);
+}
+
 // Global/wrapper flags -- per verb -- that consume the FOLLOWING token as
 // their value, so the walk to find the subcommand must skip both. Without
 // this, `git -C /tmp commit` or `pnpm --dir ./foo add lodash` resolve `sub`
@@ -117,15 +180,13 @@ const FLAGS_WITH_VALUE = {
  * @returns {{ verb: string, sub: string | undefined, tokens: string[] }}
  */
 function parseSegment(segment) {
-  const tokens = segment.split(/\s+/).filter(Boolean);
-  let i = 0;
-  while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) i++;
-  if (tokens[i] === undefined) return { verb: "", sub: undefined, tokens: [] };
+  const tokens = stripPrefixVerbs(segment.split(/\s+/).filter(Boolean));
+  if (tokens.length === 0) return { verb: "", sub: undefined, tokens: [] };
 
-  const verb = baseName(tokens[i]);
+  const verb = baseName(tokens[0]);
   const valueFlags = FLAGS_WITH_VALUE[verb] ?? new Set();
   let sub;
-  let j = i + 1;
+  let j = 1;
   while (j < tokens.length) {
     const t = tokens[j];
     if (valueFlags.has(t)) {
@@ -139,7 +200,7 @@ function parseSegment(segment) {
     sub = t;
     break;
   }
-  return { verb, sub, tokens: tokens.slice(i) };
+  return { verb, sub, tokens };
 }
 
 // Mutating subcommands per top-level verb (e.g. "git" -> "commit"). A verb
@@ -150,6 +211,7 @@ const MUTATING_SUBCOMMANDS = {
     "add",
     "commit",
     "push",
+    "pull", // fetch + merge/rebase into the working tree
     "merge",
     "rebase",
     "cherry-pick",
@@ -163,6 +225,8 @@ const MUTATING_SUBCOMMANDS = {
     "am",
     "revert",
     "restore",
+    "rm",
+    "mv",
     "gc",
     "worktree", // add/remove mutate the tree layout
     "config",
@@ -171,9 +235,12 @@ const MUTATING_SUBCOMMANDS = {
     // list` sparingly from a read-only spoke, or defer to the hub.
   ]),
   pnpm: new Set([
+    "install",
+    "i",
     "add",
     "remove",
     "rm",
+    "update",
     "publish",
     "version",
     "link",
@@ -186,6 +253,7 @@ const MUTATING_SUBCOMMANDS = {
     "remove",
     "rm",
     "uninstall",
+    "update",
     "publish",
     "version",
     "link",
@@ -208,6 +276,11 @@ const MUTATING_VERBS = new Set([
   "tee",
 ]);
 
+// `bash -c '...'`/`sh -c "..."` (optionally through a path like
+// `/bin/bash`), capturing the quoted argument's inner content.
+const SHELL_DASH_C =
+  /^\s*(?:\S*\/)?(?:bash|sh)\s+(?:-\S+\s+)*-c\s+(['"])([\s\S]*)\1\s*$/;
+
 /**
  * Classify a shell command as blocked (mutating) or allowed for a read-only
  * spoke. Denylist-based -- see the module header for the design tradeoff.
@@ -222,6 +295,21 @@ export function classifyBashCommand(command) {
 
   for (const segment of segments(command)) {
     if (segment.length === 0) continue;
+
+    // `bash -c '<command>'`/`sh -c '<command>'` runs the quoted argument as
+    // its own shell command -- unwrap and recurse rather than reading only
+    // the outer `bash -c` invocation, which is never itself mutating.
+    const nestedShell = SHELL_DASH_C.exec(segment);
+    if (nestedShell !== null) {
+      const nested = classifyBashCommand(nestedShell[2]);
+      if (nested.blocked) {
+        return {
+          blocked: true,
+          reason: `runs a nested shell command via -c that ${nested.reason}`,
+        };
+      }
+      continue;
+    }
 
     // Write-redirection to a real file (not a discard target). No digit
     // lookbehind: `1>file`/`2>file` are ordinary fd-prefixed writes, not fd
@@ -250,9 +338,30 @@ export function classifyBashCommand(command) {
 
     if (
       verb === "sed" &&
-      tokens.some((t) => t === "-i" || t.startsWith("-i"))
+      tokens.some(
+        (t) => t === "-i" || t.startsWith("-i") || t.startsWith("--in-place"),
+      )
     ) {
       return { blocked: true, reason: `runs "sed -i" (in-place edit)` };
+    }
+
+    if (verb === "find") {
+      if (tokens.includes("-delete")) {
+        return {
+          blocked: true,
+          reason: `runs "find ... -delete", which mutates matched files`,
+        };
+      }
+      const execIndex = tokens.indexOf("-exec");
+      if (execIndex !== -1) {
+        const execVerb = baseName(tokens[execIndex + 1] ?? "");
+        if (MUTATING_VERBS.has(execVerb)) {
+          return {
+            blocked: true,
+            reason: `runs "find ... -exec ${execVerb}", which mutates matched files`,
+          };
+        }
+      }
     }
 
     const mutatingSubs = MUTATING_SUBCOMMANDS[verb];
