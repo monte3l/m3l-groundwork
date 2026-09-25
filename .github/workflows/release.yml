@@ -38,21 +38,21 @@ jobs:
     permissions:
       contents: read # actions/checkout
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       # Same setup as ci.yml. `.node-version` is the single Node pin, so this
       # file must never carry a literal version (`pnpm check:node-version`).
       # No package-manager cache anywhere in this file: a restored cache is an
       # input an attacker can poison, and these jobs are the ones that publish.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
           package-manager-cache: false
       - run: pnpm install --frozen-lockfile
       - id: select-mode
-        uses: changesets/action/select-mode@v2
+        uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
 
   version:
     name: Open version PR
@@ -63,11 +63,11 @@ jobs:
     permissions:
       contents: read # actions/checkout; the app token below does the actual writing
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
           package-manager-cache: false
@@ -83,7 +83,7 @@ jobs:
       # for exactly this case -- see CLAUDE.md, "Releases". The App needs only
       # `contents: write` and `pull-requests: write`; its token auto-expires in
       # an hour and this action revokes it when the job ends.
-      - uses: actions/create-github-app-token@v3
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         id: app-token
         with:
           # Both created as repo secrets (`gh secret set`), not vars: the
@@ -91,9 +91,10 @@ jobs:
           # each other avoids a second place to remember to update.
           client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      # `version:packages` also syncs plugin.json and marketplace.json to the
-      # new version and refreshes the lockfile (see package.json).
-      - uses: changesets/action/version@v2
+      # `version:packages` syncs plugin.json to the new version (never
+      # marketplace.json -- it deliberately carries no version pin, see
+      # CLAUDE.md) and refreshes the lockfile (see package.json).
+      - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: pnpm version:packages
@@ -111,11 +112,11 @@ jobs:
     permissions:
       contents: read # actions/checkout
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
           package-manager-cache: false
@@ -130,7 +131,7 @@ jobs:
       - run: pnpm verify
       - run: pnpm test:e2e
       - id: pack
-        uses: changesets/action/pack@v2
+        uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
         with:
           publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
 
@@ -143,11 +144,11 @@ jobs:
       contents: write # changesets/action/publish pushes tags and creates GitHub Releases
       id-token: write # npm trusted publishing (OIDC) and provenance
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
           package-manager-cache: false
@@ -173,7 +174,7 @@ jobs:
             "$shim_dir" "$GITHUB_WORKSPACE" > "$shim_dir/pnpm"
           chmod +x "$shim_dir/pnpm"
           echo "$shim_dir" >> "$GITHUB_PATH"
-      - uses: changesets/action/publish@v2
+      - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
         with:
           pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
       # Staging succeeds unattended; going live needs a maintainer's 2FA
