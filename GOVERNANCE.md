@@ -59,8 +59,10 @@ the full mechanics.
 
 Adding a second maintainer means, at minimum: a GitHub org owner invite, npm
 package-maintainer access on `@monte3l/groundwork`, and a reviewer seat on
-the `npm-publish` GitHub environment. None of that has happened yet -- see
-"Bus factor" below.
+the `npm-publish` GitHub environment. The first and third are done:
+[giulmonte](https://github.com/giulmonte) is a `monte3l` org owner and a
+required reviewer on `npm-publish` alongside the maintainer. npm
+package-maintainer access is not -- see "Bus factor" below.
 
 ## Access continuity
 
@@ -71,9 +73,13 @@ depends on, concretely:
 - **GitHub org ownership** -- controls the `main` branch ruleset, repo
   secrets (`APP_CLIENT_ID`, `APP_PRIVATE_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`),
   the `npm-publish` environment's reviewer list, and the GitHub App
-  installation the release workflow's `version` job uses.
+  installation the release workflow's `version` job uses. A second org
+  owner already holds this independently -- see "Roles" above.
 - **npm package ownership** on `@monte3l/groundwork`, plus the account
-  holding 2FA for `npm stage approve`.
+  holding 2FA for `npm stage approve`. Unlike GitHub, this is not
+  independently held by a second person today -- recovering it depends on
+  the maintainer's own npm account, which is exactly what the kit below
+  covers.
 - **The maintainer's GPG signing key** -- `main`'s ruleset requires signed
   commits (see [`CLAUDE.md`](CLAUDE.md#git-workflow)); losing it without a
   successor key blocks every future commit to `main` until a new key is
@@ -101,6 +107,9 @@ rather than requiring a second active maintainer.
 ## Bus factor
 
 Today's bus factor is **1** -- this is a single-maintainer project, stated
-plainly rather than inflated. The badge's `bus_factor` criterion is a
-SHOULD, not a MUST, precisely for projects in this position. Growing past 1
-is on the [roadmap](ROADMAP.md).
+plainly rather than inflated. A second person already holds real GitHub
+access (see "Roles" above), but has never reviewed, merged, or released
+anything, and holds no npm access at all -- access alone doesn't make an
+active co-maintainer. The badge's `bus_factor` criterion is a SHOULD, not a
+MUST, precisely for projects in this position. Growing past 1 is on the
+[roadmap](ROADMAP.md).
