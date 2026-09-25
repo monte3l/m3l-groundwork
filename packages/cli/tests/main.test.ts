@@ -179,6 +179,93 @@ describe("parseArgs (CliUsageError)", () => {
       /--name/,
     );
   });
+
+  it("throws CliUsageError naming the offending value for a --pack containing a path traversal segment", () => {
+    expect(() => parseArgs(["/tmp/x", "--pack", "../x"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--pack", "../x"])).toThrow(/\.\.\/x/);
+  });
+
+  it("throws CliUsageError naming the offending value for a --pack given as an absolute path", () => {
+    expect(() => parseArgs(["/tmp/x", "--pack", "/abs"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--pack", "/abs"])).toThrow(/\/abs/);
+  });
+
+  it("throws CliUsageError naming the offending value for a --pack containing a path separator", () => {
+    expect(() => parseArgs(["/tmp/x", "--pack", "a/b"])).toThrow(CliUsageError);
+    expect(() => parseArgs(["/tmp/x", "--pack", "a/b"])).toThrow(/a\/b/);
+  });
+
+  it("throws CliUsageError naming the offending value for a --pack of a bare dot", () => {
+    expect(() => parseArgs(["/tmp/x", "--pack", "."])).toThrow(CliUsageError);
+  });
+
+  it("throws CliUsageError naming the offending value for a --pack with uppercase characters", () => {
+    expect(() => parseArgs(["/tmp/x", "--pack", "UPPER"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--pack", "UPPER"])).toThrow(/UPPER/);
+  });
+
+  it("throws CliUsageError naming only the invalid value when one of several repeated --pack flags is malformed", () => {
+    // Repeatable flag: a valid value alongside an invalid one must still
+    // throw -- the invalid value is never silently dropped in favor of the
+    // valid one.
+    expect(() =>
+      parseArgs(["/tmp/x", "--pack", "a", "--pack", "../b"]),
+    ).toThrow(CliUsageError);
+    expect(() =>
+      parseArgs(["/tmp/x", "--pack", "a", "--pack", "../b"]),
+    ).toThrow(/\.\.\/b/);
+  });
+
+  it("accepts a valid, real pack name shape and parses it into packs", () => {
+    const options = parseArgs(["/tmp/x", "--pack", "statusline"]);
+    expect(options.packs).toEqual(["statusline"]);
+  });
+
+  it("throws CliUsageError naming the offending value for a --name given as a path traversal", () => {
+    expect(() => parseArgs(["/tmp/x", "--name", "../evil"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--name", "../evil"])).toThrow(
+      /\.\.\/evil/,
+    );
+  });
+
+  it("throws CliUsageError naming the offending value for a --name with uppercase characters", () => {
+    expect(() => parseArgs(["/tmp/x", "--name", "Foo"])).toThrow(CliUsageError);
+    expect(() => parseArgs(["/tmp/x", "--name", "Foo"])).toThrow(/Foo/);
+  });
+
+  it("throws CliUsageError naming the offending value for a --name containing a space", () => {
+    expect(() => parseArgs(["/tmp/x", "--name", "has space"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => parseArgs(["/tmp/x", "--name", "has space"])).toThrow(
+      /has space/,
+    );
+  });
+
+  it("throws CliUsageError for a --name longer than 214 characters", () => {
+    const tooLong = "a".repeat(215);
+    expect(() => parseArgs(["/tmp/x", "--name", tooLong])).toThrow(
+      CliUsageError,
+    );
+  });
+
+  it("accepts a valid scoped npm package name for --name", () => {
+    const options = parseArgs(["/tmp/x", "--name", "@scope/widgets"]);
+    expect(options.projectName).toBe("@scope/widgets");
+  });
+
+  it("accepts a valid unscoped npm package name for --name", () => {
+    const options = parseArgs(["/tmp/x", "--name", "widgets-2"]);
+    expect(options.projectName).toBe("widgets-2");
+  });
 });
 
 describe("templatesCoreDir", () => {
