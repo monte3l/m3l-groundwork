@@ -51,20 +51,23 @@ each change with you, and only then edits your project.
 ## Install and run
 
 The CLI is published to npm as [`@monte3l/groundwork`](https://www.npmjs.com/package/@monte3l/groundwork).
-It is a prerelease (0.x): releases ship on the `next` dist-tag, so name the
-tag explicitly. See ["Versioning policy"](#versioning-policy) below for what
-counts as the CLI's public API, and drop `@next` once a stable release
-exists.
+It is currently a `1.0.0` release candidate: releases ship on the `rc`
+dist-tag, so name the tag explicitly. See
+["Versioning policy"](#versioning-policy) below for what counts as the
+CLI's public API -- frozen as of the first RC -- and drop `@rc` once a
+stable `1.0.0` release exists. If you installed an earlier `0.x` release
+from the `next` tag, switch explicitly: prerelease version ranges don't
+cross from `0.1.0-next.N` to `1.0.0-rc.N` on their own.
 
 ```bash
 # a new project
-npx @monte3l/groundwork@next my-new-project
+npx @monte3l/groundwork@rc my-new-project
 
 # a new project with an optional pack
-npx @monte3l/groundwork@next my-new-project --pack statusline
+npx @monte3l/groundwork@rc my-new-project --pack statusline
 
 # an existing project (adopt mode is auto-detected)
-npx @monte3l/groundwork@next ../existing-project
+npx @monte3l/groundwork@rc ../existing-project
 ```
 
 To run it from a checkout instead (or to work on it), build it and call the

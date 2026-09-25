@@ -7,10 +7,10 @@ existing project and writes only a report (**adopt** mode, which never touches a
 project file).
 
 ```bash
-# 0.x is a prerelease and ships on the `next` dist-tag
-npx @monte3l/groundwork@next my-new-project
-npx @monte3l/groundwork@next my-new-project --pack statusline
-npx @monte3l/groundwork@next ../existing-project
+# currently a 1.0.0 release candidate, shipping on the `rc` dist-tag
+npx @monte3l/groundwork@rc my-new-project
+npx @monte3l/groundwork@rc my-new-project --pack statusline
+npx @monte3l/groundwork@rc ../existing-project
 ```
 
 Requires Node 24+. No prompts, and no network call beyond the `pnpm install` a
