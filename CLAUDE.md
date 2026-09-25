@@ -544,9 +544,11 @@ publish`.** Two stacked reasons, not one: changesets publishes through
 - **Changesets, not a hand-written publish script, owns the publish plan, tags
   and Releases.** Tarballs are packed in one job and published in another so the
   OIDC token is never present where build or test code runs. The `publish` job
-  installs with `--ignore-scripts` and pins `npm@^11.15.0` (`npm stage publish`
-  needs >= 11.15.0, Node >= 22.14.0 -- already covered by `.node-version`'s 24)
-  rather than `latest`.
+  installs with `--ignore-scripts` and pins an exact `npm@` version (`npm
+stage publish` needs >= 11.15.0, Node >= 22.14.0 -- already covered by
+  `.node-version`'s 24), not a range or `latest` -- OpenSSF Scorecard's
+  Pinned-Dependencies check flags a floating install the same way it flags
+  an unpinned Action, and this job holds the OIDC token.
 - **No package-manager cache in `release.yml`**, and no `cancel-in-progress`: a
   restored cache is an input an attacker can poison in the jobs that publish,
   and a half-published release is worse than a queued one.
