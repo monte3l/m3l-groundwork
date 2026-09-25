@@ -468,11 +468,27 @@ plugin-only change needs no release step at all: it is live for marketplace
 users (`/plugin marketplace update`) the moment it lands on `main`;
 `plugin.json`'s version just trails the CLI's for display.
 
-**Prerelease mode is on** (`.changeset/pre.json`, tag `next`): the CLI's
-versions are `0.1.0-next.N` on the `next` dist-tag, so the README says
-`npx @monte3l/groundwork@next`. Leave it with `pnpm changeset pre exit` plus a
-normal version PR, then drop `@next` from the README. Changesets itself warns
-against sitting in pre mode on the default branch indefinitely.
+**Prerelease mode is on** (`.changeset/pre.json`, tag `rc`): the CLI shipped
+one `0.x` line (`0.1.0-next.0`/`.1`, on the `next` dist-tag) before the public
+API was defined, then switched tags (`pnpm changeset pre exit` immediately
+followed by `pnpm changeset pre enter rc`, both in one commit -- splitting
+them across commits lets `changeset version` run in the intervening `exit`
+state and skip the prerelease suffix entirely) alongside a `major` changeset.
+Changesets' prerelease counter does not reset across a tag switch, so the
+first `rc` version continued from the `next` line's counter rather than
+starting at `.0` or `.1` -- read `pnpm changeset status --verbose` before
+relying on a specific number. The CLI's versions are now `1.0.0-rc.N` on the
+`rc` dist-tag, so the README says `npx @monte3l/groundwork@rc`; `@next`
+users must switch explicitly, since a prerelease range never crosses from
+`0.1.0-next.N` to `1.0.0-rc.N` on its own. The public API (see the README's
+"Versioning policy") is frozen as of the first `rc`: only `patch` changesets
+land for the rest of the series, and any further API change waits for a
+`1.1` after GA. Leave `rc` mode with `pnpm changeset pre exit` plus a normal
+version PR once the promotion checklist is met, then drop `@rc` from the
+README (and repoint the `next` dist-tag, and any marketplace channel, to the
+stable release -- see the release plan for the full GA checklist).
+Changesets itself warns against sitting in pre mode on the default branch
+indefinitely.
 
 **One-time setup, done by hand, that this design depends on.** npm cannot
 configure a trusted publisher for a package that does not exist yet, so
