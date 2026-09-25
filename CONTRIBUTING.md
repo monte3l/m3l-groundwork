@@ -1,9 +1,29 @@
 # Contributing
 
 This is a single-maintainer project. External contributions are welcome as
-issues and pull requests; read [`CLAUDE.md`](CLAUDE.md) first, it's the
-canonical reference for architecture, conventions, and the agent operating
-model this repo builds against.
+issues and pull requests. For how the project is organized -- the two
+phases, the packages, what lives where -- start with
+[`docs/architecture.md`](docs/architecture.md); it's written for a human
+reading the project rather than editing it. [`CLAUDE.md`](CLAUDE.md) is the
+deeper, exhaustive reference, but it's written for Claude Code agents
+working in this repo, so expect a different register and a lot more detail
+than you need for a first PR.
+
+## Prerequisites
+
+- **Node 24+**. `.node-version` is the authority; `check:node-version`
+  gates any drift from it in CI.
+- **pnpm**, pinned via the `packageManager` field in `package.json` --
+  install a matching version with [Corepack](https://nodejs.org/api/corepack.html)
+  or your own package manager.
+- **A GPG signing key**, configured for commit signing. `main`'s branch
+  ruleset requires every commit to be signed; see GitHub's guide on
+  [signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits)
+  if you haven't set one up before.
+- **A DCO sign-off** on every commit. This just means adding a
+  `Signed-off-by:` trailer certifying you have the right to submit your
+  change -- `git commit -s` adds it for you. See "Developer Certificate of
+  Origin" below.
 
 ## Setup
 
@@ -13,9 +33,6 @@ cd m3l-groundwork
 pnpm install
 pnpm prepare   # installs lefthook git hooks
 ```
-
-Node version comes from `.node-version` (`check:node-version` gates any
-drift). pnpm is pinned via `packageManager` in `package.json`.
 
 ## Before opening a PR
 
@@ -28,15 +45,15 @@ real acceptance test and has caught real bugs unit tests missed (see
 
 - **Conventional Commits**, enforced by the `commit-msg` hook. This is the
   same convention `templates/core` emits into every bootstrapped project.
-- **Signed commits** -- `main`'s branch ruleset requires them. Configure a
-  GPG key before your first commit here.
+- **Signed commits** -- `main`'s branch ruleset requires them (see
+  "Prerequisites" above).
 - **A DCO sign-off trailer** on every commit -- `git commit -s`, or add
   `Signed-off-by: Your Name <you@example.com>` yourself. The `commit-msg`
   hook rejects a commit without one; see "Developer Certificate of Origin"
   below.
 - **A changeset** (`pnpm changeset`) for any user-visible change to
   `@monte3l/groundwork` (the CLI). The plugin never takes one -- it has no
-  release of its own; see [`CLAUDE.md`](CLAUDE.md#releases).
+  release of its own; see ["Releasing"](#releasing) below.
 - **Add a `Co-Authored-By:` trailer** if an AI assistant substantially
   helped write the commit.
 
@@ -86,11 +103,36 @@ merge.
   and passes against the fix -- not just a fix with no test proving the bug
   is gone.
 - A change to `templates/core/` is a change to what every future
-  bootstrapped project gets -- it needs `pnpm test:e2e` and must keep the
-  baseline's caps (`pnpm check:harness`, `pnpm check:toolchain`) green.
+  bootstrapped project gets -- it needs `pnpm test:e2e`. If it adds or
+  removes a `.claude/` agent, skill, hook, CI workflow, or root
+  `package.json` script, the baseline's caps must still hold -- these are
+  counted by tests around `packages/cli/src/caps.ts` (`pnpm test`, part of
+  `pnpm verify`'s `test` group), not by `pnpm check:harness` or
+  `pnpm check:toolchain` -- those two grade the harness and toolchain
+  against a rubric, a separate concern from the raw counts.
 - A new file under `templates/core/` must be claimed by
   `packages/plugin/src/domain-map.ts`'s glob lists, or
   `domain-map.test.ts` fails on purpose.
+
+## Releasing
+
+`@monte3l/groundwork` is released with [Changesets](https://github.com/changesets/changesets)
+and published to npm through trusted publishing (no stored token). A PR
+that changes the CLI's user-visible behavior adds a changeset with
+`pnpm changeset`. Merging to `main` opens a "Version Packages" PR; merging
+that runs the full gate, stages the package with provenance, and creates a
+git tag and a GitHub Release -- a maintainer still has to approve the
+staged version (2FA, via `npm stage approve`) before it's actually
+installable, npm's own recommended flow for trusted publishers.
+
+`@monte3l/groundwork-plugin` is never published to npm -- it ships only
+through the Claude Code marketplace (`.claude-plugin/marketplace.json`), so
+a change to it is live the moment it lands on `main`; its `plugin.json`
+version just tracks the CLI's, for display.
+
+The full design -- why staging is a separate gate from npm's own 2FA step,
+the one-time setup it depends on, and the GitHub App used for the version
+PR -- is in [`CLAUDE.md`](CLAUDE.md#releases).
 
 ## Project docs
 
@@ -102,6 +144,8 @@ merge.
   the two phases fit together.
 - [`docs/assurance-case.md`](docs/assurance-case.md) -- the threat model
   and security design argument.
+- [`docs/glossary.md`](docs/glossary.md) -- plain-English definitions of
+  this repo's jargon.
 - [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 ## Reporting a security issue

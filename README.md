@@ -4,28 +4,71 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/monte3l/m3l-groundwork/badge)](https://securityscorecards.dev/viewer/?uri=github.com/monte3l/m3l-groundwork)
 [![Socket](https://badge.socket.dev/npm/package/@monte3l/groundwork)](https://socket.dev/npm/package/@monte3l/groundwork/overview)
 
-Deterministic TypeScript + Claude Code project bootstrapper, with an
-adaptive `/customize` pass over live TypeScript and Anthropic guidance.
+m3l-groundwork is a command-line tool that sets up (or reports on) a
+TypeScript project's toolchain and [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
+setup, then keeps that setup current with live upstream guidance.
+
+## Who is this for
+
+- Someone starting a **new TypeScript project** who wants a strict
+  toolchain and a working Claude Code setup from the first commit, instead
+  of assembling both by hand.
+- A team with an **existing TypeScript project** who wants an honest,
+  read-only report on how it compares to that same baseline, with no risk
+  of an automated tool rewriting their repo.
+- Anyone who wants their project's Claude Code configuration and
+  TypeScript toolchain to stay aligned with current official guidance,
+  rather than frozen at whatever was true the day it was set up.
+
+## New to Claude Code or TypeScript?
+
+- [Claude Code documentation](https://docs.claude.com/en/docs/claude-code/overview)
+  -- what it is and how to install it.
+- [`docs/glossary.md`](docs/glossary.md) -- plain-English definitions of the
+  terms used throughout this repo's docs (harness, skill, pack, gate, and
+  so on).
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
+  -- if TypeScript itself is new to you.
+
+## Quickstart
+
+1. Install [Node 24+](https://nodejs.org/) and [pnpm](https://pnpm.io/installation)
+   (see ["Requirements"](#requirements) below for exact versions).
+2. Run `npx @monte3l/groundwork@rc my-app` to bootstrap a new project
+   named `my-app`.
+3. `cd my-app`.
+4. Open the `my-app` folder in Claude Code.
+5. Run `/customize` -- it interviews you and tailors the baseline to your
+   project.
+
+> **Why `@rc`?** `@monte3l/groundwork` is currently a `1.0.0` release
+> candidate, shipped on the [`rc` dist-tag](docs/glossary.md#dist-tag) --
+> name it explicitly, as the Quickstart above does. Drop `@rc` once a
+> stable `1.0.0` release exists. If you installed an earlier `0.x` release
+> from the `next` tag, switch explicitly: a prerelease version range never
+> crosses from `0.1.0-next.N` to `1.0.0-rc.N` on its own. See
+> ["Versioning policy"](#versioning-policy) below for what counts as the
+> CLI's public API, frozen as of the first RC.
 
 ## What it is
 
 A two-phase bootstrapper. Point it at a directory and it leaves you with a
-strict TypeScript toolchain, a Claude Code harness, and CI wired to the same
-gates you run locally.
+strict TypeScript toolchain, a Claude Code [harness](docs/glossary.md#harness),
+and CI wired to the same gates you run locally.
 
 **Phase A** (`packages/cli`) is deterministic: an offline Node CLI with no
 runtime dependencies that writes the baseline. It makes no network call
 beyond the final package install, and the same input always produces the
 same output.
 
-**Phase B** (`packages/plugin`) is adaptive: the `/customize` skill, which
-interviews you (or, for an existing project, reconciles the CLI's survey
-against the real repo) and then sweeps current official TypeScript and
-Anthropic sources, so the result reflects upstream guidance today rather
-than whenever this repo last shipped.
+**Phase B** (`packages/plugin`) is adaptive: the [`/customize`](docs/glossary.md#customize)
+skill, which interviews you (or, for an existing project, reconciles the
+CLI's survey against the real repo) and then sweeps current official
+TypeScript and Anthropic sources, so the result reflects upstream guidance
+today rather than whenever this repo last shipped.
 
-They are separate phases because determinism and freshness cannot live in one
-artifact: the first has to be reproducible, the second has to go and look.
+They stay two separate phases on purpose, rather than one -- see
+[`docs/architecture.md`](docs/architecture.md#the-two-phase-split) for why.
 
 ## Two modes
 
@@ -41,6 +84,38 @@ Adopt mode also drops a guarded, purely additive copy of the `/customize`
 skill, which is where the real work happens: it reads the survey, confirms
 each change with you, and only then edits your project.
 
+## Packs
+
+A [pack](docs/glossary.md#pack) is an optional bundle of extra files -- an
+agent, a hook, a gate -- installed on top of the baseline for projects that
+want more than the capped default. A pack never edits YAML or JavaScript;
+it only adds files and extends three JSON files the baseline already
+reads. See [`templates/packs/README.md`](templates/packs/README.md) for
+the wiring contract.
+
+| Pack             | Contents                                                                                                                                                                    |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness-extras` | A type-design-analyzer agent, the compaction-handoff hook pair, a read-only Bash guard, and a per-file size ratchet gate.                                                   |
+| `statusline`     | A five-row Claude Code status line plus a per-subagent row renderer, width-fit to the terminal.                                                                             |
+| `claude-action`  | Anthropic's official Claude Code GitHub Action, wired for `@claude` mention-mode only -- one workflow file, no hooks, no gate. Needs an auth secret the pack cannot create. |
+
+In fresh mode `--pack` installs a pack directly. In adopt mode the CLI only
+surveys which packs apply and stages them under `.groundwork/packs/`;
+`/customize` installs from there after you confirm.
+
+## Flags
+
+| Flag                    | Effect                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `--name <project-name>` | Override the project name (default: the target directory's basename).         |
+| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                              |
+| `--force`               | Overwrite a non-empty target directory (fresh mode only).                     |
+| `--adopt`               | Force adopt mode, even if the target looks empty.                             |
+| `--fresh`               | Force fresh mode, even if the target looks like an existing project.          |
+| `--pack <name>`         | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable). |
+| `--list-packs`          | Print every available pack and exit.                                          |
+| `--help`, `--version`   | Print usage, or the CLI's version.                                            |
+
 ## Requirements
 
 - **Node 24+**. `.node-version` is the authority.
@@ -51,25 +126,8 @@ each change with you, and only then edits your project.
 
 ## Install and run
 
-The CLI is published to npm as [`@monte3l/groundwork`](https://www.npmjs.com/package/@monte3l/groundwork).
-It is currently a `1.0.0` release candidate: releases ship on the `rc`
-dist-tag, so name the tag explicitly. See
-["Versioning policy"](#versioning-policy) below for what counts as the
-CLI's public API -- frozen as of the first RC -- and drop `@rc` once a
-stable `1.0.0` release exists. If you installed an earlier `0.x` release
-from the `next` tag, switch explicitly: prerelease version ranges don't
-cross from `0.1.0-next.N` to `1.0.0-rc.N` on their own.
-
-```bash
-# a new project
-npx @monte3l/groundwork@rc my-new-project
-
-# a new project with an optional pack
-npx @monte3l/groundwork@rc my-new-project --pack statusline
-
-# an existing project (adopt mode is auto-detected)
-npx @monte3l/groundwork@rc ../existing-project
-```
+The Quickstart above covers the common case. Two other ways to run this
+project:
 
 To run it from a checkout instead (or to work on it), build it and call the
 built entry point directly:
@@ -94,17 +152,6 @@ a project that was not bootstrapped by this CLI:
 `npx` leaves nothing installed globally -- it only populates its own
 download cache (`npm cache clean` clears it, if you want that back too).
 
-| Flag                    | Effect                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| `--name <project-name>` | Override the project name (default: the target directory's basename).         |
-| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                              |
-| `--force`               | Overwrite a non-empty target directory (fresh mode only).                     |
-| `--adopt`               | Force adopt mode, even if the target looks empty.                             |
-| `--fresh`               | Force fresh mode, even if the target looks like an existing project.          |
-| `--pack <name>`         | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable). |
-| `--list-packs`          | Print every available pack and exit.                                          |
-| `--help`, `--version`   | Print usage, or the CLI's version.                                            |
-
 ## What a fresh bootstrap gives you
 
 ```
@@ -121,31 +168,15 @@ my-new-project/
 └── docs/research/         # living trackers for the guidance sweeps
 ```
 
-`pnpm verify` runs the same five groups (`format`, `lint`, `typecheck`,
-`build`, `test`) that the pre-push hook and CI run, all read from one list in
-`bin/lib/verify-steps.mjs`. The baseline is also graded by two offline
-checks, one for the harness and one for the toolchain, that run as part of
-`pnpm verify`.
+`pnpm verify` runs the same five [groups](docs/glossary.md#verify-group)
+(`format`, `lint`, `typecheck`, `build`, `test`) that the pre-push hook and
+CI run, all read from one list in `bin/lib/verify-steps.mjs`. The baseline
+is also graded by two offline checks, one for the harness and one for the
+toolchain, that run as part of `pnpm verify`.
 
-The baseline is deliberately capped: at most 5 agents, 8 skills, 10 hooks,
-3 CI workflows and 12 root scripts. Anything useful beyond that ships as a
-pack instead.
-
-## Packs
-
-Optional bundles installed on top of the baseline. A pack never edits YAML
-or JavaScript; it only adds files and extends three JSON files the baseline
-already reads. See [`templates/packs/README.md`](templates/packs/README.md)
-for the wiring contract.
-
-| Pack             | Contents                                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `harness-extras` | A type-design-analyzer agent, the compaction-handoff hook pair, a read-only Bash guard, and a per-file size ratchet gate. |
-| `statusline`     | A five-row Claude Code status line plus a per-subagent row renderer, width-fit to the terminal.                           |
-
-In fresh mode `--pack` installs a pack directly. In adopt mode the CLI only
-surveys which packs apply and stages them under `.groundwork/packs/`;
-`/customize` installs from there after you confirm.
+The baseline is deliberately [capped](docs/glossary.md#cap): at most 5
+agents, 8 skills, 10 hooks, 3 CI workflows and 12 root scripts. Anything
+useful beyond that ships as a pack instead.
 
 ## Then run /customize
 
@@ -153,11 +184,11 @@ The skill lands at `.claude/skills/customize/` in the target project. Open it
 in Claude Code and run `/customize`.
 
 - **Fresh project:** a short interview (project kind, runtime target, test
-  strictness, CI depth) tailors the baseline, then a guidance pass checks the
+  strictness, CI depth) tailors the baseline, then a guidance sweep checks the
   result against current upstream sources.
 - **Adopted project:** Step 0 reconciles the survey against the real repo and
   confirms each change before anything is written, then the same guidance
-  pass runs.
+  sweep runs.
 
 ## Working on this repo
 
@@ -170,20 +201,13 @@ bootstraps throwaway projects with the built CLI and runs their own
 `templates/core/` or the `/customize` skill. `pnpm eval` makes paid model
 calls and never runs in CI.
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full setup and PR workflow.
+
 ### Releasing
 
-`@monte3l/groundwork` is released with [Changesets](https://github.com/changesets/changesets)
-and published to npm through trusted publishing (no stored token). A PR that
-changes the CLI's user-visible behavior adds a changeset with `pnpm changeset`.
-Merging to `main` opens a "Version Packages" PR; merging that runs the full
-gate, stages the package with provenance, and creates a git tag and a GitHub
-Release -- a maintainer still has to approve the staged version (2FA) before
-it's actually installable, npm's own recommended flow for trusted publishers.
-`@monte3l/groundwork-plugin` is never published to npm -- it ships only
-through the marketplace above, so a change to it is live the moment it lands
-on `main`; its `plugin.json` version just tracks the CLI's, for display. The
-design, and the one-time setup it depends on, are in
-[`CLAUDE.md`](CLAUDE.md#releases).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md#releasing) for how
+`@monte3l/groundwork` is released, published, and verified, and
+[`CLAUDE.md`](CLAUDE.md#releases) for the full design.
 
 [`CLAUDE.md`](CLAUDE.md) is the full reference: architecture, the command
 table, conventions, and known gaps.
@@ -200,6 +224,8 @@ table, conventions, and known gaps.
   two phases.
 - [`docs/assurance-case.md`](docs/assurance-case.md) -- the threat model and
   security design argument.
+- [`docs/glossary.md`](docs/glossary.md) -- plain-English definitions of
+  this repo's jargon.
 - [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 ## Versioning policy
@@ -225,7 +251,7 @@ examples. From 1.0.0, the public API is:
 emits (`templates/core/`, `templates/packs/`). What a fresh bootstrap
 writes into your project follows current upstream TypeScript and Anthropic
 guidance and can change in a minor release -- that's the whole point of
-`/customize`'s live guidance pass. Also not covered: internal modules
+`/customize`'s live guidance sweep. Also not covered: internal modules
 (anything under `packages/*/src/` not listed above) and the exact prose of
 `adoption-report.md`'s body.
 

@@ -12,7 +12,10 @@
       that fails without the fix
 - [ ] A changeset is included (`pnpm changeset`), if this is a user-visible
       change to `@monte3l/groundwork` -- the plugin never takes one
-- [ ] Baseline caps still hold (`pnpm check:harness`, `pnpm check:toolchain`),
-      if a `.claude/` file was added or removed under `templates/core/`
+- [ ] Baseline caps still hold (checked by `pnpm test`, via tests around
+      `packages/cli/src/caps.ts` -- not `pnpm check:harness`/
+      `pnpm check:toolchain`, which grade a rubric instead), if a `.claude/`
+      file, CI workflow, or root script was added or removed under
+      `templates/core/`
 - [ ] A new file under `templates/core/` is claimed by
       `packages/plugin/src/domain-map.ts`

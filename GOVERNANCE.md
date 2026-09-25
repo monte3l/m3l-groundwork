@@ -1,7 +1,20 @@
 # Governance
 
-This project follows a **BDFL-style, single-maintainer** governance model.
-It exists to satisfy the [OpenSSF Best Practices badge](https://www.bestpractices.dev/)'s
+**In short:** one person, the maintainer, makes every decision on this
+project -- there's no committee or vote. What keeps that safe for
+contributors and users is process, not trust: every change (including the
+maintainer's own) still has to pass through the same required checks and
+signed-commit rule before it can reach `main`, and a release still needs a
+separate, non-automatable approval before it's installable. The rest of
+this document spells out exactly what that means and what happens if the
+maintainer becomes unavailable.
+
+This project follows a **BDFL-style, single-maintainer** governance model
+-- "BDFL" stands for Benevolent Dictator For Life, a term for a single
+person who has final say over a project's direction, borrowed from
+open-source projects like Python's that used it for their original creator.
+Here it means: one maintainer, no vote, no board. This document exists to
+satisfy the [OpenSSF Best Practices badge](https://www.bestpractices.dev/)'s
 Silver-level `governance`, `roles_responsibilities`, `access_continuity` and
 `bus_factor` criteria with an honest description of how the project
 actually runs today, not an aspirational one.
@@ -10,11 +23,11 @@ actually runs today, not an aspirational one.
 
 - **Day-to-day changes** (bug fixes, docs, dependency bumps, most features)
   are decided by the maintainer, usually while reviewing the pull request
-  that proposes them. There is no separate approval step beyond the
-  branch ruleset's required checks (see [`CLAUDE.md`](CLAUDE.md#git-workflow))
-  -- a single maintainer cannot require a second approval on their own PR
-  without a standing ruleset bypass, which the empty `bypass_actors` list is
-  deliberately designed to avoid.
+  that proposes them. There is no separate approval step beyond the branch
+  ruleset's required checks (see [`CLAUDE.md`](CLAUDE.md#git-workflow)).
+  A single maintainer cannot require a second approval on their own PR.
+  Requiring one would only force a standing ruleset bypass, and the empty
+  `bypass_actors` list is deliberately designed to avoid exactly that.
 - **Larger or breaking changes** (anything that touches the public API
   frozen in the README's ["Versioning policy"](README.md#versioning-policy),
   a change to `templates/core`'s caps, or a new `templates/packs/` pack) are
@@ -27,6 +40,15 @@ actually runs today, not an aspirational one.
   triaging a vulnerability report) follow [`SECURITY.md`](SECURITY.md).
 
 ## Roles
+
+Two release-specific terms recur in the table below. The **`npm-publish`
+environment** is a GitHub-configured gate on the release workflow: it
+pauses the job that would publish until a required reviewer approves it.
+**`npm stage approve`** is a separate, npm-side step (2FA-protected) that
+turns an already-staged package version into one people can actually
+install. Both exist so that publishing a release always needs a live,
+non-automatable human action -- see [`CLAUDE.md`](CLAUDE.md#releases) for
+the full mechanics.
 
 | Role                 | Held by                                                        | Responsibilities                                                                                                                                                                   |
 | -------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -59,17 +81,18 @@ depends on, concretely:
   machine-local, not tied to a specific person's identity beyond the
   commit's author line).
 
-The plan for continuity is a maintainer-held **emergency access kit**: GitHub
-and npm account recovery codes, and the GPG key's revocation certificate
-and backup, held in a password manager's emergency-access feature (or an
-equivalent sealed, offline copy) with a designated executor who is not
-named in this file for the same reason the kit itself isn't -- this is a
-public repository, and naming a person or storing a secret here would
-defeat the purpose. Recovery, should it be needed, uses ordinary GitHub and
-npm account-recovery flows plus `gh api` calls against this repo's ruleset
-and environment (both documented in [`CLAUDE.md`](CLAUDE.md#git-workflow)
-and [`CLAUDE.md`](CLAUDE.md#releases)) -- nothing here depends on
-undocumented tribal knowledge.
+The plan for continuity is a maintainer-held **emergency access kit**.
+It holds GitHub and npm account recovery codes, plus the GPG key's
+revocation certificate and a backup of the key itself. It's held in a
+password manager's emergency-access feature, or an equivalent sealed,
+offline copy. It has a designated executor, but that person isn't named in
+this file, for the same reason the kit's contents aren't described here
+either: this is a public repository, and naming a person or storing a
+secret here would defeat the purpose. Recovery, should it be needed, uses
+ordinary GitHub and npm account-recovery flows, plus `gh api` calls against
+this repo's ruleset and environment. Both of those are documented already,
+in [`CLAUDE.md`](CLAUDE.md#git-workflow) and [`CLAUDE.md`](CLAUDE.md#releases)
+respectively -- nothing here depends on undocumented tribal knowledge.
 
 This satisfies the badge's `access_continuity` criterion, which explicitly
 allows a solo-maintainer project to rely on "keys in a lockbox and a will"

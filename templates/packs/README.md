@@ -18,24 +18,27 @@ templates/packs/<name>/
 
 ## The wiring contract
 
-**A pack never edits YAML or JavaScript.** It may add files under `files/`,
-and may extend three JSON files the baseline already reads at runtime:
+**A pack never edits YAML or JavaScript.** It may add files under `files/`.
+It may also extend three JSON files the baseline already reads at runtime:
 `.claude/settings.json` (hook registrations, and top-level harness settings
 such as `statusLine`), `package.json` (`scripts`), and
-`bin/lib/verify-steps.packs.json` (gate steps, keyed to one of the five
-fixed verify groups `templates/core/bin/lib/verify-steps.mjs` defines —
-`format`/`lint`/`typecheck`/`build`/`test`). A gate registered this way runs
+`bin/lib/verify-steps.packs.json`. That last file holds gate steps, each
+keyed to one of the five fixed verify groups
+`templates/core/bin/lib/verify-steps.mjs` defines —
+`format`/`lint`/`typecheck`/`build`/`test`. A gate registered this way runs
 under `pnpm verify`, every `lefthook.yml` `pre-push` lane, and every
-`.github/workflows/ci.yml` job automatically, because all three already
-enumerate groups rather than individual steps.
+`.github/workflows/ci.yml` job automatically. That works because all three
+already enumerate groups rather than individual steps.
 
 `pack.json` fields:
 
 - `schemaVersion` — currently `1`.
-- `modes` — `["fresh"]` and/or `["fresh", "adopt"]`. Only artifacts with no
-  dependency on the baseline's exact file layout (an agent, most hooks) are
-  safely adopt-capable; a gate that assumes a specific source layout should
-  say so honestly in `adoptNotes` instead of claiming `adopt`.
+- `modes` — `["fresh"]` and/or `["fresh", "adopt"]`. "Adopt-capable" means
+  an artifact has no dependency on the baseline's exact file layout (an
+  agent, most hooks), so it's safe to install into an already-existing
+  project's own layout. A gate that assumes a specific source layout isn't
+  adopt-capable -- it should say so honestly in `adoptNotes` instead of
+  claiming `adopt`.
 - `budget` — the pack's cap deltas (`agents`/`skills`/`hooks`/`workflows`/
   `scripts`), checked against `templates/core`'s own counts by a structural
   test, never against `templates/core` + every other pack.
@@ -63,11 +66,13 @@ enumerate groups rather than individual steps.
   repeatable) — it wrote the baseline moments ago, so there's no uncertainty
   to defer.
 - **Adopt mode**: the CLI never installs a pack. It surveys which packs
-  apply and stages their payload at `.groundwork/packs/<name>/`;
-  `/customize`'s Step 0 confirms and Round 1 installs, translating
-  `wiring.verifySteps`/`wiring.settings` against the project's _real_ gate
-  runner and hook config — read for real by that point, not guessed at
-  offline.
+  apply and stages their payload at `.groundwork/packs/<name>/`. Later,
+  `/customize` confirms the install in **Step 0** (its first, up-front
+  confirmation round, before any file is written) and performs it in
+  **Round 1** (the first pass of deterministic edits that follows). That
+  installation translates `wiring.verifySteps`/`wiring.settings` against
+  the project's _real_ gate runner and hook config — read for real by that
+  point, not guessed at offline.
 
 ## Available packs
 

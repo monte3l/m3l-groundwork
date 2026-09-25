@@ -1,5 +1,14 @@
 # Security assurance case
 
+> **In plain terms:** this document explains, in detail, why this project
+> is reasonably safe to use. It lists what could go wrong (a hostile
+> command-line input, a compromised dependency, a tampered release), and
+> for each one, what specifically stops it (input validation, pinned
+> dependencies, signed releases). Most readers don't need the rest of this
+> page -- it exists for anyone auditing the project's security posture in
+> depth, such as for the OpenSSF Best Practices badge this document
+> supports.
+
 This is m3l-groundwork's security assurance case, as required by the
 OpenSSF Best Practices badge's Silver-level `assurance_case` criterion. It
 follows the structure the badge project itself points to (NIST IR 7608's
@@ -51,14 +60,30 @@ dependency -- there isn't one (`packages/cli/package.json`'s
 
 ## Trust boundaries
 
-| Boundary                                                  | Trusted side                                | Untrusted / lower-trust side                                                                 | Enforcement                                                                                                                                                                                                                                                                                     |
-| --------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI `argv` → the process                                  | The CLI's own parsing logic                 | Anything the invoker typed                                                                   | `main.ts`'s `parseArgs`/`tokenizeArgv` validate shape before any filesystem access; unknown flags and malformed values throw `CliUsageError` (exit 2), never silently proceed.                                                                                                                  |
-| `templates/` and the plugin payload → the emitted project | This repository's own tree, reviewed via PR | N/A -- this side is always trusted; it ships from this repo                                  | `assets.ts`'s `resolveAsset` locates it by a positive marker (a `pnpm-workspace.yaml` plus this repo's own `package.json` name three directories up), never by an unscoped walk that could resolve into a different, attacker-controlled tree.                                                  |
-| An adopted project's files → the survey/grader code       | This repo's collector and grader code       | The target project's own `eslint.config.js`, `vitest.config.ts`, `lefthook.yml`, source tree | Every collector reads facts only, never infers or executes; project code is **never run** -- config files are scraped by regex over comment-stripped text, not `require`d or evaluated. A scrape that can't tell the answer returns `{ checked: 0 }` rather than guessing.                      |
-| Fresh mode's own emitted project → `pnpm install`         | This repo's `git.ts`                        | The npm registry and whatever the new project's `package.json` names                         | `execFileSync` with an argv array, never a shell string -- no command injection surface from a project name or path. This is the CLI's only network egress.                                                                                                                                     |
-| CI `pack`/`publish` jobs → npm / GitHub                   | `release.yml`'s job boundaries              | The OIDC token, the npm registry                                                             | `pack` (builds, tests, packs) holds no publish credential; only `publish` holds `id-token: write`, runs no repository code beyond the changesets CLI and a thin `pnpm`→`npm stage publish` shim, and installs with `--ignore-scripts`. See `CLAUDE.md`'s "Releases".                            |
-| `claude.yml`/`claude-pr-review.yml` → the repository      | The workflow's own job                      | A PR's contents (for the review workflow), an `@claude` mention body                         | The review workflow holds `contents: read` only and cannot push, approve, or satisfy a required check; the mention workflow never opens a PR itself, only a branch plus a PR-creation link. Both exclude bot- and fork-authored PRs from `if:` before they'd otherwise fail on missing secrets. |
+| Boundary                                                  | Trusted side                                | Untrusted / lower-trust side                                                                 | Enforcement                                                                                                                                                                                                                                    |
+| --------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI `argv` → the process                                  | The CLI's own parsing logic                 | Anything the invoker typed                                                                   | `main.ts`'s `parseArgs`/`tokenizeArgv` validate shape before any filesystem access; unknown flags and malformed values throw `CliUsageError` (exit 2), never silently proceed.                                                                 |
+| `templates/` and the plugin payload → the emitted project | This repository's own tree, reviewed via PR | N/A -- this side is always trusted; it ships from this repo                                  | `assets.ts`'s `resolveAsset` locates it by a positive marker (a `pnpm-workspace.yaml` plus this repo's own `package.json` name three directories up), never by an unscoped walk that could resolve into a different, attacker-controlled tree. |
+| An adopted project's files → the survey/grader code       | This repo's collector and grader code       | The target project's own `eslint.config.js`, `vitest.config.ts`, `lefthook.yml`, source tree | Every collector reads facts only, never infers or executes; project code is **never run**.[^survey-scrape]                                                                                                                                     |
+| Fresh mode's own emitted project → `pnpm install`         | This repo's `git.ts`                        | The npm registry and whatever the new project's `package.json` names                         | `execFileSync` with an argv array, never a shell string -- no command injection surface from a project name or path. This is the CLI's only network egress.                                                                                    |
+| CI `pack`/`publish` jobs → npm / GitHub                   | `release.yml`'s job boundaries              | The OIDC token, the npm registry                                                             | `pack` (builds, tests, packs) holds no publish credential; only `publish` holds `id-token: write`. See `CLAUDE.md`'s "Releases".[^pack-publish]                                                                                                |
+| `claude.yml`/`claude-pr-review.yml` → the repository      | The workflow's own job                      | A PR's contents (for the review workflow), an `@claude` mention body                         | The review workflow holds `contents: read` only and cannot push, approve, or satisfy a required check.[^claude-workflows]                                                                                                                      |
+
+[^survey-scrape]:
+    Config files are scraped by regex over comment-stripped
+    text, not `require`d or evaluated. A scrape that can't tell the answer
+    returns `{ checked: 0 }` rather than guessing.
+
+[^pack-publish]:
+    `publish` runs no repository code beyond the changesets
+    CLI and a thin `pnpm`→`npm stage publish` shim, and installs with
+    `--ignore-scripts`.
+
+[^claude-workflows]:
+    The mention workflow (`claude.yml`) never opens a PR
+    itself -- only a branch plus a PR-creation link. Both workflows exclude
+    bot- and fork-authored PRs from their `if:` condition before they'd
+    otherwise fail on missing secrets.
 
 ## Secure design principles applied (Saltzer & Schroeder)
 
@@ -82,8 +107,8 @@ dependency -- there isn't one (`packages/cli/package.json`'s
   `bypass_actors` list -- every change, including the maintainer's own,
   passes through the same required checks. There is no standing bypass
   path for source or test writes on `main` either: `guard-hub-src-writes.mjs`
-  and `guard-branch-isolation.mjs` enforce the hub-and-spoke model
-  unconditionally.
+  and `guard-branch-isolation.mjs` enforce the
+  [hub-and-spoke](glossary.md#hub-and-spoke) model unconditionally.
 - **Separation of privilege.** Publishing a release needs two independent
   approvals from the same person acting in two different capacities: the
   `npm-publish` GitHub environment's required-reviewer gate (before the git
@@ -111,14 +136,25 @@ dependency -- there isn't one (`packages/cli/package.json`'s
 
 | CWE                                                        | Relevance                                                    | Mitigation                                                                                                                                                                                                                                                                                                                                                   |
 | ---------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| CWE-22 (Path Traversal)                                    | `--pack <name>` reaches `join(root, name)` in `packs.ts`     | Shape-validated against an allowlist pattern in `parseArgs` before any filesystem access, rejecting path separators, `..`, and absolute paths with a usage error (exit 2). `loadPack` separately rejects any name that isn't a real `templates/packs/` directory. (`--name` never reaches a filesystem `join()` -- see the CWE-20 row.)                      |
+| CWE-22 (Path Traversal)                                    | `--pack <name>` reaches `join(root, name)` in `packs.ts`     | Shape-validated against an allowlist pattern in `parseArgs` before any filesystem access, rejecting path separators, `..`, and absolute paths with a usage error (exit 2).[^cwe22]                                                                                                                                                                           |
 | CWE-78 (OS Command Injection)                              | The CLI shells out for `git init` and `pnpm install`         | `git.ts` uses `execFileSync` with argv arrays exclusively -- no `shell: true`, no string-interpolated command, anywhere in `packages/cli/src`.                                                                                                                                                                                                               |
 | CWE-94 (Code Injection)                                    | Templates and pack manifests are read and parsed             | No `eval`, `new Function`, or dynamic `require` of project- or template-supplied content anywhere in `packages/cli/src`; JSON/JSONC is parsed with a hand-written parser (`jsonc.ts`), never executed.                                                                                                                                                       |
 | CWE-502 (Deserialization of Untrusted Data)                | An adopted project's JSON/JSONC config is read               | Parsed as data only (`jsonc.ts`), never passed to a deserializer that reconstructs class instances or prototypes; a malformed file yields a typed parse error, never a crash that leaks internals.                                                                                                                                                           |
-| CWE-798 (Hardcoded Credentials)                            | Release automation touches real credentials                  | No long-lived credential is stored anywhere the tool or its CI can read: npm publishing is OIDC trusted publishing (no npm token), and secret scanning plus push protection are enabled on the repository. `.claude/hooks/guard-secret-writes.mjs` additionally blocks a real-looking secret from being written to disk during agent-assisted development.   |
+| CWE-798 (Hardcoded Credentials)                            | Release automation touches real credentials                  | No long-lived credential is stored anywhere the tool or its CI can read: npm publishing is OIDC trusted publishing (no npm token).[^cwe798]                                                                                                                                                                                                                  |
 | CWE-829 / CWE-1357 (Untrusted Component / Supply Chain)    | Every dependency and Action is a potential compromise vector | Every GitHub Action is pinned by commit SHA (not a floating tag); `pnpm-lock.yaml` is committed; `dependency-review.yml` fails PRs on high-severity findings; releases carry npm provenance and a Sigstore build-provenance attestation (see `SECURITY.md`, "Verifying releases").                                                                           |
 | CWE-20 (Improper Input Validation)                         | General CLI argument handling                                | `tokenizeArgv`/`parseArgs` reject any unrecognized flag, a missing value for a value-flag, and contradictory mode flags, all before any side effect. `--name` is additionally validated as a syntactically valid npm package name before it's substituted into the emitted `package.json`'s _content_ -- see the CWE-22 row above for `--pack`'s path check. |
 | Memory-safety CWEs (buffer overflow, use-after-free, etc.) | N/A                                                          | The entire codebase is TypeScript compiled to JavaScript running on Node's managed runtime; there is no native code and no manual memory management.                                                                                                                                                                                                         |
+
+[^cwe22]:
+    `loadPack` separately rejects any name that isn't a real
+    `templates/packs/` directory; `--name` never reaches a filesystem
+    `join()` call at all -- see the CWE-20 row for its own validation.
+
+[^cwe798]:
+    Secret scanning and push protection are also enabled on the
+    repository. `.claude/hooks/guard-secret-writes.mjs` additionally
+    blocks a real-looking secret from being written to disk during
+    agent-assisted development.
 
 ## Residual risks
 

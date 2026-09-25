@@ -102,6 +102,13 @@ signer's identity, which should read
 issued by `https://token.actions.githubusercontent.com`. There is
 intentionally no other key to distribute or compare against.
 
+In plain terms: a successful verification means both commands exit
+without error and print that identity -- proof the package or tarball you
+have really was built by this repository's own `release.yml` workflow, not
+substituted or tampered with afterward. If either command errors, or
+reports a different identity, treat the artifact as unverified and do not
+install or use it.
+
 ## What this is not
 
 This policy is about vulnerabilities in the tool itself: how it parses
@@ -112,6 +119,10 @@ up -- report that upstream, or to GitHub's Dependabot alerts on your own
 repo.
 
 ## Accepted OpenSSF Scorecard findings
+
+_Background, not core policy: this section explains automated scoring
+context for anyone who looks up this repo's Scorecard results. Nothing
+here changes the reporting or response process described above._
 
 `scorecard.yml` runs weekly and surfaces its findings as GitHub Code
 Scanning alerts. Some are dismissed as deliberate, documented trade-offs
@@ -145,6 +156,9 @@ change can complete on its own.
 
 ## Reading the Socket score
 
+_Background, not core policy: same as the Scorecard section above -- this
+explains a third-party badge, not this project's vulnerability response._
+
 The README's [Socket](https://socket.dev) badge scores five categories
 (Supply Chain Security, Quality, Maintenance, Vulnerability, License).
 Two of those are structurally suppressed for a package this new and this
@@ -152,11 +166,14 @@ small, independent of any actual defect, and should not be chased with a
 design change:
 
 - **Supply Chain Security and Maintenance** scale with download count,
-  account age, and publish history -- a package with only two releases
-  can't score as high as an established one on these axes yet, the same
-  way OpenSSF Scorecard's `Maintained` check flags any repository under
-  90 days old. This self-corrects with adoption and time; there is no
-  action to take against it.
+  account age, and publish history -- a package with only a small number of
+  releases so far can't score as high as an established one on these axes
+  yet, the same way OpenSSF Scorecard's `Maintained` check flags any
+  repository under 90 days old. This self-corrects with adoption and time;
+  there is no action to take against it. (Check
+  [`packages/cli/CHANGELOG.md`](packages/cli/CHANGELOG.md) for the current
+  release count rather than hardcoding a number here, which would only go
+  stale again.)
 - **Quality** partly reflects generic npm-package hygiene heuristics
   (a `types` field, an importable `main`/`exports["."]` entry) that are
   written with a _library_ in mind. `@monte3l/groundwork` deliberately

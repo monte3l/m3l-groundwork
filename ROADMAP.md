@@ -8,11 +8,13 @@ any one tool -- see `documentation_roadmap` in the
 ## Now: GA
 
 The public API has been frozen since the first `1.0.0-rc`
-(see the README's ["Versioning policy"](README.md#versioning-policy)).
-Leaving the `rc` prerelease series for a stable `1.0.0` is the immediate
-goal, once the promotion checklist in [`CLAUDE.md`](CLAUDE.md#releases) is
-met. Only `patch` changesets land for the rest of the `rc` series between
-now and that release; a further API change waits for `1.1`, after GA.
+(see the README's ["Versioning policy"](README.md#versioning-policy)): only
+`patch` [changesets](docs/glossary.md#changeset) land for the rest of the
+[`rc`](docs/glossary.md#rc) series, and any further API change waits for a
+`1.1` release after GA (see [`CLAUDE.md`](CLAUDE.md#releases)'s "Releases"
+section, which this paraphrases). Leaving the `rc` prerelease series for a
+stable `1.0.0` is the immediate goal, once the promotion checklist in
+[`CLAUDE.md`](CLAUDE.md#releases) is met.
 
 ## Next 12 months
 
@@ -23,17 +25,25 @@ now and that release; a further API change waits for `1.1`, after GA.
 - **Two more optional packs**, deferred from the original build for cap
   reasons rather than a generalization failure (see
   [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far)):
-  - a `github-ops` pack (`reviewing-dependabot-prs`, `triaging-scan-alerts`);
+  - a `github-ops` pack -- GitHub-repository-maintenance skills
+    (`reviewing-dependabot-prs`, `triaging-scan-alerts`), named for the kind
+    of ongoing repo upkeep it covers rather than a release concern;
   - a `publishing` pack (a release workflow, `check-publish-version`,
     `check-dts-deps`) -- this repo's own `release.yml` is now a copyable
     reference for the registry/scope/`publishConfig` story that pack needs.
+    `publishConfig` is the `package.json` field that overrides how `npm
+publish` behaves for a given package (registry, access level, and so
+    on); the baseline doesn't have one yet because it emits an application,
+    not a published package.
 - **Growing the bus factor past 1.** See [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor).
   No committed timeline -- this depends on finding a second maintainer
   willing to take on release and security-response duties, not on writing
   code.
 - **`pnpm/setup` in CI**, once it supports reading Node's version from
-  `.node-version` (or an equivalent single-source-of-truth mechanism) rather
-  than only `package.json`'s `devEngines.runtime` -- see
+  `.node-version` (or an equivalent single-source-of-truth mechanism)
+  rather than only `package.json`'s `devEngines.runtime` (a field that
+  declares which JavaScript runtime and version a package expects,
+  separate from `.node-version`) -- see
   [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
 - Keeping `templates/core` and `templates/packs/` current against upstream
   TypeScript and Anthropic guidance is ongoing, ordinary maintenance, not a
