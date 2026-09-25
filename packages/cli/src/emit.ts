@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Copies `templates/core` into a target directory, applying token
  * substitution to both file contents and path segments (so a token in a
@@ -12,7 +15,8 @@ import {
   writeFileSync,
   copyFileSync,
 } from "node:fs";
-import { join, relative, dirname, extname } from "node:path";
+import assert from "node:assert/strict";
+import { join, relative, dirname, extname, resolve, sep } from "node:path";
 import { restoreDotfilePath } from "./assets.js";
 import { applyTokens } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
@@ -20,6 +24,28 @@ import type { TokenTable } from "./tokens.js";
 // Extensions copied byte-for-byte, never text-decoded -- token substitution
 // only makes sense for text content.
 const BINARY_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".ico"]);
+
+/**
+ * True when `target`, once resolved, is `root` itself or lies inside it.
+ * Exact match or proper prefix plus a separator -- never a bare
+ * `startsWith`, which would wrongly accept a sibling path that merely shares
+ * `root`'s name as a prefix (e.g. `/foo/bar-evil` against `/foo/bar`).
+ *
+ * @example
+ * ```ts
+ * isPathContained("/foo/bar/x", "/foo/bar"); // true
+ * isPathContained("/foo/bar", "/foo/bar"); // true
+ * isPathContained("/foo/bar-evil/x", "/foo/bar"); // false
+ * ```
+ */
+export function isPathContained(target: string, root: string): boolean {
+  const resolvedTarget = resolve(target);
+  const resolvedRoot = resolve(root);
+  return (
+    resolvedTarget === resolvedRoot ||
+    resolvedTarget.startsWith(resolvedRoot + sep)
+  );
+}
 
 export interface EmitResult {
   filesWritten: string[];
@@ -49,6 +75,13 @@ function walk(
       applyTokens(relative(root, sourcePath), tokens),
     );
     const targetPath = join(targetRoot, relPath);
+
+    // CWE-22 invariant (docs/assurance-case.md): a token value substituted
+    // into a path segment must never walk the write out of `targetRoot`.
+    assert.ok(
+      isPathContained(targetPath, targetRoot),
+      `emitTemplate: target path ${resolve(targetPath)} escapes ${resolve(targetRoot)}`,
+    );
 
     if (entry.isDirectory()) {
       mkdirSync(targetPath, { recursive: true });

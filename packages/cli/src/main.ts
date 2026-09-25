@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Entry point: `m3l-groundwork <target-dir> [options]`. No prompts, no
  * interactivity, no network call beyond the package install -- this must
@@ -14,11 +17,12 @@
  * `/customize`; see `runAdopt`.
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import assert from "node:assert/strict";
 import { join, relative, resolve, basename } from "node:path";
 import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
-import { emitTemplate } from "./emit.js";
+import { emitTemplate, isPathContained } from "./emit.js";
 import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
@@ -377,6 +381,43 @@ function assertAdoptUsage(options: CliOptions): void {
 }
 
 /**
+ * Adopt mode's write-scope invariant (docs/assurance-case.md's trust
+ * boundary around the adopted project): every path it writes resolves under
+ * `<targetDir>/.groundwork/` or the guarded `/customize` install at
+ * `<targetDir>/.claude/skills/customize/` -- never an existing project file.
+ * `paths` may be absolute or relative to `targetDir`. Containment is
+ * {@link isPathContained}'s, so a sibling that merely shares a root's name
+ * as a prefix (`.groundwork-evil/`) is rejected.
+ *
+ * @throws `AssertionError` (from `node:assert/strict`) naming the first path
+ * that escapes both allowed roots.
+ *
+ * @example
+ * ```ts
+ * import { assertAdoptWriteScope } from "./main.js";
+ *
+ * assertAdoptWriteScope("/work/app", [".groundwork/inventory.json"]); // ok
+ * assertAdoptWriteScope("/work/app", ["/work/app/package.json"]); // throws
+ * ```
+ */
+export function assertAdoptWriteScope(
+  targetDir: string,
+  paths: readonly string[],
+): void {
+  const allowedRoots = [
+    resolve(targetDir, ".groundwork"),
+    resolve(targetDir, ".claude", "skills", "customize"),
+  ];
+  for (const path of paths) {
+    const resolved = resolve(targetDir, path);
+    assert.ok(
+      allowedRoots.some((root) => isPathContained(resolved, root)),
+      `adopt mode wrote outside its scope: ${resolved}`,
+    );
+  }
+}
+
+/**
  * Surveys an already-established project and writes `.groundwork/` --
  * `inventory.json` and `adoption-report.md`. Never touches a project file:
  * the one addition is a purely-additive, collision-guarded copy of the
@@ -403,7 +444,13 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       tokens,
     );
     const wiringObservations = observeWiring(options.targetDir, pack.manifest);
-    stagePackFiles(pack, groundworkDir);
+    const staged = stagePackFiles(pack, groundworkDir);
+    assertAdoptWriteScope(
+      options.targetDir,
+      staged.map((file) =>
+        join(groundworkDir, "packs", pack.manifest.name, file),
+      ),
+    );
     return {
       name: pack.manifest.name,
       modes: pack.manifest.modes,
@@ -429,6 +476,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   const inventoryPath = writeInventory(inventory, groundworkDir);
 
   const reportPath = join(groundworkDir, "adoption-report.md");
+  assertAdoptWriteScope(options.targetDir, [inventoryPath, reportPath]);
   writeFileSync(reportPath, renderReport(inventory));
 
   console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);
@@ -440,6 +488,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   }
 
   const pluginResult = installCustomizeSkillGuarded(options.targetDir);
+  assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
   if (pluginResult.location === "already-present") {
     console.log("the /customize skill was already up to date");
   } else {
