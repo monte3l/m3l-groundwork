@@ -71,6 +71,23 @@ contract:
    Must-fix findings route back to `code-implementer`, and the loop repeats
    until clean.
 
+**A Claude Code Enterprise/managed deployment sits above this and can
+silently disable it.** Managed settings (a `managed-settings.json` file, an
+MDM policy, or a claude.ai-console-managed remote policy) take precedence
+over every file this baseline installs, with no project-level override, and
+two managed-only keys -- `allowManagedHooksOnly` and
+`allowManagedPermissionRulesOnly` -- make Claude Code skip this project's
+own `.claude/settings.json` hooks and permission rules entirely rather than
+merge with them (see
+[Claude Code's managed-settings docs](https://code.claude.com/docs/en/managed-settings)).
+Nothing in this project can detect or gate against that from inside the
+repo -- the managed file lives outside any working tree, at an OS-level
+path. Run `/status` on a machine you don't control before trusting
+`guard-hub-src-writes.mjs`/`guard-branch-isolation.mjs`: its "Setting
+sources" line names every active source, and if these hooks aren't among
+what's actually running, treat hub-and-spoke as an unenforced checklist
+until confirmed otherwise.
+
 Full dispatch-sizing and recovery guidance: `.claude/rules/agent-dispatch.md`
 (auto-loads when editing `.claude/skills/**` or `.claude/agents/**`).
 
