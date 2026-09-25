@@ -39,6 +39,67 @@ needs a major-version change to the CLI's public API (see
 [`CLAUDE.md`](CLAUDE.md) and the README's versioning policy) -- but you'll
 hear back before a fix ships.
 
+## Response process
+
+1. **Acknowledge** the report within 7 days (see above).
+2. **Triage**: confirm reproduction, assess severity and scope (this repo
+   vs. what it emits into a bootstrapped project -- see "Scope" above).
+3. **Fix privately** on a branch, via a GitHub security advisory. A medium-
+   or-higher-severity, confirmed vulnerability gets a fix within 60 days of
+   confirmation.
+4. **Request a CVE** through the advisory (GHSA) when the issue warrants
+   one.
+5. **Release** the fix -- see [`CLAUDE.md`](CLAUDE.md#releases) -- then
+   **publish the advisory**, crediting the reporter (see below) unless they
+   ask not to be.
+
+## Credit
+
+A reporter of a vulnerability that's fixed and disclosed is credited in the
+GitHub Security Advisory and the affected package's changelog entry,
+unless they ask to stay anonymous. There is no bug bounty.
+
+## What you can and cannot expect
+
+**What this tool guarantees:** Phase A (`packages/cli`) runs fully offline
+except for the `pnpm install` it triggers at the end of fresh mode; it
+makes no other network call, executes no code from a target project it's
+surveying (adopt mode reads project files as data only -- see
+[`docs/assurance-case.md`](docs/assurance-case.md)), and has zero runtime
+dependencies of its own. Releases carry npm provenance and a Sigstore
+build-provenance attestation you can verify (see "Verifying releases"
+below).
+
+**What it does not guarantee:** it does not vet the dependencies your
+bootstrapped project chooses to add, and `/customize` (Phase B) is an LLM
+acting inside your own Claude Code session with whatever tools that session
+has -- its guardrails (showing evidence, confirming changes before writing)
+are behavioral, not sandboxed. A project this tool bootstraps or adopts is
+yours to secure; this policy covers defects in the tool itself, not choices
+made on your behalf during an interview or a guidance sweep.
+
+## Verifying releases
+
+`@monte3l/groundwork` ships with [npm provenance](https://docs.npmjs.com/generating-provenance-statements)
+(no long-lived signing key -- it's a Sigstore-backed, OIDC-issued
+attestation tied to the exact `release.yml` run that built it) and a
+build-provenance attestation attached to the matching GitHub Release.
+
+```bash
+# Verify the registry signature and provenance for an installed version
+npm audit signatures
+
+# Verify the release asset's build-provenance attestation
+gh attestation verify <path-to-downloaded-tarball> \
+  --repo monte3l/m3l-groundwork \
+  --signer-workflow monte3l/m3l-groundwork/.github/workflows/release.yml
+```
+
+Both should report an identity of
+`https://github.com/monte3l/m3l-groundwork/.github/workflows/release.yml@refs/heads/main`,
+issued by `https://token.actions.githubusercontent.com`. There is
+intentionally no other key to distribute or compare against.
+
 ## What this is not
 
 This policy is about vulnerabilities in the tool itself: how it parses
@@ -68,11 +129,17 @@ standing bypass that undermines the design:
   whether a repo is older than 90 days); it self-resolves and needs no
   action.
 
-One finding is a genuine, but external, gap: this project hasn't
+One finding is a genuine, but external, gap: this project hasn't yet
 registered for an [OpenSSF Best Practices badge](https://www.bestpractices.dev/)
-yet (`CIIBestPracticesID`). That's a maintainer action (an account and a
-self-assessment questionnaire on bestpractices.dev), not something fixed
-by a code change.
+(`CIIBestPracticesID`). The repository is intended to meet the Silver
+criteria -- governance, roles and access continuity
+([`GOVERNANCE.md`](GOVERNANCE.md)), a roadmap ([`ROADMAP.md`](ROADMAP.md)),
+a documented architecture and this security policy, a security assurance
+case ([`docs/assurance-case.md`](docs/assurance-case.md)), DCO-signed
+commits, strict linting, signed and attested releases, and CLI input
+validation -- but registering is a maintainer action (an account and a
+self-assessment questionnaire on bestpractices.dev), not something a code
+change can complete on its own.
 
 ## Reading the Socket score
 
