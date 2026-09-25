@@ -66,13 +66,14 @@ describe("published tarball end-to-end", () => {
     expect(existsSync(join(cliDir, "plugin"))).toBe(false);
   });
 
-  it("lists both packs from the vendored templates/packs", () => {
+  it("lists all three packs from the vendored templates/packs", () => {
     const output = execFileSync("node", [installedBin, "--list-packs"], {
       encoding: "utf8",
     });
 
     expect(output).toContain("harness-extras");
     expect(output).toContain("statusline");
+    expect(output).toContain("claude-action");
   });
 
   it("emits exactly what the source checkout emits, dotfiles included", () => {

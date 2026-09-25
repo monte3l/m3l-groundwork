@@ -1,0 +1,68 @@
+name: Claude PR Review
+
+# Automated review on every opened/updated PR. Read-only on repo contents
+# (contents: read) -- Claude posts a review comment, it never pushes code,
+# and it cannot submit a formal GitHub review or approve a PR (Anthropic's
+# own docs/capabilities-and-limitations.md), so it cannot satisfy or bypass
+# the `main` ruleset's required checks or its 0-approval rule either way.
+# Excludes bot-authored and fork PRs explicitly below, rather than relying
+# on anthropics/claude-code-action's own internal bot/permission checks
+# (docs/security.md) -- that way a Dependabot or fork PR never starts a run
+# that would just fail on missing secrets. Runs but fails cleanly on an auth
+# error until the one-time setup CLAUDE.md describes is done by hand.
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+# Cancel a stale run when the PR gets a new push, same as ci.yml -- a
+# `synchronize` fires on every push, and a paid review run per push queues
+# up otherwise.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Reset, then grant per job.
+permissions: {}
+
+jobs:
+  review:
+    if: |
+      github.event.pull_request.user.type != 'Bot' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write # see claude.yml for why this is needed regardless of auth method
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@9171db3e57d6a3140a37ddc2ba92788584e0ead6 # v1.0.234
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this PR. You already have this repo's CLAUDE.md loaded --
+            use it, don't restate it. Specifically check:
+
+            1. Hub-and-spoke was followed for any packages/*/src or
+               packages/*/tests change (test-author before code-implementer,
+               review spokes ran) -- not just that the diff looks correct.
+            2. A changeset exists (`.changeset/*.md`) if the CLI's
+               user-visible behavior changed; none is needed for a
+               plugin-only, docs-only, or CI-only change.
+            3. Whether the diff could affect the harness grader
+               (`packages/cli/src/harness/`) or toolchain grader
+               (`packages/cli/src/toolchain/`) parity with their emitted
+               `templates/core/bin/lib/*.mjs` twins -- flag if one side
+               changed without the other.
+            4. Anything the four-part quality checklist (see
+               `.claude/agents/code-reviewer.md`) would catch: correctness,
+               security, SOLID/simplification, test coverage.

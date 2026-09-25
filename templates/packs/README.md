@@ -75,6 +75,7 @@ enumerate groups rather than individual steps.
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `harness-extras` | A type-design-analyzer agent, the compaction-handoff hook pair, a read-only Bash guard, and a per-file size ratchet gate — the four artifacts the original baseline build cut purely to hold its caps.                                                              |
 | `statusline`     | A five-row Claude Code status line (session, model, context, quota, work) plus a per-subagent row renderer, both width-fit to the terminal. Registers top-level `statusLine`/`subagentStatusLine` settings, no hooks and no gate. Runs the same on macOS and Linux. |
+| `claude-action`  | Anthropic's official Claude Code GitHub Action, wired for `@claude` mention-mode only — one workflow file, no hooks, no gate. Needs an auth secret this pack cannot create; see its `adoptNotes`.                                                                   |
 
 `github-ops` (dependabot/scan-alert triage skills) and `publishing` (a
 release workflow + npm-publish gates) are documented follow-ups, not yet
