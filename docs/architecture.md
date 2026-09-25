@@ -5,6 +5,15 @@ the project rather than editing it. [`CLAUDE.md`](../CLAUDE.md) is the
 detailed, agent-facing reference this document distills from -- follow its
 links for anything not covered here.
 
+**In plain terms:** this repository builds two things that work together.
+Phase A is a small, offline command-line tool that writes (or reports on)
+a project's TypeScript setup and Claude Code configuration. Phase B is a
+Claude Code skill, `/customize`, that a person runs afterward inside their
+own project to tailor what Phase A wrote and check it against current
+upstream advice. The two stay separate on purpose: one has to be
+predictable every time it runs, the other has to be free to go look things
+up. The sections below walk through each phase's internals in more detail.
+
 ## The two-phase split
 
 ```
@@ -61,9 +70,11 @@ date.
   silently dropped.
 - **The harness and toolchain graders** (`src/harness/`, `src/toolchain/`)
   each have two implementations that must stay identical: the TypeScript
-  version that feeds the adoption report, and an emitted ESM twin every
-  bootstrapped project runs as its own `pnpm verify` step. A parity test
-  runs both against the same fixtures and fails if they disagree.
+  version that feeds the adoption report, and an emitted ESM **twin** --
+  a second, separately maintained copy, not a shared library -- that every
+  bootstrapped project runs as its own `pnpm verify` step. A
+  [parity test](glossary.md#parity-test) runs both against the same
+  fixtures and fails if they disagree.
 - **`packs.ts`** loads and installs optional bundles from
   `templates/packs/`. A pack only ever adds files and extends three JSON
   files the baseline already reads (`merge-json.ts`) -- never YAML, never
@@ -82,8 +93,9 @@ have full authority over their entire domain (`typescript-guidance`,
 `harness-guidance`), not just the facets an interview answer happened to
 emphasize. `packages/plugin/src/domain-map.ts` is the structural guarantee
 that every file `templates/core/` ships is claimed by exactly one of those
-two domains or an explicit neutral allowlist -- checked by a test that
-walks the real template tree on every run.
+two domains or an explicit **neutral allowlist** -- a list of files (such
+as this one) that belong to neither guidance skill's domain and so need no
+sweep -- checked by a test that walks the real template tree on every run.
 
 ## Single source of truth for gates
 
@@ -91,11 +103,13 @@ walks the real template tree on every run.
 and every CI lane job read, keyed by group (`format`/`lint`/`typecheck`/
 `build`/`test`) rather than by individual step. The emitted baseline
 (`templates/core/bin/lib/verify-steps.mjs`) has the identical shape, plus
-`CORE_STEPS` and pack-contributed steps. Neither YAML file (`ci.yml`,
-`lefthook.yml`) ever names an individual step id -- that's what lets a new
-gate join every lane at once without touching either file, and it's also
-what a structural check (`gate-lane-parity`, part of the toolchain grader)
-verifies by scraping both files as text.
+`CORE_STEPS` (the array of extra gates only the baseline itself needs, on
+top of what every bootstrapped project gets) and pack-contributed steps.
+Neither YAML file (`ci.yml`, `lefthook.yml`) ever names an individual step
+id -- that's what lets a new gate join every lane at once without touching
+either file, and it's also what a structural check (`gate-lane-parity`,
+part of the toolchain grader, which scrapes both YAML files as text and
+fails if either names a step directly or matrices the lanes) verifies.
 
 ## Trust boundaries and threat model
 
