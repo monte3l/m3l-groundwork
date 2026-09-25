@@ -109,6 +109,49 @@ substituted or tampered with afterward. If either command errors, or
 reports a different identity, treat the artifact as unverified and do not
 install or use it.
 
+### Reproducing a release
+
+The build is reproducible: two independent, clean builds of the same source
+produce byte-identical tarballs (`pack.e2e.test.ts`'s reproducible-build
+case checks this -- it's excluded from the fast default `pnpm test` run like
+every other `*.e2e.test.ts` file, but CI's `e2e` job runs it on every push
+and PR via `pnpm test:e2e`, and `release.yml`'s `pack` job re-runs it before
+every release, not only at release time). To confirm a published release
+yourself:
+
+```bash
+git checkout <tag>          # e.g. @monte3l/groundwork@1.0.0-rc.N
+pnpm install --frozen-lockfile
+pnpm build
+pnpm --filter @monte3l/groundwork pack
+shasum -a 256 packages/cli/*.tgz
+```
+
+Compare the resulting SHA-256 against the tarball attached to the matching
+[GitHub Release](https://github.com/monte3l/m3l-groundwork/releases) -- the
+same artifact `gh attestation verify` above checks the provenance of. A
+match means the release you're installing was built from exactly the source
+at that tag, with nothing added or substituted in between.
+
+## Dynamic analysis
+
+Property-based tests (`fast-check`, files named `*.property.test.ts`) run
+inside `pnpm test` -- on every push, every PR, and in `release.yml`'s `pack`
+job before any release ships. They exercise the CLI's parsers and boundary
+logic (JSONC parsing, token substitution, the dotfile-escaping map, the
+pack-merge functions) across their full input domain, generated rather than
+hand-picked, and differentially fuzz the harness grader's TypeScript
+`frontmatter.ts` implementation against its emitted JavaScript twin (the
+toolchain grader's own property tests check it never throws and degrades to
+`{checked:0}` rather than guessing, not a twin diff -- see
+[`docs/security-review.md`](docs/security-review.md) for the distinction).
+`node:assert` invariants at the trust boundaries named in
+[`docs/assurance-case.md`](docs/assurance-case.md) run live whenever the
+guarded code path executes -- in these property tests, in the rest of
+`pnpm test`'s example-based suite, and in the e2e suite -- so a violation
+fails the build rather than passing silently. See
+[`docs/security-review.md`](docs/security-review.md) for the full write-up.
+
 ## What this is not
 
 This policy is about vulnerabilities in the tool itself: how it parses
@@ -135,19 +178,31 @@ standing bypass that undermines the design:
   `bypass_actors` list is deliberately designed to avoid. See
   [`CLAUDE.md`](CLAUDE.md#git-workflow), "Three choices are deliberate,
   not defaults."
-- **Fuzzing** (no OSS-Fuzz integration): this CLI has no untrusted binary
-  or network-facing parser of the kind fuzzing targets -- its inputs are
-  argv, local JSON/JSONC config, and its own template tree.
+- **Fuzzing** (no OSS-Fuzz integration): Scorecard's `Fuzzing` check looks
+  specifically for OSS-Fuzz/ClusterFuzzLite integration or a handful of
+  recognized fuzzing harnesses, none of which fits a CLI with no
+  long-running network-facing service. This project does apply dynamic
+  analysis -- property-based tests via `fast-check`, run on every push, PR,
+  and pre-release build (see "Dynamic analysis" above and
+  [`docs/security-review.md`](docs/security-review.md)) -- Scorecard's
+  heuristic simply doesn't recognize that shape of tool.
 - **Maintained** (repository age): purely time-based (Scorecard checks
   whether a repo is older than 90 days); it self-resolves and needs no
   action.
 
 One finding is a genuine, but external, gap: this project hasn't yet
 registered for an [OpenSSF Best Practices badge](https://www.bestpractices.dev/)
-(`CIIBestPracticesID`). The repository is intended to meet the Silver
-criteria -- governance, roles and access continuity
+(`CIIBestPracticesID`). The repository is intended to meet the Gold
+criteria, excluding the handful that inherently require more than one active
+contributor (`bus_factor`, `contributors_unassociated`, `two_person_review`
+-- see [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor), stated honestly as unmet
+rather than worked around) -- governance, roles and access continuity
 ([`GOVERNANCE.md`](GOVERNANCE.md)), a roadmap ([`ROADMAP.md`](ROADMAP.md)),
-a documented architecture and this security policy, a security assurance
+a documented architecture, this security policy, a per-file
+copyright/license statement (`REUSE.toml` plus inline SPDX headers -- see
+`CLAUDE.md`'s "Definition of Done"), a 90%/80% statement/branch coverage
+gate, a reproducible build, dynamic analysis, a dated security review
+([`docs/security-review.md`](docs/security-review.md)), a security assurance
 case ([`docs/assurance-case.md`](docs/assurance-case.md)), DCO-signed
 commits, strict linting, signed and attested releases, and CLI input
 validation -- but registering is a maintainer action (an account and a

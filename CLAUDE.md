@@ -688,13 +688,30 @@ state with `gh api repos/monte3l/m3l-groundwork/environments/npm-publish`.
 
 ## Testing
 
-`pnpm test:coverage`'s v8 coverage gate is `perFile: true` at 80% across all
-four metrics, same shape as `templates/core`'s own gate. A file with a
-genuinely unexercised branch will fail this even if the aggregate looks
-fine -- see `git.test.ts` (mocks `execFileSync` via `vi.hoisted`) and
-`main-run.test.ts` (mocks `git.js`/`plugin.js`, exercises real
-`emitTemplate()` against a real temp directory) for the patterns this repo
-uses to close that kind of gap without mocking away the thing under test.
+`pnpm test:coverage`'s v8 coverage gate is `perFile: true` at OpenSSF Best
+Practices' Gold-level bar -- 90% statements/lines, 80% branches/functions --
+applied to all four metrics rather than only the two the criteria name,
+same shape as `templates/core`'s own gate. A file with a genuinely
+unexercised branch will fail this even if the aggregate looks fine -- see
+`git.test.ts` (mocks `execFileSync` via `vi.hoisted`) and `main-run.test.ts`
+(mocks `git.js`/`plugin.js`, exercises real `emitTemplate()` against a real
+temp directory) for the patterns this repo uses to close that kind of gap
+without mocking away the thing under test.
+
+**Property-based tests** (`fast-check`, files named `*.property.test.ts`) run
+alongside example-based ones inside `pnpm test` -- this is the project's
+dynamic-analysis tool for OpenSSF Best Practices' Gold-level
+`dynamic_analysis` criterion, so it runs on every push/PR and in
+`release.yml`'s `pack` job before any release, not as a one-off manual pass.
+They generate input across a parser's or boundary function's full domain
+(`jsonc.ts`, `tokens.ts`, `assets.ts`'s dotfile mapping, `merge-json.ts`) and
+differentially fuzz the harness grader's `frontmatter.ts` implementation
+against its emitted JavaScript twin (the toolchain grader's own property
+tests check it never throws and degrades to `{checked:0}` rather than
+guessing, not a twin diff). See
+[`docs/security-review.md`](docs/security-review.md) and `SECURITY.md`'s
+"Dynamic analysis" for the full write-up, and `.claude/rules/tests.md` for
+where a property test belongs alongside its example-based sibling.
 
 `bootstrap.e2e.test.ts` is the only test that spawns real child processes
 (the built CLI, then `pnpm install`/`pnpm verify` inside the emitted
@@ -721,6 +738,17 @@ you touched this repo's _own_ `.claude/` (agents, hooks, skills, rules,
 `settings.json` at root, not `templates/core/`), `node bin/check-harness.mjs`
 must stay green the same way it does for the baseline: structural failures
 gate, rubric findings only warn.
+
+**A new tracked file outside `templates/**` needs an SPDX header** (a
+`SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors` +
+`SPDX-License-Identifier: MIT` line comment, near the top -- see
+`bin/check-license-headers.mjs`) if its extension is `.ts`/`.mjs`/`.js`/
+`.sh`/`.yml`/`.yaml`, or a glob in `REUSE.toml` otherwise (JSON, Markdown,
+and the handful of dotfiles listed there never carry an inline header).
+`node bin/check-license-headers.mjs --fix` inserts it. A file under neither
+umbrella fails the `license-headers` verify step outright -- add a glob to
+`REUSE.toml` in the same commit rather than widening the header-extension
+set for one file.
 
 ## Known gaps (deliberately out of scope so far)
 

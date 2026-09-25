@@ -15,9 +15,11 @@ person who has final say over a project's direction, borrowed from
 open-source projects like Python's that used it for their original creator.
 Here it means: one maintainer, no vote, no board. This document exists to
 satisfy the [OpenSSF Best Practices badge](https://www.bestpractices.dev/)'s
-Silver-level `governance`, `roles_responsibilities`, `access_continuity` and
-`bus_factor` criteria with an honest description of how the project
-actually runs today, not an aspirational one.
+Silver-level `governance`, `roles_responsibilities` and `access_continuity`
+criteria, and to give an honest account of the three Gold-level criteria
+this project cannot meet with one active maintainer (`bus_factor`,
+`contributors_unassociated`, `two_person_review` -- see "Gold-level criteria
+this project does not meet" below) rather than an aspirational one.
 
 ## Decision-making
 
@@ -110,6 +112,30 @@ Today's bus factor is **1** -- this is a single-maintainer project, stated
 plainly rather than inflated. A second person already holds real GitHub
 access (see "Roles" above), but has never reviewed, merged, or released
 anything, and holds no npm access at all -- access alone doesn't make an
-active co-maintainer. The badge's `bus_factor` criterion is a SHOULD, not a
-MUST, precisely for projects in this position. Growing past 1 is on the
-[roadmap](ROADMAP.md).
+active co-maintainer. Growing past 1 is on the [roadmap](ROADMAP.md).
+
+## Gold-level criteria this project does not meet
+
+Three of the OpenSSF Best Practices badge's Gold-level criteria are
+structurally impossible to meet honestly with a single active maintainer, no
+matter how the project is otherwise run. Each is recorded as **Unmet** in
+`.bestpractices.json` rather than argued around:
+
+- **`bus_factor` (MUST at Gold, requiring 2 or more).** See above -- today's
+  bus factor is 1.
+- **`contributors_unassociated` (MUST, requiring at least two significant
+  contributors not affiliated with the same organization).** All
+  non-trivial contribution to date is from the maintainer.
+- **`two_person_review` (MUST, requiring at least 50% of changes reviewed by
+  someone other than the author before release).** With one maintainer, no
+  proposed change can be reviewed by a second human before it's merged and
+  released -- `claude-pr-review.yml`'s automated comment (see
+  [`CONTRIBUTING.md`](CONTRIBUTING.md#code-review)) is real review signal,
+  but the criterion's own wording asks for "a person other than the
+  author," and an automated tool review isn't a substitute for that.
+
+Every other Gold-level criterion is met or is not applicable to this
+project -- see `.bestpractices.json` for the full, itemized self-assessment.
+Closing these three depends on finding and onboarding a genuine second
+active maintainer (see [`ROADMAP.md`](ROADMAP.md)), not on a code or process
+change.
