@@ -151,8 +151,7 @@ jobs:
     permissions:
       contents: write # changesets/action/publish pushes tags and creates GitHub Releases
       id-token: write # npm trusted publishing (OIDC) and provenance
-      actions: read # download the packed tarball back out of the pack job's artifact
-      attestations: write # actions/attest-build-provenance on the same tarball
+      attestations: write # actions/attest-build-provenance on the packed tarball
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -202,8 +201,15 @@ jobs:
       # of its own artifact (never rebuilt), attested, and attached. `if:`
       # guards all three on `publish` actually having published -- `select-
       # mode` only decides the job should run, not that a version was new.
+      # `continue-on-error: true` on all three: `npm stage publish` has
+      # already succeeded by this point, so a failure here (a transient
+      # download error, say) must never fail the whole job and leave a
+      # staged, tagged, unreleased version behind -- this block is
+      # best-effort supplementary evidence, the same status as the
+      # "List pending stages" step below.
       - name: Fetch the packed tarball back out of the pack job's artifact
         if: steps.publish.outputs.published == 'true'
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           artifact-ids: ${{ needs.pack.outputs.pack-dir-artifact-id }}
@@ -211,17 +217,30 @@ jobs:
           merge-multiple: true
       - name: Attest build provenance for the published tarball
         if: steps.publish.outputs.published == 'true'
+        continue-on-error: true
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
+          # actions/attest-build-provenance's own glob support (not the
+          # shell's), so `**` resolves correctly regardless of `globstar`.
           subject-path: .release-artifacts/**/*.tgz
       - name: Attach the attested tarball to the GitHub Release
         if: steps.publish.outputs.published == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # `changeset pack` writes into <outDir>/packages/*.tgz, not
+          # <outDir>/*.tgz -- found by path, not a bare shell glob the
+          # default (non-globstar) bash would pass through unexpanded on
+          # no match.
+          tarball="$(find .release-artifacts -name '*.tgz' -print -quit)"
+          if [ -z "$tarball" ]; then
+            echo "no packed tarball found under .release-artifacts/ -- skipping the release-asset upload" >&2
+            exit 0
+          fi
           version="$(node -p "require('./packages/cli/package.json').version")"
           gh release upload "@monte3l/groundwork@${version}" \
-            .release-artifacts/*.tgz --clobber --repo "${{ github.repository }}"
+            "$tarball" --clobber --repo "${{ github.repository }}"
       # Staging succeeds unattended; going live needs a maintainer's 2FA
       # (`npm stage approve <id>`, on the CLI or npmjs.com -- never
       # automatable, by design). Best-effort convenience only: this job never
