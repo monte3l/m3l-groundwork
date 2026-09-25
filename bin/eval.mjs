@@ -17,8 +17,16 @@
  *
  * `--check` fails on any case scoring below `evals/baseline.json`; `--update`
  * rewrites that file from this run (the file-budget ratchet's social
- * contract: a reviewed diff, never a silent one). Baselines recorded at
- * `--runs 1` are noisy -- record and check at `--runs 3` or more.
+ * contract: a reviewed diff, never a silent one) -- but never from a partial
+ * run (see `shouldUpdateBaseline`), so an interrupted eval can't silently
+ * drop cases from the committed baseline. `--check` hard-fails up front if
+ * no baseline exists at all, and fails on a baselined case missing from this
+ * run (renamed, deleted, or dropped by a cost-capped partial run), not just
+ * on a scored regression. Baselines recorded at `--runs 1` are noisy --
+ * record and check at `--runs 3` or more. `--max-cost-usd` is a per-suite
+ * budget, applied separately to each suite's own `claude plugin eval`
+ * invocation -- `--suite all` spends up to one budget per entry in `SUITES`,
+ * not this figure in total.
  */
 import process from "node:process";
 import { spawnSync } from "node:child_process";
@@ -34,80 +42,18 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { repoRoot } from "./lib/report.mjs";
 import {
+  baselineMissingForCheck,
   compareToBaseline,
   evalArgs,
+  parseArgs,
+  shouldUpdateBaseline,
+  suiteMissingForCheck,
   summarizeRun,
+  SUITES,
   withSuiteScores,
   writeHarnessPlugin,
   writeToolchainPlugin,
 } from "./lib/eval-lib.mjs";
-
-const SUITES = ["plugin", "harness", "toolchain"];
-
-function parseArgs(argv) {
-  const opts = {
-    suite: "all",
-    runs: 1,
-    maxCostUsd: 5,
-    model: "claude-sonnet-5",
-    judgeModel: "claude-haiku-4-5",
-    ablation: "none",
-    threshold: undefined,
-    caseGlob: undefined,
-    concurrency: undefined,
-    check: false,
-    update: false,
-    keepTemp: false,
-  };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    const next = () => {
-      const value = argv[++i];
-      if (value === undefined) throw new Error(`${arg} needs a value`);
-      return value;
-    };
-    if (arg === "--suite") opts.suite = next();
-    else if (arg === "--runs") opts.runs = Number(next());
-    else if (arg === "--max-cost-usd") opts.maxCostUsd = Number(next());
-    else if (arg === "--model") opts.model = next();
-    else if (arg === "--judge-model") opts.judgeModel = next();
-    else if (arg === "--ablation") opts.ablation = next();
-    else if (arg === "--threshold") opts.threshold = Number(next());
-    else if (arg === "--case") opts.caseGlob = next();
-    else if (arg === "-j" || arg === "--concurrency")
-      opts.concurrency = Number(next());
-    else if (arg === "--check") opts.check = true;
-    else if (arg === "--update") opts.update = true;
-    else if (arg === "--keep-temp") opts.keepTemp = true;
-    else throw new Error(`unknown argument: ${arg}`);
-  }
-  if (opts.suite !== "all" && !SUITES.includes(opts.suite)) {
-    throw new Error(`--suite must be plugin, harness, toolchain, or all`);
-  }
-  if (!Number.isInteger(opts.runs) || opts.runs < 1) {
-    throw new Error("--runs must be a positive integer");
-  }
-  if (!Number.isFinite(opts.maxCostUsd) || opts.maxCostUsd <= 0) {
-    throw new Error("--max-cost-usd must be a positive number");
-  }
-  if (
-    opts.concurrency !== undefined &&
-    !(
-      Number.isInteger(opts.concurrency) &&
-      opts.concurrency >= 1 &&
-      opts.concurrency <= 8
-    )
-  ) {
-    throw new Error("--concurrency must be an integer from 1 to 8");
-  }
-  if (!["none", "with-without"].includes(opts.ablation)) {
-    throw new Error("--ablation must be none or with-without");
-  }
-  if (opts.check && opts.update) {
-    throw new Error("--check and --update are mutually exclusive");
-  }
-  return opts;
-}
 
 function readBaseline(path) {
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : undefined;
@@ -141,7 +87,9 @@ function runSuite(name, target, extra, opts, resultsRoot) {
   const result = spawnSync("claude", args, { stdio: "inherit" });
   if (!existsSync(jsonPath)) {
     throw new Error(
-      `${name}: claude plugin eval wrote no result at ${jsonPath}`,
+      `${name}: claude plugin eval wrote no result at ${jsonPath} ` +
+        `(status ${result.status}, signal ${result.signal})`,
+      { cause: result.error },
     );
   }
   return {
@@ -168,6 +116,13 @@ let exitCode = 0;
 let totalCost = 0;
 const tempDirs = [];
 
+if (baselineMissingForCheck(opts.check, baseline)) {
+  console.error(
+    "fail  --check requires evals/baseline.json to exist -- run with --update first",
+  );
+  process.exit(1);
+}
+
 try {
   for (const name of suites) {
     let target;
@@ -178,7 +133,12 @@ try {
         cwd: root,
         stdio: "inherit",
       });
-      if (build.status !== 0) throw new Error("pnpm build failed");
+      if (build.status !== 0) {
+        throw new Error(
+          `pnpm build failed (status ${build.status}, signal ${build.signal})`,
+          { cause: build.error },
+        );
+      }
       // Write/Edit are granted because the workspace is throwaway. For
       // `plugin`, /customize's Step 0.3 writes findings back into
       // .groundwork/ and the case's graders forbid touching anything outside
@@ -234,34 +194,66 @@ try {
     }
 
     if (opts.check) {
-      const { regressions, unbaselined } = compareToBaseline(
+      const { regressions, unbaselined, missing } = compareToBaseline(
         summary.cases,
         baseline?.suites?.[name],
+        { filtered: opts.caseGlob !== undefined },
       );
       for (const r of regressions) {
         console.error(
           `fail  ${name}/${r.name}: ${r.now.toFixed(2)} < baseline ${r.was.toFixed(2)}`,
         );
       }
-      if (unbaselined.length > 0) {
+      for (const m of missing) {
+        console.error(
+          `fail  ${name}/${m}: baselined case did not run -- renamed, deleted, or dropped by a partial run`,
+        );
+      }
+      if (suiteMissingForCheck(opts.check, baseline, name)) {
+        // The whole-file case (no baseline.json at all) already hard-exited
+        // above; this is the same silent pass one level down -- a baseline
+        // that exists but was never recorded for THIS suite. Every case
+        // would otherwise land in `unbaselined`, which is only a warning.
+        console.error(
+          `fail  ${name}: no baseline for this suite in evals/baseline.json -- run with --update --suite ${name}`,
+        );
+        exitCode = Math.max(exitCode, 1);
+      } else if (unbaselined.length > 0) {
         console.warn(
           `warn  ${name}: no baseline for ${unbaselined.join(", ")} -- run with --update`,
         );
       }
-      if (regressions.length > 0) exitCode = Math.max(exitCode, 1);
+      if (regressions.length > 0 || missing.length > 0) {
+        exitCode = Math.max(exitCode, 1);
+      }
     }
     if (opts.update) {
-      baseline = withSuiteScores(
-        baseline,
-        name,
-        summary.cases,
-        opts.caseGlob !== undefined,
-      );
-      mkdirSync(resolve(root, "evals"), { recursive: true });
-      writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
-      console.log(
-        `wrote ${name} scores to evals/baseline.json -- review the diff before committing`,
-      );
+      if (!shouldUpdateBaseline(summary)) {
+        console.warn(
+          `warn  ${name}: partial run -- not writing evals/baseline.json (would drop unrun cases)`,
+        );
+      } else if (summary.cases.length === 0 && opts.caseGlob === undefined) {
+        // An unfiltered run recording zero cases would, via withSuiteScores'
+        // full-replace mode, wipe every case this suite has ever had -- the
+        // same silent-drop shape as a partial run, just from a malformed or
+        // empty result.json instead of a cost cap.
+        console.error(
+          `fail  ${name}: run produced no cases -- not writing evals/baseline.json`,
+        );
+        exitCode = Math.max(exitCode, 2);
+      } else {
+        baseline = withSuiteScores(
+          baseline,
+          name,
+          summary.cases,
+          opts.caseGlob !== undefined,
+        );
+        mkdirSync(resolve(root, "evals"), { recursive: true });
+        writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
+        console.log(
+          `wrote ${name} scores to evals/baseline.json -- review the diff before committing`,
+        );
+      }
     }
   }
 } finally {

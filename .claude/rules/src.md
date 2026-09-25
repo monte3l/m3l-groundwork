@@ -1,9 +1,9 @@
 ---
 paths:
-  - "src/**"
+  - "packages/*/src/**"
 ---
 
-# Source rules (`src/**`)
+# Source rules (`packages/*/src/**`)
 
 > This file is the terse checklist that auto-loads when you edit source.
 > Base standards — TypeScript strictness, ESM `.js` imports, named exports,

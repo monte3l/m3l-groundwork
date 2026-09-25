@@ -52,14 +52,36 @@ function recommendStatusline(): PackRecommendation {
 }
 
 /**
+ * `claude-action`'s workflow assumes only GitHub, which this baseline's
+ * whole toolchain (CI, Dependency Review, rulesets) already does -- nothing
+ * about any project kind. It is not zero-setup: it adds one GitHub Actions
+ * workflow and needs an auth secret the pack cannot create itself.
+ */
+function recommendClaudeAction(): PackRecommendation {
+  return {
+    name: "claude-action",
+    recommended: true,
+    because:
+      "the baseline's toolchain already assumes GitHub (CI, Dependency " +
+      "Review, rulesets), so a Claude Code Action integration applies to " +
+      "any project kind. It does add one GitHub Actions workflow and needs " +
+      "an auth secret configured by hand -- the pack cannot create it.",
+  };
+}
+
+/**
  * Every pack's recommendation for the given interview answers. `answers`
- * is currently unused by either pack (neither recommendation varies by
- * kind), but the parameter exists now so a future kind-scoped pack (e.g.
+ * is currently unused by any of the three packs (no recommendation varies
+ * by kind), but the parameter exists now so a future kind-scoped pack (e.g.
  * a `publishing` pack recommended only for `kind: "library"`) needs no API
  * change here.
  */
 export function recommendPacks(
   _answers: InterviewAnswers,
 ): PackRecommendation[] {
-  return [recommendHarnessExtras(), recommendStatusline()];
+  return [
+    recommendHarnessExtras(),
+    recommendStatusline(),
+    recommendClaudeAction(),
+  ];
 }

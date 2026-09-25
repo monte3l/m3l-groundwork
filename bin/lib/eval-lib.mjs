@@ -17,6 +17,94 @@ import { join } from "node:path";
 
 const SKILL_NAME = /^[\w-]+$/;
 
+/** The three `claude plugin eval` suites `bin/eval.mjs` knows how to run. */
+export const SUITES = ["plugin", "harness", "toolchain"];
+
+/**
+ * Parses `bin/eval.mjs`'s argv into a validated options object. Pure and
+ * exported so its validation is unit-tested without spawning `claude`
+ * (packages/cli/tests/eval-lib.test.ts). Throws a plain `Error` on any
+ * invalid or unknown argument -- `bin/eval.mjs` lets that propagate as a
+ * fatal usage error.
+ * @param {string[]} argv
+ */
+export function parseArgs(argv) {
+  const opts = {
+    suite: "all",
+    runs: 1,
+    maxCostUsd: 5,
+    model: "claude-sonnet-5",
+    judgeModel: "claude-haiku-4-5",
+    ablation: "none",
+    threshold: undefined,
+    caseGlob: undefined,
+    concurrency: undefined,
+    check: false,
+    update: false,
+    keepTemp: false,
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    const next = () => {
+      const value = argv[++i];
+      if (value === undefined || value === "") {
+        throw new Error(`${arg} needs a value`);
+      }
+      return value;
+    };
+    if (arg === "--suite") opts.suite = next();
+    else if (arg === "--runs") opts.runs = Number(next());
+    else if (arg === "--max-cost-usd") opts.maxCostUsd = Number(next());
+    else if (arg === "--model") opts.model = next();
+    else if (arg === "--judge-model") opts.judgeModel = next();
+    else if (arg === "--ablation") opts.ablation = next();
+    else if (arg === "--threshold") opts.threshold = Number(next());
+    else if (arg === "--case") opts.caseGlob = next();
+    else if (arg === "-j" || arg === "--concurrency")
+      opts.concurrency = Number(next());
+    else if (arg === "--check") opts.check = true;
+    else if (arg === "--update") opts.update = true;
+    else if (arg === "--keep-temp") opts.keepTemp = true;
+    else throw new Error(`unknown argument: ${arg}`);
+  }
+  if (opts.suite !== "all" && !SUITES.includes(opts.suite)) {
+    throw new Error(`--suite must be plugin, harness, toolchain, or all`);
+  }
+  if (!Number.isInteger(opts.runs) || opts.runs < 1) {
+    throw new Error("--runs must be a positive integer");
+  }
+  if (!Number.isFinite(opts.maxCostUsd) || opts.maxCostUsd <= 0) {
+    throw new Error("--max-cost-usd must be a positive number");
+  }
+  if (
+    opts.concurrency !== undefined &&
+    !(
+      Number.isInteger(opts.concurrency) &&
+      opts.concurrency >= 1 &&
+      opts.concurrency <= 8
+    )
+  ) {
+    throw new Error("--concurrency must be an integer from 1 to 8");
+  }
+  if (!["none", "with-without"].includes(opts.ablation)) {
+    throw new Error("--ablation must be none or with-without");
+  }
+  if (
+    opts.threshold !== undefined &&
+    !(
+      Number.isFinite(opts.threshold) &&
+      opts.threshold >= 0 &&
+      opts.threshold <= 1
+    )
+  ) {
+    throw new Error("--threshold must be a number between 0 and 1");
+  }
+  if (opts.check && opts.update) {
+    throw new Error("--check and --update are mutually exclusive");
+  }
+  return opts;
+}
+
 /**
  * Validates a trigger corpus -- `[{ skill, query, should_trigger }]`, the
  * shape the official skill-creator uses for triggering accuracy -- and
@@ -283,11 +371,20 @@ const SCORE_TOLERANCE = 1e-3;
  * score is below what was recorded. LLM runs are noisy, so a baseline
  * recorded at `--runs 1` will flake: record it, and check it, at `--runs 3`
  * or more.
+ *
+ * `missing` names baselined cases that did not appear in this run at all --
+ * e.g. a case renamed or deleted since the baseline was recorded -- so a
+ * `--check` run can fail loudly instead of silently no longer verifying
+ * them. Pass `{ filtered: true }` when the run was deliberately narrowed
+ * (`--case <glob>`), so cases outside the glob aren't reported as missing.
  * @param {{ name: string, score: number }[]} cases
  * @param {Record<string, number> | undefined} baseline
+ * @param {{ filtered?: boolean }} [options]
  */
-export function compareToBaseline(cases, baseline) {
+export function compareToBaseline(cases, baseline, options) {
   const known = baseline ?? {};
+  const filtered = options?.filtered ?? false;
+  const seen = new Set(cases.map((c) => c.name));
   return {
     regressions: cases
       .filter(
@@ -296,7 +393,54 @@ export function compareToBaseline(cases, baseline) {
       )
       .map((c) => ({ name: c.name, was: known[c.name] ?? 0, now: c.score })),
     unbaselined: cases.filter((c) => !(c.name in known)).map((c) => c.name),
+    missing:
+      baseline === undefined || filtered
+        ? []
+        : Object.keys(known).filter((name) => !seen.has(name)),
   };
+}
+
+/**
+ * Whether a `--update` run's scores may overwrite `evals/baseline.json`. A
+ * partial run (the cost cap or another interruption stopped it before every
+ * case finished) must never be recorded: `withSuiteScores`'s full-run mode
+ * replaces the suite's entire entry, so writing a partial run's cases would
+ * silently drop every case that didn't get to run from the committed
+ * baseline.
+ * @param {{ partial: boolean }} summary
+ */
+export function shouldUpdateBaseline(summary) {
+  return !summary.partial;
+}
+
+/**
+ * Whether `--check` should hard-fail because there is nothing to check
+ * against -- `evals/baseline.json` does not exist at all. Without this,
+ * every case reads as merely "unbaselined" (a warning) and `--check` exits
+ * 0 on a repo that never ran `--update`, which defeats the ratchet.
+ * @param {boolean} check
+ * @param {unknown} baseline
+ */
+export function baselineMissingForCheck(check, baseline) {
+  return check && baseline === undefined;
+}
+
+/**
+ * Whether `--check` should hard-fail a single suite because the baseline
+ * document exists but has no entry at all for it -- the same silent pass
+ * `baselineMissingForCheck` closes for a wholly-missing file, one level
+ * down. Without this, every case in an un-baselined suite lands in
+ * `compareToBaseline`'s `unbaselined` list, which is only a warning, so
+ * `--check --suite toolchain` would exit 0 the first time that suite is run.
+ * Callers check `baselineMissingForCheck` first; by the time this runs,
+ * `baseline` is expected to be defined, but it degrades safely (`true`) if
+ * called with it `undefined` too.
+ * @param {boolean} check
+ * @param {{ suites?: Record<string, unknown> } | undefined} baseline
+ * @param {string} suite
+ */
+export function suiteMissingForCheck(check, baseline, suite) {
+  return check && baseline?.suites?.[suite] === undefined;
 }
 
 /**

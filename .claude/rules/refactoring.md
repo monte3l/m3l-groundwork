@@ -1,6 +1,6 @@
 ---
 paths:
-  - "src/**"
+  - "packages/*/src/**"
   - "**/tests/**"
   - "**/*.test.ts"
 ---
