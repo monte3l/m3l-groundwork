@@ -73,3 +73,28 @@ registered for an [OpenSSF Best Practices badge](https://www.bestpractices.dev/)
 yet (`CIIBestPracticesID`). That's a maintainer action (an account and a
 self-assessment questionnaire on bestpractices.dev), not something fixed
 by a code change.
+
+## Reading the Socket score
+
+The README's [Socket](https://socket.dev) badge scores five categories
+(Supply Chain Security, Quality, Maintenance, Vulnerability, License).
+Two of those are structurally suppressed for a package this new and this
+small, independent of any actual defect, and should not be chased with a
+design change:
+
+- **Supply Chain Security and Maintenance** scale with download count,
+  account age, and publish history -- a package with only two releases
+  can't score as high as an established one on these axes yet, the same
+  way OpenSSF Scorecard's `Maintained` check flags any repository under
+  90 days old. This self-corrects with adoption and time; there is no
+  action to take against it.
+- **Quality** partly reflects generic npm-package hygiene heuristics
+  (a `types` field, an importable `main`/`exports["."]` entry) that are
+  written with a _library_ in mind. `@monte3l/groundwork` deliberately
+  has none of those -- it's a CLI, not a library, and removing them was
+  a considered breaking change (see the CLI's `CHANGELOG.md`), not an
+  oversight. Re-adding a fake type export to satisfy a generic heuristic
+  would reintroduce exactly what that change removed. The genuine
+  quality signals this project controls -- a real README, a license
+  field, a repository link, keywords, zero runtime dependencies -- are
+  already all present.

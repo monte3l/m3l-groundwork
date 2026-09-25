@@ -1,7 +1,7 @@
 {
   "name": "@monte3l/groundwork",
   "version": "0.1.0-next.1",
-  "description": "Deterministic Phase A bootstrapper: writes the m3l-groundwork baseline (toolchain + Claude Code harness) into a new directory, or surveys an existing project read-only. No prompts, no network beyond the package install.",
+  "description": "Deterministic bootstrapper: writes the m3l-groundwork baseline (toolchain + Claude Code harness) into a new directory, or surveys an existing project read-only. No prompts, no network beyond the package install.",
   "keywords": [
     "typescript",
     "claude-code",
