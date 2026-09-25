@@ -1,14 +1,28 @@
 /**
- * The kind-to-facet table `/customize` reads to plan its guidance-pass
- * research priority. A stored, unit-tested module -- not a judgment made
- * afresh each run -- so the same interview answers always produce the same
- * facet plan.
+ * The kind-to-facet table `/customize` reads to plan its guidance-sweep
+ * research priority. Three terms recur throughout this file:
  *
- * Scope note (load-bearing): this table scopes research PRIORITY only. Both
- * guidance skills (templates/core/.claude/skills/typescript-guidance and harness-guidance)
- * retain full authority to amend anything in their domain regardless of what
+ * - A "kind" is a `ProjectKind`: the project archetype the interview
+ *   classifies the project as (library, cli, frontend or service).
+ * - A "guidance sweep" is the live research pass `/customize` runs over
+ *   official TypeScript and Anthropic sources, once per domain (TypeScript
+ *   toolchain, Claude Code harness).
+ * - A "facet" is one fixed research topic within a domain -- for example
+ *   `compiler-config-flags` is a TypeScript facet and `hooks-lifecycle` is a
+ *   harness facet. A guidance sweep always covers every facet of its domain,
+ *   whether or not the interview emphasized it.
+ *
+ * This table is a stored, unit-tested module -- not a judgment made afresh
+ * each run -- so the same interview answers always produce the same facet
+ * plan.
+ *
+ * Scope note (load-bearing): this table scopes research PRIORITY only. It
+ * decides which facets get the most emphasis, never what a guidance sweep
+ * is allowed to touch. Both guidance skills
+ * (templates/core/.claude/skills/typescript-guidance and harness-guidance)
+ * retain full authority to amend anything in their domain, regardless of what
  * this table emphasizes -- see their SKILL.md "Authority" sections. A facet
- * with low priority here still gets swept; it just isn't the one a dedicated
+ * with low priority here still gets swept. It just isn't the one a dedicated
  * research agent digs into deepest.
  */
 

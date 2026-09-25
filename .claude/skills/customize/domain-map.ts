@@ -1,13 +1,23 @@
 /**
- * Which files each guidance sweep is responsible for. Used two ways:
- * against the emitted baseline, to confirm neither sweep has a blind spot
- * in `templates/core` before reporting a clean run (unit-tested directly
- * against the real tree in `tests/domain-map.test.ts`, so a new template
- * file added later can't silently fall outside both domains without a test
- * noticing); and in adopt mode, to classify a real pre-existing project's
- * files, which is why the glob lists also cover common non-baseline
- * equivalents (`.eslintrc.*`, `jest.config.*`, `.husky/**`, ...) alongside
- * the baseline's own exact filenames.
+ * Which files each guidance sweep is responsible for. A "guidance sweep" is
+ * the live research pass `/customize` runs over official upstream sources for
+ * one domain: `typescript-guidance` sweeps the TypeScript toolchain against
+ * official TypeScript sources, and `harness-guidance` sweeps the Claude Code
+ * harness against official Anthropic sources. Each sweep covers a fixed set of
+ * "facets" (research topics within its domain, such as `compiler-config-flags`
+ * or `hooks-lifecycle`); the interview's project "kind" (a `ProjectKind`: the
+ * archetype -- library, cli, frontend or service -- the project is classified
+ * as) only changes which facets get the most emphasis, never which files a
+ * sweep owns. This module answers the file-ownership question.
+ *
+ * Used two ways: against the emitted baseline, to confirm neither sweep has a
+ * blind spot in `templates/core` before reporting a clean run (unit-tested
+ * directly against the real tree in `tests/domain-map.test.ts`, so a new
+ * template file added later can't silently fall outside both domains without
+ * a test noticing); and in adopt mode, to classify a real pre-existing
+ * project's files, which is why the glob lists also cover common
+ * non-baseline equivalents (`.eslintrc.*`, `jest.config.*`, `.husky/**`,
+ * ...) alongside the baseline's own exact filenames.
  */
 
 /** Simple glob support: `**` matches any sequence (including `/`), `*` matches within a segment. */
@@ -28,7 +38,7 @@ export function matchesAnyGlob(
   return globs.some((glob) => globToRegExp(glob).test(path));
 }
 
-/** Every TypeScript-facing file `typescript-guidance` is responsible for. */
+/** Every TypeScript-facing file the `typescript-guidance` sweep is responsible for. */
 export const TYPESCRIPT_DOMAIN_GLOBS = [
   "tsconfig*.json",
   "**/tsconfig*.json",
@@ -82,7 +92,7 @@ export const HARNESS_OVERRIDE_GLOBS = [
   ".github/workflows/claude.yml",
 ] as const;
 
-/** Every `.claude/`-facing file `harness-guidance` is responsible for. */
+/** Every `.claude/`-facing file the `harness-guidance` sweep is responsible for. */
 export const HARNESS_DOMAIN_GLOBS = [
   ".claude/settings.json",
   ".claude/settings.local.json",
@@ -98,7 +108,7 @@ export const HARNESS_DOMAIN_GLOBS = [
   "docs/research/harness-refresh.md",
 ] as const;
 
-/** Files neither sweep governs by design -- not a gap, an explicit exclusion. */
+/** Files neither guidance sweep governs by design -- not a gap, an explicit exclusion. */
 export const NEUTRAL_GLOBS = [
   "README.md",
   ".gitignore",

@@ -24,8 +24,12 @@ export default defineConfig({
       exclude: ["**/index.ts", "**/*.d.ts"],
       reporter: ["text", "html", "json"],
       thresholds: {
-        // Scaffold-appropriate starting floor — a new project's own first
-        // measured floor should replace these once its suite exists.
+        // This repo's own coverage floor, not a placeholder: 80% perFile
+        // across all four metrics, deliberately the same shape as
+        // templates/core's own gate (see CLAUDE.md's "Testing"). perFile is
+        // what stops one well-covered file from hiding an undertested one --
+        // see git.test.ts / main-run.test.ts for the patterns this repo uses
+        // to close that kind of gap without mocking away the thing under test.
         lines: 80,
         functions: 80,
         branches: 80,

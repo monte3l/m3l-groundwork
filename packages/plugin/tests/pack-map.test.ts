@@ -1,3 +1,13 @@
+// This test verifies recommendPacks (src/pack-map.ts), which /customize uses
+// to suggest optional templates/packs/* bundles during its interview: given a
+// set of interview answers, it must deterministically recommend the same
+// packs (harness-extras, statusline, claude-action) across every project
+// kind, and every recommendation must carry non-empty "because" evidence and
+// a non-empty name. Without this test, a change to pack-map.ts could silently
+// stop recommending a pack for some project kind, or return a recommendation
+// with no justification shown to the user, or make the mapping
+// non-deterministic across identical answers -- none of which any other test
+// in this repo would catch.
 import { describe, expect, it } from "vitest";
 import { recommendPacks } from "../src/pack-map.js";
 import type { InterviewAnswers } from "../src/kind-facet-map.js";

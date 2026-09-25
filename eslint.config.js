@@ -18,16 +18,19 @@ const CJS_FILENAME = "__file" + "name";
 export default defineConfig(
   {
     // Generated / vendored / emitted-payload content is never linted by this
-    // config. templates/core/** is data -- files copied verbatim (with token
-    // substitution) into a bootstrapped project; it is designed against
-    // THAT project's own toolchain, not this repo's. templates/packs/ is the
-    // same kind of payload: its .mjs artifacts are linted by the emitted
-    // project's templates/core/eslint.config.js, which scopes .claude/hooks/**
-    // with node globals -- this config now has its own equivalent block
-    // below, for this repo's own self-hosted .claude/hooks/ (see CLAUDE.md's
-    // "Agent Operating Model"), but a pack's *staged* copy under
-    // .groundwork/ is still excluded. Each pack's e2e test is what lints the
-    // templates/packs/ originals.
+    // config.
+    //
+    // templates/core/** is data: files copied verbatim (with token
+    // substitution) into a bootstrapped project. It is designed against
+    // THAT project's own toolchain, not this repo's.
+    //
+    // templates/packs/ is the same kind of payload. Its .mjs artifacts are
+    // linted by the emitted project's templates/core/eslint.config.js,
+    // which scopes .claude/hooks/** with node globals. This config now has
+    // its own equivalent block below, for this repo's own self-hosted
+    // .claude/hooks/ (see CLAUDE.md's "Agent Operating Model"). A pack's
+    // *staged* copy under .groundwork/ is still excluded either way -- each
+    // pack's e2e test is what lints the templates/packs/ originals.
     ignores: [
       "**/dist/**",
       "**/node_modules/**",

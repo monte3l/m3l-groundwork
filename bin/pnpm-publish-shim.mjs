@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /**
- * Put ahead of the real `pnpm` on PATH by the release workflow's `publish` job.
- * Everything passes straight through to pnpm except `publish`, which goes to
- * `npm stage publish` instead.
+ * Put ahead of the real `pnpm` on PATH by the release workflow's `publish`
+ * job. Everything passes straight through to pnpm except `publish`, which
+ * this rewrites into `npm stage publish` instead.
+ *
+ * ## Why it exists
  *
  * Two independent reasons this can't be `pnpm publish`, stacked:
  * 1. `changeset publish` in a pnpm workspace publishes through `pnpm publish`,
@@ -16,12 +18,23 @@
  *    "OIDC permission denied" as the pnpm case, for an unrelated reason: the
  *    token exchange succeeds, but the registry refuses the specific action.
  *
- * Routing only the publish keeps changesets in charge of everything else it
- * does around it -- the publish plan, ordering, git tags, GitHub Releases --
- * instead of reimplementing any of that. A consequence worth knowing: those
- * git tags and Releases are created the moment `npm stage publish` succeeds,
- * which is *before* the package is actually live -- staging still needs a
- * maintainer to run `npm stage approve <id>` (2FA, never automatable).
+ * ## What it translates
+ *
+ * Only the exact `pnpm publish` invocation changesets makes -- everything
+ * else (install, other pnpm subcommands) passes straight through to the real
+ * `pnpm` unmodified. Routing only the publish keeps changesets in charge of
+ * everything else it does around it -- the publish plan, ordering, git tags,
+ * GitHub Releases -- instead of reimplementing any of that. A consequence
+ * worth knowing: those git tags and Releases are created the moment
+ * `npm stage publish` succeeds, which is *before* the package is actually
+ * live -- staging still needs a maintainer to run `npm stage approve <id>`
+ * (2FA, never automatable).
+ *
+ * ## What it refuses
+ *
+ * `toNpmStagePublishArgs` (see `./lib/npm-publish-args.mjs`) accepts only the
+ * flag shape changesets actually passes and throws on anything it does not
+ * recognise, rather than guessing a translation for an unfamiliar flag.
  *
  * `PNPM_SHIM_DIR` names this shim's own directory so it can be dropped from
  * PATH when looking for the real pnpm (otherwise it would find itself).

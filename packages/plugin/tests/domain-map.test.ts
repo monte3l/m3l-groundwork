@@ -1,3 +1,12 @@
+// This test is a structural guarantee, not documentation: it verifies that
+// every file under the real templates/core tree (and every packs/*/files
+// tree) is claimed by exactly one of typescript-guidance's domain,
+// harness-guidance's domain, or an explicit neutral allowlist, via
+// classifyPath from src/domain-map.ts. It walks the actual template tree on
+// every run (not a fixture), so adding a new file to templates/core that
+// matches none of the three glob lists fails this test -- that is the
+// intended catch: it stops a new template file from becoming a silent blind
+// spot that neither guidance sweep ever sees or updates.
 import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
