@@ -1,5 +1,6 @@
 {
   "name": "monte3l",
+  "description": "The m3l-groundwork Claude Code plugin: the /customize skill for a project bootstrapped or adopted by @monte3l/groundwork.",
   "owner": {
     "name": "Enrico Lionello"
   },
