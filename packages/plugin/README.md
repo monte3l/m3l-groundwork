@@ -21,4 +21,8 @@ CLI. The plugin's version (`.claude-plugin/plugin.json`) tracks the CLI's for
 display; a change here ships to marketplace users the moment it lands on
 `main`, independent of any npm release.
 
+There's no separate changelog for the plugin -- it has no release of its
+own. See [`packages/cli/CHANGELOG.md`](../cli/CHANGELOG.md) for what changed
+in the version this plugin's `plugin.json` currently displays.
+
 MIT licensed.

@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a change to the CLI, the /customize plugin, or the emitted baseline
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the gap, not just the feature -- see CLAUDE.md's design notes before proposing a new agent/skill/hook/workflow, the baseline is capped and something existing usually has to be removed or merged first.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -51,7 +51,9 @@ each change with you, and only then edits your project.
 
 The CLI is published to npm as [`@monte3l/groundwork`](https://www.npmjs.com/package/@monte3l/groundwork).
 It is a prerelease (0.x): releases ship on the `next` dist-tag, so name the
-tag explicitly. Drop `@next` once a stable release exists.
+tag explicitly. See ["Versioning policy"](#versioning-policy) below for what
+counts as the CLI's public API, and drop `@next` once a stable release
+exists.
 
 ```bash
 # a new project
@@ -177,6 +179,36 @@ design, and the one-time setup it depends on, are in
 
 [`CLAUDE.md`](CLAUDE.md) is the full reference: architecture, the command
 table, conventions, and known gaps.
+
+## Versioning policy
+
+`@monte3l/groundwork` follows [Semantic Versioning](https://semver.org/).
+Until 1.0.0, breaking changes ship in a `minor` release, as SemVer allows
+for major version zero -- see the changesets in this repo's history for
+examples. From 1.0.0, the public API is:
+
+1. **CLI flags, modes, and exit codes** -- `--help` lists every flag; exit
+   `0` is success, `1` is a runtime failure, `2` is a bad invocation
+   (unrecognized flag, missing value, contradictory mode flags).
+2. **`.groundwork/inventory.json`** -- a `schemaVersion` bump that
+   `/customize` can't read is a breaking change.
+3. **`.groundwork/adoption-report.md`'s section headings.**
+4. **`.groundwork/packs/` staging layout**, and pack names.
+5. **The `engines.node` floor** -- narrowing it is breaking; widening it
+   isn't.
+6. **`/customize`'s invocation name**, and the promise that it reads every
+   inventory `schemaVersion` the CLI has ever emitted since 1.0.
+
+**Not covered by this policy:** the _contents_ of the baseline the CLI
+emits (`templates/core/`, `templates/packs/`). What a fresh bootstrap
+writes into your project follows current upstream TypeScript and Anthropic
+guidance and can change in a minor release -- that's the whole point of
+`/customize`'s live guidance pass. Also not covered: internal modules
+(anything under `packages/*/src/` not listed above) and the exact prose of
+`adoption-report.md`'s body.
+
+**Deprecation:** anything on this list gets at least one minor release with
+a visible warning before it's removed in a major release.
 
 ## License
 
