@@ -359,7 +359,16 @@ steps) before considering any task here done.
   opened/updated PR with `contents: read` only -- Claude posts a comment, it
   cannot push code, submit a formal GitHub review, or approve a PR, so it
   cannot satisfy or bypass `main`'s required checks or its 0-approval rule
-  either way. `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs
+  either way. `claude-pr-review.yml` pins `claude_args: --model claude-opus-5-5`
+  (there is no `model:` input -- the action's own `action.yml` has none);
+  `claude.yml` is left on the action's default. Two reasons, not one: no
+  official source states whether the action's undocumented default can
+  change silently between action releases, which matters for an unattended,
+  repeated job the way it doesn't for `claude.yml`'s interactive, humanly-
+  invoked sessions; and Opus 5.5 is Anthropic's own explicit recommendation
+  for agentic code review specifically (a third-party eval measured a 72%
+  known-bug catch rate against the prior Opus generation's 56%, with fewer
+  false alarms). `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs
   (the changesets version-PR, Dependabot) and fork PRs explicitly, rather
   than relying on the action's own internal bot/permission checks, so a run
   that would just fail on missing secrets never starts. **One-time setup,

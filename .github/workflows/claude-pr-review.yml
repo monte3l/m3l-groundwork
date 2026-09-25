@@ -45,6 +45,22 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
+          # Pinned rather than left on the action's default: there is no
+          # `model:` input (anthropics/claude-code-action's action.yml has
+          # none), the action's own docs defer the default's definition to
+          # a separate page rather than naming it, and no official source
+          # states whether that default can change between action releases
+          # -- an automated, unattended job like this one is exactly where a
+          # silent shift would go unnoticed. Opus 5.5 is Anthropic's own
+          # explicit recommendation for agentic code review specifically
+          # (anthropic.com/news/claude-opus-5-5: caught 72% of known bugs in
+          # a third-party eval, vs. 56% for the prior Opus generation, with
+          # fewer false alarms) -- claude.yml is left on the action's
+          # default since it's an interactive, human-invoked session where
+          # a model choice is visible in the moment, not a repeated
+          # unattended run.
+          claude_args: |
+            --model claude-opus-5-5
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
