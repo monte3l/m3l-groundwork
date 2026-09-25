@@ -23,7 +23,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: "`npx @monte3l/groundwork --version`, or the plugin's version from `/plugin`"
+      description: "`npx @monte3l/groundwork@rc --version` (the `@rc` tag matters -- without it, `npx` resolves the bare `latest` tag, which is still the 0.0.0 placeholder), or the plugin's version from `/plugin`"
       placeholder: "1.0.0"
     validations:
       required: true

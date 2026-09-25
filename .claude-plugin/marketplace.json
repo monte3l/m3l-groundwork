@@ -1,13 +1,13 @@
 {
   "name": "monte3l",
-  "description": "The m3l-groundwork Claude Code plugin: the /customize skill for a project bootstrapped or adopted by @monte3l/groundwork.",
+  "description": "The m3l-groundwork Claude Code plugin marketplace: lists the /customize skill for tailoring a project bootstrapped or adopted by @monte3l/groundwork.",
   "owner": {
     "name": "Enrico Lionello"
   },
   "plugins": [
     {
       "name": "m3l-groundwork-customize",
-      "description": "The /customize skill: interviews a bootstrapped project's owner, tailors the baseline to the answers, then runs a live guidance pass over official TypeScript and Anthropic sources.",
+      "description": "Adds the /customize skill: interviews a bootstrapped project's owner, tailors the baseline to their answers, then checks the result against current official TypeScript and Anthropic guidance.",
       "source": "./packages/plugin"
     }
   ]

@@ -6,7 +6,13 @@ body:
     id: problem
     attributes:
       label: What problem are you trying to solve?
-      description: Describe the gap, not just the feature -- see CLAUDE.md's design notes before proposing a new agent/skill/hook/workflow, the baseline is capped and something existing usually has to be removed or merged first.
+      description: >-
+        Describe the gap, not just the feature. Note that the emitted baseline
+        has "caps" -- hard limits on how many agents, skills, hooks, CI
+        workflows, and scripts it can carry (see
+        https://github.com/monte3l/m3l-groundwork/blob/main/docs/glossary.md)
+        -- so proposing a new one usually means an existing one has to be
+        removed or merged first.
     validations:
       required: true
   - type: textarea

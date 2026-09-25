@@ -1,5 +1,9 @@
 name: CI
 
+# What this does: runs the project's checks (formatting, linting, type
+# checking, build, unit tests, and end-to-end tests) on every push and pull
+# request to `main`, then reports one aggregated `verify` status for the
+# branch ruleset to gate on.
 on:
   push:
     branches: [main]

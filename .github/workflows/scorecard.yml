@@ -1,10 +1,13 @@
 name: Scorecard
 
-# OpenSSF Scorecard, run on its own schedule rather than every push --
-# supply-chain posture doesn't change per-commit the way tests do, and a
-# weekly cadence is what the action's own docs recommend. Read-only: this
-# workflow only inspects the repo and uploads a report, it never writes to
-# it.
+# What this does: runs OpenSSF Scorecard, a tool that scores a repository's
+# supply-chain security practices (branch protection, pinned dependencies,
+# signed releases, and similar checks) and publishes the result that powers
+# the Scorecard badge in README.md. It runs weekly, on every push to `main`,
+# and on manual dispatch -- not on every PR, since supply-chain posture
+# doesn't change per-commit the way tests do, and a weekly cadence is what
+# the action's own docs recommend. Read-only: this workflow only inspects
+# the repo and uploads a report, it never writes to it.
 on:
   push:
     branches: [main]
