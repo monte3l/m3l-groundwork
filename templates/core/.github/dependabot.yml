@@ -1,0 +1,18 @@
+version: 2
+
+updates:
+  # Keeps the action majors in .github/workflows/ from going stale. Every
+  # `uses:` line is pinned by commit SHA (not a floating tag), so Dependabot
+  # opening a PR to move the pin forward is what keeps that pinning
+  # affordable to maintain -- the same mechanism it would use for a floating
+  # tag, closing the "a compromised upstream tag" gap a floating `@vN`
+  # doesn't. npm updates are deliberately not enabled here -- add them later
+  # with `groups:` batching if the project wants it.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
