@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A tolerant reader for JSON-with-comments (JSONC) -- `tsconfig.json` and
  * friends use `//`/`/* *\/` comments and trailing commas that `JSON.parse`
@@ -11,12 +14,22 @@ import { existsSync, readFileSync } from "node:fs";
 export type JsoncReadResult =
   { ok: true; value: unknown } | { ok: false; error: string };
 
-/** Strips `//` and block comments and trailing commas from JSONC source. */
+/** Matches exactly the whitespace class `\s` covers, so a trailing comma is recognized across the same gaps as before. */
+const WHITESPACE = /\s/;
+
+/**
+ * Strips `//` and block comments and trailing commas from JSONC source. A
+ * trailing comma is removed in the same pass that tracks string literals, so
+ * a `,}` or `,]` inside a string (value or key) is never touched.
+ */
 export function stripJsoncNoise(content: string): string {
   let result = "";
   let inString = false;
   let inLineComment = false;
   let inBlockComment = false;
+  // Index in `result` of the last comma emitted outside a string with only
+  // whitespace (or stripped comments) after it; -1 when there is none.
+  let pendingComma = -1;
 
   for (let i = 0; i < content.length; i++) {
     const ch = content[i];
@@ -53,6 +66,7 @@ export function stripJsoncNoise(content: string): string {
 
     if (ch === '"') {
       inString = true;
+      pendingComma = -1;
       result += ch;
       continue;
     }
@@ -67,10 +81,19 @@ export function stripJsoncNoise(content: string): string {
       continue;
     }
 
+    if ((ch === "}" || ch === "]") && pendingComma !== -1) {
+      result = result.slice(0, pendingComma) + result.slice(pendingComma + 1);
+    }
+    if (ch === ",") {
+      pendingComma = result.length;
+    } else if (ch !== undefined && !WHITESPACE.test(ch)) {
+      pendingComma = -1;
+    }
+
     result += ch;
   }
 
-  return result.replace(/,(\s*[}\]])/g, "$1");
+  return result;
 }
 
 /**

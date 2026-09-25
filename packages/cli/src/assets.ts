@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The one place that decides where the CLI's data trees live: `templates/`
  * (the baseline and its packs) and the `/customize` plugin payload.

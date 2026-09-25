@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 name: Feature request
 description: Suggest a change to the CLI, the /customize plugin, or the emitted baseline
 labels: ["enhancement"]

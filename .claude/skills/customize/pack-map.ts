@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The pack recommendation table `/customize` reads in Step 1 to pre-select
  * which `templates/packs/` pack(s) to offer, with the evidence shown

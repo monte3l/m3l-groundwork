@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `.claude/skills/customize/{domain-map,pack-map,kind-facet-map}.ts` are
  * hand-synced copies of `packages/plugin/src/{domain-map,pack-map,kind-facet-map}.ts`,

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Real packaging correctness: packs the target package (`--cwd <dir>`,
  * default the repo root) with `pnpm pack`, then runs publint and

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   mkdtempSync,
@@ -9,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { emitTemplate } from "../src/emit.js";
+import { emitTemplate, isPathContained } from "../src/emit.js";
 
 describe("emitTemplate", () => {
   let sourceDir: string;
@@ -80,5 +83,19 @@ describe("emitTemplate", () => {
 
     const written = readFileSync(join(targetDir, "logo.png"));
     expect(written).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  });
+});
+
+describe("isPathContained", () => {
+  it("rejects a sibling path that merely shares root's name as a string prefix", () => {
+    expect(isPathContained("/foo/bar-evil/x", "/foo/bar")).toBe(false);
+  });
+
+  it("accepts a genuine child of root", () => {
+    expect(isPathContained("/foo/bar/x", "/foo/bar")).toBe(true);
+  });
+
+  it("accepts target equal to root", () => {
+    expect(isPathContained("/foo/bar", "/foo/bar")).toBe(true);
   });
 });

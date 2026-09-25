@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Covers main()'s own body (parseArgs and templatesCoreDir are covered
  * separately in main.test.ts). git.js and plugin.js are mocked so this

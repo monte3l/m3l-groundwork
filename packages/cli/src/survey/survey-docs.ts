@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Indexes human-facing docs and guidelines: `CONTRIBUTING.md`, a
  * `docs/contributing/` tree, ADR/decision/RFC directories, style guides, and

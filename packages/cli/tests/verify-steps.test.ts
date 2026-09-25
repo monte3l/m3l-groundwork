@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Fix 3: `bin/verify.mjs` and `templates/core/bin/verify.mjs` silently fall
  * through to running EVERY step when `--group`/`--step` is the LAST argv

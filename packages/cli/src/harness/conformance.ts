@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * How far a project's harness has drifted from `templates/core`'s -- the
  * second number the grader reports, kept separate from rubric quality

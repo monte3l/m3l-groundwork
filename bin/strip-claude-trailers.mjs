@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `commit-msg`: strips any harness-injected `Claude-*` trailer line from the
  * commit message file in place before `lint-commit.mjs` validates it.

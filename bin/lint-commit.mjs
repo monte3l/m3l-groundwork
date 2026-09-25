@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Wraps `@commitlint/lint` + `@commitlint/load` directly (no `@commitlint/cli`
  * dependency needed) against this project's `commitlint.config.js`. Also

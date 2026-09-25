@@ -38,7 +38,13 @@ publish` behaves for a given package (registry, access level, and so
 - **Growing the bus factor past 1.** See [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor).
   No committed timeline -- this depends on finding a second maintainer
   willing to take on release and security-response duties, not on writing
-  code.
+  code. It's also what stands between this project and the three Gold-level
+  OpenSSF Best Practices criteria that need more than one active
+  contributor -- see [`GOVERNANCE.md`](GOVERNANCE.md#gold-level-criteria-this-project-does-not-meet).
+- **Registering for the OpenSSF Best Practices badge.** Every criterion this
+  project can meet alone is in place (see `.bestpractices.json`); what's left
+  is the maintainer action of registering on bestpractices.dev and adding the
+  badge to the README (`documentation_achievements`).
 - **`pnpm/setup` in CI**, once it supports reading Node's version from
   `.node-version` (or an equivalent single-source-of-truth mechanism)
   rather than only `package.json`'s `devEngines.runtime` (a field that

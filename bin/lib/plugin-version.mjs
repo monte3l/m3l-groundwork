@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The plugin never has an npm release of its own -- it ships only through the
  * Claude Code marketplace, as a relative-path source pointed straight at

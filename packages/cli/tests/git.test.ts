@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 // This test verifies gitInit and runInstall (src/git.ts) invoke the right
 // subprocess commands -- `git init -q` and `pnpm install`, each in the given
 // directory -- without actually running git or pnpm. It mocks

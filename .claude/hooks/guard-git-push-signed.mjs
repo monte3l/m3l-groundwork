@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * PreToolUse guard (Bash): blocks a `git push` run through the agent's Bash
  * tool when any outgoing commit is unsigned or has an invalid signature --

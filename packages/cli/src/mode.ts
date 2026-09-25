@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Decides whether the CLI is writing a fresh project into an empty directory
  * or adopting an already-established one. Adopt mode never overwrites

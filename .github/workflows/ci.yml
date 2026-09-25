@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 name: CI
 
 # What this does: runs the project's checks (formatting, linting, type

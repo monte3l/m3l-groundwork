@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * UserPromptSubmit: when a prompt looks like change-work, inject a short
  * reminder about branch and PR hygiene as additional context, before the

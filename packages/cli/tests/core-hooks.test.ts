@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Regression test for the baseline's PreToolUse guards under a symlinked path.
  * `import.meta.url` is symlink-resolved by Node's ESM loader but

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 // This test verifies recommendPacks (src/pack-map.ts), which /customize uses
 // to suggest optional templates/packs/* bundles during its interview: given a
 // set of interview answers, it must deterministically recommend the same

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shared structured-reporter contract every bin/check-*.mjs and bin/verify.mjs
  * gate routes through, so output is consistent (human-readable by default,

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * PreToolUse guard (Write|Edit): blocks writing a relative import that is
  * missing the `.js` extension.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 name: Claude PR Review
 
 # What this does: automatically posts a Claude-written review comment on

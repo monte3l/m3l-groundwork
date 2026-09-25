@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Grades the TypeScript toolchain this repo EMITS -- `templates/core`'s
  * tsconfig chain, ESLint config, coverage gate, verify-step wiring and

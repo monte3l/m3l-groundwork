@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Compares `templates/core` (after token substitution) against a target
  * directory, file by file, without writing anything. `package.json` and any

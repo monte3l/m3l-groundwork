@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Fails when the plugin's Claude Code identity has drifted from the CLI's
  * release, or when either file has quietly grown npm-publish shape again --

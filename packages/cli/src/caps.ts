@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Counts the baseline's own `.claude/` + workflow + script artifacts
  * against the five hard caps `templates/core`'s own `CLAUDE.md` states

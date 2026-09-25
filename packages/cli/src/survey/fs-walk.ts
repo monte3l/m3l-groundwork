@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A bounded directory walk shared by every survey collector. Adopt mode may
  * run against an arbitrarily large pre-existing repository (dependency

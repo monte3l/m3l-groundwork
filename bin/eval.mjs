@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The behavioural half of harness grading: runs Anthropic's `claude plugin
  * eval` against (1) `packages/plugin`, the /customize skill, (2) a generated

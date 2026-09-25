@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -24,16 +27,18 @@ export default defineConfig({
       exclude: ["**/index.ts", "**/*.d.ts"],
       reporter: ["text", "html", "json"],
       thresholds: {
-        // This repo's own coverage floor, not a placeholder: 80% perFile
-        // across all four metrics, deliberately the same shape as
-        // templates/core's own gate (see CLAUDE.md's "Testing"). perFile is
-        // what stops one well-covered file from hiding an undertested one --
-        // see git.test.ts / main-run.test.ts for the patterns this repo uses
-        // to close that kind of gap without mocking away the thing under test.
-        lines: 80,
+        // This repo's own coverage floor, not a placeholder: OpenSSF Best
+        // Practices' Gold-level bar (90% statement, 80% branch), applied
+        // perFile and to all four metrics rather than only the two the
+        // criteria name -- deliberately the same shape as templates/core's
+        // own gate (see CLAUDE.md's "Testing"). perFile is what stops one
+        // well-covered file from hiding an undertested one -- see
+        // git.test.ts / main-run.test.ts for the patterns this repo uses to
+        // close that kind of gap without mocking away the thing under test.
+        lines: 90,
         functions: 80,
         branches: 80,
-        statements: 80,
+        statements: 90,
         perFile: true,
       },
     },

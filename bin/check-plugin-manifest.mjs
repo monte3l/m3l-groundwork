@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Runs `claude plugin validate --strict` against this repo's marketplace
  * manifest and the plugin it lists, catching a `plugin.json`/

@@ -24,6 +24,9 @@ than you need for a first PR.
   `Signed-off-by:` trailer certifying you have the right to submit your
   change -- `git commit -s` adds it for you. See "Developer Certificate of
   Origin" below.
+- **Two-factor authentication (2FA) on your GitHub account.** The `monte3l`
+  organization requires it for anyone who can push to this repository or
+  read a private vulnerability report -- see "Account security" below.
 
 ## Setup
 
@@ -86,6 +89,17 @@ also asks for it.
 All four are enforced by `pnpm verify`, the pre-commit/pre-push hooks, and
 CI -- there's no separate style review, the tooling is the standard.
 
+## Account security
+
+The `monte3l` GitHub organization requires two-factor authentication for
+every member -- changing this repository, or accessing a private
+vulnerability report, isn't possible without it. Use an authenticator app
+(TOTP) or a hardware security key, not SMS: GitHub supports TOTP directly,
+and an SMS-based second factor is unencrypted and doesn't meet this
+project's own bar (see the badge's `secure_2FA` criterion). The same applies
+to the npm account behind `npm stage approve` during a release -- see
+[`CLAUDE.md`](CLAUDE.md#releases).
+
 ## Workflow
 
 Every change lands through a pull request -- nobody, maintainer included,
@@ -93,6 +107,40 @@ can push directly to `main` (see [`CLAUDE.md`](CLAUDE.md#git-workflow)).
 Branch off `main`, keep the PR focused, and make sure CI's `verify`
 aggregator, Dependency Review, and CodeQL are all green before asking for a
 merge.
+
+## Code review
+
+Every pull request is reviewed before merging -- by the maintainer, and by
+[`claude-pr-review.yml`](.github/workflows/claude-pr-review.yml)'s automated
+comment on every non-bot, non-fork PR. What review checks:
+
+- **Correctness**: the change does what it says, and new functionality or a
+  bug fix comes with tests (see "Scope of a PR" below).
+- **Error handling**: no silently swallowed error, no unchained `cause`, no
+  optional-chaining that masks a failure that should surface.
+- **Security**: input validation at any new boundary, no new runtime
+  dependency added without strong justification (see
+  [`CLAUDE.md`](CLAUDE.md#architecture-notes)), no new network call, no
+  secret written to disk.
+- **Documentation drift**: `CLAUDE.md`, `README.md`, and any other doc the
+  change touches stay in sync with the code in the same PR.
+- **Process**: a changeset for a user-visible CLI change, DCO sign-off, and
+  a signed commit (see "Before opening a PR" above).
+
+A PR merges once every required CI check is green and every review thread is
+resolved. This project is honest that it does not meet the badge's
+`two_person_review` criterion: with one maintainer, no proposed change can
+be reviewed by a second human before release -- see
+[`GOVERNANCE.md`](GOVERNANCE.md#bus-factor).
+
+## Small tasks for newcomers
+
+Issues labeled [`good first issue`](https://github.com/monte3l/m3l-groundwork/labels/good%20first%20issue)
+or [`help wanted`](https://github.com/monte3l/m3l-groundwork/labels/help%20wanted)
+are scoped for a first-time or casual contributor -- not necessarily new
+functionality; documentation, an added test case, or a small, well-defined
+fix all count. If nothing currently open looks approachable, ask in a new
+issue and it'll get labeled appropriately.
 
 ## Scope of a PR
 

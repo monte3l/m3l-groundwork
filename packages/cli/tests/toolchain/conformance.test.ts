@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from "vitest";
 import type { FileConflict } from "../../src/conflicts.js";
 import { summarizeToolchainConformance } from "../../src/toolchain/conformance.js";

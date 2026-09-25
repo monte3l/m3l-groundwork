@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * PreToolUse guard (Write|Edit): blocks any hub-authored write into a
  * guarded source or test path, on any branch -- only the designated writer

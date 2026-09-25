@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * statusLine: renders a fixed five-row layout -- session, model, context,
  * quota, work -- built entirely from the JSON Claude Code pipes to stdin

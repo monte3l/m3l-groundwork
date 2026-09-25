@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Put ahead of the real `pnpm` on PATH by the release workflow's `publish`
  * job. Everything passes straight through to pnpm except `publish`, which

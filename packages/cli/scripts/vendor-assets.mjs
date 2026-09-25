@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `prepack` / `postpack` for `@monte3l/groundwork`. A published tarball cannot
  * reach outside its own package, but the CLI's data lives at the repo root

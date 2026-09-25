@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The single source of truth for what `pnpm verify` (bin/verify.mjs) runs
  * locally, what each `lefthook.yml` pre-push lane runs, and what each
@@ -54,6 +57,12 @@ export const VERIFY_STEPS = [
     group: "lint",
     name: "Check plugin manifest validity",
     cmd: ["node", "bin/check-plugin-manifest.mjs"],
+  },
+  {
+    id: "license-headers",
+    group: "lint",
+    name: "Check SPDX license headers",
+    cmd: ["node", "bin/check-license-headers.mjs"],
   },
   {
     id: "typecheck",

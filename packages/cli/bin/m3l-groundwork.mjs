@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The published CLI's entry point: `npx @monte3l/groundwork <target-dir>`
  * resolves here. Delegates straight to the built `main()` and turns a

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The kind-to-facet table `/customize` reads to plan its guidance-sweep
  * research priority. Three terms recur throughout this file:

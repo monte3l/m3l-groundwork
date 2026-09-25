@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The statusline pack's acceptance test: bootstrap a throwaway project with
  * `--pack statusline` using the built CLI, actually execute the emitted

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the logic in the `statusline` pack's scripts that has to hold
  * on both macOS and Linux -- above all `resolveMemory`, whose inputs mean

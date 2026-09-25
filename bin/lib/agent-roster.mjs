@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The writer-spoke roster. A "spoke" is a subagent the hub-and-spoke model
  * dispatches to for a specific job (writing tests, writing implementation,

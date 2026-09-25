@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Grades a project's Claude Code harness. `gradeHarness` reads the `.claude/`
  * tree and `CLAUDE.md` once into a `HarnessSnapshot`, then runs every rule in

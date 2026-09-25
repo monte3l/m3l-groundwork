@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The harness rule set: a declarative list of checks, each a pure function
  * over a `HarnessSnapshot` (everything the grader read from disk, already in

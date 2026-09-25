@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Denylist gaps in `guard-readonly-bash.mjs`'s `classifyBashCommand` (missing
  * git/pnpm/npm mutating subcommands, `sed --in-place`, prefix-verb blind

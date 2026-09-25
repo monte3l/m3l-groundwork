@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 // This test is a structural guarantee, not documentation: it verifies that
 // every file under the real templates/core tree (and every packs/*/files
 // tree) is claimed by exactly one of typescript-guidance's domain,

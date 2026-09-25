@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 name: Claude Code
 
 # What this does: lets anyone mention "@claude" in an issue, a PR review, or

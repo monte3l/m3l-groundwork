@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * subagentStatusLine: renders a custom row body for each subagent shown in
  * the agent panel (code.claude.com/docs/en/statusline#subagent-status-lines).

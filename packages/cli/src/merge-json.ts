@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Pure, deterministic merges over parsed JSON -- the entire mechanism that
  * lets a pack extend `.claude/settings.json` (its `hooks` block and a few
@@ -192,7 +195,12 @@ export function mergePackageScripts(
   const collisions: ScriptCollision[] = [];
 
   for (const [name, cmd] of Object.entries(additions)) {
-    const currentValue = scripts[name];
+    // Object.hasOwn, not `scripts[name] !== undefined`: bracket access walks
+    // the prototype chain, so an addition named `toString`/`constructor`
+    // would otherwise "collide" with an inherited Object.prototype member.
+    const currentValue = Object.hasOwn(scripts, name)
+      ? scripts[name]
+      : undefined;
     if (currentValue !== undefined) {
       if (currentValue !== cmd) {
         collisions.push({ name, existing: currentValue, incoming: cmd });

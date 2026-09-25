@@ -1,6 +1,15 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from "vitest";
-import { basename } from "node:path";
-import { CliUsageError, parseArgs, templatesCoreDir } from "../src/main.js";
+import { AssertionError } from "node:assert/strict";
+import { basename, join } from "node:path";
+import {
+  CliUsageError,
+  assertAdoptWriteScope,
+  parseArgs,
+  templatesCoreDir,
+} from "../src/main.js";
 import { listPackNames } from "../src/packs.js";
 
 describe("parseArgs", () => {
@@ -289,5 +298,50 @@ describe("templatesCoreDir", () => {
     expect(basename(dir.slice(0, dir.length - "/core".length))).toBe(
       "templates",
     );
+  });
+});
+
+describe("assertAdoptWriteScope", () => {
+  const targetDir = "/work/app";
+
+  it("does not throw for a path genuinely under <targetDir>/.groundwork/", () => {
+    expect(() =>
+      assertAdoptWriteScope(targetDir, [
+        join(targetDir, ".groundwork", "inventory.json"),
+      ]),
+    ).not.toThrow();
+  });
+
+  it("does not throw for a path under <targetDir>/.claude/skills/customize/", () => {
+    expect(() =>
+      assertAdoptWriteScope(targetDir, [
+        join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
+      ]),
+    ).not.toThrow();
+  });
+
+  it("throws AssertionError for a sibling directory sharing a name prefix with the allowed .groundwork scope", () => {
+    const evilPath = join(targetDir, ".groundwork-evil", "x");
+
+    expect(() => assertAdoptWriteScope(targetDir, [evilPath])).toThrow(
+      AssertionError,
+    );
+
+    let thrown: unknown;
+    try {
+      assertAdoptWriteScope(targetDir, [evilPath]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(AssertionError);
+    expect((thrown as AssertionError).message).toMatch(
+      /adopt mode wrote outside its scope/,
+    );
+  });
+
+  it("throws AssertionError for an unrelated path outside both allowed roots", () => {
+    expect(() =>
+      assertAdoptWriteScope(targetDir, [join(targetDir, "package.json")]),
+    ).toThrow(AssertionError);
   });
 });

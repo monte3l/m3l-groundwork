@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Proves the *published* artifact works, which nothing else here does: every
  * other test runs the CLI from the source checkout, where the data trees sit
@@ -8,6 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -201,4 +205,36 @@ describe("published tarball end-to-end", () => {
     expect(byPath.get(".npmrc")).toBe("identical");
     expect(byPath.has("_gitignore")).toBe(false);
   });
+
+  it("produces a byte-identical tarball across two independent clean build+pack cycles (reproducible build)", () => {
+    const rootDir = join(cliDir, "..", "..");
+    const cliDistDir = join(cliDir, "dist");
+    const pluginDistDir = join(rootDir, "packages", "plugin", "dist");
+
+    function cleanBuildAndPack(destDir: string): string {
+      rmSync(cliDistDir, { recursive: true, force: true });
+      rmSync(pluginDistDir, { recursive: true, force: true });
+      execFileSync("pnpm", ["build"], { cwd: rootDir, stdio: "pipe" });
+      mkdirSync(destDir, { recursive: true });
+      execFileSync("pnpm", ["pack", "--pack-destination", destDir], {
+        cwd: cliDir,
+        stdio: "pipe",
+      });
+      const tarball = readdirSync(destDir).find((name) =>
+        name.endsWith(".tgz"),
+      );
+      if (tarball === undefined) {
+        throw new Error("pnpm pack produced no tarball");
+      }
+      return join(destDir, tarball);
+    }
+
+    const tarballA = cleanBuildAndPack(join(scratch, "repro-a"));
+    const tarballB = cleanBuildAndPack(join(scratch, "repro-b"));
+
+    const hashOf = (path: string): string =>
+      createHash("sha256").update(readFileSync(path)).digest("hex");
+
+    expect(hashOf(tarballB)).toBe(hashOf(tarballA));
+  }, 300_000);
 });

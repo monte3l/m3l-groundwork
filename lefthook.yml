@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 # Git hooks, managed by Lefthook.
 # Install/refresh with `pnpm exec lefthook install` (wired into `prepare`).
 # yaml-language-server: $schema=https://json.schemastore.org/lefthook.json

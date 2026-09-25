@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shapes shared by the toolchain grader. Same two-level model as the harness
  * grader (`../harness/types.ts`): `structural` findings are pass/fail wiring
