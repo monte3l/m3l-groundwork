@@ -66,7 +66,7 @@ async function readStdin() {
  */
 function frontmatterName(filePath) {
   const content = readFileSync(filePath, "utf8")
-    .replace(/^﻿/, "") // a leading BOM (a realistic artifact of a Windows editor)
+    .replace(/^\uFEFF/, "") // a leading BOM (a realistic artifact of a Windows editor)
     .replace(/\r\n/g, "\n");
   const match = content.match(/^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/);
   if (match === null) return undefined;
