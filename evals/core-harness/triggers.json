@@ -103,5 +103,10 @@
     "skill": "harness-guidance",
     "query": "Rename the variable foo to bar throughout src/index.ts.",
     "should_trigger": false
+  },
+  {
+    "skill": "harness-guidance",
+    "query": "Show me how this repo's current .claude/settings.json hooks are wired and which scripts they call.",
+    "should_trigger": false
   }
 ]
