@@ -45,7 +45,7 @@ jobs:
       # file must never carry a literal version (`pnpm check:node-version`).
       # No package-manager cache anywhere in this file: a restored cache is an
       # input an attacker can poison, and these jobs are the ones that publish.
-      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
@@ -115,7 +115,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
@@ -155,7 +155,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
@@ -163,15 +163,20 @@ jobs:
       # Only the changesets CLI is needed here, not any package's lifecycle scripts.
       - run: pnpm install --frozen-lockfile --ignore-scripts
       # `npm stage publish` needs npm >= 11.15.0 (Node >= 22.14.0, already
-      # covered by .node-version's 24). Pinned to an exact version, not a
-      # `^11.15.0` range: this job holds the OIDC token, and OpenSSF
-      # Scorecard's Pinned-Dependencies check (scorecard.yml) flags any
-      # unpinned package-manager install the same way it flags an unpinned
-      # Action. Dependabot's github-actions ecosystem doesn't reach this
-      # (it's a `run:` argument, not a `uses:` ref, and this repo's own npm
-      # ecosystem updates are deliberately off -- see dependabot.yml), so
-      # bumping this is a manual, reviewed PR, same as any other pin here.
-      - run: npm install --global "npm@11.20.0"
+      # covered by .node-version's 24). Pinned to an exact version -- this
+      # job holds the OIDC token, and OpenSSF Scorecard's
+      # Pinned-Dependencies check (scorecard.yml) flags any unpinned
+      # package-manager install the same way it flags an unpinned Action.
+      # A bare `npm install --global npm@X.Y.Z` here would only pin the
+      # VERSION string, not verify it against anything -- .github/release-
+      # tools/package-lock.json pins the exact tarball via its sha512
+      # integrity hash instead, and `npm ci` verifies the install against
+      # it. Dependabot's npm ecosystem is scoped to this one directory (see
+      # dependabot.yml), so bumping the pin is the same reviewed-PR flow as
+      # any other pin here, just via a lockfile diff instead of a bare
+      # version string.
+      - run: npm ci --ignore-scripts --prefix .github/release-tools
+      - run: echo "$GITHUB_WORKSPACE/.github/release-tools/node_modules/.bin" >> "$GITHUB_PATH"
       # changesets publishes through `pnpm publish` in a pnpm workspace, and
       # pnpm 12's native publish is rejected by npmjs.com's OIDC exchange
       # (403 "OIDC permission denied"). This puts a `pnpm` ahead of the real

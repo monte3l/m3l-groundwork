@@ -23,4 +23,11 @@ jobs:
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
           fail-on-severity: high
-          allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0
+          # BlueOak-1.0.0, Artistic-2.0 and CC-BY-3.0 cover npm's own CLI
+          # dependency tree (.github/release-tools/package-lock.json,
+          # "Releases" in CLAUDE.md) -- npm itself is Artistic-2.0, and most
+          # of its own deps (glob, minimatch, lru-cache, tar, ...) are
+          # BlueOak-1.0.0; spdx-exceptions' data file is CC-BY-3.0. All
+          # permissive; this repo never redistributes npm, it only shells
+          # out to it in a CI job that installs with --ignore-scripts.
+          allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0, BlueOak-1.0.0, Artistic-2.0, CC-BY-3.0

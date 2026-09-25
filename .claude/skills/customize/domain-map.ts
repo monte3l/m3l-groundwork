@@ -60,6 +60,7 @@ export const TYPESCRIPT_DOMAIN_GLOBS = [
   "bin/lib/*.mjs",
   "bin/lib/*.json",
   ".github/workflows/*.yml",
+  ".github/dependabot.yml",
   "docs/research/typescript-refresh.md",
   "src/**",
   "tests/**",

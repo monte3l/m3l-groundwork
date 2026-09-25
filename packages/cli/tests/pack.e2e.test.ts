@@ -84,6 +84,10 @@ describe("published tarball end-to-end", () => {
       "pack-e2e",
       "--skip-install",
       "--pack",
+      "claude-action",
+      "--pack",
+      "harness-extras",
+      "--pack",
       "statusline",
     ];
 

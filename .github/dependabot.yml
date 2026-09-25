@@ -4,12 +4,33 @@ updates:
   # Keeps the action majors in .github/workflows/ from going stale. GitHub
   # moves JS actions onto new Node runtimes on its own schedule, so a major
   # behind starts warning well before it breaks. npm updates are deliberately
-  # not enabled: a weekly PR per devDependency across this monorepo is more
-  # churn than one maintainer wants. Add it later with `groups:` batching.
+  # not enabled here: a weekly PR per devDependency across this monorepo is
+  # more churn than one maintainer wants. Add it later with `groups:`
+  # batching.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+
+  # .github/release-tools/ pins the exact npm version the release
+  # workflow's publish job installs (see release.yml's `npm ci --prefix`
+  # step) via a committed package-lock.json's integrity hash, not a bare
+  # version string in YAML -- this is the one npm-ecosystem directory
+  # Dependabot is pointed at, so bumping that pin stays a normal reviewed
+  # PR instead of a hand-regenerated lockfile. This package runs holding
+  # the publish job's OIDC token, so it gets the same one-day cooldown
+  # pnpm-workspace.yaml's minimumReleaseAge already holds every other
+  # dependency to -- Dependabot's own cooldown default is 0.
+  - package-ecosystem: "npm"
+    directory: "/.github/release-tools"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 1
     commit-message:
       prefix: "ci"
     labels:
