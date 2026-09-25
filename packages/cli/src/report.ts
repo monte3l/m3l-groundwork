@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Renders `.groundwork/adoption-report.md` from an `Inventory` -- the human
  * artifact adopt mode stops at. Every section is index-level, matching what

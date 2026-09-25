@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `isProtectedPath` gains an optional second `projectDir` argument that
  * scopes an ABSOLUTE `filePath` to the project before applying the

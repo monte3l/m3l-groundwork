@@ -19,3 +19,6 @@
       `templates/core/`
 - [ ] A new file under `templates/core/` is claimed by
       `packages/plugin/src/domain-map.ts`
+- [ ] A new tracked file outside `templates/**` carries an SPDX header
+      (`bin/check-license-headers.mjs --fix`), or is covered by a
+      `REUSE.toml` glob instead

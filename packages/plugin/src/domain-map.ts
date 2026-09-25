@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Which files each guidance sweep is responsible for. A "guidance sweep" is
  * the live research pass `/customize` runs over official upstream sources for

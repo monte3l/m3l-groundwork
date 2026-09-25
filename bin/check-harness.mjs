@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Grades the Claude Code harness this repo EMITS -- `templates/core/.claude`
  * plus its `CLAUDE.md` -- so a broken hook registration, a skill with no

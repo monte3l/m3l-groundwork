@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Follows one tsconfig's `extends` chain and folds `compilerOptions` the way
  * TypeScript does: array entries (TS 5.0+) left to right, the file's own

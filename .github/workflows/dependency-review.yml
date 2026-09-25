@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 name: Dependency Review
 
 # What this does: on every pull request into `main`, scans the dependency

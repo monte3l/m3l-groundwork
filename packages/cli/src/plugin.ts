@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Installs the `/customize` skill into a bootstrapped or adopted project.
  * Claude Code's marketplace-based plugin installation is an interactive,

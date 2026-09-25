@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The pure half of `bin/eval.mjs`: turning a trigger corpus into
  * `claude plugin eval` cases, building that command's argv, and comparing a

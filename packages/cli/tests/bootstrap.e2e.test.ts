@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The end-to-end acceptance test: actually bootstrap a throwaway project
  * into a temp directory with the built CLI and run its real scripts. No

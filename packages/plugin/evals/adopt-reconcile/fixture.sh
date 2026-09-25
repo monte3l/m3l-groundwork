@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 # A realistic pre-existing project, then this repo's own built CLI run against
 # it in adopt mode -- so .groundwork/inventory.json and adoption-report.md are
 # the real handoff /customize's Step 0 reads, not a hand-written imitation.

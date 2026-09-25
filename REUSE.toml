@@ -1,0 +1,39 @@
+# REUSE Software (https://reuse.software) annotations for files that cannot,
+# or by this project's own convention should not, carry an inline SPDX
+# header -- see CLAUDE.md's "Definition of Done" for the header this repo
+# expects on every other tracked file, and `bin/check-license-headers.mjs`
+# for the gate that gap-checks this file's globs against that expectation.
+version = 1
+SPDX-PackageName = "m3l-groundwork"
+SPDX-PackageSupplier = "Enrico Lionello"
+SPDX-PackageDownloadLocation = "https://github.com/monte3l/m3l-groundwork"
+
+# templates/** is THE BASELINE this CLI emits into other people's projects
+# (see CLAUDE.md's "Repository Layout"), not this repo's own source -- it
+# deliberately carries no inline SPDX header, so a bootstrapped project never
+# ships this repo's own copyright line as if it were the new project's own.
+# This annotation records the license this repo's own copy of that payload
+# is under; it says nothing about what a bootstrapped project's files are
+# licensed as afterward -- that's the new project owner's own choice.
+[[annotations]]
+path = ["templates/**"]
+SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
+SPDX-License-Identifier = "MIT"
+
+# Everything else with no comment syntax of its own to carry a header in:
+# data files, prose, and dotfiles.
+[[annotations]]
+path = [
+  "**/*.json",
+  "**/*.md",
+  "pnpm-lock.yaml",
+  ".node-version",
+  ".npmrc",
+  ".gitignore",
+  ".prettierignore",
+  "LICENSE",
+  "REUSE.toml",
+  "LICENSES/**",
+]
+SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
+SPDX-License-Identifier = "MIT"

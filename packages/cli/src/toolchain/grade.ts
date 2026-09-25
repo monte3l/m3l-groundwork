@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Grades a project's TypeScript toolchain. `gradeToolchain` reads the tsconfig
  * chains, ESLint and vitest configs, `package.json`, and the verify-step

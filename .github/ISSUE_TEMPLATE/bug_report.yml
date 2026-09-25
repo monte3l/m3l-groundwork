@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 name: Bug report
 description: Something in the CLI, the /customize plugin, or an emitted baseline is broken
 labels: ["bug"]

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Collects toolchain-enforcement facts: the tsconfig `extends` chain and its
  * effective strict-family flags, which eslint/test/formatter/git-hook tool

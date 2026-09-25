@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 // This test keeps two independent implementations of the same toolchain-grading
 // rules from silently drifting apart: packages/cli/src/toolchain/rules.ts and
 // grade.ts (TypeScript, used by adopt mode's report) versus

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shapes shared by the harness grader. `structural` findings are defects in
  * the harness's own wiring (a hook that points at nothing, a skill with no

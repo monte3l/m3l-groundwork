@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The survey aggregate: runs all four collectors against a target directory
  * and returns the combined `ProjectSurvey`. See `types.ts` for the shape

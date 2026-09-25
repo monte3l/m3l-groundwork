@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A reader for the YAML subset Claude Code frontmatter actually uses --
  * `SKILL.md`, agent, and rule files. Hand-rolled because this package has no

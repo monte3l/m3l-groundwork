@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Writes a throwaway plugin wrapping `templates/core`'s skills, plus one eval
  * case per entry in `evals/core-harness/triggers.json`, into the directory

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Serializes a survey + conflict plan + pack survey into
  * `.groundwork/inventory.json` -- the machine-readable handoff

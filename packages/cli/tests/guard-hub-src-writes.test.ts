@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for `shouldBlockHubSrcWrite`, the pure decision function
  * `.claude/hooks/guard-hub-src-writes.mjs` exports. Nothing here tested this

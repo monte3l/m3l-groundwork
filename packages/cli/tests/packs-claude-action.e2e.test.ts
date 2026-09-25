@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The claude-action pack's acceptance test: bootstrap a throwaway project
  * with `--pack claude-action` using the built CLI and confirm it is a pure

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Token substitution: a fixed string-replace table, not a template engine --
  * the CLI has zero runtime dependencies it can avoid, and a `__TOKEN__`

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Loads pack manifests from `templates/packs/<name>/pack.json` and installs
  * a pack's files + JSON wiring into a freshly-bootstrapped project. Adopt

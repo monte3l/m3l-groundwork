@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The adopt-mode acceptance test: builds a realistic pre-existing project,
  * runs the real built CLI against it, and asserts the one guarantee that

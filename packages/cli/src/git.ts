@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The two mechanical steps fresh mode runs after emission -- writing the
  * baseline template tree into the target directory (`emitTemplate` in

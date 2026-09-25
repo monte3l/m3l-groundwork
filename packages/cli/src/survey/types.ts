@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shared type definitions for the four survey collectors and their
  * aggregate. Kept in one file since every collector's output composes into

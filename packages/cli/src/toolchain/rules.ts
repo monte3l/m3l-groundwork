@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The toolchain grader's rules. Each rule is a pure function over a
  * `ToolchainSnapshot` read once by `grade.ts`, so none of them touches the

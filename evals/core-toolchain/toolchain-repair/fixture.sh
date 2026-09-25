@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 # A genuinely fresh bootstrap (this repo's own built CLI), then a toolchain
 # degraded ONLY in ways tsc and ESLint cannot see -- so the grader is the one
 # thing that notices, which is the gap `check-toolchain` exists to close. The

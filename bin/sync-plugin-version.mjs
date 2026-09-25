@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Copies the CLI package's version into plugin.json, the only other file
  * that needs to carry it (see lib/plugin-version.mjs -- the plugin has no

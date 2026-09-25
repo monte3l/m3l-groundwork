@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Translates the one `pnpm publish` invocation changesets makes for a packed
  * tarball into the equivalent `npm stage publish`, for `pnpm-publish-shim.mjs`.

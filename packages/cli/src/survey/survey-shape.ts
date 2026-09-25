@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Collects codebase-shape facts: package manager, monorepo tooling, module
  * system, pinned versions, source/test layout, and the evidence (not the

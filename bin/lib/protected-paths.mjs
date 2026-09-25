@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 // Single source of truth for the guarded source/test path shape used by the
 // Claude hook layer to prevent hub-authored or branch-isolation writes into
 // source and test trees. In this project's hub-and-spoke model, the hub

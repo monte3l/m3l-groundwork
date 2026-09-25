@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 # A genuinely fresh bootstrap: this repo's own built CLI emitting the baseline
 # into the (empty) workspace, exactly as a user would have just run it. The
 # CLI also drops a copy of the /customize skill under .claude/skills/; remove

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Collects the whole `.claude/` surface of an existing project -- hook
  * wiring, agent/skill/rule frontmatter, commands, and `CLAUDE.md`'s heading

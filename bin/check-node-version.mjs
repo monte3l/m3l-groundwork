@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Makes `.node-version` the single authoritative Node version pin. Forbids
  * a hardcoded `node-version:` literal anywhere in `.github/workflows/*.yml`

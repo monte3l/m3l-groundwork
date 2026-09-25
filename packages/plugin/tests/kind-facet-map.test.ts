@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 // This test verifies planFacets (src/kind-facet-map.ts) deterministically maps
 // interview answers -- project kind, runtime target, CI depth, kept agents --
 // to a fixed research-priority plan across the five TypeScript facets and five

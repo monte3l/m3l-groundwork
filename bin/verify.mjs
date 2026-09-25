@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `pnpm verify` -- runs every step in VERIFY_STEPS (bin/lib/verify-steps.mjs)
  * sequentially and reports pass/fail for each. `--group <name>` runs every

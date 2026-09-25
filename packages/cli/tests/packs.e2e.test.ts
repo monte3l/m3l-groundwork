@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The packs acceptance test: bootstrap a throwaway project with
  * `--pack harness-extras` using the built CLI and run its real scripts,

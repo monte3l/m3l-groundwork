@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Pure presentation primitives shared by both status-line entry points
  * (`statusline.mjs`, `subagent-statusline.mjs`): terminal-width fitting, ANSI
