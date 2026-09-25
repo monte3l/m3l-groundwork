@@ -69,13 +69,16 @@ export const TYPESCRIPT_DOMAIN_GLOBS = [
  * Harness-grader files that live under `bin/`. `bin/*.mjs` and
  * `bin/lib/*.mjs` are typescript-domain globs, so without this list the
  * grader's own rules would be swept by `typescript-guidance` -- wrong,
- * because they encode Claude Code harness guidance. Consulted before the
- * typescript list in `classifyPath`.
+ * because they encode Claude Code harness guidance. The Claude Code Action
+ * workflow is here for the same reason against `.github/workflows/*.yml`:
+ * its trigger, action pin and model limits are Anthropic guidance, not
+ * toolchain. Consulted before the typescript list in `classifyPath`.
  */
 export const HARNESS_OVERRIDE_GLOBS = [
   "bin/check-harness.mjs",
   "bin/lib/harness-rules.mjs",
   "bin/lib/frontmatter.mjs",
+  ".github/workflows/claude.yml",
 ] as const;
 
 /** Every `.claude/`-facing file `harness-guidance` is responsible for. */

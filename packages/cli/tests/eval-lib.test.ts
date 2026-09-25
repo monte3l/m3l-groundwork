@@ -68,9 +68,11 @@ const lib = (await import(
   compareToBaseline: (
     cases: Scored[],
     baseline: Record<string, number> | undefined,
+    options?: { filtered?: boolean },
   ) => {
     regressions: { name: string; was: number; now: number }[];
     unbaselined: string[];
+    missing: string[];
   };
   withSuiteScores: (
     baseline: unknown,
@@ -81,6 +83,33 @@ const lib = (await import(
     schemaVersion: number;
     suites: Record<string, Record<string, number>>;
   };
+  SUITES: string[];
+  parseArgs: (argv: string[]) => {
+    suite: string;
+    runs: number;
+    maxCostUsd: number;
+    model: string;
+    judgeModel: string;
+    ablation: string;
+    threshold: number | undefined;
+    caseGlob: string | undefined;
+    concurrency: number | undefined;
+    check: boolean;
+    update: boolean;
+    keepTemp: boolean;
+  };
+  shouldUpdateBaseline: (summary: {
+    cases: Scored[];
+    costUsd: number;
+    partial: boolean;
+    partialReason: string | null;
+  }) => boolean;
+  baselineMissingForCheck: (check: boolean, baseline: unknown) => boolean;
+  suiteMissingForCheck: (
+    check: boolean,
+    baseline: unknown,
+    suite: string,
+  ) => boolean;
 };
 
 const good: Entry = {
@@ -494,6 +523,188 @@ describe("evalArgs", () => {
   });
 });
 
+describe("SUITES", () => {
+  it("names the three eval suites", () => {
+    expect(lib.SUITES).toEqual(["plugin", "harness", "toolchain"]);
+  });
+});
+
+describe("parseArgs", () => {
+  it("defaults every option when no flags are given", () => {
+    expect(lib.parseArgs([])).toEqual({
+      suite: "all",
+      runs: 1,
+      maxCostUsd: 5,
+      model: "claude-sonnet-5",
+      judgeModel: "claude-haiku-4-5",
+      ablation: "none",
+      threshold: undefined,
+      caseGlob: undefined,
+      concurrency: undefined,
+      check: false,
+      update: false,
+      keepTemp: false,
+    });
+  });
+
+  it("parses every flag into its option, including the -j alias", () => {
+    expect(
+      lib.parseArgs([
+        "--suite",
+        "harness",
+        "--runs",
+        "3",
+        "--max-cost-usd",
+        "10",
+        "--model",
+        "m",
+        "--judge-model",
+        "j",
+        "--ablation",
+        "with-without",
+        "--threshold",
+        "0.8",
+        "--case",
+        "adopt-*",
+        "-j",
+        "4",
+        "--check",
+        "--keep-temp",
+      ]),
+    ).toEqual({
+      suite: "harness",
+      runs: 3,
+      maxCostUsd: 10,
+      model: "m",
+      judgeModel: "j",
+      ablation: "with-without",
+      threshold: 0.8,
+      caseGlob: "adopt-*",
+      concurrency: 4,
+      check: true,
+      update: false,
+      keepTemp: true,
+    });
+  });
+
+  it("accepts --concurrency as the long form of -j", () => {
+    expect(lib.parseArgs(["--concurrency", "2"]).concurrency).toBe(2);
+  });
+
+  it.each([
+    ["an unknown --suite value", ["--suite", "bogus"]],
+    ["a zero --runs", ["--runs", "0"]],
+    ["a non-integer --runs", ["--runs", "1.5"]],
+    ["a zero --max-cost-usd", ["--max-cost-usd", "0"]],
+    ["a negative --max-cost-usd", ["--max-cost-usd", "-1"]],
+    ["a --concurrency below 1", ["--concurrency", "0"]],
+    ["a --concurrency above 8", ["--concurrency", "9"]],
+    ["a non-integer --concurrency", ["--concurrency", "2.5"]],
+    ["an unknown --ablation value", ["--ablation", "bogus"]],
+    ["both --check and --update", ["--check", "--update"]],
+    ["an unrecognized argument", ["--nope"]],
+    ["a flag with no value", ["--suite"]],
+    ["a flag given an empty string instead of a value", ["--threshold", ""]],
+  ])("throws on %s", (_label, argv) => {
+    expect(() => lib.parseArgs(argv)).toThrow();
+  });
+
+  it.each([
+    ["above 1", "1.5"],
+    ["below 0", "-0.1"],
+    ["not a number", "abc"],
+  ])("rejects a --threshold that is %s", (_label, value) => {
+    expect(() => lib.parseArgs(["--threshold", value])).toThrow();
+  });
+
+  it("accepts a --threshold within 0..1", () => {
+    expect(lib.parseArgs(["--threshold", "0.8"]).threshold).toBe(0.8);
+  });
+
+  it.each([
+    ["0, the lower inclusive boundary", "0", 0],
+    ["1, the upper inclusive boundary", "1", 1],
+  ])("accepts a --threshold of %s", (_label, value, expected) => {
+    expect(lib.parseArgs(["--threshold", value]).threshold).toBe(expected);
+  });
+
+  it("leaves threshold undefined when --threshold is not given", () => {
+    expect(lib.parseArgs([]).threshold).toBeUndefined();
+  });
+});
+
+describe("shouldUpdateBaseline", () => {
+  it("refuses to update the baseline from a partial run", () => {
+    expect(
+      lib.shouldUpdateBaseline({
+        cases: [],
+        costUsd: 0.1,
+        partial: true,
+        partialReason: "cost_ceiling",
+      }),
+    ).toBe(false);
+  });
+
+  it("allows updating the baseline from a complete run", () => {
+    expect(
+      lib.shouldUpdateBaseline({
+        cases: [{ name: "a", score: 1 }],
+        costUsd: 0.1,
+        partial: false,
+        partialReason: null,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("baselineMissingForCheck", () => {
+  it("flags a --check run when there is no baseline file at all", () => {
+    expect(lib.baselineMissingForCheck(true, undefined)).toBe(true);
+  });
+
+  it("does not flag a --check run when a baseline document exists", () => {
+    expect(lib.baselineMissingForCheck(true, { suites: {} })).toBe(false);
+  });
+
+  it("does not flag a run that isn't checking against the baseline", () => {
+    expect(lib.baselineMissingForCheck(false, undefined)).toBe(false);
+  });
+});
+
+describe("suiteMissingForCheck", () => {
+  it("flags a --check run when the baseline document has no entry for the suite", () => {
+    expect(lib.suiteMissingForCheck(true, { suites: {} }, "harness")).toBe(
+      true,
+    );
+  });
+
+  it("does not flag a suite baselined with zero cases", () => {
+    expect(
+      lib.suiteMissingForCheck(true, { suites: { harness: {} } }, "harness"),
+    ).toBe(false);
+  });
+
+  it("does not flag a suite with baselined cases", () => {
+    expect(
+      lib.suiteMissingForCheck(
+        true,
+        { suites: { harness: { "case-a": 0.9 } } },
+        "harness",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not flag a run that isn't checking at all", () => {
+    expect(lib.suiteMissingForCheck(false, { suites: {} }, "harness")).toBe(
+      false,
+    );
+  });
+
+  it("degrades safely to flagged when there is no baseline document at all", () => {
+    expect(lib.suiteMissingForCheck(true, undefined, "harness")).toBe(true);
+  });
+});
+
 describe("summarizeRun / compareToBaseline / withSuiteScores", () => {
   const summary = lib.summarizeRun({
     costUsd: 0.25,
@@ -530,6 +741,38 @@ describe("summarizeRun / compareToBaseline / withSuiteScores", () => {
     expect(lib.compareToBaseline(summary.cases, undefined).unbaselined).toEqual(
       ["a", "b", "c"],
     );
+  });
+
+  it("reports baseline names absent from the run's cases as missing", () => {
+    const result = lib.compareToBaseline([{ name: "a", score: 1 }], {
+      a: 0.9,
+      b: 0.8,
+    });
+    expect(result.missing).toEqual(["b"]);
+  });
+
+  it("reports no missing cases when there is no baseline to be missing from", () => {
+    expect(
+      lib.compareToBaseline([{ name: "a", score: 1 }], undefined).missing,
+    ).toEqual([]);
+  });
+
+  it("suppresses missing cases when the run was deliberately filtered (e.g. --case)", () => {
+    const result = lib.compareToBaseline(
+      [{ name: "a", score: 1 }],
+      { a: 0.9, b: 0.8 },
+      { filtered: true },
+    );
+    expect(result.missing).toEqual([]);
+  });
+
+  it("defaults filtered to false, so an unfiltered run still reports missing cases", () => {
+    const result = lib.compareToBaseline(
+      [{ name: "a", score: 1 }],
+      { a: 0.9, b: 0.8 },
+      {},
+    );
+    expect(result.missing).toEqual(["b"]);
   });
 
   it("rounds stored scores to 4 decimals and tolerates that rounding when comparing", () => {
