@@ -93,10 +93,20 @@ packages/plugin/        Phase B: the /customize skill
                          claude-pr-review.yml, dependabot.yml,
                          ISSUE_TEMPLATE/, pull_request_template.md
 
+docs/architecture.md    A human-facing distillation of this file's own
+                         architecture notes -- for anyone reading the project
+                         rather than editing it.
+docs/assurance-case.md  The OpenSSF Best Practices Silver `assurance_case`:
+                         threat model, trust boundaries, a Saltzer & Schroeder
+                         argument, and a CWE Top 25 mitigation table.
 docs/research/          THIS repo's own trackers (not the baseline's):
                          typescript-refresh.md / harness-refresh.md, read and
                          written by /customize's Round 2 guidance sweeps when
                          run against this repo itself.
+GOVERNANCE.md            Decision model, roles, and access continuity --
+                         OpenSSF Best Practices Silver's governance criteria.
+ROADMAP.md               What's planned and what's explicitly out of scope --
+                         OpenSSF Best Practices Silver's documentation_roadmap.
 
 templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          toolchain, .claude/ harness, CI workflows, and
@@ -116,7 +126,7 @@ Run any task with `pnpm <script>`.
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm build`                          | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `pnpm typecheck`                      | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `pnpm lint` / `lint:fix`              | ESLint over the whole repo (excludes `templates/**`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `pnpm lint` / `lint:fix`              | ESLint over the whole repo (excludes `templates/**`), `--max-warnings 0` -- a warning fails the gate the same as an error                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `pnpm format` / `format:check`        | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `pnpm test` / `test:coverage`         | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `pnpm test:e2e`                       | The real acceptance test, both modes: `bootstrap.e2e.test.ts` bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify` (slow, ~15-20s, network-touching -- a real `pnpm install`); `adopt.e2e.test.ts` runs adopt mode against a fixture pre-existing project and asserts nothing outside `.groundwork/` and `.claude/skills/customize/` changed; `packs.e2e.test.ts` bootstraps with `--pack harness-extras` and asserts the emitted project's own `pnpm verify` (including the pack's gate) is green; `packs-statusline.e2e.test.ts` does the same for `--pack statusline` and also executes the emitted scripts against a real payload. `pack.e2e.test.ts` packs the CLI as a release would, unpacks the tarball outside the repo, and asserts it emits byte-identical output to the checkout (see "Releases"). None are part of `pnpm test`. |
@@ -413,6 +423,12 @@ Conventional Commits, enforced by the `commit-msg` hook
 bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
 substantially assisted a commit. The release workflow's version PR and commit
 use `chore(release): version packages` so they satisfy the same convention.
+Every commit also needs a DCO `Signed-off-by:` trailer (`git commit -s`),
+enforced by the same hook via `commitlint.config.js`'s `trailer-exists` rule
+-- see [`CONTRIBUTING.md`](CONTRIBUTING.md#developer-certificate-of-origin).
+This is local-only enforcement: a squash merge and the release bot's own
+commit don't pass through the hook, which is why the PR template also
+carries a sign-off checkbox.
 
 CI runs on every push and PR to `main` (see "Continuous integration" above),
 and a repository ruleset named `main` enforces the rest. It targets
@@ -537,7 +553,12 @@ publishes. Publishing is `pack` (the full `pnpm verify`, then `pnpm test:e2e`,
 then `changesets/action/pack`) followed by `publish`, the only job holding
 `id-token: write`. The CLI gets provenance, a git tag and a GitHub Release
 with its changelog -- **at the moment `npm stage publish` succeeds, not at the
-moment the package is actually live**; see "staged, not direct" below. A
+moment the package is actually live**; see "staged, not direct" below.
+`publish` also fetches the exact tarball `pack` already built and tested
+back out of its own artifact (never rebuilt), runs
+`actions/attest-build-provenance` on it, and attaches it to the GitHub
+Release with `gh release upload` -- a second, independent proof alongside
+npm provenance itself; see `SECURITY.md`'s "Verifying releases". A
 plugin-only change needs no release step at all: it is live for marketplace
 users (`/plugin marketplace update`) the moment it lands on `main`;
 `plugin.json`'s version just trails the CLI's for display.
