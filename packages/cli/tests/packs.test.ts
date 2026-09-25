@@ -537,3 +537,16 @@ describe("the real statusline pack", () => {
     }
   });
 });
+
+describe("the real claude-action pack", () => {
+  it("loads cleanly and declares an empty wiring surface -- pure file drop, no hooks/settings/scripts/gate", () => {
+    expect(listPackNames()).toContain("claude-action");
+    const pack = loadPack("claude-action");
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.packageScripts).toEqual({});
+    expect(pack.manifest.wiring.verifySteps).toEqual([]);
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
+    expect(existsSync(pack.filesDir)).toBe(true);
+  });
+});

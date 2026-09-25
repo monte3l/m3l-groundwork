@@ -38,6 +38,16 @@ describe("recommendPacks", () => {
     }
   });
 
+  it("recommends claude-action with non-empty evidence, for every project kind", () => {
+    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+      const claudeAction = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "claude-action",
+      );
+      expect(claudeAction?.recommended).toBe(true);
+      expect(claudeAction?.because.length).toBeGreaterThan(0);
+    }
+  });
+
   it("gives every recommendation non-empty evidence", () => {
     for (const rec of recommendPacks(BASE_ANSWERS)) {
       expect(rec.because.length).toBeGreaterThan(0);

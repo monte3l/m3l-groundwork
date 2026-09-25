@@ -89,7 +89,8 @@ packages/plugin/        Phase B: the /customize skill
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
                          verify lanes + e2e + node-current + the `verify`
                          aggregator), release.yml (see "Releases"),
-                         dependency-review.yml, scorecard.yml, dependabot.yml,
+                         dependency-review.yml, scorecard.yml, claude.yml,
+                         claude-pr-review.yml, dependabot.yml,
                          ISSUE_TEMPLATE/, pull_request_template.md
 
 docs/research/          THIS repo's own trackers (not the baseline's):
@@ -348,6 +349,29 @@ steps) before considering any task here done.
   Socket and `dependency-review.yml`/Dependabot for a package that has
   zero runtime dependencies to begin with -- one vulnerability-scanning
   badge is enough.
+- **`claude.yml` and `claude-pr-review.yml` run Anthropic's official
+  `anthropics/claude-code-action`** (SHA-pinned, same convention as every
+  other action here), both running but failing cleanly on an auth error
+  until the one-time setup below is done. `claude.yml` is interactive
+  `@claude`-mention mode: it never opens a PR itself (it commits to a branch
+  and links back to a PR-creation page), so it never bypasses the
+  human-opened-PR rule above. `claude-pr-review.yml` reviews every
+  opened/updated PR with `contents: read` only -- Claude posts a comment, it
+  cannot push code, submit a formal GitHub review, or approve a PR, so it
+  cannot satisfy or bypass `main`'s required checks or its 0-approval rule
+  either way. `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs
+  (the changesets version-PR, Dependabot) and fork PRs explicitly, rather
+  than relying on the action's own internal bot/permission checks, so a run
+  that would just fail on missing secrets never starts. **One-time setup,
+  done by hand:** install the [Claude GitHub App](https://github.com/apps/claude),
+  then `claude setup-token` locally and
+  `gh secret set CLAUDE_CODE_OAUTH_TOKEN` -- this repo uses a Claude
+  subscription's OAuth token, not a stored API key or Workload Identity
+  Federation. `templates/packs/claude-action` ships the mention-mode
+  workflow as an optional pack for bootstrapped projects, defaulting to a
+  stored API key instead (the more universal choice for a project of
+  unknown ownership) with the other two auth options documented as
+  comments in the file.
 - **A pack never edits YAML or JavaScript.** It extends three JSON files
   the baseline already reads at runtime (`.claude/settings.json`,
   `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json`) via the pure
@@ -660,14 +684,16 @@ gate, rubric findings only warn.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships two packs. `statusline` (a five-row statusLine
+- `templates/packs/` ships three packs. `statusline` (a five-row statusLine
   plus a `subagentStatusLine` renderer, recovered from the retired
   predecessor's transcripts and stripped of its project-specific segments)
-  is the only one that uses `wiring.settingsTopLevel`. The other,
-  `harness-extras` (a type-design
-  analyzer agent, the compaction-handoff hook pair, `guard-readonly-bash`,
-  a `check-file-budget` gate) -- the four artifacts the original build cut
-  purely to fit a cap, not because they failed the generalization test. Two
+  is the only one that uses `wiring.settingsTopLevel`. `harness-extras` (a
+  type-design analyzer agent, the compaction-handoff hook pair,
+  `guard-readonly-bash`, a `check-file-budget` gate) -- the four artifacts
+  the original build cut purely to fit a cap, not because they failed the
+  generalization test. `claude-action` ships Anthropic's official
+  `anthropics/claude-code-action` in mention-mode, and needs an auth secret
+  the pack cannot create -- see its `adoptNotes`. Two
   more candidates from that same build (recorded in its
   `EXTRACTION-MANIFEST.md`, written to a scratchpad during the original
   build, not checked into this repo) remain deferred: a `github-ops` pack

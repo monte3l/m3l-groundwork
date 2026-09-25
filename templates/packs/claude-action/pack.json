@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "claude-action",
+  "description": "Anthropic's official Claude Code GitHub Action (anthropics/claude-code-action), wired for @claude mention-mode only: responds when someone with write access mentions @claude on an issue, PR, or review comment, commits to a branch, and links back to a PR-creation page for a human to open -- it never opens a PR itself.",
+  "modes": ["fresh", "adopt"],
+  "budget": {
+    "agents": 0,
+    "skills": 0,
+    "hooks": 0,
+    "workflows": 1,
+    "scripts": 0
+  },
+  "wiring": {
+    "settings": {},
+    "packageScripts": {},
+    "verifySteps": []
+  },
+  "adoptNotes": "The workflow needs one thing this pack cannot verify or install: an ANTHROPIC_API_KEY repository secret (the active default), or a CLAUDE_CODE_OAUTH_TOKEN from a Claude subscription, or a Workload Identity Federation setup in the Anthropic Console -- see the comments in .github/workflows/claude.yml for all three. Until one is configured the workflow runs and fails cleanly on an @claude mention (an auth error in the run log, not a crash and not a silent no-op). An adopted project that already has its own .github/workflows/claude.yml surfaces as an ordinary file conflict -- keep the existing one if it's already configured for that project's own auth choice, since this pack's version would just overwrite a working setup with its own generic defaults."
+}

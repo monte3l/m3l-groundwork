@@ -1,0 +1,86 @@
+name: Claude Code
+
+# Anthropic's official Claude Code GitHub Action (anthropics/claude-code-action),
+# in interactive mode: responds to @claude mentions on issues, PR reviews,
+# and review comments. Claude commits to a branch and links back to a
+# PR-creation page -- it never opens a PR itself.
+#
+# Want automated review on every PR too? That's a separate workflow, not a
+# block to uncomment here (a second `on:`/`jobs:` in one file would collide
+# the moment it's uncommented) -- see Anthropic's own
+# examples/pr-review-comprehensive.yml:
+# https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-comprehensive.yml
+#
+# This workflow needs one of the three auth methods below (Option 1 is
+# active by default) -- until one is configured it fails cleanly on an
+# @claude mention (an auth error, not a crash or a silent no-op).
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+# Reset, then grant per job.
+permissions: {}
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      # Required even with a static API key: the default GitHub App
+      # authentication path uses this to fetch a GitHub OIDC token for its
+      # own token exchange, separate from how the action authenticates to
+      # Anthropic.
+      id-token: write
+      actions: read # lets Claude read CI results on the PR it's tagged in
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Option 1 (active default): a stored API key. Install the Claude
+          # GitHub App (https://github.com/apps/claude) and add
+          # ANTHROPIC_API_KEY as a repository secret.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Option 2: a Claude subscription's OAuth token instead of an API
+          # key -- generate once locally with `claude setup-token`, then add
+          # it as CLAUDE_CODE_OAUTH_TOKEN and swap it in for the line above.
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Option 3: Workload Identity Federation -- no stored secret at
+          # all, exchanges this workflow's GitHub OIDC token for a
+          # short-lived Anthropic token. Needs a one-time setup in the
+          # Anthropic Console (Settings -> Workload identity): register a
+          # GitHub Actions issuer, create a service account, create a
+          # federation rule. Then replace anthropic_api_key above with:
+          # anthropic_federation_rule_id: fdrl_xxxxxxxxxxxx
+          # anthropic_organization_id: 00000000-0000-0000-0000-000000000000
+          # anthropic_service_account_id: svac_xxxxxxxxxxxx
+
+          # Optional: customize the trigger phrase (default: @claude)
+          # trigger_phrase: "/claude"
+
+          # Optional: configure Claude's behavior with CLI arguments
+          # claude_args: |
+          #   --max-turns 10
+          #   --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*)"
