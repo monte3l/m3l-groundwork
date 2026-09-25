@@ -2,8 +2,8 @@
  * Renders `.groundwork/adoption-report.md` from an `Inventory` -- the human
  * artifact adopt mode stops at. Every section is index-level, matching what
  * the survey actually collected: this module never infers, it only lays out
- * what was found so the user (and later `/customize`'s Step 0) can decide
- * what to do about it.
+ * what was found so the user (and later `/customize`'s Step 0, the
+ * adopt-mode reconcile step in `/customize`) can decide what to do about it.
  */
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";

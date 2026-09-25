@@ -1,3 +1,14 @@
+// This test keeps two independent implementations of the same toolchain-grading
+// rules from silently drifting apart: packages/cli/src/toolchain/rules.ts and
+// grade.ts (TypeScript, used by adopt mode's report) versus
+// templates/core/bin/lib/toolchain-rules.mjs (the emitted plain-JS twin every
+// bootstrapped project runs as its own pnpm verify gate). It loads the emitted
+// twin by file URL and runs both graders over the same real fixtures -- the
+// actual templates/core baseline, an empty directory, and deliberately broken
+// projects -- asserting they produce identical findings. A rule changed in only
+// one of the two files fails this test immediately, instead of the drift going
+// unnoticed until a bootstrapped project's own gate disagrees with what adopt
+// mode reported.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

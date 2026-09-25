@@ -1,7 +1,8 @@
 /**
  * Serializes a survey + conflict plan + pack survey into
  * `.groundwork/inventory.json` -- the machine-readable handoff
- * `/customize`'s Step 0 reads instead of re-deriving the survey itself.
+ * `/customize`'s Step 0 (the adopt-mode reconcile step in `/customize`)
+ * reads instead of re-deriving the survey itself.
  * Schema-versioned so a future CLI release can tell an old inventory apart
  * from a current one; `/customize` must tolerate an older inventory
  * rather than crash on one -- `schemaVersion: 1` predates packs (no `packs`

@@ -1,10 +1,19 @@
 /**
  * The toolchain grader's rules. Each rule is a pure function over a
  * `ToolchainSnapshot` read once by `grade.ts`, so none of them touches the
- * filesystem. Structural rules catch wiring defects `tsc` and ESLint do not --
- * a build project that emits nowhere, a verify step naming a script that does
- * not exist -- and fail a gate. Rubric rules encode the floor official
- * TypeScript / typescript-eslint guidance sets and only ever warn.
+ * filesystem. Rules come in two levels.
+ *
+ * Structural rules are pass/fail wiring checks: they catch defects `tsc` and
+ * ESLint do not -- a build project that emits nowhere, a verify step naming a
+ * script that does not exist -- and fail a gate.
+ *
+ * Rubric rules are a quality-judgement checklist rather than a wiring check:
+ * each scores how closely the project follows a recommended practice, and a
+ * miss only ever warns. What they encode is the floor -- the minimum baseline
+ * of practice that current official TypeScript / typescript-eslint guidance
+ * recommends (strict-family flags on, a modern module target, type-aware
+ * linting, and so on). A project can go beyond the floor; falling below it is
+ * what a rubric rule reports.
  *
  * `eslint.config.js`, `vitest.config.ts` and `verify-steps.mjs` are executable
  * JavaScript, so their rules are regex scrapes over comment-stripped source,
@@ -314,6 +323,7 @@ function scriptTsconfig(script: string | undefined): string | undefined {
   return match?.[1]?.replace(/^\.\//, "");
 }
 
+/** Confirms every CI/lefthook lane invokes verify.mjs by static group name, not by step id or a dynamic matrix -- otherwise a new gate can silently go unenforced in one surface while it passes in another. */
 const gateLaneParity: ToolchainRule = {
   id: "gate-lane-parity",
   level: "structural",
@@ -371,6 +381,7 @@ function enginesBounds(
 
 // --- structural rules ------------------------------------------------------
 
+/** A tsconfig that fails to parse breaks every rule that reads its chain -- reporting the parse error itself, first, keeps a later rule's silence from being mistaken for a clean file. */
 const tsconfigParses: ToolchainRule = {
   id: "tsconfig-parses",
   level: "structural",
@@ -386,6 +397,7 @@ const tsconfigParses: ToolchainRule = {
   }),
 };
 
+/** An `extends` specifier that resolves to no file silently drops every option the base file would have set -- tsc itself gives no error until something downstream trips on the missing option. */
 const tsconfigExtendsResolves: ToolchainRule = {
   id: "tsconfig-extends-resolves",
   level: "structural",
@@ -408,6 +420,7 @@ const tsconfigExtendsResolves: ToolchainRule = {
   },
 };
 
+/** The tsconfig `build` compiles must actually set an outDir (or `build` emits .js next to sources) and must not set noEmit -- and if a separate tooling tsconfig sits beside it, that one must set noEmit, or typecheck starts emitting too. */
 const tsconfigEmitCoherence: ToolchainRule = {
   id: "tsconfig-emit-coherence",
   level: "structural",
@@ -446,6 +459,7 @@ const tsconfigEmitCoherence: ToolchainRule = {
   },
 };
 
+/** A verify step naming a package.json script, a file, or a group that doesn't exist is a wiring defect no offline check other than this one would catch before someone actually runs it. */
 const gateWiring: ToolchainRule = {
   id: "gate-wiring",
   level: "structural",
@@ -514,6 +528,7 @@ const gateWiring: ToolchainRule = {
   },
 };
 
+/** `.node-version` outside the range package.json's `engines.node` declares means the pinned dev/CI Node isn't even a Node version the project claims to support. */
 const nodePinCoherence: ToolchainRule = {
   id: "node-pin-coherence",
   level: "structural",
@@ -548,6 +563,7 @@ const nodePinCoherence: ToolchainRule = {
 
 // --- rubric rules ----------------------------------------------------------
 
+/** The strict-family flags are the floor current TypeScript guidance recommends; tsc raises no warning for a flag simply left off, so this is the only check that notices. */
 const strictFlags: ToolchainRule = {
   id: "strict-flags",
   level: "rubric",
@@ -573,6 +589,7 @@ const strictFlags: ToolchainRule = {
   },
 };
 
+/** Warns ahead of a TypeScript major that removes an option outright -- by the time tsc itself rejects it, the fix is no longer a choice, it's an emergency. */
 const tsconfigOptionLifecycle: ToolchainRule = {
   id: "tsconfig-option-lifecycle",
   level: "rubric",
@@ -610,6 +627,7 @@ const tsconfigOptionLifecycle: ToolchainRule = {
   },
 };
 
+/** An outdated `module`/`moduleResolution`/`target` still compiles fine today, but forgoes current Node/bundler resolution semantics and syntax the project doesn't need to lower. */
 const moduleTargetModern: ToolchainRule = {
   id: "module-target-modern",
   level: "rubric",
@@ -654,6 +672,7 @@ const moduleTargetModern: ToolchainRule = {
   },
 };
 
+/** ESLint 10 reads only eslint.config.* -- a lingering legacy eslintrc file means either an old ESLint is still in play, or a current one is silently linting nothing. */
 const eslintFlatConfig: ToolchainRule = {
   id: "eslint-flat-config",
   level: "rubric",
@@ -673,6 +692,7 @@ const eslintFlatConfig: ToolchainRule = {
   },
 };
 
+/** Without a type-checked preset and `projectService`, typescript-eslint runs syntax-only rules and silently skips every rule that needs real type information. */
 const eslintTypedLinting: ToolchainRule = {
   id: "eslint-typed-linting",
   level: "rubric",
@@ -719,6 +739,7 @@ const eslintTypedLinting: ToolchainRule = {
   },
 };
 
+/** `bin/**` and `.claude/hooks/**` are code this project actually runs, not incidental scripts -- if ESLint has no config block for them, or actively ignores src, they ship unlinted. */
 const eslintCoversEmittedCode: ToolchainRule = {
   id: "eslint-covers-emitted-code",
   level: "rubric",
@@ -757,6 +778,7 @@ const eslintCoversEmittedCode: ToolchainRule = {
   },
 };
 
+/** A coverage threshold without `perFile: true` lets one well-tested file's coverage average out another file with none -- the gate passes while a whole file goes untested. */
 const coverageGate: ToolchainRule = {
   id: "coverage-gate",
   level: "rubric",
@@ -783,6 +805,7 @@ const coverageGate: ToolchainRule = {
   },
 };
 
+/** An unpinned toolchain package, a missing `packageManager`, or an `@types/node` major that doesn't match the pinned Node version each make installs non-reproducible across machines and CI runs. */
 const toolchainPinShape: ToolchainRule = {
   id: "toolchain-pin-shape",
   level: "rubric",

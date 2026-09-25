@@ -311,8 +311,9 @@ export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
  * Index-level, adopt-mode-only facts about how a pack's wiring would land
  * against a real project's current `.claude/settings.json` and
  * `bin/lib/verify-steps.packs.json` -- never a verdict on whether it will
- * work, which is `/customize`'s Step 0 judgment call to make after reading
- * the project's real gate runner and hook config.
+ * work. That verdict is a judgment call for `/customize`'s Step 0 (the
+ * adopt-mode reconcile step in `/customize`) to make after reading the
+ * project's real gate runner and hook config.
  */
 export function observeWiring(
   targetDir: string,

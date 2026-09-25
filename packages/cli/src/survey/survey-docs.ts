@@ -2,7 +2,8 @@
  * Indexes human-facing docs and guidelines: `CONTRIBUTING.md`, a
  * `docs/contributing/` tree, ADR/decision/RFC directories, style guides, and
  * the README's own heading outline. This is an index (path, size, headings)
- * so `/customize`'s Step 0 knows what exists and where to read it in full --
+ * so `/customize`'s Step 0 (the adopt-mode reconcile step in `/customize`)
+ * knows what exists and where to read it in full --
  * it never inlines a doc's content itself, which would make the survey's
  * own output as large as the docs it's indexing.
  */

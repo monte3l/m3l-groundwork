@@ -7,6 +7,10 @@
 import { execFileSync } from "node:child_process";
 
 /**
+ * `git` reports how it evaluated a commit's cryptographic signature as a
+ * single one-letter code (its `%G?` format placeholder); the list below
+ * says which of those codes this guard treats as a valid signature.
+ *
  * Signature codes that `git`'s `%G?` placeholder considers acceptable:
  *   G = a good (validly verified) signature,
  *   U = a good signature with unknown validity (signer key not in the local

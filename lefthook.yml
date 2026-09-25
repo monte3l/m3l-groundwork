@@ -24,6 +24,10 @@ commit-msg:
     commitlint:
       run: node bin/strip-claude-trailers.mjs {1} && node bin/lint-commit.mjs --edit {1}
 
+# Each pre-push command below runs one `pnpm verify` group (format, lint,
+# typecheck, build, test) via `node bin/verify.mjs --group <name>` -- the
+# same groups CI's five lane jobs run, kept in one place
+# (`bin/lib/verify-steps.mjs`) so a push and a CI run can't silently diverge.
 pre-push:
   parallel: true
   commands:

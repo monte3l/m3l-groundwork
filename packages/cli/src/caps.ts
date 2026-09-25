@@ -2,7 +2,12 @@
  * Counts the baseline's own `.claude/` + workflow + script artifacts
  * against the five hard caps `templates/core`'s own `CLAUDE.md` states
  * (≤5 agents, ≤8 skills, ≤10 hooks, ≤3 CI workflows, ≤12 root scripts).
- * The counting logic and the cap numbers both live here, once, so
+ * A cap is a fixed upper bound on how many artifacts of one category
+ * (agents, skills, hooks, CI workflows, root `package.json` scripts) the
+ * emitted baseline may contain -- kept deliberately low so a bootstrapped
+ * project's Claude Code harness and toolchain stay small enough for a human
+ * to read and reason about in full, rather than growing without bound as
+ * more capability gets added. The counting logic and the cap numbers both live here, once, so
  * `report.ts` (the adoption-report table) and `main.ts` (the fresh-mode
  * post-install summary) can't state a different number for the same cap.
  */

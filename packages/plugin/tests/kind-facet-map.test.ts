@@ -1,3 +1,12 @@
+// This test verifies planFacets (src/kind-facet-map.ts) deterministically maps
+// interview answers -- project kind, runtime target, CI depth, kept agents --
+// to a fixed research-priority plan across the five TypeScript facets and five
+// harness facets: the same interview answers always produce the same facet
+// plan, and every fixed facet id is covered exactly once on each side. Several
+// assertions pin exact prose fragments the mapping returns (for example
+// "visual verification" only for the frontend kind, "Node + browser" for the
+// "both" runtime target, and the "minimal"/"thorough" CI-depth phrasing) as
+// part of that determinism guarantee, not as incidental wording.
 import { describe, expect, it } from "vitest";
 import {
   planFacets,

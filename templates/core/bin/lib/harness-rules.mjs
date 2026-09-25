@@ -360,6 +360,7 @@ function bodyLineCount(body) {
 
 // --- rules -----------------------------------------------------------------
 
+/** Every rule that reads hook registrations depends on settings.json parsing cleanly -- isolating the parse failure here keeps a downstream rule from either failing confusingly or silently missing every registration. */
 const settingsParses = {
   id: "settings-parses",
   level: "structural",
@@ -378,6 +379,7 @@ const settingsParses = {
   }),
 };
 
+/** settings.local.json can register hooks too, and a downstream rule reading hook registrations needs to know when this file failed to parse rather than silently treating it as absent. */
 const settingsLocalParses = {
   id: "settings-local-parses",
   level: "structural",
@@ -396,6 +398,7 @@ const settingsLocalParses = {
   }),
 };
 
+/** A hook registration naming a file that doesn't exist on disk fails only at the moment Claude Code actually tries to run it -- this is the only check that catches it earlier. */
 const hookDangling = {
   id: "hook-dangling",
   level: "structural",
@@ -418,6 +421,7 @@ const hookDangling = {
   },
 };
 
+/** A hook file that nothing registers and no reachable hook imports is dead code that silently never runs -- easy to leave behind after refactoring settings.json. */
 const hookOrphan = {
   id: "hook-orphan",
   level: "structural",
@@ -444,6 +448,7 @@ const hookOrphan = {
   },
 };
 
+/** The two weaker entry-point comparisons this rule flags both fail open under a symlinked or URL-encoded path -- the hook's own guard against running twice silently stops working exactly when it matters. */
 const hookEntrypoint = {
   id: "hook-entrypoint",
   level: "structural",
@@ -470,6 +475,7 @@ const hookEntrypoint = {
   },
 };
 
+/** A skill with no SKILL.md, malformed frontmatter, or a `name` that doesn't match its directory won't load the way Claude Code expects -- these are wiring defects, not style choices. */
 const skillShape = {
   id: "skill-shape",
   level: "structural",
@@ -504,6 +510,7 @@ const skillShape = {
   },
 };
 
+/** An agent file needs valid frontmatter with a `name` matching its filename and a `description`, or Claude Code either can't dispatch to it or dispatches under the wrong identity. */
 const agentShape = {
   id: "agent-shape",
   level: "structural",
@@ -539,6 +546,7 @@ const agentShape = {
   },
 };
 
+/** A rule file whose frontmatter fails to parse, or whose `paths` list is empty, silently loads never or loads unconditionally when it was meant to be scoped to specific files. */
 const ruleShape = {
   id: "rule-shape",
   level: "structural",
@@ -566,6 +574,7 @@ const ruleShape = {
   },
 };
 
+/** CLAUDE.md naming a `.claude/` path that doesn't exist misleads whoever reads it next; a rule file CLAUDE.md never mentions is just as easy to forget was ever wired in. */
 const claudeMdRefs = {
   id: "claudemd-refs",
   level: "structural",
@@ -602,6 +611,7 @@ const claudeMdRefs = {
   },
 };
 
+/** Anthropic's guidance caps a skill body so loading SKILL.md into context stays cheap -- detail past the limit belongs in references/, not inline. */
 const skillBodySize = {
   id: "skill-body-size",
   level: "rubric",
@@ -626,6 +636,7 @@ const skillBodySize = {
   },
 };
 
+/** A thin or missing description gives Claude nothing reliable to match the skill or agent against -- it either never triggers, or triggers on the wrong request. */
 const descriptionSubstance = {
   id: "description-substance",
   level: "rubric",
@@ -674,6 +685,7 @@ const descriptionSubstance = {
   },
 };
 
+/** An agent that pins no model inherits whatever the calling session happens to run, and a stale model id may reference an alias that's since been retired. */
 const modelPinCurrency = {
   id: "model-pin-currency",
   level: "rubric",
@@ -703,6 +715,7 @@ const modelPinCurrency = {
   },
 };
 
+/** An agent that declares no `tools` inherits every tool available, wider access than the agent's actual job usually needs. */
 const agentToolScope = {
   id: "agent-tool-scope",
   level: "rubric",
@@ -725,6 +738,7 @@ const agentToolScope = {
   },
 };
 
+/** A hook registration with no `timeout` can hang the whole session indefinitely if the hook itself ever gets stuck. */
 const hookTimeout = {
   id: "hook-timeout",
   level: "rubric",
@@ -743,6 +757,7 @@ const hookTimeout = {
   },
 };
 
+/** A rule scoped to a `paths` glob that matches no file in the project silently never loads -- its checklist becomes advice nobody ever sees. */
 const ruleGlobsLive = {
   id: "rule-globs-live",
   level: "rubric",
@@ -768,6 +783,7 @@ const ruleGlobsLive = {
   },
 };
 
+/** SKILL.md pointing at a references/ file that doesn't exist promises detail that simply isn't there when someone follows the link. */
 const skillReferencesResolve = {
   id: "skill-references-resolve",
   level: "rubric",

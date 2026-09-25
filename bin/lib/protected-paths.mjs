@@ -1,6 +1,9 @@
 // Single source of truth for the guarded source/test path shape used by the
 // Claude hook layer to prevent hub-authored or branch-isolation writes into
-// source and test trees. Shared by:
+// source and test trees. In this project's hub-and-spoke model, the hub
+// plans and dispatches work; a "spoke" is the subagent it dispatches to for
+// a specific job (writing tests, writing implementation) instead of writing
+// src/tests itself. This module is shared by:
 //   - .claude/hooks/guard-branch-isolation.mjs  (blocks writes while HEAD is main)
 //   - .claude/hooks/guard-hub-src-writes.mjs    (blocks hub writes on any branch)
 //   - .claude/hooks/post-edit-verify.mjs        (decides whether to run the gate)

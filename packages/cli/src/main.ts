@@ -4,8 +4,9 @@
  * work on a plane against a warm pnpm store.
  *
  * Two modes, auto-detected from the target directory (`--adopt`/`--fresh`
- * force either): **fresh** writes the baseline into an empty directory, as
- * before, and installs any `--pack` requested. **adopt** surveys an
+ * force either): **fresh** writes the baseline template tree into an empty
+ * or missing target directory, then installs any `--pack` requested.
+ * **adopt** surveys an
  * already-established project and writes only a report -- see `mode.ts`,
  * `survey/survey.ts`, `conflicts.ts`, and `report.ts`. Adopt mode never
  * touches a project file, including a pack's: it surveys every pack under
