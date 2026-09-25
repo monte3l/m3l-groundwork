@@ -46,8 +46,12 @@ By signing off a commit (`git commit -s`), you certify the
 [Developer Certificate of Origin](https://developercertificate.org/): that
 you wrote the change, or otherwise have the right to submit it under this
 project's license. This is enforced locally by `commitlint.config.js`'s
-`trailer-exists` rule; it isn't re-checked on a squash merge or the release
-bot's own commits, which is why the PR checklist below also asks for it.
+`trailer-exists` rule -- including on a local merge or revert commit made
+without `-s`, not just an ordinary commit -- but it isn't re-checked on a
+squash merge or the release bot's own commits (neither passes through the
+local hook), which is why
+[`pull_request_template.md`](.github/pull_request_template.md)'s checklist
+also asks for it.
 
 ## Coding standards
 

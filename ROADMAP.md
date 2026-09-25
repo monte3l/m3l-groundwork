@@ -11,18 +11,18 @@ The public API has been frozen since the first `1.0.0-rc`
 (see the README's ["Versioning policy"](README.md#versioning-policy)).
 Leaving the `rc` prerelease series for a stable `1.0.0` is the immediate
 goal, once the promotion checklist in [`CLAUDE.md`](CLAUDE.md#releases) is
-met. After GA, only `patch` changesets land for the rest of the `1.x`
-series; a further API change waits for `1.1`.
+met. Only `patch` changesets land for the rest of the `rc` series between
+now and that release; a further API change waits for `1.1`, after GA.
 
 ## Next 12 months
 
 - **A standalone "add a pack" mode.** Today, adding an optional pack to an
   already-bootstrapped project means re-running the CLI (auto-detected as
   adopt mode) and then `/customize`. A dedicated additive-install flag is
-  real, planned work -- see [`CLAUDE.md`](CLAUDE.md#known-gaps).
+  real, planned work -- see [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
 - **Two more optional packs**, deferred from the original build for cap
   reasons rather than a generalization failure (see
-  [`CLAUDE.md`](CLAUDE.md#known-gaps)):
+  [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far)):
   - a `github-ops` pack (`reviewing-dependabot-prs`, `triaging-scan-alerts`);
   - a `publishing` pack (a release workflow, `check-publish-version`,
     `check-dts-deps`) -- this repo's own `release.yml` is now a copyable
@@ -34,7 +34,7 @@ series; a further API change waits for `1.1`.
 - **`pnpm/setup` in CI**, once it supports reading Node's version from
   `.node-version` (or an equivalent single-source-of-truth mechanism) rather
   than only `package.json`'s `devEngines.runtime` -- see
-  [`CLAUDE.md`](CLAUDE.md#known-gaps).
+  [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
 - Keeping `templates/core` and `templates/packs/` current against upstream
   TypeScript and Anthropic guidance is ongoing, ordinary maintenance, not a
   one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
@@ -49,7 +49,7 @@ series; a further API change waits for `1.1`.
   respect it.
 - **Add a templating engine.** Token substitution stays a plain, auditable
   string replace (`packages/cli/src/tokens.ts`) -- see `CLAUDE.md`'s
-  "Cross-host support"-equivalent note in `tokens.ts`'s own header.
+  "Architecture notes" and `tokens.ts`'s own header comment.
 - **Publish `@monte3l/groundwork-plugin` to npm.** It ships only through the
   Claude Code marketplace; see the README's ["Releasing"](README.md#releasing)
   section for why.

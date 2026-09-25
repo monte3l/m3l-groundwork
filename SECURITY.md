@@ -95,7 +95,9 @@ gh attestation verify <path-to-downloaded-tarball> \
   --signer-workflow monte3l/m3l-groundwork/.github/workflows/release.yml
 ```
 
-Both should report an identity of
+`npm audit signatures` confirms the registry signature and provenance
+attestation both check out. `gh attestation verify` additionally prints the
+signer's identity, which should read
 `https://github.com/monte3l/m3l-groundwork/.github/workflows/release.yml@refs/heads/main`,
 issued by `https://token.actions.githubusercontent.com`. There is
 intentionally no other key to distribute or compare against.
