@@ -163,9 +163,15 @@ jobs:
       # Only the changesets CLI is needed here, not any package's lifecycle scripts.
       - run: pnpm install --frozen-lockfile --ignore-scripts
       # `npm stage publish` needs npm >= 11.15.0 (Node >= 22.14.0, already
-      # covered by .node-version's 24). Pinned to the 11 line rather than
-      # `latest`: this job holds the OIDC token.
-      - run: npm install --global "npm@^11.15.0"
+      # covered by .node-version's 24). Pinned to an exact version, not a
+      # `^11.15.0` range: this job holds the OIDC token, and OpenSSF
+      # Scorecard's Pinned-Dependencies check (scorecard.yml) flags any
+      # unpinned package-manager install the same way it flags an unpinned
+      # Action. Dependabot's github-actions ecosystem doesn't reach this
+      # (it's a `run:` argument, not a `uses:` ref, and this repo's own npm
+      # ecosystem updates are deliberately off -- see dependabot.yml), so
+      # bumping this is a manual, reviewed PR, same as any other pin here.
+      - run: npm install --global "npm@11.20.0"
       # changesets publishes through `pnpm publish` in a pnpm workspace, and
       # pnpm 12's native publish is rejected by npmjs.com's OIDC exchange
       # (403 "OIDC permission denied"). This puts a `pnpm` ahead of the real

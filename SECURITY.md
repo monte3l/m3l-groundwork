@@ -47,3 +47,29 @@ input, what it writes to disk, what it runs (`pnpm install`, `git init`,
 to report a vulnerability in a dependency your bootstrapped project picked
 up -- report that upstream, or to GitHub's Dependabot alerts on your own
 repo.
+
+## Accepted OpenSSF Scorecard findings
+
+`scorecard.yml` runs weekly and surfaces its findings as GitHub Code
+Scanning alerts. Some are dismissed as deliberate, documented trade-offs
+rather than defects -- don't re-open these by "fixing" them into a
+standing bypass that undermines the design:
+
+- **Branch-Protection / Code-Review** (0 required approvals on `main`): a
+  single-maintainer project can't require an approval on its own PR
+  without a standing bypass, which the `main` ruleset's empty
+  `bypass_actors` list is deliberately designed to avoid. See
+  [`CLAUDE.md`](CLAUDE.md#git-workflow), "Three choices are deliberate,
+  not defaults."
+- **Fuzzing** (no OSS-Fuzz integration): this CLI has no untrusted binary
+  or network-facing parser of the kind fuzzing targets -- its inputs are
+  argv, local JSON/JSONC config, and its own template tree.
+- **Maintained** (repository age): purely time-based (Scorecard checks
+  whether a repo is older than 90 days); it self-resolves and needs no
+  action.
+
+One finding is a genuine, but external, gap: this project hasn't
+registered for an [OpenSSF Best Practices badge](https://www.bestpractices.dev/)
+yet (`CIIBestPracticesID`). That's a maintainer action (an account and a
+self-assessment questionnaire on bestpractices.dev), not something fixed
+by a code change.
