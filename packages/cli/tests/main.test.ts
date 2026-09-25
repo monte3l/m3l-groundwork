@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { basename } from "node:path";
 import { CliUsageError, parseArgs, templatesCoreDir } from "../src/main.js";
+import { listPackNames } from "../src/packs.js";
 
 describe("parseArgs", () => {
   it("throws with usage text when no target directory is given", () => {
@@ -225,6 +226,19 @@ describe("parseArgs (CliUsageError)", () => {
   it("accepts a valid, real pack name shape and parses it into packs", () => {
     const options = parseArgs(["/tmp/x", "--pack", "statusline"]);
     expect(options.packs).toEqual(["statusline"]);
+  });
+
+  it("accepts every real pack name under templates/packs/ against --pack's shape-validation pattern", () => {
+    // Drift guard: a future pack directory whose name --pack's own
+    // shape-validation pattern would reject (e.g. "foo_bar") must be caught
+    // here immediately, rather than only surfacing once someone tries to
+    // use it.
+    const names = listPackNames();
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      const options = parseArgs(["/tmp/x", "--pack", name]);
+      expect(options.packs).toContain(name);
+    }
   });
 
   it("throws CliUsageError naming the offending value for a --name given as a path traversal", () => {

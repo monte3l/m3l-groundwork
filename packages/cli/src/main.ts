@@ -92,8 +92,9 @@ const LIST_PACKS_FLAGS = new Set(["--list-packs"]);
 // allowlist keeps it from ever reaching packs.ts's join() as a path.
 const PACK_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 // A --name value is substituted verbatim into the emitted package.json, so it
-// must be a syntactically valid npm package name (optional @scope/, lowercase).
-const NPM_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
+// must fit a conservative, ASCII-lowercase subset of npm's naming rules
+// (optional @scope/). Reserved names like `node_modules` are out of scope.
+const NPM_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 // npm's own ceiling on a package name's total length, scope included.
 const NPM_NAME_MAX_LENGTH = 214;
 const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
@@ -226,14 +227,14 @@ export function parseArgs(argv: string[]): CliOptions {
       !NPM_NAME_PATTERN.test(explicitName))
   ) {
     throw new CliUsageError(
-      `--name must be a valid npm package name (lowercase, optional @scope/, at most ${String(NPM_NAME_MAX_LENGTH)} characters): ${explicitName}\n\n${USAGE}`,
+      `--name must be a valid npm package name (lowercase, optional @scope/, at most ${String(NPM_NAME_MAX_LENGTH)} characters): ${JSON.stringify(explicitName)}\n\n${USAGE}`,
     );
   }
   const packValues = repeatableValues.get("--pack") ?? [];
   const badPack = packValues.find((name) => !PACK_NAME_PATTERN.test(name));
   if (badPack !== undefined) {
     throw new CliUsageError(
-      `--pack must be a pack name matching ${PACK_NAME_PATTERN.source}: ${badPack}\n\n${USAGE}`,
+      `--pack must be a pack name matching ${PACK_NAME_PATTERN.source}: ${JSON.stringify(badPack)}\n\n${USAGE}`,
     );
   }
   const packs = [...new Set(packValues)].sort();
