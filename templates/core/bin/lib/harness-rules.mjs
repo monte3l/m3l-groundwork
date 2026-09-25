@@ -5,9 +5,10 @@
  * points at nothing, a skill with no frontmatter -- and fail the gate.
  * Rubric rules encode Anthropic's published guidance and only ever warn.
  *
- * This file is the emitted twin of m3l-groundwork's own
- * `packages/cli/src/harness/{rules,grade}.ts`; a parity test runs both over
- * the real baseline and asserts identical findings.
+ * Also used by m3l-groundwork's own adopt mode (the tool that generated this
+ * project's harness); if you're contributing a change back upstream, keep
+ * this file's behavior in sync with its source at
+ * `packages/cli/src/harness/{rules,grade}.ts` there.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -17,8 +18,8 @@ import { fieldList, fieldText, parseFrontmatter } from "./frontmatter.mjs";
 /**
  * Model ids and aliases considered current. Bump alongside a harness-guidance
  * refresh sweep.
- * @public Exported for the parity test that compares this file with its TypeScript twin in
- * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ * @public Not imported anywhere else in this project -- exported only for
+ * m3l-groundwork's own upstream parity check (see the file header above).
  */
 export const CURRENT_MODELS = [
   "inherit",
@@ -796,8 +797,8 @@ const skillReferencesResolve = {
 
 /**
  * Every rule, structural first. Order is the order findings are reported in.
- * @public Exported for the parity test that compares this file with its TypeScript twin in
- * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ * @public Not imported anywhere else in this project -- exported only for
+ * m3l-groundwork's own upstream parity check (see the file header above).
  */
 export const RULES = [
   settingsParses,

@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 /**
- * PreToolUse guard (Bash): block a command that combines `run_in_background:
- * true` with a shell-level detach construct (`nohup`, `disown`, or a trailing
- * `&`) in the same call.
+ * PreToolUse guard (Bash): blocks a command that tries to background itself
+ * two different ways at once -- `run_in_background: true` together with a
+ * shell-level detach construct (`nohup`, `disown`, or a trailing `&`) in the
+ * same call. Doing both hides the real process from this project's own
+ * background-job tracking, so a later status check can report "done" while
+ * the work is either still running unobserved or was silently killed.
  *
  * The two mechanisms both try to survive process/session churn, but stacking
  * them produces a false "completed" report instead of a working one: the
@@ -72,11 +75,13 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-// Deliberately inlined in every hook rather than shared: caps.ts counts
-// .claude/hooks/*.mjs files against a hard limit, so a helper module would
-// cost a hook slot. `import.meta.url` is symlink-resolved but `process.argv[1]`
-// is not, so comparing them directly is false under any symlinked path and the
-// guard body would never run -- exit 0, i.e. fail open.
+// Kept as a duplicated, self-contained block in every hook file rather than
+// imported from a shared helper -- each hook stays a single independent
+// file, which keeps this project's hook count easy to reason about against
+// CLAUDE.md's hook budget. `import.meta.url` is symlink-resolved but
+// `process.argv[1]` is not, so comparing them directly would be false under
+// a symlinked invocation path -- and the guard below would then never run,
+// i.e. silently fail open (exit 0) instead of blocking.
 function isEntryPoint() {
   try {
     return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);

@@ -2,11 +2,17 @@
 /**
  * The single source of truth for what `pnpm verify` runs locally, what the
  * lefthook `pre-push` lanes run, and what each `.github/workflows/ci.yml`
- * job runs. Both YAML files name a *group*, never a step id: groups are a
- * closed, five-member set (see GROUPS below); steps are not. That's what
- * lets a new step -- core or pack-contributed -- join `pnpm verify` without
- * ever touching either YAML file, and what keeps this the one list to keep
- * in sync instead of three that agree by hand.
+ * job runs.
+ *
+ * Two words, two meanings: a *step* is one gate (e.g. "Lint", cmd
+ * `pnpm lint`); a *group* is one of five fixed buckets a step belongs to
+ * (`format`/`lint`/`typecheck`/`build`/`test`, see GROUPS below). A *lane* is
+ * the outside caller that runs a whole group at once -- a lefthook
+ * `pre-push` lane, or a CI job in `.github/workflows/ci.yml`. Both YAML files
+ * name a *group*, never a step id: that's what lets a new step -- core or
+ * pack-contributed -- join `pnpm verify` without ever touching either YAML
+ * file, and what keeps this the one list to keep in sync instead of three
+ * that agree by hand.
  *
  * Pack-installed steps live in verify-steps.packs.json, a plain JSON array
  * the bootstrapper CLI appends to when installing a pack -- it has no JS
@@ -25,9 +31,11 @@ import { fileURLToPath } from "node:url";
 export const GROUPS = ["format", "lint", "typecheck", "build", "test"];
 
 /**
- * The gate steps this baseline ships, before any pack's are appended.
- * @public Exported for the parity test that compares this file with its TypeScript twin in
- * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ * The gate steps this project ships out of the box, before any pack's own
+ * steps are appended.
+ * @public Not imported anywhere else in this project -- exported only so
+ * m3l-groundwork can compare it against its own upstream copy when it
+ * updates this tooling.
  */
 export const CORE_STEPS = [
   {

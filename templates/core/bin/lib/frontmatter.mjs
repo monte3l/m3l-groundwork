@@ -5,8 +5,10 @@
  * list scalars. Not supported: nested mappings (recorded as an empty string
  * rather than misparsed), anchors, tags. Every string result is trimmed.
  *
- * This file is the emitted twin of m3l-groundwork's own
- * `packages/cli/src/harness/frontmatter.ts`; a parity test keeps them equal.
+ * Also used by m3l-groundwork's own adopt mode (the tool that generated this
+ * project's harness); if you're contributing a change back upstream, keep
+ * this file's behavior in sync with its source at
+ * `packages/cli/src/harness/frontmatter.ts` there.
  */
 
 const KEY_LINE = /^([A-Za-z_][\w-]*):(?:[ \t]+(.*))?$/;

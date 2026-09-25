@@ -19,9 +19,11 @@
  * oversized file is asking its reviewer to accept that debt, not silently
  * evading the gate.
  *
- * `ROOTS` defaults to this baseline's flat `src/`/`tests/` layout. If
- * `/customize` or a later refactor moves to a `packages/*` monorepo shape,
- * update `ROOTS` to list each package's `src`/`tests` pair.
+ * `ROOTS` defaults to this project's flat `src/`/`tests/` layout (not to be
+ * confused with the "baseline" ratchet file above -- this is about where
+ * your source lives, not about recorded debt). If `/customize` or a later
+ * refactor moves to a `packages/*` monorepo shape, update `ROOTS` to list
+ * each package's `src`/`tests` pair.
  *
  * Usage:
  *   node bin/check-file-budget.mjs            # verify (fails on growth/new-over-ceiling)

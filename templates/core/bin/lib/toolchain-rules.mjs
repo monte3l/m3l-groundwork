@@ -17,9 +17,10 @@
  * not a JavaScript tokenizer; it can mis-handle a regex literal or a template
  * string, which none of the graded baseline files contain.
  *
- * This file is the emitted twin of m3l-groundwork's own
- * `packages/cli/src/toolchain/{rules,grade}.ts`; a parity test runs both over
- * the real baseline and asserts identical findings.
+ * Also used by m3l-groundwork's own adopt mode (the tool that generated this
+ * project's toolchain); if you're contributing a change back upstream, keep
+ * this file's behavior in sync with its source at
+ * `packages/cli/src/toolchain/{rules,grade}.ts` there.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -28,8 +29,8 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
  * Options TypeScript 6.0 deprecated. `removedIn` is the major that drops them
  * (`outFile` and `moduleResolution: classic` already went in 6.0).
  * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html
- * @public Exported for the parity test that compares this file with its TypeScript twin in
- * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ * @public Not imported anywhere else in this project -- exported only for
+ * m3l-groundwork's own upstream parity check (see the file header above).
  */
 export const LEGACY_OPTIONS = [
   {
@@ -113,8 +114,8 @@ export const LEGACY_OPTIONS = [
  * (`@typescript-eslint/no-unused-vars` covers both with an `^_` escape hatch
  * tsc's flags lack), and `forceConsistentCasingInFileNames` (defaults on).
  * `allowUnreachableCode` is graded separately -- it must be `false`.
- * @public Exported for the parity test that compares this file with its TypeScript twin in
- * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ * @public Not imported anywhere else in this project -- exported only for
+ * m3l-groundwork's own upstream parity check (see the file header above).
  */
 export const STRICT_FLAGS = [
   "strict",
@@ -132,8 +133,8 @@ export const STRICT_FLAGS = [
 
 /**
  * The rubric categories, in report order.
- * @public Exported for the parity test that compares this file with its TypeScript twin in
- * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ * @public Not imported anywhere else in this project -- exported only for
+ * m3l-groundwork's own upstream parity check (see the file header above).
  */
 export const CATEGORIES = [
   "tsconfig",
@@ -1249,8 +1250,8 @@ const toolchainPinShape = {
 
 /**
  * Every rule, structural first. Order is the order findings are reported in.
- * @public Exported for the parity test that compares this file with its TypeScript twin in
- * m3l-groundwork; nothing else in a bootstrapped project imports it.
+ * @public Not imported anywhere else in this project -- exported only for
+ * m3l-groundwork's own upstream parity check (see the file header above).
  */
 export const RULES = [
   tsconfigParses,

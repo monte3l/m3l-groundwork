@@ -2,7 +2,11 @@
 /**
  * statusLine: renders a fixed five-row layout -- session, model, context,
  * quota, work -- built entirely from the JSON Claude Code pipes to stdin
- * (code.claude.com/docs/en/statusline). The five-row guarantee is
+ * (code.claude.com/docs/en/statusline). Each row starts with a "gutter": a
+ * short, dim, fixed-width label (e.g. "session") that lines the rows up
+ * visually. A row with nothing to show renders a "placeholder" (a plain
+ * filler segment) after its gutter instead of going blank, so every row is
+ * always exactly one non-empty line. The five-row guarantee is
  * `renderStatusLine`'s own contract on the success path only: the CLI entry's
  * `catch` (bottom of this file) falls back to a single minimal `ctx --%` line
  * on a JSON-parse failure, by design -- the fallback must never itself risk
@@ -351,7 +355,7 @@ export function formatSessionNameSegment(payload) {
  *   detached; only shown when there is no branch, so a rebase or bisect keeps
  *   its git segment instead of silently losing it.
  * @returns {RowSegment | null} the branch segment. `main` is flagged as a
- *   warning: the baseline's workflow is feature branches and PRs, never work
+ *   warning: this project's workflow is feature branches and PRs, never work
  *   directly on `main`.
  */
 export function formatBranchSegment(branchName, detachedSha = null) {

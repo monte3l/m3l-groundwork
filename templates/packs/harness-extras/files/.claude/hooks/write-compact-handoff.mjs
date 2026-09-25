@@ -3,11 +3,15 @@
  * PreCompact: writes a structured handoff artifact to `tmp/compact-handoff.json`
  * before Claude Code compacts the conversation.
  *
- * Durable artifacts outperform in-place summarization for long-running work:
- * post-compaction state reconstruction shouldn't depend on the summary
- * having retained it. `reinject-compact-handoff.mjs` (`SessionStart`,
- * matcher `compact|resume|startup`) reads this artifact back as
- * `additionalContext`.
+ * "Compaction" is Claude Code's process of shrinking a long conversation down
+ * to a summary once it gets too large for the model's context window, so the
+ * session can keep going. A "durable artifact" here just means a plain file
+ * written to disk: unlike the compaction summary itself, a file on disk
+ * survives intact no matter how well that summary captured the details, so
+ * reconstructing state after a compaction (branch, last commit, uncommitted
+ * files) doesn't depend on the summary having retained it.
+ * `reinject-compact-handoff.mjs` (`SessionStart`, matcher
+ * `compact|resume|startup`) reads this artifact back as `additionalContext`.
  *
  * Deliberately git/fs-only, no network calls (no lookup for a PR number) --
  * a PreCompact hook runs on the hot path of every compaction, so a network
