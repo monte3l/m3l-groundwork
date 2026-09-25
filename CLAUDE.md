@@ -416,17 +416,17 @@ project it bootstraps, with one adaptation: `packages/*/src/**` and
 `packages/*/tests/**` in every path-shape rule below, not a flat `src/`/`tests/`,
 matching this repo's real two-package layout.
 
-**Hub-and-spoke is mandatory and hook-enforced, deliberately, with no opt-out.**
-The hub plans and dispatches to spokes, and never writes `packages/*/src/`
-or `packages/*/tests/` itself -- enforced unconditionally by
-`.claude/hooks/guard-hub-src-writes.mjs` (blocks any Write/Edit whose
-PreToolUse payload carries no `agent_type`, i.e. every direct top-level
-edit) and `guard-branch-isolation.mjs` (the same block specifically on
-`main`), plus `disallowedTools: Agent` on every spoke. This was a deliberate
-choice among real alternatives (installing the harness minus these two
-hooks, or holding off entirely) confirmed with the maintainer during the
-self-adoption's Step 0 -- not a default nobody looked at. For a piece of
-work with a clear contract:
+**Hub-and-spoke is mandatory and hook-enforced, deliberately, with no
+project-level opt-out.** The hub plans and dispatches to spokes, and never
+writes `packages/*/src/` or `packages/*/tests/` itself -- enforced
+unconditionally by `.claude/hooks/guard-hub-src-writes.mjs` (blocks any
+Write/Edit whose PreToolUse payload carries no `agent_type`, i.e. every
+direct top-level edit) and `guard-branch-isolation.mjs` (the same block
+specifically on `main`), plus `disallowedTools: Agent` on every spoke. This
+was a deliberate choice among real alternatives (installing the harness
+minus these two hooks, or holding off entirely) confirmed with the
+maintainer during the self-adoption's Step 0 -- not a default nobody looked
+at. For a piece of work with a clear contract:
 
 1. `test-author` writes failing tests from the contract (RED phase), and
    confirms they fail for the right reason.
@@ -436,6 +436,27 @@ work with a clear contract:
    when the diff has error-handling paths) run in parallel over the diff.
    Must-fix findings route back to `code-implementer`, and the loop repeats
    until clean.
+
+**A Claude Code Enterprise/managed deployment sits above this and can
+silently disable it.** Anthropic's settings precedence puts managed
+settings (a `managed-settings.json` file, an MDM policy, or a
+claude.ai-console-managed remote policy) above every project file with no
+override, and two managed-only keys -- `allowManagedHooksOnly` and
+`allowManagedPermissionRulesOnly` -- make Claude Code skip this repo's own
+`.claude/settings.json` hooks and permission rules entirely rather than
+merge with them (see
+[Claude Code's managed-settings docs](https://code.claude.com/docs/en/managed-settings)).
+Nothing in this repo's own files can detect or gate against that -- the
+managed file lives outside any project's working tree, at an OS-level path
+(`/Library/Application Support/ClaudeCode/managed-settings.json` on macOS,
+`/etc/claude-code/managed-settings.json` on Linux, an equivalent under
+`Program Files` on Windows), so `bin/check-harness.mjs` has no on-disk fact
+to check and this is a documented limit, not a gate. Run `/status` before
+trusting hub-and-spoke enforcement on a machine you don't control: its
+"Setting sources" line names every active source, and if
+`guard-hub-src-writes.mjs`/`guard-branch-isolation.mjs` aren't among what's
+actually running, treat this section as an unenforced checklist rather than
+an enforced gate until confirmed otherwise.
 
 Full dispatch-sizing and recovery guidance:
 `.claude/rules/agent-dispatch.md` (auto-loads when editing
