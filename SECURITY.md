@@ -177,7 +177,14 @@ standing bypass that undermines the design:
   without a standing bypass, which the `main` ruleset's empty
   `bypass_actors` list is deliberately designed to avoid. See
   [`CLAUDE.md`](CLAUDE.md#git-workflow), "Three choices are deliberate,
-  not defaults."
+  not defaults." The same reasoning is why there is no `CODEOWNERS` file
+  with `require_code_owner_review` turned on: GitHub doesn't let a PR
+  author approve their own PR, so with the maintainer as the only code
+  owner that rule would block every maintainer PR outright, the same
+  standing-bypass trap the 0-approvals choice above already avoids.
+  Pull requests are collaborators-only (see [`CLAUDE.md`](CLAUDE.md#git-workflow)),
+  which removes the case a `CODEOWNERS` file is usually for -- routing
+  external, unreviewed code to the right reviewer.
 - **Fuzzing** (no OSS-Fuzz integration): Scorecard's `Fuzzing` check looks
   specifically for OSS-Fuzz/ClusterFuzzLite integration or a handful of
   recognized fuzzing harnesses, none of which fits a CLI with no

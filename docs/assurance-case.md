@@ -81,9 +81,14 @@ dependency -- there isn't one (`packages/cli/package.json`'s
 
 [^claude-workflows]:
     The mention workflow (`claude.yml`) never opens a PR
-    itself -- only a branch plus a PR-creation link. Both workflows exclude
-    bot- and fork-authored PRs from their `if:` condition before they'd
-    otherwise fail on missing secrets.
+    itself -- only a branch plus a PR-creation link. `claude-pr-review.yml`
+    excludes bot- and fork-authored PRs from its `if:` condition, and a
+    fork can no longer open a PR here at all (pull requests are
+    collaborators-only, see `CLAUDE.md`'s "Git Workflow"). `claude.yml` has
+    no PR to gate -- it triggers on issues and comments, which stay open to
+    everyone regardless of the pull-request policy -- so its own `if:`
+    instead requires the triggering actor's `author_association` to be
+    `OWNER`, `MEMBER` or `COLLABORATOR` before it runs.
 
 ## Secure design principles applied (Saltzer & Schroeder)
 
@@ -158,9 +163,12 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
 
 [^cwe798]:
     Secret scanning and push protection are also enabled on the
-    repository. `.claude/hooks/guard-secret-writes.mjs` additionally
-    blocks a real-looking secret from being written to disk during
-    agent-assisted development.
+    repository, and `gitleaks.yml` (`gitleaks/gitleaks-action`) runs the
+    same class of check on every push, PR and weekly schedule as a
+    second, independently-configured scanner over the full git history.
+    `.claude/hooks/guard-secret-writes.mjs` additionally blocks a
+    real-looking secret from being written to disk during agent-assisted
+    development.
 
 ## Residual risks
 

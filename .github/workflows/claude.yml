@@ -14,6 +14,13 @@ name: Claude Code
 # CLAUDE.md's "Git Workflow". Runs but fails cleanly on an auth error until
 # the one-time setup CLAUDE.md describes (Claude GitHub App install + a
 # CLAUDE_CODE_OAUTH_TOKEN secret) is done by hand.
+#
+# Unlike pull requests (collaborators-only, see "Git Workflow"), issues and
+# comments stay open to anyone, so the `@claude` text match alone isn't
+# enough to keep an outside commenter from triggering a job that holds
+# `contents: write` and `CLAUDE_CODE_OAUTH_TOKEN` -- the job's `if:` below
+# also requires the triggering actor's `author_association` on this
+# repository to be OWNER, MEMBER or COLLABORATOR.
 on:
   issue_comment:
     types: [created]
@@ -30,10 +37,10 @@ permissions: {}
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

@@ -89,8 +89,8 @@ packages/plugin/        Phase B: the /customize skill
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
                          verify lanes + e2e + node-current + the `verify`
                          aggregator), release.yml (see "Releases"),
-                         dependency-review.yml, scorecard.yml, claude.yml,
-                         claude-pr-review.yml, dependabot.yml,
+                         dependency-review.yml, scorecard.yml, gitleaks.yml,
+                         claude.yml, claude-pr-review.yml, dependabot.yml,
                          ISSUE_TEMPLATE/, pull_request_template.md
 
 design/                 m3l-design, vendored -- see design/README.md and
@@ -363,7 +363,14 @@ steps) before considering any task here done.
   `packages/cli/package.json`'s `exports`), and Snyk overlaps with both
   Socket and `dependency-review.yml`/Dependabot for a package that has
   zero runtime dependencies to begin with -- one vulnerability-scanning
-  badge is enough.
+  badge is enough. `gitleaks.yml` runs `gitleaks/gitleaks-action` (secret
+  scanning) on the same push/PR/weekly/dispatch shape as `scorecard.yml`,
+  and is not a required check today (see "Known gaps" -- adding it to
+  `main`'s ruleset needs at least one successful run on `main` first). Its
+  `GITLEAKS_VERSION` is pinned above the action's own stale built-in
+  default and Dependabot doesn't track it, so bump it by hand
+  periodically; `GITLEAKS_LICENSE` (a free org license, required because
+  this repo is org-owned) is an org-level secret set up outside this repo.
 - **`claude.yml` and `claude-pr-review.yml` run Anthropic's official
   `anthropics/claude-code-action`** (SHA-pinned, same convention as every
   other action here), both running but failing cleanly on an auth error
@@ -396,7 +403,14 @@ steps) before considering any task here done.
   `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs
   (the changesets version-PR, Dependabot) and fork PRs explicitly, rather
   than relying on the action's own internal bot/permission checks, so a run
-  that would just fail on missing secrets never starts. **One-time setup,
+  that would just fail on missing secrets never starts -- the fork-PR half
+  of that check is now also backstopped by "Git Workflow"'s
+  collaborators-only pull request policy, but the explicit `if:` stays as
+  defense in depth. `claude.yml` has no PR to gate (it only triggers on
+  issues and comments, which stay open to everyone even under
+  collaborators-only PRs), so its `if:` instead requires the triggering
+  actor's `author_association` to be `OWNER`, `MEMBER` or `COLLABORATOR`.
+  **One-time setup,
   done by hand:** install the [Claude GitHub App](https://github.com/apps/claude),
   then `claude setup-token` locally and
   `gh secret set CLAUDE_CODE_OAUTH_TOKEN` -- this repo uses a Claude
@@ -462,6 +476,18 @@ verify`'s TTY output in these same status colors) would extend this same
 ## Git Workflow
 
 Single-maintainer project on GitHub (`monte3l/m3l-groundwork`, public).
+**Pull request creation is collaborators-only**
+(`pull_request_creation_policy: collaborators_only`, a repo setting, not a
+ruleset rule -- read it with `gh api repos/monte3l/m3l-groundwork --jq
+.pull_request_creation_policy`), added 2026-09-26 after a fork account
+opened several PRs that had the shape of automated "good first issue"
+farming (a thin, low-signal profile bulk-forking many unrelated repos in a
+tight window). Issues stay open to everyone; a contribution starts as an
+issue, and a collaborator opens the PR (see CONTRIBUTING.md's "Small tasks
+for newcomers"). This also simplifies the fork-PR secrets question:
+`gitleaks.yml`'s license secret and `claude-pr-review.yml`'s OAuth token no
+longer need to handle a fork-originated PR run at all, since one can't
+exist.
 Conventional Commits, enforced by the `commit-msg` hook
 (`bin/lint-commit.mjs`) -- same convention `templates/core` emits into every
 bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
@@ -636,9 +662,13 @@ temporary token (`@monte3l/groundwork-plugin` needs none of this -- it never
 touches npm). That is also why `latest` points at `0.0.0` until the first
 stable release. The trusted publisher is bound to the workflow filename
 `release.yml` (the bare name, not a path): **renaming or moving that file
-breaks publishing** until it is reconfigured on npmjs.com. The repo also needs
-_Allow GitHub Actions to create and approve pull requests_ enabled, or the
-version job cannot open its PR. The trusted publisher's **allowed actions is
+breaks publishing** until it is reconfigured on npmjs.com. The version job's
+PR is opened with a GitHub App installation token, not the default
+`GITHUB_TOKEN` (see "The version PR authenticates as a GitHub App" below),
+so despite an earlier version of this doc, the repo's own
+_Allow GitHub Actions to create and approve pull requests_ toggle
+(`can_approve_pull_request_reviews`) is not actually needed for that step --
+see "Known gaps" for turning it off. The trusted publisher's **allowed actions is
 staged-only** (`npm stage publish`, no direct `npm publish`) -- npm's own
 default for any trusted publisher created since 2026-09-03, and its explicit
 recommendation over direct publish; see "staged, not direct" below for what
@@ -855,3 +885,29 @@ set for one file.
   agents/skills/hooks and the project's own -- good enough to flag "you may
   go over budget," not precise enough to be the final word; `/customize`'s
   Step 0 confirmation round settles it for real.
+- **A 2026-09-26 GitHub-settings audit found real gaps this repo's own docs
+  hadn't caught up to; some are fixed, several are still pending a manual
+  `gh api` call or a dashboard toggle** (both org-write and secret-write
+  actions need a human, not an agent, in this project's own tooling).
+  Applied: `pull_request_creation_policy: collaborators_only` (see "Git
+  Workflow"), and `gitleaks.yml`/the `claude.yml` `author_association`
+  guard landed in the same change as this entry. Still pending, tracked
+  here rather than left to drift like the ruleset already warns against:
+  turn off `can_approve_pull_request_reviews` (repo and org --
+  `PUT .../actions/permissions/workflow`; safe, since the release version
+  PR uses a GitHub App token, not `GITHUB_TOKEN` -- see "Releases");
+  require approval for all external contributors' workflow runs, not just
+  first-time ones (`PUT .../actions/permissions/fork-pr-contributor-approval`
+  with `all_external_contributors`); enforce SHA pinning and an actions
+  allowlist (`sha_pinning_required: true`, `allowed_actions: selected`,
+  covering `gitleaks/gitleaks-action` alongside the existing third-party
+  actions); a tag-protection ruleset on `refs/tags/**` (deletion/
+  non-fast-forward/update, empty `bypass_actors`) -- there is currently
+  none, only the branch ruleset; restrict the org's `CLAUDE_CODE_OAUTH_TOKEN`
+  and `GITLEAKS_LICENSE` secrets to the repos that actually use them
+  (currently org-wide visibility); set the org's default repository
+  permission below `admin`; and scope the Cloudflare and Claude GitHub App
+  installations to selected repositories instead of every org repo. Once
+  `gitleaks.yml` has a clean run on `main`, add it to the `main` ruleset's
+  `required_status_checks` the same way `verify`/`Dependency Review`/
+  `CodeQL` are pinned by `integration_id`.

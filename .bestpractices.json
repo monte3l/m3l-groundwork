@@ -116,7 +116,7 @@
   "vulnerabilities_critical_fixed_status": "Met",
   "vulnerabilities_critical_fixed_justification": "Same policy; none currently open.",
   "no_leaked_credentials_status": "Met",
-  "no_leaked_credentials_justification": "GitHub secret scanning and push protection are enabled; `.claude/hooks/guard-secret-writes.mjs` blocks a secret-shaped write during development.",
+  "no_leaked_credentials_justification": "GitHub secret scanning and push protection are enabled; `.github/workflows/gitleaks.yml` (gitleaks/gitleaks-action) runs a second, independently-configured scan on every push, PR and weekly schedule; `.claude/hooks/guard-secret-writes.mjs` blocks a secret-shaped write during development.",
   "static_analysis_status": "Met",
   "static_analysis_justification": "GitHub CodeQL (default setup) analyzes every push and PR -- more often than 'each release'.",
   "static_analysis_common_vulnerabilities_status": "Met",
