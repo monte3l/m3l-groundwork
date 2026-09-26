@@ -81,6 +81,14 @@ specific published version, so `npx package@tag` resolves to that version
 without naming it explicitly.
 In this repo: the CLI currently ships on the `rc` dist-tag.
 
+### Dynamic analysis
+
+Security analysis performed by executing code with instrumentation (such as
+memory sanitizers, fuzzers, or race detectors) rather than inspecting source
+code statically.
+In this repo: used in the OpenSSF Best Practices badge sense; see
+[`docs/security-review.md`](security-review.md#dynamic-analysis).
+
 ### Fresh mode
 
 The CLI mode used when the target directory is empty or missing: it writes
@@ -150,6 +158,14 @@ apart.
 In this repo: `tests/harness/harness-parity.test.ts`,
 `tests/toolchain/toolchain-parity.test.ts`.
 
+### Property-based testing / fast-check
+
+A testing methodology that generates hundreds of randomized inputs to assert
+invariants (properties that must always hold true), distinct from
+example-based tests.
+In this repo: used via the `fast-check` library in `tests/` to fuzz inputs and
+test edge cases across arbitrary values.
+
 ### Provenance
 
 A cryptographically verifiable record of exactly which build -- which
@@ -164,6 +180,14 @@ stable release but not yet declared stable.
 In this repo: the CLI's `1.0.0-rc.N` versions, shipped on the `rc`
 dist-tag until GA.
 
+### REUSE / REUSE.toml
+
+A Free Software Foundation Europe specification for standardizing how
+copyright and licensing information is declared across all files in a
+project, including non-code assets.
+In this repo: `REUSE.toml` (declares project-wide defaults and patterns) and
+`bin/check-license-headers.mjs` (enforces it in CI).
+
 ### Rubric finding
 
 A grader result that reflects a stylistic or best-practice judgment call
@@ -176,6 +200,14 @@ A packaged set of instructions Claude Code can load for a particular task
 -- for example, `/customize` or `typescript-guidance` -- invoked by name or
 by a matching trigger.
 In this repo: `templates/core/.claude/skills/`.
+
+### SPDX header
+
+Standard machine-readable comments (`SPDX-FileCopyrightText:` and
+`SPDX-License-Identifier:`) placed at the top of a file, standardized by the
+Linux Foundation.
+In this repo: required on all source files per the REUSE specification;
+checked by `bin/check-license-headers.mjs`.
 
 ### Staged publish
 
