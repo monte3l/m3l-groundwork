@@ -466,12 +466,22 @@ steps) before considering any task here done.
   plain (no-flag) command and committing `design/tokens.css` in the same
   change. It is run through this repo's own Prettier config before being
   written, so `pnpm format:check` and this step never disagree about its
-  formatting. A future terminal-output change (`term.ts` painting `pnpm
-verify`'s TTY output in these same status colors) would extend this same
-  generator with a `packages/cli/src/palette.ts` target -- not yet done, so
-  no such file exists today; don't add one without a real consumer, since an
-  unconsumed generated file in `packages/cli/src` ships as dead code in the
-  published tarball.
+  formatting. The same generator also emits `packages/cli/src/palette.ts` --
+  the six terminal status/text colors, light and dark, `packages/cli/src/term.ts`
+  paints console output with (`paint()`, `supportsColor()`): color only when
+  the stream is a TTY, never when `NO_COLOR` is set, always when `FORCE_COLOR`
+  is; truecolor SGR when `COLORTERM` is `truecolor`/`24bit`, else the nearest
+  of the 16 standard ANSI colors by RGB distance; theme follows `COLORFGBG`
+  when present, defaults to dark otherwise. Piped/non-TTY output is
+  byte-identical to plain text -- every string-matched test keeps passing
+  without needing to know about color at all. `bin/lib/term.mjs` is the
+  root-tooling twin (`bin/verify.mjs`, `bin/lib/report.mjs`,
+  `bin/lint-commit.mjs`, `bin/eval.mjs`, `.claude/hooks/statusline-layout.mjs`):
+  it resolves its own palette straight from `design/source/dtcg/` rather than
+  importing a generated file, since root tooling has no build step to emit
+  one into -- not compared against `term.ts` by a parity test, unlike the
+  harness/toolchain grader twins, since a drift here is cosmetic (two
+  terminals' output), not a behavioral contract.
 
 ## Git Workflow
 

@@ -4,9 +4,12 @@
 /**
  * Pure presentation primitives shared by both status-line entry points
  * (`statusline.mjs`, `subagent-statusline.mjs`): terminal-width fitting, ANSI
- * colors, and the two small formatters both scripts need. No I/O, no
- * shebang, no direct-run block -- this module is only ever imported, and
- * neither entry point imports the other.
+ * colors, and the two small formatters both scripts need. No shebang, no
+ * direct-run block -- this module is only ever imported, and neither entry
+ * point imports the other. The color constants below are the one exception
+ * to "no I/O": they're read from `bin/lib/term.mjs`'s `PALETTE`, which
+ * resolves `design/source/dtcg/` once at import time -- see that module's
+ * own header.
  *
  * Anthropic's own statusLine docs (code.claude.com/docs/en/statusline) state
  * that a statusLine script must read the `COLUMNS`/`LINES` env vars to learn
@@ -17,6 +20,13 @@
  * ANSI/OSC-8-aware truncation, so a narrow terminal degrades by omitting the
  * least important segments first rather than wrapping mid-line.
  */
+import process from "node:process";
+import {
+  PALETTE,
+  paintUnavailable,
+  resolveThemeId,
+  truecolorSgr,
+} from "../../bin/lib/term.mjs";
 
 /**
  * SGR (`\x1b[...m`) and OSC-8 (`\x1b]8;;URL\x07...\x1b]8;;\x07`) sequences.
@@ -329,14 +339,40 @@ export function terminalColumns(env) {
   return Number.isFinite(n) && n > 0 ? n : 80;
 }
 
-export const GREEN = "\x1b[32m";
-export const YELLOW = "\x1b[33m";
-export const RED = "\x1b[31m";
-export const CYAN = "\x1b[36m";
-export const BLUE = "\x1b[34m";
-export const MAGENTA = "\x1b[35m";
-export const DIM = "\x1b[2m";
-export const RESET = "\x1b[0m";
+// This project's own `.claude/hooks/` -- unlike `templates/packs/statusline`,
+// which stays brand-neutral for whatever project installs the pack -- paints
+// with m3l-design's palette instead of the basic ANSI 16 (see CLAUDE.md's
+// "Design system" note). The statusLine subprocess always runs piped (there
+// is no TTY to check the way `bin/lib/term.mjs`'s own `paint()` does for a
+// real terminal command), so `NO_COLOR` is the only toggle honored here.
+const STATUSLINE_NO_COLOR = process.env.NO_COLOR !== undefined;
+const STATUSLINE_THEME = PALETTE[resolveThemeId(process.env)];
+
+/**
+ * One role's truecolor SGR foreground escape, or `""` under `NO_COLOR` --
+ * or when `paintUnavailable()` (the real palette failed to load, so `hex`
+ * is only `bin/lib/term.mjs`'s neutral placeholder, not a real color; the
+ * statusline's own contract is to always print something rather than
+ * crash, so it renders these segments uncolored instead of a meaningless
+ * grey -- see `statusline.mjs`'s header).
+ */
+function statuslineColor(hex) {
+  return STATUSLINE_NO_COLOR || paintUnavailable() ? "" : truecolorSgr(hex);
+}
+
+export const GREEN = statuslineColor(STATUSLINE_THEME.success);
+export const YELLOW = statuslineColor(STATUSLINE_THEME.warning);
+export const RED = statuslineColor(STATUSLINE_THEME.danger);
+// CYAN/BLUE/MAGENTA label decorative segments (model/vim-mode, branch/
+// worktree, effort/thinking) rather than status. m3l-design has exactly one
+// brand accent, not three separate decorative hues, so each borrows a
+// distinct step of that same accent family (default/hover/active) to stay
+// visually distinguishable while never inventing an off-palette color.
+export const CYAN = statuslineColor(STATUSLINE_THEME.accent);
+export const BLUE = statuslineColor(STATUSLINE_THEME.accentHover);
+export const MAGENTA = statuslineColor(STATUSLINE_THEME.accentActive);
+export const DIM = STATUSLINE_NO_COLOR ? "" : "\x1b[2m";
+export const RESET = STATUSLINE_NO_COLOR ? "" : "\x1b[0m";
 export const SEGMENT_SEPARATOR = `${DIM} · ${RESET}`;
 export const PLACEHOLDER = `${DIM}—${RESET}`;
 export const GUTTER_WIDTH = 10;

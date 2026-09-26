@@ -17,6 +17,7 @@ import process from "node:process";
 import { readFileSync } from "node:fs";
 import load from "@commitlint/load";
 import lint from "@commitlint/lint";
+import { paint } from "./lib/term.mjs";
 
 const args = process.argv.slice(2);
 const editIndex = args.indexOf("--edit");
@@ -38,16 +39,26 @@ const result = await lint(
 
 if (!validateForbiddenTrailers(message)) {
   console.error(
-    "commit message carries a forbidden Claude-* trailer (only Co-Authored-By: is allowed)",
+    paint(
+      process.stderr,
+      "danger",
+      "commit message carries a forbidden Claude-* trailer (only Co-Authored-By: is allowed)",
+    ),
   );
   process.exit(1);
 }
 
 if (!result.valid) {
   for (const problem of result.errors) {
-    console.error(`✗ ${problem.message}`);
+    console.error(paint(process.stderr, "danger", `✗ ${problem.message}`));
   }
   process.exit(1);
 }
 
-console.log("✓ commit message is a valid Conventional Commit");
+console.log(
+  paint(
+    process.stdout,
+    "success",
+    "✓ commit message is a valid Conventional Commit",
+  ),
+);

@@ -12,6 +12,7 @@
  * for local debugging only -- it must never appear in either YAML file.
  */
 import process from "node:process";
+import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import {
   VERIFY_STEPS,
@@ -19,6 +20,22 @@ import {
   findStep,
   stepsInGroup,
 } from "./lib/verify-steps.mjs";
+
+// Dynamic, with a plain-text fallback -- but ONLY for the one case that's
+// actually benign: `packages/cli/tests/verify-steps.test.ts` copies this
+// script alone into an isolated sandbox (no `lib/` siblings at all) to test
+// argv-parsing in isolation, so `./lib/term.mjs` genuinely doesn't exist
+// there. Checking existence first (rather than a broad try/catch around the
+// import) means a `term.mjs` that DOES exist but fails to load -- a real
+// bug in it, or in `design-tokens.mjs`, or a corrupted `design/source/dtcg`
+// re-sync -- still throws and fails this script loudly, the same as it
+// would for `report.mjs`/`lint-commit.mjs`/`eval.mjs`'s plain static imports
+// of the same module.
+let paint = (_stream, _role, text) => text;
+const termModuleUrl = new URL("./lib/term.mjs", import.meta.url);
+if (existsSync(termModuleUrl)) {
+  ({ paint } = await import(termModuleUrl.href));
+}
 
 const args = process.argv.slice(2);
 const stepIndex = args.indexOf("--step");
@@ -56,12 +73,12 @@ if (requestedId && steps.length === 0) {
 
 let failed = false;
 for (const step of steps) {
-  console.log(`\n▶ ${step.name} (${step.id})`);
+  console.log(paint(process.stdout, "accent", `\n▶ ${step.name} (${step.id})`));
   const [cmd, ...cmdArgs] = step.cmd;
   const result = spawnSync(cmd, cmdArgs, { stdio: "inherit" });
   if (result.status !== 0) {
     failed = true;
-    console.error(`✗ ${step.name} failed`);
+    console.error(paint(process.stderr, "danger", `✗ ${step.name} failed`));
     if (!requestedId && !requestedGroup) {
       // Local `pnpm verify` (no --step/--group): keep going so a single
       // early failure doesn't hide every other failing step in the same run.
@@ -69,7 +86,7 @@ for (const step of steps) {
     }
     break;
   }
-  console.log(`✓ ${step.name}`);
+  console.log(paint(process.stdout, "success", `✓ ${step.name}`));
 }
 
 process.exit(failed ? 1 : 0);
