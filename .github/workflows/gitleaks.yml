@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+name: Gitleaks
+
+# What this does: scans for secrets (API keys, tokens, private keys) using
+# gitleaks/gitleaks-action. On a push to `main` it scans only the pushed
+# commits; on a pull request it scans the PR's commits; the weekly schedule
+# and manual dispatch scan the full history. Not a required check yet --
+# see CLAUDE.md's "Continuous integration".
+#
+# gitleaks-action v3 needs a free GITLEAKS_LICENSE for an organization-owned
+# repository (gitleaks/gitleaks-action's README) -- this repo is
+# collaborators-only for pull requests (CLAUDE.md's "Git Workflow"), so
+# every PR run already carries repo secrets; there is no fork-PR case where
+# the license would be missing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 1" # every Monday, full-history scan
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # gitleaks needs full history to compute the commit range it scans
+
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # Pinned above the action's own stale built-in default (8.24.3);
+          # Dependabot doesn't track this, so bump it by hand periodically.
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_CONFIG: .gitleaks.toml
+          # Avoids needing pull-requests: write for a PR comment.
+          GITLEAKS_ENABLE_COMMENTS: "false"

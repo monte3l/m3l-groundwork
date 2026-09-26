@@ -1,7 +1,13 @@
 # Contributing
 
 This is a single-maintainer project. External contributions are welcome as
-issues and pull requests. For how the project is organized -- the two
+**issues** -- open one for a bug, a question, or a proposed change. Pull
+requests are collaborators-only (see "Workflow" below): open an issue first,
+and if it turns into code a collaborator will implement it, referencing
+your issue, or invite you as a collaborator for that change. This policy
+was added after a low-signal account opened several PRs that had the shape
+of automated "good first issue" farming; it isn't a judgment on any
+individual contributor. For how the project is organized -- the two
 phases, the packages, what lives where -- start with
 [`docs/architecture.md`](docs/architecture.md); it's written for a human
 reading the project rather than editing it. [`CLAUDE.md`](CLAUDE.md) is the
@@ -104,9 +110,13 @@ to the npm account behind `npm stage approve` during a release -- see
 
 Every change lands through a pull request -- nobody, maintainer included,
 can push directly to `main` (see [`CLAUDE.md`](CLAUDE.md#git-workflow)).
+**Pull request creation is collaborators-only**; if you don't already have
+collaborator access, open an issue instead (see "Small tasks for
+newcomers" below) rather than a PR, which GitHub will refuse to create.
 Branch off `main`, keep the PR focused, and make sure CI's `verify`
 aggregator, Dependency Review, and CodeQL are all green before asking for a
-merge.
+merge -- `gitleaks.yml` and `Scorecard` also run, but aren't required
+checks yet.
 
 ## Code review
 
@@ -140,7 +150,11 @@ or [`help wanted`](https://github.com/monte3l/m3l-groundwork/labels/help%20wante
 are scoped for a first-time or casual contributor -- not necessarily new
 functionality; documentation, an added test case, or a small, well-defined
 fix all count. If nothing currently open looks approachable, ask in a new
-issue and it'll get labeled appropriately.
+issue and it'll get labeled appropriately. Since pull request creation is
+collaborators-only (see "Workflow" above), pick up one of these by commenting
+on the issue with your proposed approach -- the maintainer will either
+implement it referencing your comment, or add you as a collaborator so you
+can open the PR yourself.
 
 ## Scope of a PR
 
