@@ -93,6 +93,11 @@ packages/plugin/        Phase B: the /customize skill
                          claude-pr-review.yml, dependabot.yml,
                          ISSUE_TEMPLATE/, pull_request_template.md
 
+design/                 m3l-design, vendored -- see design/README.md and
+                         "Design system" below. source/ is a verbatim copy;
+                         tokens.css is generated from it by
+                         bin/build-design-tokens.mjs.
+
 docs/architecture.md    A human-facing distillation of this file's own
                          architecture notes -- for anyone reading the project
                          rather than editing it.
@@ -414,6 +419,45 @@ steps) before considering any task here done.
   directly) and adopt mode (the CLI only surveys; `/customize` installs
   from the staged `.groundwork/packs/<name>/` copy after reading the
   project's real gate runner) -- see `templates/packs/README.md`.
+- **Design system: `design/` is this repo's own vendored copy of
+  m3l-design, this repo only -- `templates/**` stays brand-neutral.**
+  `design/source/` is a verbatim copy of the m3l-design Claude Design
+  artifact (DTCG 2025.10 tokens, component CSS, brand book, fonts) --
+  see `design/README.md` for provenance and the re-sync rule (never
+  hand-edit `source/`). `design/tokens.css` is generated from it by
+  `bin/build-design-tokens.mjs`, whose resolver (`bin/lib/design-tokens.mjs`)
+  is a small, zero-dependency DTCG resolver: it follows
+  `m3l.resolver.json`'s own `resolutionOrder` (primitives -> semantic ->
+  theme -> motion -> components) -- checked, not just assumed:
+  `loadDesignSystem` asserts the manifest still declares that exact set/
+  modifier/context shape and order before any theme resolves, so a re-sync
+  that reorders or renames one of them fails loudly instead of silently
+  merging in the wrong precedence -- resolves `{alias}` references with
+  cycle/missing-alias errors, and flattens the resolved tree into the same
+  dashed-name convention m3l-design's own flattened `tokens.json` uses
+  (`color-surface-default`, `button-primary-bg`, ...) -- that vendored
+  `tokens.json` is kept only as a parity oracle
+  (`packages/cli/tests/design-tokens.test.ts`), never read by the build
+  itself; the DTCG files are canonical, per `design/README.md`. Every
+  formatter (`formatColor`, `formatDimension`, `formatEasing`,
+  `formatShadow`) validates its input's shape and throws `DesignTokenError`
+  rather than interpolating `undefined` into the generated CSS -- see
+  `deriveTypeTreatment`, the typography distillation, for the same
+  fail-loud rule applied to letter-spacing/word-spacing/shared-flag
+  agreement across styles. `node bin/build-design-tokens.mjs --check` is
+  the `design-tokens` step in `bin/lib/verify-steps.mjs`'s `lint` group (a
+  `CORE_STEPS`-shaped entry with no `package.json` script, same pattern as
+  the harness/toolchain gates) -- it fails on drift rather than writing, so
+  a change to `design/source/dtcg/` must be followed by re-running the
+  plain (no-flag) command and committing `design/tokens.css` in the same
+  change. It is run through this repo's own Prettier config before being
+  written, so `pnpm format:check` and this step never disagree about its
+  formatting. A future terminal-output change (`term.ts` painting `pnpm
+verify`'s TTY output in these same status colors) would extend this same
+  generator with a `packages/cli/src/palette.ts` target -- not yet done, so
+  no such file exists today; don't add one without a real consumer, since an
+  unconsumed generated file in `packages/cli/src` ships as dead code in the
+  published tarball.
 
 ## Git Workflow
 

@@ -111,6 +111,19 @@ either file, and it's also what a structural check (`gate-lane-parity`,
 part of the toolchain grader, which scrapes both YAML files as text and
 fails if either names a step directly or matrices the lanes) verifies.
 
+## Design system
+
+This repo's own root -- not `templates/core`, which stays brand-neutral for
+whatever project adopts it -- uses **m3l-design**, vendored under
+`design/`. `design/source/` is a verbatim copy of that design system's DTCG
+2025.10 tokens, component CSS and brand book (see
+[`design/README.md`](../design/README.md) for provenance); `design/tokens.css`
+is generated from it by `bin/build-design-tokens.mjs`, checked for drift by
+`pnpm verify`'s `design-tokens` step. The governance model is copy-based, the same
+philosophy as Phase A itself: a design system is copied into a project once
+rather than imported live, so it can diverge deliberately without that
+being a "drift bug."
+
 ## Trust boundaries and threat model
 
 See [`docs/assurance-case.md`](assurance-case.md) for the security-focused

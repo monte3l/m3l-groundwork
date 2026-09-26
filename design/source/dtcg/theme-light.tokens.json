@@ -1,0 +1,389 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "m3l-design semantic tokens, light theme. Every token aliases a primitive directly (no semantic-to-semantic chains).",
+  "color": {
+    "$type": "color",
+    "surface": {
+      "default": {
+        "$value": "{color.neutral.0}",
+        "$description": "Page/app background. Every text color is checked against it in both themes."
+      },
+      "subtle": {
+        "$value": "{color.neutral.50}",
+        "$description": "Alternating bands, sidebars, docs nav. Text-safe for all text tokens."
+      },
+      "sunken": {
+        "$value": "{color.neutral.100}",
+        "$description": "Inset wells, table header rows, badge backgrounds."
+      },
+      "raised": {
+        "$value": "{color.neutral.0}",
+        "$description": "Cards, popovers, menus. Pairs with a shadow in light mode, with a lighter surface in dark mode."
+      },
+      "hover": {
+        "$value": "{color.neutral.100}",
+        "$description": "Hover fill for rows, nav items, ghost buttons. Worst-case surface for text contrast checks."
+      },
+      "code": {
+        "$value": "{color.neutral.50}",
+        "$description": "Code block and inline code background."
+      },
+      "selected": {
+        "$value": "{color.wine.50}",
+        "$description": "Selected row / current nav item fill (accent tint)."
+      }
+    },
+    "text": {
+      "primary": {
+        "$value": "{color.neutral.950}",
+        "$description": "Body copy and headings. >=15:1 on every surface, both themes."
+      },
+      "secondary": {
+        "$value": "{color.neutral.700}",
+        "$description": "Supporting copy, metadata, table secondary cells. >=7:1 on every surface."
+      },
+      "tertiary": {
+        "$value": "{color.neutral.600}",
+        "$description": "Lowest-emphasis readable text: placeholders, timestamps, captions. Still >=4.5:1 on every surface; do not go lighter."
+      },
+      "disabled": {
+        "$value": "{color.neutral.400}",
+        "$description": "Disabled control labels only. Exempt from WCAG 1.4.3 (inactive UI), so NOT contrast-safe: never use for readable content."
+      },
+      "on-accent": {
+        "$value": "{color.neutral.0}",
+        "$description": "Text and icons on accent fills (primary button). Light: near-white; dark: near-black."
+      }
+    },
+    "border": {
+      "subtle": {
+        "$value": "{color.neutral.150}",
+        "$description": "Decorative dividers and card outlines. Not a control boundary: under 3:1 on purpose."
+      },
+      "default": {
+        "$value": "{color.neutral.200}",
+        "$description": "Stronger decorative rules (table grid, section breaks). Not a control boundary."
+      },
+      "control": {
+        "$value": "{color.neutral.500}",
+        "$description": "Input, checkbox, secondary-button boundaries. >=3:1 vs every surface (WCAG 1.4.11)."
+      }
+    },
+    "accent": {
+      "default": {
+        "$value": "{color.wine.700}",
+        "$description": "Primary action fill, active indicators, the one brand color."
+      },
+      "hover": {
+        "$value": "{color.wine.800}",
+        "$description": "Hover state of accent fills and accent text."
+      },
+      "active": {
+        "$value": "{color.wine.900}",
+        "$description": "Pressed state of accent fills."
+      },
+      "tint": {
+        "$value": "{color.wine.50}",
+        "$description": "Low-emphasis accent background (selected chips, highlighted callout). Accent text stays >=4.5:1 on it."
+      },
+      "tint-border": {
+        "$value": "{color.wine.200}",
+        "$description": "Decorative border for accent-tint areas."
+      },
+      "text": {
+        "$value": "{color.wine.700}",
+        "$description": "Links and accent-coloured text. Links must also be underlined (never colour alone, WCAG 1.4.1)."
+      }
+    },
+    "focus": {
+      "ring": {
+        "$value": "{color.wine.700}",
+        "$description": "Keyboard focus outline, drawn 2px wide at a 2px offset so it sits on the surface (>=3:1 vs every surface)."
+      }
+    },
+    "status": {
+      "info": {
+        "text": {
+          "$value": "{color.blue.700}",
+          "$description": "Approved 2026-09-26. Status info text colour (titles, labels). >=4.5:1 on default/subtle/raised surfaces and on its own status surface. Always pair with an icon and a text label: never colour alone."
+        },
+        "surface": {
+          "$value": "{color.blue.50}",
+          "$description": "Approved 2026-09-26. Status info callout/banner background."
+        },
+        "border": {
+          "$value": "{color.blue.600}",
+          "$description": "Approved 2026-09-26. Status info border, indicator edge and icon. >=3:1 vs surfaces (WCAG 1.4.11). Lightness is staggered across statuses (danger is the darkest indicator in both themes, success/warning the lightest) so they stay distinguishable with red-green colour blindness."
+        }
+      },
+      "success": {
+        "text": {
+          "$value": "{color.green.700}",
+          "$description": "Approved 2026-09-26. Status success text colour (titles, labels). >=4.5:1 on default/subtle/raised surfaces and on its own status surface. Always pair with an icon and a text label: never colour alone."
+        },
+        "surface": {
+          "$value": "{color.green.50}",
+          "$description": "Approved 2026-09-26. Status success callout/banner background."
+        },
+        "border": {
+          "$value": "{color.green.600}",
+          "$description": "Approved 2026-09-26. Status success border, indicator edge and icon. >=3:1 vs surfaces (WCAG 1.4.11). Lightness is staggered across statuses (danger is the darkest indicator in both themes, success/warning the lightest) so they stay distinguishable with red-green colour blindness."
+        }
+      },
+      "warning": {
+        "text": {
+          "$value": "{color.amber.700}",
+          "$description": "Approved 2026-09-26. Status warning text colour (titles, labels). >=4.5:1 on default/subtle/raised surfaces and on its own status surface. Always pair with an icon and a text label: never colour alone."
+        },
+        "surface": {
+          "$value": "{color.amber.50}",
+          "$description": "Approved 2026-09-26. Status warning callout/banner background."
+        },
+        "border": {
+          "$value": "{color.amber.600}",
+          "$description": "Approved 2026-09-26. Status warning border, indicator edge and icon. >=3:1 vs surfaces (WCAG 1.4.11). Lightness is staggered across statuses (danger is the darkest indicator in both themes, success/warning the lightest) so they stay distinguishable with red-green colour blindness."
+        }
+      },
+      "danger": {
+        "text": {
+          "$value": "{color.red.700}",
+          "$description": "Approved 2026-09-26. Status danger text colour (titles, labels). >=4.5:1 on default/subtle/raised surfaces and on its own status surface. Always pair with an icon and a text label: never colour alone."
+        },
+        "surface": {
+          "$value": "{color.red.50}",
+          "$description": "Approved 2026-09-26. Status danger callout/banner background."
+        },
+        "border": {
+          "$value": "{color.red.600}",
+          "$description": "Approved 2026-09-26. Status danger border, indicator edge and icon. >=3:1 vs surfaces (WCAG 1.4.11). Lightness is staggered across statuses (danger is the darkest indicator in both themes, success/warning the lightest) so they stay distinguishable with red-green colour blindness."
+        }
+      }
+    },
+    "overlay": {
+      "scrim": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0706, 0.0549, 0.0627],
+          "hex": "#120e10",
+          "alpha": 0.48
+        },
+        "$description": "Modal backdrop behind dialogs."
+      }
+    }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "1": {
+      "$value": [
+        {
+          "color": {
+            "colorSpace": "srgb",
+            "components": [0.0706, 0.0549, 0.0627],
+            "hex": "#120e10",
+            "alpha": 0.06
+          },
+          "offsetX": {
+            "value": 0.0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 1.0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 2.0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0.0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": {
+            "colorSpace": "srgb",
+            "components": [0.0706, 0.0549, 0.0627],
+            "hex": "#120e10",
+            "alpha": 0.04
+          },
+          "offsetX": {
+            "value": 0.0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 1.0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 1.0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0.0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Resting cards, buttons with a lift."
+    },
+    "2": {
+      "$value": [
+        {
+          "color": {
+            "colorSpace": "srgb",
+            "components": [0.0706, 0.0549, 0.0627],
+            "hex": "#120e10",
+            "alpha": 0.06
+          },
+          "offsetX": {
+            "value": 0.0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 2.0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 4.0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0.0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": {
+            "colorSpace": "srgb",
+            "components": [0.0706, 0.0549, 0.0627],
+            "hex": "#120e10",
+            "alpha": 0.08
+          },
+          "offsetX": {
+            "value": 0.0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 4.0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 12.0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0.0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Dropdowns, menus, hovered cards."
+    },
+    "3": {
+      "$value": [
+        {
+          "color": {
+            "colorSpace": "srgb",
+            "components": [0.0706, 0.0549, 0.0627],
+            "hex": "#120e10",
+            "alpha": 0.06
+          },
+          "offsetX": {
+            "value": 0.0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 2.0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 6.0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0.0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": {
+            "colorSpace": "srgb",
+            "components": [0.0706, 0.0549, 0.0627],
+            "hex": "#120e10",
+            "alpha": 0.12
+          },
+          "offsetX": {
+            "value": 0.0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 8.0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 24.0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0.0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Popovers, toasts."
+    },
+    "4": {
+      "$value": [
+        {
+          "color": {
+            "colorSpace": "srgb",
+            "components": [0.0706, 0.0549, 0.0627],
+            "hex": "#120e10",
+            "alpha": 0.08
+          },
+          "offsetX": {
+            "value": 0.0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 4.0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 12.0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0.0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": {
+            "colorSpace": "srgb",
+            "components": [0.0706, 0.0549, 0.0627],
+            "hex": "#120e10",
+            "alpha": 0.18
+          },
+          "offsetX": {
+            "value": 0.0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 16.0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 48.0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0.0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Dialogs. In dark mode elevation also steps the surface (surface-raised); shadows alone barely read."
+    }
+  }
+}

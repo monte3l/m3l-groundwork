@@ -65,6 +65,12 @@ export const VERIFY_STEPS = [
     cmd: ["node", "bin/check-license-headers.mjs"],
   },
   {
+    id: "design-tokens",
+    group: "lint",
+    name: "Check generated design tokens are current",
+    cmd: ["node", "bin/build-design-tokens.mjs", "--check"],
+  },
+  {
     id: "typecheck",
     group: "typecheck",
     name: "Typecheck",

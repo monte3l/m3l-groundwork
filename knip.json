@@ -7,7 +7,25 @@
   "ignoreBinaries": ["verify", "build"],
   "workspaces": {
     ".": {
-      "entry": ["bin/*.mjs", ".claude/hooks/*.mjs"],
+      "entry": [
+        "bin/*.mjs",
+        ".claude/hooks/*.mjs",
+        // Unlike every other bin/lib/*.mjs helper (each fully covered by a
+        // real entry script's own static imports), design-tokens.mjs is a
+        // general-purpose DTCG resolver whose full API is exercised only
+        // from packages/cli/tests/design-tokens*.test.ts, via a dynamic
+        // `import(pathToFileURL(...))` (the same load-by-URL pattern
+        // eval-lib.test.ts uses for its own bin/lib module -- see that
+        // file's header; eval-lib.mjs itself is NOT a knip entry, because
+        // every one of its exports also has a real static consumer in
+        // bin/eval.mjs or bin/make-harness-plugin.mjs). Knip's static
+        // analysis cannot trace a property read off a dynamically-imported
+        // module object back to a named export the way it traces a
+        // same-language `import {...}` -- without this entry, several
+        // exports used only by that test file (mergeTokenTrees,
+        // resolveTree, isColorValue, DesignTokenError) report as unused.
+        "bin/lib/design-tokens.mjs"
+      ],
       "project": ["bin/**/*.mjs", ".claude/hooks/**/*.mjs"]
     },
     "packages/cli": {

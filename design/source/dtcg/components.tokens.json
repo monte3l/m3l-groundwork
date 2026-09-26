@@ -1,0 +1,337 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "m3l-design component tokens. Alias semantic tokens only.",
+  "button": {
+    "primary": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.accent.default}",
+        "$description": "Primary button fill."
+      },
+      "bg-hover": {
+        "$type": "color",
+        "$value": "{color.accent.hover}",
+        "$description": "Primary button hover fill."
+      },
+      "bg-active": {
+        "$type": "color",
+        "$value": "{color.accent.active}",
+        "$description": "Primary button pressed fill."
+      },
+      "fg": {
+        "$type": "color",
+        "$value": "{color.text.on-accent}",
+        "$description": "Primary button label and icon."
+      }
+    },
+    "secondary": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.surface.default}",
+        "$description": "Secondary button fill."
+      },
+      "bg-hover": {
+        "$type": "color",
+        "$value": "{color.surface.hover}",
+        "$description": "Secondary button hover fill."
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.border.control}",
+        "$description": "Secondary button boundary (>=3:1)."
+      },
+      "fg": {
+        "$type": "color",
+        "$value": "{color.text.primary}",
+        "$description": "Secondary button label."
+      }
+    },
+    "radius": {
+      "$type": "dimension",
+      "$value": "{shape.control}"
+    },
+    "padding-x": {
+      "$type": "dimension",
+      "$value": "{inset.control-x}"
+    },
+    "padding-y": {
+      "$type": "dimension",
+      "$value": "{inset.control-y}"
+    },
+    "gap": {
+      "$type": "dimension",
+      "$value": "{inset.control-gap}"
+    },
+    "label": {
+      "$type": "typography",
+      "$value": "{typography.label}"
+    }
+  },
+  "input": {
+    "bg": {
+      "$type": "color",
+      "$value": "{color.surface.default}",
+      "$description": "Text input fill."
+    },
+    "border": {
+      "$type": "color",
+      "$value": "{color.border.control}",
+      "$description": "Text input boundary (>=3:1)."
+    },
+    "border-focus": {
+      "$type": "color",
+      "$value": "{color.focus.ring}",
+      "$description": "Text input boundary while focused (plus the focus ring)."
+    },
+    "fg": {
+      "$type": "color",
+      "$value": "{color.text.primary}",
+      "$description": "Typed value."
+    },
+    "placeholder": {
+      "$type": "color",
+      "$value": "{color.text.tertiary}",
+      "$description": "Placeholder text: still >=4.5:1."
+    },
+    "radius": {
+      "$type": "dimension",
+      "$value": "{shape.control}"
+    },
+    "padding-x": {
+      "$type": "dimension",
+      "$value": "{inset.field-x}"
+    },
+    "padding-y": {
+      "$type": "dimension",
+      "$value": "{inset.control-y}"
+    },
+    "border-width": {
+      "$type": "dimension",
+      "$value": "{border-width.default}"
+    }
+  },
+  "card": {
+    "bg": {
+      "$type": "color",
+      "$value": "{color.surface.raised}",
+      "$description": "Card fill."
+    },
+    "border": {
+      "$type": "color",
+      "$value": "{color.border.subtle}",
+      "$description": "Card outline (decorative)."
+    },
+    "radius": {
+      "$type": "dimension",
+      "$value": "{shape.container}"
+    },
+    "padding": {
+      "$type": "dimension",
+      "$value": "{inset.container}"
+    },
+    "shadow": {
+      "$type": "shadow",
+      "$value": "{shadow.1}"
+    }
+  },
+  "code-block": {
+    "bg": {
+      "$type": "color",
+      "$value": "{color.surface.code}",
+      "$description": "Code block fill."
+    },
+    "fg": {
+      "$type": "color",
+      "$value": "{color.text.primary}",
+      "$description": "Code text."
+    },
+    "border": {
+      "$type": "color",
+      "$value": "{color.border.subtle}",
+      "$description": "Code block outline (decorative)."
+    },
+    "radius": {
+      "$type": "dimension",
+      "$value": "{shape.container}"
+    },
+    "padding": {
+      "$type": "dimension",
+      "$value": "{inset.container-compact}"
+    },
+    "text": {
+      "$type": "typography",
+      "$value": "{typography.code}"
+    }
+  },
+  "link": {
+    "fg": {
+      "$type": "color",
+      "$value": "{color.accent.text}",
+      "$description": "Link text (always underlined)."
+    },
+    "fg-hover": {
+      "$type": "color",
+      "$value": "{color.accent.hover}",
+      "$description": "Link text on hover."
+    }
+  },
+  "nav-item": {
+    "bg-hover": {
+      "$type": "color",
+      "$value": "{color.surface.hover}",
+      "$description": "Nav item hover fill."
+    },
+    "bg-active": {
+      "$type": "color",
+      "$value": "{color.surface.selected}",
+      "$description": "Current nav item fill."
+    },
+    "fg-active": {
+      "$type": "color",
+      "$value": "{color.accent.text}",
+      "$description": "Current nav item label (also marked with weight 700 and aria-current)."
+    }
+  },
+  "badge": {
+    "neutral": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.surface.sunken}",
+        "$description": "Neutral badge fill."
+      },
+      "fg": {
+        "$type": "color",
+        "$value": "{color.text.secondary}",
+        "$description": "Neutral badge label."
+      }
+    },
+    "radius": {
+      "$type": "dimension",
+      "$value": "{shape.badge}"
+    },
+    "padding-x": {
+      "$type": "dimension",
+      "$value": "{inset.badge-x}"
+    }
+  },
+  "callout": {
+    "info": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.status.info.surface}",
+        "$description": "Info callout fill."
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.status.info.border}",
+        "$description": "Info callout border/indicator."
+      },
+      "fg": {
+        "$type": "color",
+        "$value": "{color.status.info.text}",
+        "$description": "Info callout title; body text uses color-text-primary."
+      },
+      "icon": {
+        "$type": "color",
+        "$value": "{color.status.info.border}",
+        "$description": "Info callout icon (required: status is never colour alone)."
+      }
+    },
+    "success": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.status.success.surface}",
+        "$description": "Success callout fill."
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.status.success.border}",
+        "$description": "Success callout border/indicator."
+      },
+      "fg": {
+        "$type": "color",
+        "$value": "{color.status.success.text}",
+        "$description": "Success callout title; body text uses color-text-primary."
+      },
+      "icon": {
+        "$type": "color",
+        "$value": "{color.status.success.border}",
+        "$description": "Success callout icon (required: status is never colour alone)."
+      }
+    },
+    "warning": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.status.warning.surface}",
+        "$description": "Warning callout fill."
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.status.warning.border}",
+        "$description": "Warning callout border/indicator."
+      },
+      "fg": {
+        "$type": "color",
+        "$value": "{color.status.warning.text}",
+        "$description": "Warning callout title; body text uses color-text-primary."
+      },
+      "icon": {
+        "$type": "color",
+        "$value": "{color.status.warning.border}",
+        "$description": "Warning callout icon (required: status is never colour alone)."
+      }
+    },
+    "danger": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.status.danger.surface}",
+        "$description": "Danger callout fill."
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.status.danger.border}",
+        "$description": "Danger callout border/indicator."
+      },
+      "fg": {
+        "$type": "color",
+        "$value": "{color.status.danger.text}",
+        "$description": "Danger callout title; body text uses color-text-primary."
+      },
+      "icon": {
+        "$type": "color",
+        "$value": "{color.status.danger.border}",
+        "$description": "Danger callout icon (required: status is never colour alone)."
+      }
+    },
+    "radius": {
+      "$type": "dimension",
+      "$value": "{shape.container}"
+    },
+    "padding": {
+      "$type": "dimension",
+      "$value": "{inset.container-compact}"
+    },
+    "indicator-width": {
+      "$type": "dimension",
+      "$value": "{border-width.strong}"
+    }
+  },
+  "dialog": {
+    "radius": {
+      "$type": "dimension",
+      "$value": "{shape.dialog}"
+    },
+    "shadow": {
+      "$type": "shadow",
+      "$value": "{shadow.4}"
+    },
+    "enter-duration": {
+      "$type": "duration",
+      "$value": "{duration.slow}"
+    },
+    "enter-easing": {
+      "$type": "cubicBezier",
+      "$value": "{easing.enter}"
+    }
+  }
+}

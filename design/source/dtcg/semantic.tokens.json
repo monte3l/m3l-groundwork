@@ -1,0 +1,416 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "m3l-design theme-independent semantic tokens (type, spacing roles, focus, measure). Alias primitives directly.",
+  "typography": {
+    "$type": "typography",
+    "display": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.48}",
+        "fontWeight": "{font-weight.bold}",
+        "letterSpacing": {
+          "value": 4.32,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Marketing hero only. One per page.",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.09,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "heading-1": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.36}",
+        "fontWeight": "{font-weight.bold}",
+        "letterSpacing": {
+          "value": 3.24,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Page title (h1).",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.09,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "heading-2": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.28}",
+        "fontWeight": "{font-weight.bold}",
+        "letterSpacing": {
+          "value": 2.52,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Section heading (h2).",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.09,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "heading-3": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.22}",
+        "fontWeight": "{font-weight.bold}",
+        "letterSpacing": {
+          "value": 1.98,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Subsection heading (h3).",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.09,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "heading-4": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.18}",
+        "fontWeight": "{font-weight.bold}",
+        "letterSpacing": {
+          "value": 1.62,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Minor heading (h4), card titles.",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.09,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "body-lg": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.18}",
+        "fontWeight": "{font-weight.regular}",
+        "letterSpacing": {
+          "value": 0.99,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Lead paragraphs on landing pages and docs intros.",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.055,
+          "wordSpacingEm": 0.015,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "body": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.16}",
+        "fontWeight": "{font-weight.regular}",
+        "letterSpacing": {
+          "value": 0.88,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Running text in app UI and docs. Constrain to measure-prose.",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.055,
+          "wordSpacingEm": 0.015,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "body-strong": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.16}",
+        "fontWeight": "{font-weight.bold}",
+        "letterSpacing": {
+          "value": 1.44,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Emphasis inside body text: bold, never italic or underline.",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.09,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "label": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.14}",
+        "fontWeight": "{font-weight.semibold}",
+        "letterSpacing": {
+          "value": 1.12,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Button labels, form labels, tabs, nav items.",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.08,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "caption": {
+      "$value": {
+        "fontFamily": "{font-family.sans}",
+        "fontSize": "{font-size.14}",
+        "fontWeight": "{font-weight.regular}",
+        "letterSpacing": {
+          "value": 0.77,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Metadata, helper text, table footnotes. 14px is the floor: nothing smaller.",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.055,
+          "wordSpacingEm": 0.015,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "code": {
+      "$value": {
+        "fontFamily": "{font-family.mono}",
+        "fontSize": "{font-size.15}",
+        "fontWeight": "{font-weight.regular}",
+        "letterSpacing": {
+          "value": 0.0,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Code blocks and inline code (inline: 0.9375em).",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    },
+    "code-strong": {
+      "$value": {
+        "fontFamily": "{font-family.mono}",
+        "fontSize": "{font-size.15}",
+        "fontWeight": "{font-weight.bold}",
+        "letterSpacing": {
+          "value": 0.525,
+          "unit": "px"
+        },
+        "lineHeight": "{line-height.base}"
+      },
+      "$description": "Highlighted code tokens, diff markers. Bold, never italic.",
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "letterSpacingEm": 0.035,
+          "wordSpacingEm": 0,
+          "fontStyle": "normal",
+          "fontVariantNumeric": "tabular-nums lining-nums",
+          "fontVariantLigatures": "none",
+          "textAlign": "left",
+          "note": "letterSpacing $value is the px equivalent at this style's size (DTCG dimensions allow only px/rem); letterSpacingEm is the authored value — emit em in CSS."
+        }
+      }
+    }
+  },
+  "focus-ring": {
+    "width": {
+      "$type": "dimension",
+      "$value": "{stroke.2}"
+    },
+    "offset": {
+      "$type": "dimension",
+      "$value": {
+        "value": 2,
+        "unit": "px"
+      }
+    }
+  },
+  "border-width": {
+    "$type": "dimension",
+    "default": {
+      "$value": "{stroke.1}"
+    },
+    "strong": {
+      "$value": "{stroke.2}"
+    }
+  },
+  "measure": {
+    "$type": "dimension",
+    "$description": "Line length. Authored in em (see $extensions); $value is the rem equivalent at 16px body.",
+    "prose": {
+      "$value": {
+        "value": 32.5,
+        "unit": "rem"
+      },
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "em": 32.5,
+          "chars": 65
+        }
+      }
+    },
+    "prose-min": {
+      "$value": {
+        "value": 30,
+        "unit": "rem"
+      },
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "em": 30,
+          "chars": 60
+        }
+      }
+    },
+    "prose-max": {
+      "$value": {
+        "value": 35,
+        "unit": "rem"
+      },
+      "$extensions": {
+        "org.monte3l.m3l-design": {
+          "em": 35,
+          "chars": 70
+        }
+      }
+    }
+  },
+  "paragraph-spacing": {
+    "$type": "dimension",
+    "$value": {
+      "value": 1.5,
+      "unit": "rem"
+    },
+    "$extensions": {
+      "org.monte3l.m3l-design": {
+        "em": 1.5
+      }
+    }
+  },
+  "shape": {
+    "$type": "dimension",
+    "$description": "Semantic radius roles.",
+    "inline": {
+      "$value": "{radius.xs}"
+    },
+    "badge": {
+      "$value": "{radius.sm}"
+    },
+    "control": {
+      "$value": "{radius.md}"
+    },
+    "container": {
+      "$value": "{radius.lg}"
+    },
+    "dialog": {
+      "$value": "{radius.xl}"
+    },
+    "pill": {
+      "$value": "{radius.full}"
+    }
+  },
+  "inset": {
+    "$type": "dimension",
+    "$description": "Semantic padding/gap roles.",
+    "control-x": {
+      "$value": "{space.4}"
+    },
+    "control-y": {
+      "$value": "{space.2}"
+    },
+    "control-gap": {
+      "$value": "{space.2}"
+    },
+    "field-x": {
+      "$value": "{space.3}"
+    },
+    "container": {
+      "$value": "{space.6}"
+    },
+    "container-compact": {
+      "$value": "{space.4}"
+    },
+    "badge-x": {
+      "$value": "{space.2}"
+    }
+  }
+}
