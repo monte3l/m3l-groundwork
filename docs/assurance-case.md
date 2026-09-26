@@ -190,14 +190,12 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   project file (see "Fail-safe defaults" above), so the practical impact is
   a write escaping to a symlink target the project owner themselves created,
   not an attacker-controlled one.
-- **`merge-json.ts`'s three merge functions write via plain `record[key] = value`**
-  with no rejection of the literal key `__proto__` -- a narrow,
-  CWE-1321-shaped gap found during the 2026-09 security review (see
-  `docs/security-review.md`). Its only caller today is a pack's own
-  `pack.json`/`wiring` fragment, already inside this project's
-  trusted-content boundary (see the table above), so it's accepted as a
-  tracked residual risk rather than a live one -- tracked as
-  [#48](https://github.com/monte3l/m3l-groundwork/issues/48).
+- **`merge-json.ts`'s three merge functions' writes** were hardened
+  via `setOwnProperty` (`Object.defineProperty`) to reject prototype pollution
+  (CWE-1321) when writing `__proto__`, `constructor`, or `prototype` keys --
+  closing the narrow gap found during the 2026-09 security review (see
+  `docs/security-review.md` and
+  [#48](https://github.com/monte3l/m3l-groundwork/issues/48)).
 - **`/customize` (Phase B) runs as an LLM acting inside the user's own
   Claude Code session** with whatever tools that session has. Its
   guardrails (showing its evidence, confirming changes, staying inside the

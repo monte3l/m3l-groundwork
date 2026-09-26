@@ -29,6 +29,23 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
  * deepEqual([1, 2], [2, 1]); // false
  * ```
  */
+/**
+ * Sets an own property on a record without invoking prototype setters
+ * (such as `Object.prototype.__proto__`), guarding against prototype pollution (CWE-1321).
+ */
+function setOwnProperty<T extends Record<string, unknown>>(
+  record: T,
+  key: string,
+  value: unknown,
+): void {
+  Object.defineProperty(record, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
 function deepEqual(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) || Array.isArray(b)) {
     return (
@@ -42,7 +59,12 @@ function deepEqual(a: unknown, b: unknown): boolean {
     const aKeys = Object.keys(a);
     return (
       aKeys.length === Object.keys(b).length &&
-      aKeys.every((key) => Object.hasOwn(b, key) && deepEqual(a[key], b[key]))
+      aKeys.every((key) => {
+        if (!Object.hasOwn(b, key)) return false;
+        const aVal: unknown = Object.getOwnPropertyDescriptor(a, key)?.value;
+        const bVal: unknown = Object.getOwnPropertyDescriptor(b, key)?.value;
+        return deepEqual(aVal, bVal);
+      })
     );
   }
   return Object.is(a, b);
@@ -84,8 +106,11 @@ export function mergeSettingsHooks(
     : {};
 
   for (const [event, entries] of Object.entries(fragment)) {
-    const existingEntries = Array.isArray(hooks[event])
-      ? [...hooks[event]]
+    const rawExisting: unknown = Object.hasOwn(hooks, event)
+      ? Object.getOwnPropertyDescriptor(hooks, event)?.value
+      : undefined;
+    const existingEntries = Array.isArray(rawExisting)
+      ? [...(rawExisting as SettingsHookEntry[])]
       : [];
 
     for (const entry of entries) {
@@ -123,10 +148,11 @@ export function mergeSettingsHooks(
       existingEntries[matchIndex] = { ...matched, hooks: mergedHooks };
     }
 
-    hooks[event] = existingEntries;
+    setOwnProperty(hooks, event, existingEntries);
   }
 
-  return { ...settings, hooks };
+  setOwnProperty(settings, "hooks", hooks);
+  return settings;
 }
 
 export type SettingsTopLevelFragment = Record<string, unknown>;
@@ -156,10 +182,14 @@ export function mergeSettingsTopLevel(
       );
     }
     if (!Object.hasOwn(settings, key)) {
-      settings[key] = value;
+      setOwnProperty(settings, key, value);
       continue;
     }
-    if (!deepEqual(settings[key], value)) {
+    const currentValue: unknown = Object.getOwnPropertyDescriptor(
+      settings,
+      key,
+    )?.value;
+    if (!deepEqual(currentValue, value)) {
       throw new Error(
         `settings.json merge collision: "${key}" is already set with a different value`,
       );
@@ -198,16 +228,17 @@ export function mergePackageScripts(
     // Object.hasOwn, not `scripts[name] !== undefined`: bracket access walks
     // the prototype chain, so an addition named `toString`/`constructor`
     // would otherwise "collide" with an inherited Object.prototype member.
-    const currentValue = Object.hasOwn(scripts, name)
-      ? scripts[name]
+    const rawValue: unknown = Object.hasOwn(scripts, name)
+      ? Object.getOwnPropertyDescriptor(scripts, name)?.value
       : undefined;
+    const currentValue = typeof rawValue === "string" ? rawValue : undefined;
     if (currentValue !== undefined) {
       if (currentValue !== cmd) {
         collisions.push({ name, existing: currentValue, incoming: cmd });
       }
       continue; // Either identical (no-op) or a collision already recorded.
     }
-    scripts[name] = cmd;
+    setOwnProperty(scripts, name, cmd);
   }
 
   return { scripts, collisions };

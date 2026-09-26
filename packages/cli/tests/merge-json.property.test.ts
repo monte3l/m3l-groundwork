@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import * as fc from "fast-check";
 import {
   mergePackageScripts,
+  mergeSettingsHooks,
   mergeSettingsTopLevel,
   mergeVerifySteps,
 } from "../src/merge-json.js";
@@ -149,6 +150,77 @@ describe("mergeVerifySteps", () => {
         const once = mergeVerifySteps(undefined, steps);
         const twice = mergeVerifySteps(once, steps);
         expect(twice).toEqual(once);
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
+
+const prototypeKeyArb = fc.constantFrom(
+  "__proto__",
+  "constructor",
+  "prototype",
+);
+
+describe("prototype pollution resistance (issue #48)", () => {
+  it("never alters [[Prototype]] in mergeSettingsTopLevel when key is __proto__, constructor, or prototype", () => {
+    fc.assert(
+      fc.property(prototypeKeyArb, jsonPrimitiveArb, (key, value) => {
+        const fragment: Record<string, unknown> = {};
+        Object.defineProperty(fragment, key, {
+          value,
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+        const merged = mergeSettingsTopLevel({}, fragment);
+        expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+        expect(Object.hasOwn(merged, key)).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(merged, key)?.value).toBe(value);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it("never alters [[Prototype]] in mergePackageScripts when script name is __proto__, constructor, or prototype", () => {
+    fc.assert(
+      fc.property(prototypeKeyArb, fc.string(), (name, cmd) => {
+        const additions: Record<string, string> = {};
+        Object.defineProperty(additions, name, {
+          value: cmd,
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+        const { scripts, collisions } = mergePackageScripts({}, additions);
+        expect(Object.getPrototypeOf(scripts)).toBe(Object.prototype);
+        expect(collisions).toEqual([]);
+        expect(Object.hasOwn(scripts, name)).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(scripts, name)?.value).toBe(cmd);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it("never alters [[Prototype]] in mergeSettingsHooks when event name is __proto__, constructor, or prototype", () => {
+    fc.assert(
+      fc.property(prototypeKeyArb, fc.string(), (event, cmd) => {
+        const fragment: Record<string, unknown> = {};
+        const entries = [{ hooks: [{ type: "command", command: cmd }] }];
+        Object.defineProperty(fragment, event, {
+          value: entries,
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+        const merged = mergeSettingsHooks(
+          {},
+          fragment as unknown as Parameters<typeof mergeSettingsHooks>[1],
+        );
+        expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+        const hooks = merged["hooks"] as Record<string, unknown>;
+        expect(Object.getPrototypeOf(hooks)).toBe(Object.prototype);
+        expect(Object.hasOwn(hooks, event)).toBe(true);
       }),
       { numRuns: 100 },
     );

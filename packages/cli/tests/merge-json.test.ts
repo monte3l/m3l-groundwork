@@ -341,4 +341,20 @@ describe("mergeSettingsTopLevel", () => {
     expect(() => mergeSettingsTopLevel(existing, fragment)).not.toThrow();
     expect(mergeSettingsTopLevel(existing, fragment)).toEqual(existing);
   });
+
+  it("does not pollute prototype when fragment contains a __proto__ key (CWE-1321)", () => {
+    const malicious = JSON.parse(
+      '{"__proto__": {"polluted": true}}',
+    ) as unknown as Record<string, unknown>;
+    const target = {};
+    const merged = mergeSettingsTopLevel(target, malicious);
+    expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    expect(Object.hasOwn(merged, "__proto__")).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(merged, "__proto__")?.value).toEqual(
+      {
+        polluted: true,
+      },
+    );
+  });
 });
