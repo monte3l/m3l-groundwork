@@ -88,15 +88,20 @@ packages/plugin/        Phase B: the /customize skill
 
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
                          verify lanes + e2e + node-current + the `verify`
-                         aggregator), release.yml (see "Releases"),
-                         dependency-review.yml, scorecard.yml, gitleaks.yml,
-                         claude.yml, claude-pr-review.yml, dependabot.yml,
-                         ISSUE_TEMPLATE/, pull_request_template.md
+                         aggregator), release.yml (see "Releases"), pages.yml
+                         (builds and deploys the docs site -- see "Design
+                         system"), dependency-review.yml, scorecard.yml,
+                         gitleaks.yml, claude.yml, claude-pr-review.yml,
+                         dependabot.yml, ISSUE_TEMPLATE/,
+                         pull_request_template.md
 
 design/                 m3l-design, vendored -- see design/README.md and
                          "Design system" below. source/ is a verbatim copy;
                          tokens.css is generated from it by
-                         bin/build-design-tokens.mjs.
+                         bin/build-design-tokens.mjs. local/ is this repo's
+                         own docs-site layout CSS, the one sanctioned
+                         divergence from the vendored system (see
+                         design/README.md's "design/local/").
 
 docs/architecture.md    A human-facing distillation of this file's own
                          architecture notes -- for anyone reading the project
@@ -482,6 +487,37 @@ steps) before considering any task here done.
   one into -- not compared against `term.ts` by a parity test, unlike the
   harness/toolchain grader twins, since a drift here is cosmetic (two
   terminals' output), not a behavioral contract.
+- **The docs site** (`.github/workflows/pages.yml`, deployed from `main` to
+  GitHub Pages) is a restricted, zero-dependency GFM-to-HTML renderer
+  (`bin/lib/markdown.mjs`) plus a builder (`bin/build-docs.mjs`) that renders
+  ten of this repo's own pages -- README (as `index.html`), CONTRIBUTING,
+  SECURITY, GOVERNANCE, ROADMAP, CODE_OF_CONDUCT, and four `docs/*.md` pages
+  (`docs/research/*` is excluded, an internal tracker, not reader-facing) --
+  styled with `design/tokens.css`, `design/source/components/bundle.css`,
+  and `design/local/site.css` (the page-shell layout `design/README.md`'s
+  "design/local/" section reserves for exactly this: something no single
+  vendored component covers). The renderer is restricted, not a general
+  CommonMark implementation: it covers exactly the markdown inventory those
+  ten pages use (ATX headings h1-h3 with GitHub-compatible slug ids, pipe
+  tables, fenced code, lists, blockquotes -- a GitHub alert
+  `[!NOTE|TIP|IMPORTANT|WARNING|CAUTION]` becomes a status `m3l-callout`, a
+  plain blockquote a neutral one -- footnotes, code spans, bold/italic, and
+  images, including a link wrapping a badge image) and throws a
+  `MarkdownError` rather than guessing at anything outside that set (an
+  h4+, an unknown footnote reference). Every internal link is rewritten:
+  one of the ten pages becomes a relative link to its sibling output file
+  (`.md` -> `.html`, anchor kept); anything else in the repo (`CLAUDE.md`,
+  `LICENSE`, `templates/packs/README.md`, a `.github/**` file) becomes a
+  `github.com/.../blob/main/<path>` link -- there is no raw-HTML pass-
+  through and no unescaped text anywhere in the output. `node
+bin/build-docs.mjs --check` (the `docs` step, `bin/lib/verify-steps.mjs`'s
+  `build` group) builds to a throwaway temp directory and fails on any
+  broken internal link or anchor, or on a stray italic `_x_`/`*x*` emphasis
+  span surviving in one of the ten sources -- the same bold-not-italic rule
+  `docs/m3l-content-rules` states, enforced here from the moment this gate
+  existed rather than only once that rule document does. `--out <dir>`
+  (plain, no `--check`) writes the real site; `pages.yml`'s `build` job runs
+  it with no `pnpm install` first, since the builder is Node-builtins-only.
 
 ## Git Workflow
 

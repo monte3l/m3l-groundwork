@@ -95,6 +95,12 @@ export const VERIFY_STEPS = [
     cmd: ["node", "bin/check-node-version.mjs"],
   },
   {
+    id: "docs",
+    group: "build",
+    name: "Check docs site builds cleanly",
+    cmd: ["node", "bin/build-docs.mjs", "--check"],
+  },
+  {
     id: "test",
     group: "test",
     name: "Test (coverage)",

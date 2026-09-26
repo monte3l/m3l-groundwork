@@ -24,7 +24,12 @@
         // same-language `import {...}` -- without this entry, several
         // exports used only by that test file (mergeTokenTrees,
         // resolveTree, isColorValue, DesignTokenError) report as unused.
-        "bin/lib/design-tokens.mjs"
+        "bin/lib/design-tokens.mjs",
+        // Same reason, same dynamic-import pattern, from
+        // packages/cli/tests/markdown*.test.ts: without this entry,
+        // slugifyHeading (used only via that test file's dynamically
+        // imported module object) reports as unused.
+        "bin/lib/markdown.mjs"
       ],
       "project": ["bin/**/*.mjs", ".claude/hooks/**/*.mjs"]
     },

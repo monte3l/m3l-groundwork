@@ -54,6 +54,9 @@ export default defineConfig(
       // the original.
       ".claude/skills/customize/*.ts",
       "packages/plugin/skills/**/*.md",
+      // The docs site build output -- generated HTML/CSS, never hand-edited
+      // or linted; see .gitignore.
+      "_site/**",
     ],
   },
   js.configs.recommended,

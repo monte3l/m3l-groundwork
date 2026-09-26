@@ -163,9 +163,9 @@ repo.
 
 ## Accepted OpenSSF Scorecard findings
 
-_Background, not core policy: this section explains automated scoring
+Background, not core policy: this section explains automated scoring
 context for anyone who looks up this repo's Scorecard results. Nothing
-here changes the reporting or response process described above._
+here changes the reporting or response process described above.
 
 `scorecard.yml` runs weekly and surfaces its findings as GitHub Code
 Scanning alerts. Some are dismissed as deliberate, documented trade-offs
@@ -218,8 +218,8 @@ change can complete on its own.
 
 ## Reading the Socket score
 
-_Background, not core policy: same as the Scorecard section above -- this
-explains a third-party badge, not this project's vulnerability response._
+Background, not core policy: same as the Scorecard section above -- this
+explains a third-party badge, not this project's vulnerability response.
 
 The README's [Socket](https://socket.dev) badge scores five categories
 (Supply Chain Security, Quality, Maintenance, Vulnerability, License).
@@ -238,7 +238,7 @@ design change:
   stale again.)
 - **Quality** partly reflects generic npm-package hygiene heuristics
   (a `types` field, an importable `main`/`exports["."]` entry) that are
-  written with a _library_ in mind. `@monte3l/groundwork` deliberately
+  written with a **library** in mind. `@monte3l/groundwork` deliberately
   has none of those -- it's a CLI, not a library, and removing them was
   a considered breaking change (see the CLI's `CHANGELOG.md`), not an
   oversight. Re-adding a fake type export to satisfy a generic heuristic
