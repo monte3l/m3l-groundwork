@@ -81,6 +81,21 @@ describe("published tarball end-to-end", () => {
     );
   });
 
+  it("ships the built term.js and palette.js runtime modules inside the tarball", () => {
+    expect(
+      existsSync(join(scratch, "extracted", "package", "dist", "term.js")),
+    ).toBe(true);
+    expect(
+      existsSync(join(scratch, "extracted", "package", "dist", "palette.js")),
+    ).toBe(true);
+  });
+
+  it("never vendors this repo's own design/ directory into the tarball", () => {
+    expect(existsSync(join(scratch, "extracted", "package", "design"))).toBe(
+      false,
+    );
+  });
+
   it("lists all three packs from the vendored templates/packs", () => {
     const output = execFileSync("node", [installedBin, "--list-packs"], {
       encoding: "utf8",

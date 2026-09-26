@@ -10,10 +10,12 @@
  */
 import process from "node:process";
 import { main, CliUsageError } from "../dist/main.js";
+import { paint } from "../dist/term.js";
 
 try {
   main(process.argv.slice(2));
 } catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(paint(process.stderr, "danger", message));
   process.exitCode = error instanceof CliUsageError ? 2 : 1;
 }

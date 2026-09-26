@@ -8,6 +8,8 @@
  * `--json` for machine consumption) without each gate reimplementing it.
  */
 import { execFileSync } from "node:child_process";
+import process from "node:process";
+import { paint } from "./term.mjs";
 
 /** True when `--json` is present in the given argv. */
 export function parseJsonFlag(argv) {
@@ -33,18 +35,21 @@ export function createReporter(json) {
 
   function ok(message) {
     lines.push({ level: "ok", message });
-    if (!json) console.log(`  ok  ${message}`);
+    if (!json)
+      console.log(paint(process.stdout, "success", `  ok  ${message}`));
   }
 
   function warn(message) {
     lines.push({ level: "warn", message });
-    if (!json) console.warn(`warn  ${message}`);
+    if (!json)
+      console.warn(paint(process.stderr, "warning", `warn  ${message}`));
   }
 
   function fail(message) {
     failed = true;
     lines.push({ level: "fail", message });
-    if (!json) console.error(`fail  ${message}`);
+    if (!json)
+      console.error(paint(process.stderr, "danger", `fail  ${message}`));
   }
 
   function finish() {

@@ -19,6 +19,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { join, relative, resolve, basename } from "node:path";
+import process from "node:process";
 import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
@@ -49,6 +50,7 @@ import { renderReport } from "./report.js";
 import type { TokenTable } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
 import { gradeToolchain } from "./toolchain/grade.js";
+import { paint } from "./term.js";
 
 export interface CliOptions {
   targetDir: string;
@@ -275,11 +277,40 @@ function formatCounts(counts: CapCounts): string {
   return `${counts.agents} agents, ${counts.skills} skills, ${counts.hooks} hooks, ${counts.workflows} workflows, ${counts.scripts} scripts`;
 }
 
-/** The post-`--pack`-install caps summary line(s) printed to fresh-mode's console output. */
+/**
+ * The result of {@link formatCapsSummary}: the rendered summary text plus an
+ * explicit over-cap flag, so a caller never has to string-match the text to
+ * decide how to present it.
+ *
+ * @example
+ * ```ts
+ * const summary: CapsSummary = { text: "= 5 agents, ...", overCap: false };
+ * console.log(summary.overCap ? `warning: ${summary.text}` : summary.text);
+ * ```
+ */
+export interface CapsSummary {
+  /** The summary line(s), newline-joined, exactly as printed. */
+  readonly text: string;
+  /** `true` when the baseline plus installed packs exceeds any cap in `CAP_LIMITS`. */
+  readonly overCap: boolean;
+}
+
+/**
+ * The post-`--pack`-install caps summary line(s) printed to fresh-mode's
+ * console output, plus whether any cap is exceeded.
+ *
+ * @example
+ * ```ts
+ * const summary = formatCapsSummary(baselineCounts, [
+ *   { name: "statusline", budget: packBudget },
+ * ]);
+ * console.log(summary.text);
+ * ```
+ */
 export function formatCapsSummary(
   baseline: CapCounts,
   installed: { name: string; budget: CapCounts }[],
-): string {
+): CapsSummary {
   const total: CapCounts = { ...baseline };
   const lines = [
     `templates/core: ${formatCounts(baseline)} (caps: ${formatCounts(CAP_LIMITS)})`,
@@ -301,7 +332,7 @@ export function formatCapsSummary(
   lines.push(
     `= ${formatCounts(total)}${overCap.length > 0 ? ` ⚠ over cap: ${overCap.join(", ")}` : ""}`,
   );
-  return lines.join("\n");
+  return { text: lines.join("\n"), overCap: overCap.length > 0 };
 }
 
 function runFresh(options: CliOptions): void {
@@ -335,8 +366,14 @@ function runFresh(options: CliOptions): void {
     installedPacks.push({ name, budget: packResult.budget });
   }
   if (installedPacks.length > 0) {
+    const summary = formatCapsSummary(
+      countBaselineCaps(templatesCoreDir()),
+      installedPacks,
+    );
     console.log(
-      formatCapsSummary(countBaselineCaps(templatesCoreDir()), installedPacks),
+      summary.overCap
+        ? paint(process.stdout, "warning", summary.text)
+        : summary.text,
     );
   }
 
@@ -353,7 +390,13 @@ function runFresh(options: CliOptions): void {
     console.log("installed dependencies");
   }
 
-  console.log(`\n✓ ${options.projectName} is ready at ${options.targetDir}`);
+  console.log(
+    paint(
+      process.stdout,
+      "success",
+      `\n✓ ${options.projectName} is ready at ${options.targetDir}`,
+    ),
+  );
 }
 
 /**
@@ -501,7 +544,13 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     );
   }
 
-  console.log(`\n✓ adoption report ready at ${reportPath}`);
+  console.log(
+    paint(
+      process.stdout,
+      "success",
+      `\n✓ adoption report ready at ${reportPath}`,
+    ),
+  );
   console.log("Next: open this project in Claude Code and run /customize.");
 }
 

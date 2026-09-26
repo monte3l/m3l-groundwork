@@ -44,6 +44,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { repoRoot } from "./lib/report.mjs";
+import { paint } from "./lib/term.mjs";
 import {
   baselineMissingForCheck,
   compareToBaseline,
@@ -86,7 +87,13 @@ function runSuite(name, target, extra, opts, resultsRoot) {
     concurrency: opts.concurrency,
     ...extra,
   });
-  console.log(`\n▶ ${name} suite: claude ${args.slice(0, 3).join(" ")} …`);
+  console.log(
+    paint(
+      process.stdout,
+      "accent",
+      `\n▶ ${name} suite: claude ${args.slice(0, 3).join(" ")} …`,
+    ),
+  );
   const result = spawnSync("claude", args, { stdio: "inherit" });
   if (!existsSync(jsonPath)) {
     throw new Error(
@@ -105,7 +112,11 @@ const opts = parseArgs(process.argv.slice(2));
 
 if (spawnSync("claude", ["--version"], { stdio: "ignore" }).error) {
   console.warn(
-    "warn  claude CLI not found -- skipping evals (they need Claude Code, credentials, and network)",
+    paint(
+      process.stderr,
+      "warning",
+      "warn  claude CLI not found -- skipping evals (they need Claude Code, credentials, and network)",
+    ),
   );
   process.exit(0);
 }
@@ -121,7 +132,11 @@ const tempDirs = [];
 
 if (baselineMissingForCheck(opts.check, baseline)) {
   console.error(
-    "fail  --check requires evals/baseline.json to exist -- run with --update first",
+    paint(
+      process.stderr,
+      "danger",
+      "fail  --check requires evals/baseline.json to exist -- run with --update first",
+    ),
   );
   process.exit(1);
 }
@@ -187,7 +202,11 @@ try {
     }
     if (summary.partial) {
       console.error(
-        `fail  ${name}: partial run (${summary.partialReason ?? "unknown"})`,
+        paint(
+          process.stderr,
+          "danger",
+          `fail  ${name}: partial run (${summary.partialReason ?? "unknown"})`,
+        ),
       );
       exitCode = Math.max(exitCode, 2);
     } else if (code === 2) {
@@ -204,12 +223,20 @@ try {
       );
       for (const r of regressions) {
         console.error(
-          `fail  ${name}/${r.name}: ${r.now.toFixed(2)} < baseline ${r.was.toFixed(2)}`,
+          paint(
+            process.stderr,
+            "danger",
+            `fail  ${name}/${r.name}: ${r.now.toFixed(2)} < baseline ${r.was.toFixed(2)}`,
+          ),
         );
       }
       for (const m of missing) {
         console.error(
-          `fail  ${name}/${m}: baselined case did not run -- renamed, deleted, or dropped by a partial run`,
+          paint(
+            process.stderr,
+            "danger",
+            `fail  ${name}/${m}: baselined case did not run -- renamed, deleted, or dropped by a partial run`,
+          ),
         );
       }
       if (suiteMissingForCheck(opts.check, baseline, name)) {
@@ -218,12 +245,20 @@ try {
         // that exists but was never recorded for THIS suite. Every case
         // would otherwise land in `unbaselined`, which is only a warning.
         console.error(
-          `fail  ${name}: no baseline for this suite in evals/baseline.json -- run with --update --suite ${name}`,
+          paint(
+            process.stderr,
+            "danger",
+            `fail  ${name}: no baseline for this suite in evals/baseline.json -- run with --update --suite ${name}`,
+          ),
         );
         exitCode = Math.max(exitCode, 1);
       } else if (unbaselined.length > 0) {
         console.warn(
-          `warn  ${name}: no baseline for ${unbaselined.join(", ")} -- run with --update`,
+          paint(
+            process.stderr,
+            "warning",
+            `warn  ${name}: no baseline for ${unbaselined.join(", ")} -- run with --update`,
+          ),
         );
       }
       if (regressions.length > 0 || missing.length > 0) {
@@ -233,7 +268,11 @@ try {
     if (opts.update) {
       if (!shouldUpdateBaseline(summary)) {
         console.warn(
-          `warn  ${name}: partial run -- not writing evals/baseline.json (would drop unrun cases)`,
+          paint(
+            process.stderr,
+            "warning",
+            `warn  ${name}: partial run -- not writing evals/baseline.json (would drop unrun cases)`,
+          ),
         );
       } else if (summary.cases.length === 0 && opts.caseGlob === undefined) {
         // An unfiltered run recording zero cases would, via withSuiteScores'
@@ -241,7 +280,11 @@ try {
         // same silent-drop shape as a partial run, just from a malformed or
         // empty result.json instead of a cost cap.
         console.error(
-          `fail  ${name}: run produced no cases -- not writing evals/baseline.json`,
+          paint(
+            process.stderr,
+            "danger",
+            `fail  ${name}: run produced no cases -- not writing evals/baseline.json`,
+          ),
         );
         exitCode = Math.max(exitCode, 2);
       } else {
@@ -254,7 +297,11 @@ try {
         mkdirSync(resolve(root, "evals"), { recursive: true });
         writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
         console.log(
-          `wrote ${name} scores to evals/baseline.json -- review the diff before committing`,
+          paint(
+            process.stdout,
+            "success",
+            `wrote ${name} scores to evals/baseline.json -- review the diff before committing`,
+          ),
         );
       }
     }
