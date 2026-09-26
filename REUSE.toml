@@ -20,6 +20,35 @@ path = ["templates/**"]
 SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
 SPDX-License-Identifier = "MIT"
 
+# design/**/*.json and design/**/*.md are already covered by the generic
+# json/md annotation below with the same values, so only CSS -- this repo's
+# first tracked CSS -- needs its own entry here. design/source/** is
+# vendored, verbatim, from the m3l-design Claude Design artifact (see
+# design/README.md for its provenance: artifact url, version, date copied);
+# its content is the same person's own design system as this repo (see
+# design/README.md), licensed the same way as the rest of this repo. The two
+# vendored Google Fonts font files are a separate case, annotated below:
+# they are not this repo's own copyright, and ship under their own upstream
+# license.
+[[annotations]]
+path = ["design/**/*.css"]
+SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["design/source/fonts/**"]
+SPDX-FileCopyrightText = "Copyright 2020-2024 The Atkinson Hyperlegible Next Project Authors, Copyright 2020-2024 The Atkinson Hyperlegible Mono Project Authors"
+SPDX-License-Identifier = "OFL-1.1"
+
+# The two OFL license texts as Google Fonts ships them alongside the font
+# files (see design/source/fonts/** above) -- kept in their original,
+# per-font location rather than moved into LICENSES/, since that is how a
+# re-sync from Google Fonts (design/README.md) would overwrite them again.
+[[annotations]]
+path = ["design/source/licenses/**"]
+SPDX-FileCopyrightText = "Copyright 2020-2024 The Atkinson Hyperlegible Next Project Authors, Copyright 2020-2024 The Atkinson Hyperlegible Mono Project Authors"
+SPDX-License-Identifier = "OFL-1.1"
+
 # Everything else with no comment syntax of its own to carry a header in:
 # data files, prose, and dotfiles.
 [[annotations]]

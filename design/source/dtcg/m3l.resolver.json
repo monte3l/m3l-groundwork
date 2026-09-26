@@ -1,0 +1,80 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/resolver.json",
+  "version": "2025.10",
+  "name": "m3l-design",
+  "description": "Canonical m3l-design tokens (DTCG 2025.10). project/tokens.json is a derived, flattened copy for the Design System artifact; when they disagree, this wins.",
+  "sets": {
+    "primitives": {
+      "sources": [
+        {
+          "$ref": "primitives.tokens.json"
+        }
+      ]
+    },
+    "semantic": {
+      "sources": [
+        {
+          "$ref": "semantic.tokens.json"
+        }
+      ]
+    },
+    "components": {
+      "sources": [
+        {
+          "$ref": "components.tokens.json"
+        }
+      ]
+    }
+  },
+  "modifiers": {
+    "theme": {
+      "description": "Colour theme",
+      "contexts": {
+        "light": [
+          {
+            "$ref": "theme-light.tokens.json"
+          }
+        ],
+        "dark": [
+          {
+            "$ref": "theme-dark.tokens.json"
+          }
+        ]
+      },
+      "default": "light"
+    },
+    "motion": {
+      "description": "prefers-reduced-motion",
+      "contexts": {
+        "default": [
+          {
+            "$ref": "motion-default.tokens.json"
+          }
+        ],
+        "reduced": [
+          {
+            "$ref": "motion-reduced.tokens.json"
+          }
+        ]
+      },
+      "default": "default"
+    }
+  },
+  "resolutionOrder": [
+    {
+      "$ref": "#/sets/primitives"
+    },
+    {
+      "$ref": "#/sets/semantic"
+    },
+    {
+      "$ref": "#/modifiers/theme"
+    },
+    {
+      "$ref": "#/modifiers/motion"
+    },
+    {
+      "$ref": "#/sets/components"
+    }
+  ]
+}

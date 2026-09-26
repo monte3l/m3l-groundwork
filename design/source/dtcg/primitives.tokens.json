@@ -1,0 +1,853 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "m3l-design primitives: raw values with no context. Never referenced by product code directly.",
+  "color": {
+    "$type": "color",
+    "amber": {
+      "50": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [1.0, 0.9451, 0.8863],
+          "hex": "#fff1e2"
+        },
+        "$description": "Status (warning) hue step 50. Primitive: use via color-status-warning-* semantics."
+      },
+      "100": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9961, 0.8902, 0.7725],
+          "hex": "#fee3c5"
+        },
+        "$description": "Status (warning) hue step 100. Primitive: use via color-status-warning-* semantics."
+      },
+      "300": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9216, 0.6941, 0.4235],
+          "hex": "#ebb16c"
+        },
+        "$description": "Status (warning) hue step 300. Primitive: use via color-status-warning-* semantics."
+      },
+      "400": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9961, 0.7725, 0.5098],
+          "hex": "#fec582"
+        },
+        "$description": "Status (warning) hue step 400. Primitive: use via color-status-warning-* semantics."
+      },
+      "600": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.7176, 0.4627, 0.0627],
+          "hex": "#b77610"
+        },
+        "$description": "Status (warning) hue step 600. Primitive: use via color-status-warning-* semantics."
+      },
+      "700": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.4902, 0.3098, 0.0392],
+          "hex": "#7d4f0a"
+        },
+        "$description": "Status (warning) hue step 700. Primitive: use via color-status-warning-* semantics."
+      },
+      "800": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.3922, 0.2431, 0.0275],
+          "hex": "#643e07"
+        },
+        "$description": "Status (warning) hue step 800. Primitive: use via color-status-warning-* semantics."
+      },
+      "900": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.2196, 0.1255, 0.0],
+          "hex": "#382000"
+        },
+        "$description": "Status (warning) hue step 900. Primitive: use via color-status-warning-* semantics."
+      },
+      "950": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.1608, 0.098, 0.0235],
+          "hex": "#291906"
+        },
+        "$description": "Status (warning) hue step 950. Primitive: use via color-status-warning-* semantics."
+      }
+    },
+    "blue": {
+      "50": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9216, 0.9608, 1.0],
+          "hex": "#ebf5ff"
+        },
+        "$description": "Status (info) hue step 50. Primitive: use via color-status-info-* semantics."
+      },
+      "100": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.8431, 0.9176, 1.0],
+          "hex": "#d7eaff"
+        },
+        "$description": "Status (info) hue step 100. Primitive: use via color-status-info-* semantics."
+      },
+      "300": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.5412, 0.7647, 0.9961],
+          "hex": "#8ac3fe"
+        },
+        "$description": "Status (info) hue step 300. Primitive: use via color-status-info-* semantics."
+      },
+      "400": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.3765, 0.6667, 0.9529],
+          "hex": "#60aaf3"
+        },
+        "$description": "Status (info) hue step 400. Primitive: use via color-status-info-* semantics."
+      },
+      "600": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0863, 0.4314, 0.7255],
+          "hex": "#166eb9"
+        },
+        "$description": "Status (info) hue step 600. Primitive: use via color-status-info-* semantics."
+      },
+      "700": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0235, 0.3647, 0.6275],
+          "hex": "#065da0"
+        },
+        "$description": "Status (info) hue step 700. Primitive: use via color-status-info-* semantics."
+      },
+      "800": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0196, 0.2863, 0.502],
+          "hex": "#054980"
+        },
+        "$description": "Status (info) hue step 800. Primitive: use via color-status-info-* semantics."
+      },
+      "900": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0471, 0.1569, 0.2588],
+          "hex": "#0c2842"
+        },
+        "$description": "Status (info) hue step 900. Primitive: use via color-status-info-* semantics."
+      },
+      "950": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.051, 0.1176, 0.1843],
+          "hex": "#0d1e2f"
+        },
+        "$description": "Status (info) hue step 950. Primitive: use via color-status-info-* semantics."
+      }
+    },
+    "green": {
+      "50": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9098, 0.9765, 0.9216],
+          "hex": "#e8f9eb"
+        },
+        "$description": "Status (success) hue step 50. Primitive: use via color-status-success-* semantics."
+      },
+      "100": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.8196, 0.949, 0.8431],
+          "hex": "#d1f2d7"
+        },
+        "$description": "Status (success) hue step 100. Primitive: use via color-status-success-* semantics."
+      },
+      "300": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.5373, 0.8235, 0.5961],
+          "hex": "#89d298"
+        },
+        "$description": "Status (success) hue step 300. Primitive: use via color-status-success-* semantics."
+      },
+      "400": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.4314, 0.8471, 0.5373],
+          "hex": "#6ed889"
+        },
+        "$description": "Status (success) hue step 400. Primitive: use via color-status-success-* semantics."
+      },
+      "600": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.1451, 0.5961, 0.302],
+          "hex": "#25984d"
+        },
+        "$description": "Status (success) hue step 600. Primitive: use via color-status-success-* semantics."
+      },
+      "700": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0314, 0.4275, 0.1922],
+          "hex": "#086d31"
+        },
+        "$description": "Status (success) hue step 700. Primitive: use via color-status-success-* semantics."
+      },
+      "800": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0, 0.3412, 0.1451],
+          "hex": "#005725"
+        },
+        "$description": "Status (success) hue step 800. Primitive: use via color-status-success-* semantics."
+      },
+      "900": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0471, 0.1804, 0.0863],
+          "hex": "#0c2e16"
+        },
+        "$description": "Status (success) hue step 900. Primitive: use via color-status-success-* semantics."
+      },
+      "950": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0549, 0.1333, 0.0745],
+          "hex": "#0e2213"
+        },
+        "$description": "Status (success) hue step 950. Primitive: use via color-status-success-* semantics."
+      }
+    },
+    "neutral": {
+      "0": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9961, 0.9882, 0.9922],
+          "hex": "#fefcfd"
+        },
+        "$description": "Warm neutral step 0 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "50": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9804, 0.9608, 0.9686],
+          "hex": "#faf5f7"
+        },
+        "$description": "Warm neutral step 50 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "100": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9569, 0.9333, 0.9412],
+          "hex": "#f4eef0"
+        },
+        "$description": "Warm neutral step 100 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "150": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9255, 0.902, 0.9098],
+          "hex": "#ece6e8"
+        },
+        "$description": "Warm neutral step 150 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "200": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.8902, 0.8627, 0.8706],
+          "hex": "#e3dcde"
+        },
+        "$description": "Warm neutral step 200 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "300": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.8039, 0.7725, 0.7843],
+          "hex": "#cdc5c8"
+        },
+        "$description": "Warm neutral step 300 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "400": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.6706, 0.6353, 0.6471],
+          "hex": "#aba2a5"
+        },
+        "$description": "Warm neutral step 400 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "500": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.5373, 0.502, 0.5176],
+          "hex": "#898084"
+        },
+        "$description": "Warm neutral step 500 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "600": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.4353, 0.4, 0.4118],
+          "hex": "#6f6669"
+        },
+        "$description": "Warm neutral step 600 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "700": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.3333, 0.302, 0.3137],
+          "hex": "#554d50"
+        },
+        "$description": "Warm neutral step 700 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "800": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.2392, 0.2118, 0.2196],
+          "hex": "#3d3638"
+        },
+        "$description": "Warm neutral step 800 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "850": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.1882, 0.1608, 0.1725],
+          "hex": "#30292c"
+        },
+        "$description": "Warm neutral step 850 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "900": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.1412, 0.1216, 0.1294],
+          "hex": "#241f21"
+        },
+        "$description": "Warm neutral step 900 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "950": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.102, 0.0863, 0.0902],
+          "hex": "#1a1617"
+        },
+        "$description": "Warm neutral step 950 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      },
+      "1000": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0706, 0.0549, 0.0627],
+          "hex": "#120e10"
+        },
+        "$description": "Warm neutral step 1000 (OKLCH hue 353.7, the accent's hue, at very low chroma). Primitive: consume through a semantic color token, never directly."
+      }
+    },
+    "red": {
+      "50": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [1.0, 0.9373, 0.9294],
+          "hex": "#ffefed"
+        },
+        "$description": "Status (danger) hue step 50. Primitive: use via color-status-danger-* semantics."
+      },
+      "100": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [1.0, 0.8784, 0.8627],
+          "hex": "#ffe0dc"
+        },
+        "$description": "Status (danger) hue step 100. Primitive: use via color-status-danger-* semantics."
+      },
+      "300": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9922, 0.6353, 0.5922],
+          "hex": "#fda297"
+        },
+        "$description": "Status (danger) hue step 300. Primitive: use via color-status-danger-* semantics."
+      },
+      "400": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.8235, 0.302, 0.2706],
+          "hex": "#d24d45"
+        },
+        "$description": "Status (danger) hue step 400. Primitive: use via color-status-danger-* semantics."
+      },
+      "600": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.6196, 0.1765, 0.1569],
+          "hex": "#9e2d28"
+        },
+        "$description": "Status (danger) hue step 600. Primitive: use via color-status-danger-* semantics."
+      },
+      "700": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.5882, 0.2157, 0.1882],
+          "hex": "#963730"
+        },
+        "$description": "Status (danger) hue step 700. Primitive: use via color-status-danger-* semantics."
+      },
+      "800": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.4706, 0.1647, 0.1451],
+          "hex": "#782a25"
+        },
+        "$description": "Status (danger) hue step 800. Primitive: use via color-status-danger-* semantics."
+      },
+      "900": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.2471, 0.098, 0.0863],
+          "hex": "#3f1916"
+        },
+        "$description": "Status (danger) hue step 900. Primitive: use via color-status-danger-* semantics."
+      },
+      "950": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.1765, 0.0824, 0.0706],
+          "hex": "#2d1512"
+        },
+        "$description": "Status (danger) hue step 950. Primitive: use via color-status-danger-* semantics."
+      }
+    },
+    "wine": {
+      "50": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9961, 0.9373, 0.9569],
+          "hex": "#feeff4"
+        },
+        "$description": "Accent hue family step 50. Primitive: use via color-accent-* semantics."
+      },
+      "100": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9882, 0.8745, 0.9137],
+          "hex": "#fcdfe9"
+        },
+        "$description": "Accent hue family step 100. Primitive: use via color-accent-* semantics."
+      },
+      "200": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9569, 0.7529, 0.8314],
+          "hex": "#f4c0d4"
+        },
+        "$description": "Accent hue family step 200. Primitive: use via color-accent-* semantics."
+      },
+      "300": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9059, 0.6, 0.7255],
+          "hex": "#e799b9"
+        },
+        "$description": "Accent hue family step 300. Primitive: use via color-accent-* semantics."
+      },
+      "400": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.8196, 0.4706, 0.6196],
+          "hex": "#d1789e"
+        },
+        "$description": "Accent hue family step 400. Primitive: use via color-accent-* semantics."
+      },
+      "500": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.702, 0.3373, 0.502],
+          "hex": "#b35680"
+        },
+        "$description": "Accent hue family step 500. Primitive: use via color-accent-* semantics."
+      },
+      "600": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.5608, 0.2353, 0.3882],
+          "hex": "#8f3c63"
+        },
+        "$description": "Accent hue family step 600. Primitive: use via color-accent-* semantics."
+      },
+      "700": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.4118, 0.1529, 0.2745],
+          "hex": "#692746"
+        },
+        "$description": "The brand accent, #692746 (PANTONE 19-2430 TCX Purple Potion). Primitive: use via color-accent-* semantics."
+      },
+      "800": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.3098, 0.102, 0.2],
+          "hex": "#4f1a33"
+        },
+        "$description": "Accent hue family step 800. Primitive: use via color-accent-* semantics."
+      },
+      "900": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.2196, 0.0706, 0.1412],
+          "hex": "#381224"
+        },
+        "$description": "Accent hue family step 900. Primitive: use via color-accent-* semantics."
+      },
+      "950": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.1569, 0.0588, 0.102],
+          "hex": "#280f1a"
+        },
+        "$description": "Accent hue family step 950. Primitive: use via color-accent-* semantics."
+      }
+    }
+  },
+  "space": {
+    "$type": "dimension",
+    "0": {
+      "$value": {
+        "value": 0.0,
+        "unit": "rem"
+      },
+      "$description": "0px. No space."
+    },
+    "0-5": {
+      "$value": {
+        "value": 0.125,
+        "unit": "rem"
+      },
+      "$description": "2px. Hairline nudges (icon optical alignment)."
+    },
+    "1": {
+      "$value": {
+        "value": 0.25,
+        "unit": "rem"
+      },
+      "$description": "4px. Icon-to-label gap, tight inline gaps."
+    },
+    "2": {
+      "$value": {
+        "value": 0.5,
+        "unit": "rem"
+      },
+      "$description": "8px. Compact control padding, gap inside button groups."
+    },
+    "3": {
+      "$value": {
+        "value": 0.75,
+        "unit": "rem"
+      },
+      "$description": "12px. Control vertical padding, list item gap."
+    },
+    "4": {
+      "$value": {
+        "value": 1.0,
+        "unit": "rem"
+      },
+      "$description": "16px. Default padding (inputs, buttons horizontal, card compact)."
+    },
+    "5": {
+      "$value": {
+        "value": 1.25,
+        "unit": "rem"
+      },
+      "$description": "20px. Card padding (compact)."
+    },
+    "6": {
+      "$value": {
+        "value": 1.5,
+        "unit": "rem"
+      },
+      "$description": "24px. Card padding, gap between form fields."
+    },
+    "8": {
+      "$value": {
+        "value": 2.0,
+        "unit": "rem"
+      },
+      "$description": "32px. Gap between content blocks."
+    },
+    "10": {
+      "$value": {
+        "value": 2.5,
+        "unit": "rem"
+      },
+      "$description": "40px. Gap between page sections (app)."
+    },
+    "12": {
+      "$value": {
+        "value": 3.0,
+        "unit": "rem"
+      },
+      "$description": "48px. Section spacing (docs)."
+    },
+    "16": {
+      "$value": {
+        "value": 4.0,
+        "unit": "rem"
+      },
+      "$description": "64px. Section spacing (marketing)."
+    },
+    "20": {
+      "$value": {
+        "value": 5.0,
+        "unit": "rem"
+      },
+      "$description": "80px. Hero padding."
+    },
+    "24": {
+      "$value": {
+        "value": 6.0,
+        "unit": "rem"
+      },
+      "$description": "96px. Largest marketing rhythm."
+    }
+  },
+  "radius": {
+    "$type": "dimension",
+    "xs": {
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      },
+      "$description": "Checkboxes, inline code, small tags."
+    },
+    "sm": {
+      "$value": {
+        "value": 6,
+        "unit": "px"
+      },
+      "$description": "Badges, tooltips."
+    },
+    "md": {
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      },
+      "$description": "Buttons, inputs, selects, menu items."
+    },
+    "lg": {
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      },
+      "$description": "Cards, callouts, code blocks, popovers."
+    },
+    "xl": {
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      },
+      "$description": "Dialogs, large marketing panels."
+    },
+    "full": {
+      "$value": {
+        "value": 9999,
+        "unit": "px"
+      },
+      "$description": "Pills, avatars, toggles."
+    }
+  },
+  "stroke": {
+    "$type": "dimension",
+    "1": {
+      "$value": {
+        "value": 1,
+        "unit": "px"
+      }
+    },
+    "2": {
+      "$value": {
+        "value": 2,
+        "unit": "px"
+      }
+    }
+  },
+  "font-family": {
+    "$type": "fontFamily",
+    "sans": {
+      "$value": ["Atkinson Hyperlegible Next", "system-ui", "sans-serif"]
+    },
+    "mono": {
+      "$value": [
+        "Atkinson Hyperlegible Mono",
+        "ui-monospace",
+        "SFMono-Regular",
+        "Menlo",
+        "monospace"
+      ]
+    }
+  },
+  "font-weight": {
+    "$type": "fontWeight",
+    "regular": {
+      "$value": 400
+    },
+    "semibold": {
+      "$value": 600
+    },
+    "bold": {
+      "$value": 700
+    }
+  },
+  "font-size": {
+    "$type": "dimension",
+    "48": {
+      "$value": {
+        "value": 3,
+        "unit": "rem"
+      }
+    },
+    "36": {
+      "$value": {
+        "value": 2.25,
+        "unit": "rem"
+      }
+    },
+    "28": {
+      "$value": {
+        "value": 1.75,
+        "unit": "rem"
+      }
+    },
+    "22": {
+      "$value": {
+        "value": 1.375,
+        "unit": "rem"
+      }
+    },
+    "18": {
+      "$value": {
+        "value": 1.125,
+        "unit": "rem"
+      }
+    },
+    "16": {
+      "$value": {
+        "value": 1,
+        "unit": "rem"
+      }
+    },
+    "14": {
+      "$value": {
+        "value": 0.875,
+        "unit": "rem"
+      }
+    },
+    "15": {
+      "$value": {
+        "value": 0.9375,
+        "unit": "rem"
+      }
+    }
+  },
+  "line-height": {
+    "$type": "number",
+    "base": {
+      "$value": 1.5,
+      "$description": "Floor for every text style."
+    }
+  },
+  "breakpoint": {
+    "$type": "dimension",
+    "sm": {
+      "$value": {
+        "value": 40,
+        "unit": "rem"
+      },
+      "$description": ">=640px: large phones landscape."
+    },
+    "md": {
+      "$value": {
+        "value": 48,
+        "unit": "rem"
+      },
+      "$description": ">=768px: tablets; docs sidebar appears."
+    },
+    "lg": {
+      "$value": {
+        "value": 64,
+        "unit": "rem"
+      },
+      "$description": ">=1024px: laptop; app two-pane layouts."
+    },
+    "xl": {
+      "$value": {
+        "value": 80,
+        "unit": "rem"
+      },
+      "$description": ">=1280px: desktop."
+    },
+    "2xl": {
+      "$value": {
+        "value": 96,
+        "unit": "rem"
+      },
+      "$description": ">=1536px: wide; cap content, do not stretch prose."
+    }
+  },
+  "z-index": {
+    "$type": "number",
+    "base": {
+      "$value": 0,
+      "$description": "Normal flow."
+    },
+    "raised": {
+      "$value": 1,
+      "$description": "Lifted cards, sticky table headers inside a scroller."
+    },
+    "sticky": {
+      "$value": 100,
+      "$description": "Sticky site header, docs sidebar."
+    },
+    "dropdown": {
+      "$value": 1000,
+      "$description": "Menus, selects, comboboxes."
+    },
+    "overlay": {
+      "$value": 1100,
+      "$description": "Modal scrim."
+    },
+    "modal": {
+      "$value": 1200,
+      "$description": "Dialogs, drawers."
+    },
+    "popover": {
+      "$value": 1300,
+      "$description": "Popovers opened from inside a dialog."
+    },
+    "toast": {
+      "$value": 1400,
+      "$description": "Toasts and live notifications."
+    },
+    "tooltip": {
+      "$value": 1500,
+      "$description": "Tooltips: always on top."
+    }
+  },
+  "easing": {
+    "$type": "cubicBezier",
+    "standard": {
+      "$value": [0.2, 0, 0, 1],
+      "$description": "Default for state changes that stay on screen."
+    },
+    "enter": {
+      "$value": [0, 0, 0.2, 1],
+      "$description": "Elements appearing (decelerate)."
+    },
+    "exit": {
+      "$value": [0.4, 0, 1, 1],
+      "$description": "Elements leaving (accelerate)."
+    }
+  }
+}

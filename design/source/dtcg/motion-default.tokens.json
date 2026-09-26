@@ -1,0 +1,42 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "Motion durations (default context).",
+  "duration": {
+    "$type": "duration",
+    "instant": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      },
+      "$description": "Colour-only feedback where any delay feels laggy."
+    },
+    "fast": {
+      "$value": {
+        "value": 100,
+        "unit": "ms"
+      },
+      "$description": "Hover and press colour changes."
+    },
+    "base": {
+      "$value": {
+        "value": 150,
+        "unit": "ms"
+      },
+      "$description": "Focus ring, small state changes, toggles."
+    },
+    "moderate": {
+      "$value": {
+        "value": 200,
+        "unit": "ms"
+      },
+      "$description": "Menus and popovers entering."
+    },
+    "slow": {
+      "$value": {
+        "value": 250,
+        "unit": "ms"
+      },
+      "$description": "Dialogs and drawers entering. Nothing in the system is slower."
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "prefers-reduced-motion: every duration is 0ms. Never merely shorter.",
+  "duration": {
+    "$type": "duration",
+    "instant": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "fast": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "base": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "moderate": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    },
+    "slow": {
+      "$value": {
+        "value": 0,
+        "unit": "ms"
+      }
+    }
+  }
+}

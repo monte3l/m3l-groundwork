@@ -1,0 +1,511 @@
+/* m3l-design components — plain CSS, no runtime.
+   Rules for this file (checked by lint):
+   - colour: only semantic --color-* tokens (never neutral/wine/status-hue primitives)
+   - size, space, radius, shadow, motion: only token vars
+   - type: markup applies the type-style class (body, label, caption, code, heading-4 …);
+     this file adds only the treatment the classes cannot carry (figures, ligatures, word spacing, measure)
+   - motion: colour/shadow transitions only, and all of it goes to --duration-instant (0ms) under prefers-reduced-motion */
+
+/* ---------- base ---------- */
+body {
+  margin: 0;
+  background: var(--color-surface-default);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  line-height: var(--text-line-height);
+  font-variant-numeric: var(--font-variant-numeric);
+  font-variant-ligatures: var(--font-variant-ligatures);
+  text-align: var(--text-align);
+}
+.m3l-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+}
+.m3l-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+}
+.m3l-prose {
+  max-width: var(--measure-prose);
+  word-spacing: var(--text-word-spacing);
+}
+.m3l-prose strong,
+.m3l-prose b {
+  font-weight: var(--text-emphasis-weight);
+  letter-spacing: var(--text-letter-spacing-700);
+}
+.m3l-prose em,
+.m3l-prose i {
+  font-style: var(--text-emphasis-style);
+  font-weight: var(--text-emphasis-weight);
+  letter-spacing: var(--text-letter-spacing-700);
+}
+.m3l-prose p {
+  margin: 0 0 var(--paragraph-spacing);
+}
+.m3l-prose p:last-child {
+  margin-bottom: 0;
+}
+.m3l-link {
+  color: var(--color-accent-text);
+  text-decoration: underline;
+  transition: color var(--duration-fast) var(--easing-standard);
+}
+.m3l-link:hover {
+  color: var(--color-accent-hover);
+}
+.m3l-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* one focus treatment for everything interactive */
+.m3l-button:focus-visible,
+.m3l-input:focus-visible,
+.m3l-card--link:focus-within,
+.m3l-nav__link:focus-visible,
+.m3l-code-block:has(pre:focus-visible),
+.m3l-link:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* status glyphs: consumer supplies the inline SVG; colour comes from the component */
+.m3l-icon {
+  flex: none;
+  width: 1.25em;
+  height: 1.25em;
+}
+.m3l-icon * {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Callout ---------- */
+.m3l-callout {
+  display: flex;
+  gap: var(--space-3);
+  max-width: var(--measure-prose-max);
+  padding: var(--space-4);
+  border: var(--border-width-default) solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-subtle);
+  color: var(--color-text-primary);
+}
+.m3l-callout .m3l-icon {
+  margin-top: calc((var(--text-line-height) * 1em - 1.25em) / 2);
+}
+.m3l-callout__content {
+  min-width: 0;
+  word-spacing: var(--text-word-spacing);
+}
+.m3l-callout__title {
+  margin: 0;
+}
+.m3l-callout__body {
+  margin: var(--space-1) 0 0;
+}
+.m3l-callout[data-status="info"] {
+  background: var(--color-status-info-surface);
+  border-color: var(--color-status-info-border);
+}
+.m3l-callout[data-status="success"] {
+  background: var(--color-status-success-surface);
+  border-color: var(--color-status-success-border);
+}
+.m3l-callout[data-status="warning"] {
+  background: var(--color-status-warning-surface);
+  border-color: var(--color-status-warning-border);
+}
+.m3l-callout[data-status="danger"] {
+  background: var(--color-status-danger-surface);
+  border-color: var(--color-status-danger-border);
+}
+.m3l-callout[data-status="info"] .m3l-icon {
+  color: var(--color-status-info-border);
+}
+.m3l-callout[data-status="success"] .m3l-icon {
+  color: var(--color-status-success-border);
+}
+.m3l-callout[data-status="warning"] .m3l-icon {
+  color: var(--color-status-warning-border);
+}
+.m3l-callout[data-status="danger"] .m3l-icon {
+  color: var(--color-status-danger-border);
+}
+.m3l-callout[data-status="info"] .m3l-callout__title {
+  color: var(--color-status-info-text);
+}
+.m3l-callout[data-status="success"] .m3l-callout__title {
+  color: var(--color-status-success-text);
+}
+.m3l-callout[data-status="warning"] .m3l-callout__title {
+  color: var(--color-status-warning-text);
+}
+.m3l-callout[data-status="danger"] .m3l-callout__title {
+  color: var(--color-status-danger-text);
+}
+
+/* ---------- Code ---------- */
+.m3l-code-inline {
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(
+    --color-surface-hover
+  ); /* interim: surface-sunken equals surface-default in dark (flagged) */
+  color: var(--color-text-primary);
+  word-spacing: 0; /* the code class on the element sets family, size, tracking */
+}
+.m3l-code-block {
+  margin: 0;
+  max-width: 100%;
+  border: var(--border-width-default) solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-code);
+  color: var(--color-text-primary);
+  overflow: hidden;
+}
+.m3l-code-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-4);
+  border-bottom: var(--border-width-default) solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+}
+.m3l-code-block__lang {
+  font-weight: var(--text-emphasis-weight);
+  letter-spacing: var(--text-letter-spacing-700);
+}
+.m3l-code-block pre {
+  margin: 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.m3l-code-block pre:only-child {
+  border-radius: var(--radius-lg);
+}
+.m3l-code-block pre:focus-visible {
+  outline: none;
+} /* the ring goes on the figure, which clips its children */
+.m3l-code-block code {
+  font-variant-ligatures: var(--font-variant-ligatures);
+}
+.m3l-code-block .m3l-code-comment {
+  color: var(--color-text-secondary);
+}
+.m3l-code-block .m3l-code-strong {
+  font-weight: var(--text-emphasis-weight);
+  letter-spacing: var(--text-letter-spacing-mono-700);
+}
+
+/* ---------- Badge ---------- */
+.m3l-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: var(--border-width-default) solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-hover); /* interim: see .m3l-code-inline */
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.m3l-badge .m3l-icon {
+  width: 1em;
+  height: 1em;
+}
+.m3l-badge[data-tone="accent"] {
+  background: var(--color-accent-tint);
+  color: var(--color-accent-text);
+  border-color: var(--color-accent-tint-border);
+}
+.m3l-badge[data-tone="info"] {
+  background: var(--color-status-info-surface);
+  color: var(--color-status-info-text);
+  border-color: var(--color-status-info-border);
+}
+.m3l-badge[data-tone="success"] {
+  background: var(--color-status-success-surface);
+  color: var(--color-status-success-text);
+  border-color: var(--color-status-success-border);
+}
+.m3l-badge[data-tone="warning"] {
+  background: var(--color-status-warning-surface);
+  color: var(--color-status-warning-text);
+  border-color: var(--color-status-warning-border);
+}
+.m3l-badge[data-tone="danger"] {
+  background: var(--color-status-danger-surface);
+  color: var(--color-status-danger-text);
+  border-color: var(--color-status-danger-border);
+}
+
+/* ---------- Button ---------- */
+.m3l-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width-default) solid transparent;
+  border-radius: var(--radius-md);
+  font: inherit; /* the label class on the element sets size/weight/tracking */
+  line-height: var(--text-line-height);
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard);
+}
+.m3l-button.label {
+  font-family: var(--font-sans);
+}
+.m3l-button[data-variant="primary"] {
+  background: var(--color-accent-default);
+  color: var(--color-text-on-accent);
+  border-color: var(--color-accent-default);
+}
+.m3l-button[data-variant="primary"]:hover:not(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+.m3l-button[data-variant="primary"]:active:not(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
+  background: var(--color-accent-active);
+  border-color: var(--color-accent-active);
+}
+.m3l-button[data-variant="secondary"] {
+  background: var(--color-surface-default);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-control);
+}
+.m3l-button[data-variant="secondary"]:hover:not(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
+  background: var(--color-surface-hover);
+}
+.m3l-button[data-variant="secondary"]:active:not(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
+  background: var(--color-surface-hover);
+}
+.m3l-button[data-variant="ghost"] {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+.m3l-button[data-variant="ghost"]:hover:not(:disabled, [aria-disabled="true"]) {
+  background: var(--color-surface-hover);
+}
+.m3l-button[data-variant="ghost"]:active:not(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
+  background: var(--color-surface-hover);
+}
+.m3l-button:disabled,
+.m3l-button[aria-disabled="true"] {
+  background: var(--color-surface-hover); /* interim: see .m3l-code-inline */
+  color: var(--color-text-disabled);
+  border-color: var(
+    --color-border-default
+  ); /* border-subtle equals surface-hover in dark */
+  cursor: not-allowed;
+}
+
+/* ---------- Input ---------- */
+.m3l-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: var(--measure-prose);
+}
+.m3l-field__label {
+  color: var(--color-text-primary);
+}
+.m3l-field__optional {
+  color: var(--color-text-secondary);
+}
+.m3l-field__hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+.m3l-field__error {
+  display: flex;
+  gap: var(--space-1);
+  align-items: flex-start;
+  margin: 0;
+  color: var(--color-status-danger-text);
+}
+.m3l-field__error .m3l-icon {
+  width: 1em;
+  height: 1em;
+  margin-top: calc((var(--text-line-height) * 1em - 1em) / 2);
+  color: var(--color-status-danger-border);
+}
+.m3l-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width-default) solid var(--color-border-control);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-default);
+  color: var(--color-text-primary);
+  font: inherit; /* the body class on the element sets the type */
+  font-family: var(--font-sans);
+  line-height: var(--text-line-height);
+  word-spacing: var(--text-word-spacing);
+  font-variant-numeric: var(--font-variant-numeric);
+  transition: border-color var(--duration-fast) var(--easing-standard);
+}
+.m3l-input::placeholder {
+  color: var(--color-text-tertiary);
+  opacity: 1;
+}
+.m3l-input:focus-visible {
+  border-color: var(--color-focus-ring);
+}
+.m3l-input[aria-invalid="true"] {
+  border-color: var(--color-status-danger-border);
+}
+.m3l-input:disabled {
+  background: var(--color-surface-hover); /* interim: see .m3l-code-inline */
+  color: var(--color-text-disabled);
+  border-color: var(
+    --color-border-default
+  ); /* border-subtle equals surface-hover in dark */
+  cursor: not-allowed;
+}
+
+/* ---------- Card ---------- */
+.m3l-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  border: var(--border-width-default) solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-1);
+  word-spacing: var(--text-word-spacing);
+}
+.m3l-card__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  word-spacing: 0;
+}
+.m3l-card__body {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+.m3l-card__meta {
+  margin: 0;
+  color: var(--color-text-tertiary);
+}
+.m3l-card--link {
+  transition:
+    box-shadow var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+.m3l-card--link:hover {
+  box-shadow: var(--shadow-2);
+  border-color: var(--color-border-default);
+}
+.m3l-card--link .m3l-card__title a {
+  color: inherit;
+  text-decoration: none;
+}
+.m3l-card--link .m3l-card__title a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+} /* whole card is the hit area */
+.m3l-card--link .m3l-card__title a:focus-visible {
+  outline: none;
+}
+.m3l-card--link:hover .m3l-card__title a {
+  text-decoration: underline;
+}
+
+/* ---------- Nav ---------- */
+.m3l-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.m3l-nav__group {
+  margin: var(--space-4) 0 var(--space-1);
+  padding: 0 var(--space-3);
+  color: var(--color-text-primary);
+}
+.m3l-nav__group:first-child {
+  margin-top: 0;
+}
+.m3l-nav__link {
+  display: block;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition:
+    background-color var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard);
+}
+.m3l-nav__link:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.m3l-nav__link[aria-current="page"] {
+  background: var(--color-surface-selected);
+  color: var(--color-accent-text);
+  font-weight: var(--text-emphasis-weight);
+  letter-spacing: var(--text-letter-spacing-700);
+}
+.m3l-nav[data-orientation="horizontal"] .m3l-nav__list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* ---------- reduced motion: no motion, not shorter motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .m3l-link,
+  .m3l-button,
+  .m3l-input,
+  .m3l-card--link,
+  .m3l-nav__link {
+    transition-duration: var(--duration-instant);
+  }
+}
