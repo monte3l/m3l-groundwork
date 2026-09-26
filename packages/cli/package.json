@@ -1,6 +1,6 @@
 {
   "name": "@monte3l/groundwork",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "description": "CLI that writes a TypeScript toolchain and Claude Code setup into an empty directory, or -- against an existing project -- read-only surveys it and reports the differences. No prompts, and no network access beyond the package install.",
   "keywords": [
     "typescript",
