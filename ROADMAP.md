@@ -41,10 +41,13 @@ publish` behaves for a given package (registry, access level, and so
   code. It's also what stands between this project and the three Gold-level
   OpenSSF Best Practices criteria that need more than one active
   contributor -- see [`GOVERNANCE.md`](GOVERNANCE.md#gold-level-criteria-this-project-does-not-meet).
-- **Registering for the OpenSSF Best Practices badge.** Every criterion this
-  project can meet alone is in place (see `.bestpractices.json`); what's left
-  is the maintainer action of registering on bestpractices.dev and adding the
-  badge to the README (`documentation_achievements`).
+- **Submitting the OpenSSF Best Practices Silver self-assessment.**
+  Registering and achieving Passing (project 14937, linked from the README
+  and docs site) is done. Every Silver- and Gold-level criterion this
+  project can meet alone already has a drafted answer in
+  `.bestpractices.json`; what's left is the maintainer action of logging
+  into bestpractices.dev and entering those answers into the project's
+  actual questionnaire, which currently shows most of them unanswered.
 - **`pnpm/setup` in CI**, once it supports reading Node's version from
   `.node-version` (or an equivalent single-source-of-truth mechanism)
   rather than only `package.json`'s `devEngines.runtime` (a field that

@@ -201,13 +201,14 @@ standing bypass that undermines the design:
   whether a repo is older than 90 days); it self-resolves and needs no
   action.
 
-One finding is a genuine, but external, gap: this project hasn't yet
-registered for an [OpenSSF Best Practices badge](https://www.bestpractices.dev/)
-(`CIIBestPracticesID`). The repository is intended to meet the Gold
-criteria, excluding the handful that inherently require more than one active
-contributor (`bus_factor`, `contributors_unassociated`, `two_person_review`
--- see [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor), stated honestly as unmet
-rather than worked around) -- governance, roles and access continuity
+One finding is a partial, external gap: this project registered for an
+[OpenSSF Best Practices badge](https://www.bestpractices.dev/projects/14937)
+(project 14937) and has achieved Passing, linked from the README and the
+docs site. The repository is intended to meet the Gold criteria, excluding
+the handful that inherently require more than one active contributor
+(`bus_factor`, `contributors_unassociated`, `two_person_review` -- see
+[`GOVERNANCE.md`](GOVERNANCE.md#bus-factor), stated honestly as unmet rather
+than worked around) -- governance, roles and access continuity
 ([`GOVERNANCE.md`](GOVERNANCE.md)), a roadmap ([`ROADMAP.md`](ROADMAP.md)),
 a documented architecture, this security policy, a per-file
 copyright/license statement (`REUSE.toml` plus inline SPDX headers -- see
@@ -216,9 +217,11 @@ gate, a reproducible build, dynamic analysis, a dated security review
 ([`docs/security-review.md`](docs/security-review.md)), a security assurance
 case ([`docs/assurance-case.md`](docs/assurance-case.md)), DCO-signed
 commits, strict linting, signed and attested releases, and CLI input
-validation -- but registering is a maintainer action (an account and a
-self-assessment questionnaire on bestpractices.dev), not something a code
-change can complete on its own.
+validation. `.bestpractices.json` already answers every one of those Silver-
+and Gold-level criteria this project can meet on its own; what's still
+open is a maintainer action -- logging into bestpractices.dev and entering
+those drafted answers into the project's actual questionnaire, which a code
+change can't do on its own.
 
 ## Reading the Socket score
 
