@@ -97,10 +97,10 @@ it only adds files and extends three JSON files the baseline already
 reads. See [`templates/packs/README.md`](templates/packs/README.md) for
 the wiring contract.
 
-| Pack             | Contents                                                                                                                                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `harness-extras` | A type-design-analyzer agent, the compaction-handoff hook pair, a read-only Bash guard, a per-file size ratchet gate, and a five-row Claude Code status line plus a per-subagent row renderer, width-fit to the terminal. |
-| `github`         | Anthropic's official Claude Code GitHub Action, wired for `@claude` mention-mode only -- one workflow file, no hooks, no gate. Needs an auth secret the pack cannot create.                                               |
+| Pack             | Contents                                                                                                                                                                                                                                                             |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness-extras` | A type-design-analyzer agent, the compaction-handoff hook pair, a read-only Bash guard, a per-file size ratchet gate, and a five-row Claude Code status line plus a per-subagent row renderer, width-fit to the terminal.                                            |
+| `github`         | Anthropic's official Claude Code GitHub Action (`@claude` mention-mode) plus an automated PR-review Action and three `gh`-CLI skills (Dependabot PR triage, scan-alert triage, PR-check watching) -- no hooks, no gate. Needs an auth secret the pack cannot create. |
 
 In fresh mode `--pack` installs a pack directly. In adopt mode the CLI only
 surveys which packs apply and stages them under `.groundwork/packs/`;

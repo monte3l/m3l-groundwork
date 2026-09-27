@@ -72,6 +72,23 @@ describe("recommendPacks", () => {
     }
   });
 
+  it("recommends github with evidence naming the automated PR-review workflow and its two triage/audit skills, for every project kind", () => {
+    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+      const github = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "github",
+      );
+      expect(github?.recommended).toBe(true);
+      // A substring distinguishing the new automated-review workflow
+      // (claude-pr-review.yml) from the pre-existing mention-mode
+      // claude.yml description.
+      expect(github?.because).toMatch(/pr.review|review comment/i);
+      // A substring distinguishing reviewing-dependabot-prs.
+      expect(github?.because).toMatch(/dependabot/i);
+      // A substring distinguishing triaging-scan-alerts.
+      expect(github?.because).toMatch(/scan.alert/i);
+    }
+  });
+
   it("gives every recommendation non-empty evidence", () => {
     for (const rec of recommendPacks(BASE_ANSWERS)) {
       expect(rec.because.length).toBeGreaterThan(0);

@@ -612,20 +612,24 @@ set for one file.
   already defines `statusLine`/`subagentStatusLine` skips just those keys
   and the three statusline scripts rather than failing the whole install.
   `github` (renamed from `claude-action`) is GitHub-hosted collaboration:
-  Anthropic's official `anthropics/claude-code-action` in mention-mode,
-  needing an auth secret the pack cannot create -- see its `adoptNotes`.
-  One candidate from the predecessor build (recorded in its
-  `EXTRACTION-MANIFEST.md`, written to a scratchpad during the original
-  build, not checked into this repo) remains deferred: a `publishing` pack
-  (a release workflow, `check-publish-version`, `check-dts-deps`, plus the
-  OpenSSF supply-chain workflows this repo itself carries -- gitleaks,
-  Scorecard, license headers -- needs a registry/scope/`publishConfig` story
-  the baseline doesn't have yet; this repo now has one to copy -- see
-  "Releases" -- but `templates/core` is also at its three-workflow cap). The
-  predecessor's `reviewing-dependabot-prs`/`triaging-scan-alerts` candidates
-  are planned to join `github`'s existing GitHub Action, rather than
-  shipping as a separate `github-ops` pack, but aren't built yet -- `github`
-  today ships only the Action.
+  Anthropic's official `anthropics/claude-code-action` in mention-mode, a
+  second Action that posts an automated Claude review comment on every PR,
+  and three `gh`-CLI skills recovered from the predecessor build's
+  `EXTRACTION-MANIFEST.md` (its "best first-pack candidates", generalized
+  rather than shipped verbatim) -- `reviewing-dependabot-prs` (classify and
+  batch-merge open Dependabot PRs), `triaging-scan-alerts` (triage open
+  code-scanning alerts to file:line, report only, never edits code), and
+  `watching-pr-checks` (check a PR's CI status, hand off to a project's own
+  `/triaging-ci` on a real failure). Both workflows need an auth secret the
+  pack cannot create -- see its `adoptNotes`. One candidate from the same
+  predecessor build (its `EXTRACTION-MANIFEST.md`, written to a scratchpad
+  during the original build, not checked into this repo) remains deferred:
+  a `publishing` pack (a release workflow, `check-publish-version`,
+  `check-dts-deps`, plus the OpenSSF supply-chain workflows this repo
+  itself carries -- gitleaks, Scorecard, license headers -- needs a
+  registry/scope/`publishConfig` story the baseline doesn't have yet; this
+  repo now has one to copy -- see "Releases" -- but `templates/core` is
+  also at its three-workflow cap).
 - **No standalone "add a pack to an already-bootstrapped project" flag.**
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is

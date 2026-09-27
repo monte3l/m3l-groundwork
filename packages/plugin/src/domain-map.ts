@@ -84,15 +84,18 @@ export const TYPESCRIPT_DOMAIN_GLOBS = [
  * `bin/lib/*.mjs` are typescript-domain globs, so without this list the
  * grader's own rules would be swept by `typescript-guidance` -- wrong,
  * because they encode Claude Code harness guidance. The Claude Code Action
- * workflow is here for the same reason against `.github/workflows/*.yml`:
- * its trigger, action pin and model limits are Anthropic guidance, not
- * toolchain. Consulted before the typescript list in `classifyPath`.
+ * workflows (`claude.yml`, and the `github` pack's automated-review
+ * `claude-pr-review.yml`) are here for the same reason against
+ * `.github/workflows/*.yml`: their trigger, action pin and model choice are
+ * Anthropic guidance, not toolchain. Consulted before the typescript list in
+ * `classifyPath`.
  */
 export const HARNESS_OVERRIDE_GLOBS = [
   "bin/check-harness.mjs",
   "bin/lib/harness-rules.mjs",
   "bin/lib/frontmatter.mjs",
   ".github/workflows/claude.yml",
+  ".github/workflows/claude-pr-review.yml",
 ] as const;
 
 /** Every `.claude/`-facing file the `harness-guidance` sweep is responsible for. */

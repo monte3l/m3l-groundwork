@@ -65,6 +65,12 @@ describe("classifyPath", () => {
     expect(classifyPath(".github/workflows/claude.yml")).toBe("harness");
   });
 
+  it("classifies the github pack's claude-pr-review.yml as harness-domain despite the .github/workflows/*.yml typescript glob", () => {
+    expect(classifyPath(".github/workflows/claude-pr-review.yml")).toBe(
+      "harness",
+    );
+  });
+
   it("classifies explicitly neutral files as neutral, not uncovered", () => {
     expect(classifyPath("README.md")).toBe("neutral");
   });
