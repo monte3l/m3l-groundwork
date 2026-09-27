@@ -51,8 +51,9 @@ tooling `tsconfig.json` (src + tests, no emit) and a build-only
 packages/cli/          Phase A: the offline bootstrapper CLI
   src/                   main.ts, mode.ts, tokens.ts, emit.ts, git.ts, plugin.ts,
                           conflicts.ts, inventory.ts, report.ts, jsonc.ts,
-                          caps.ts, packs.ts, merge-json.ts, assets.ts (the one
-                          place that locates templates/ and the plugin payload)
+                          caps.ts, packs.ts, merge-json.ts, palette.ts, term.ts,
+                          assets.ts (the one place that locates templates/ and
+                          the plugin payload)
   src/harness/            the harness grader: frontmatter.ts, rules.ts, grade.ts,
                           conformance.ts, types.ts
   src/toolchain/          the toolchain grader: rules.ts, grade.ts, conformance.ts,
@@ -65,8 +66,9 @@ packages/cli/          Phase A: the offline bootstrapper CLI
   scripts/                vendor-assets.mjs -- prepack/postpack: copies templates/
                           and the plugin payload into the package for a pack
   tests/                  unit tests + bootstrap.e2e.test.ts + adopt.e2e.test.ts
-                          + packs.e2e.test.ts + pack.e2e.test.ts (the published
-                          tarball, run from outside the repo)
+                          + packs.e2e.test.ts + packs-statusline.e2e.test.ts
+                          + packs-claude-action.e2e.test.ts + pack.e2e.test.ts
+                          (the published tarball, run from outside the repo)
 
 packages/plugin/        Phase B: the /customize skill
   skills/customize/       SKILL.md (Step 0 is the adopt-mode reconcile step)
@@ -90,10 +92,10 @@ packages/plugin/        Phase B: the /customize skill
                          verify lanes + e2e + node-current + the `verify`
                          aggregator), release.yml (see "Releases"), docs.yml
                          (builds the docs site and deploys it to Cloudflare
-                         Workers Static Assets -- see "Design system" and
-                         docs/cloudflare-docs.md), environments.yml (weekly
+                         Workers Static Assets -- see .claude/rules/docs-site.md
+                         and docs/cloudflare-docs.md), environments.yml (weekly
                          cleanup of stale GitHub Deployments/Environments --
-                         see "Environment cleanup" below),
+                         see .claude/rules/environments.md),
                          dependency-review.yml, scorecard.yml, gitleaks.yml,
                          claude.yml, claude-pr-review.yml, dependabot.yml,
                          deploy-tools/ (pins the exact wrangler version
@@ -102,8 +104,8 @@ packages/plugin/        Phase B: the /customize skill
                          policy), ISSUE_TEMPLATE/, pull_request_template.md
 
 design/                 m3l-design, vendored -- see design/README.md and
-                         "Design system" below. source/ is a verbatim copy;
-                         tokens.css is generated from it by
+                         .claude/rules/design-system.md. source/ is a
+                         verbatim copy; tokens.css is generated from it by
                          bin/build-design-tokens.mjs. local/ is this repo's
                          own docs-site layout CSS, the one sanctioned
                          divergence from the vendored system (see
@@ -115,6 +117,14 @@ docs/architecture.md    A human-facing distillation of this file's own
 docs/assurance-case.md  The OpenSSF Best Practices Silver `assurance_case`:
                          threat model, trust boundaries, a Saltzer & Schroeder
                          argument, and a CWE Top 25 mitigation table.
+docs/security-review.md The Gold-level `dynamic_analysis` write-up -- see
+                         "Testing" below.
+docs/glossary.md        Term definitions shared across the other docs pages.
+docs/cloudflare-docs.md The docs-site deploy target -- see
+                         .claude/rules/docs-site.md.
+docs/environment-janitor.md
+                         The environment-cleanup GitHub App's permissions and
+                         one-time setup -- see .claude/rules/environments.md.
 docs/research/          THIS repo's own trackers (not the baseline's):
                          typescript-refresh.md / harness-refresh.md, read and
                          written by /customize's Round 2 guidance sweeps when
@@ -129,34 +139,37 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          placeholder src/tests. See its own CLAUDE.md.
 
 templates/packs/        Optional add-on bundles installed on top of the
-                         baseline. `harness-extras/` and `statusline/` ship today; see its
-                         own README.md for the wiring contract and "Known
-                         gaps" below for the deferred candidates.
+                         baseline. `harness-extras/`, `statusline/` and
+                         `claude-action/` ship today; see its own README.md
+                         for the wiring contract and "Known gaps" below for
+                         the deferred candidates.
 ```
 
 ## Commands
 
 Run any task with `pnpm <script>`.
 
-| Script                                | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm build`                          | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `pnpm typecheck`                      | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `pnpm lint` / `lint:fix`              | ESLint over the whole repo (excludes `templates/**`), `--max-warnings 0` -- a warning fails the gate the same as an error                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `pnpm format` / `format:check`        | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `pnpm test` / `test:coverage`         | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `pnpm test:e2e`                       | The real acceptance test, both modes: `bootstrap.e2e.test.ts` bootstraps a throwaway project into a temp dir with the built CLI and runs _that project's own_ `pnpm verify` (slow, ~15-20s, network-touching -- a real `pnpm install`); `adopt.e2e.test.ts` runs adopt mode against a fixture pre-existing project and asserts nothing outside `.groundwork/` and `.claude/skills/customize/` changed; `packs.e2e.test.ts` bootstraps with `--pack harness-extras` and asserts the emitted project's own `pnpm verify` (including the pack's gate) is green; `packs-statusline.e2e.test.ts` does the same for `--pack statusline` and also executes the emitted scripts against a real payload. `pack.e2e.test.ts` packs the CLI as a release would, unpacks the tarball outside the repo, and asserts it emits byte-identical output to the checkout (see "Releases"). None are part of `pnpm test`. |
-| `pnpm knip`                           | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `pnpm check:exports`                  | publint + attw against `packages/cli`'s packed tarball -- the one published package                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `pnpm check:plugin-version`           | `plugin.json`'s version matches the CLI's, `packages/plugin/package.json` stays private, and `marketplace.json`'s entry names it correctly and carries no npm source or version pin of its own                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `pnpm check:plugin-manifest`          | Runs Anthropic's `claude plugin validate --strict` against the marketplace manifest and `packages/plugin`; skips cleanly with a warning when the `claude` CLI isn't installed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `pnpm changeset` / `version:packages` | Add a changeset; version the packages (what the release workflow runs -- see "Releases")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `pnpm check:node-version`             | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `pnpm check:harness`                  | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `pnpm check:toolchain`                | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `pnpm eval`                           | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), and on `typescript-guidance` against a deliberately degraded project (the `toolchain` suite); needs `claude`, credentials, network. Skips cleanly without `claude`. See "Behavioural evals" below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `pnpm verify`                         | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `pnpm prepare`                        | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Script                                | What it does                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                          | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                |
+| `pnpm typecheck`                      | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                         |
+| `pnpm lint` / `lint:fix`              | ESLint over the whole repo (excludes `templates/**`), `--max-warnings 0` -- a warning fails the gate the same as an error                                                                                                                                                                                                                   |
+| `pnpm format` / `format:check`        | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                             |
+| `pnpm test` / `test:coverage`         | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                        |
+| `pnpm test:e2e`                       | The real acceptance test: `bootstrap.e2e.test.ts`, `adopt.e2e.test.ts`, `packs.e2e.test.ts`, `packs-statusline.e2e.test.ts`, `packs-claude-action.e2e.test.ts` and `pack.e2e.test.ts` -- slow and network-touching (real `pnpm install`s and a packed tarball). None are part of `pnpm test`; see "Testing" below for what each one guards. |
+| `pnpm knip`                           | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                               |
+| `pnpm check:exports`                  | publint + attw against `packages/cli`'s packed tarball -- the one published package                                                                                                                                                                                                                                                         |
+| `pnpm check:plugin-version`           | `plugin.json`'s version matches the CLI's, `packages/plugin/package.json` stays private, and `marketplace.json`'s entry names it correctly and carries no npm source or version pin of its own                                                                                                                                              |
+| `pnpm check:plugin-manifest`          | Runs Anthropic's `claude plugin validate --strict` against the marketplace manifest and `packages/plugin`; skips cleanly with a warning when the `claude` CLI isn't installed                                                                                                                                                               |
+| `pnpm changeset` / `version:packages` | Add a changeset; version the packages (what the release workflow runs -- see "Releases")                                                                                                                                                                                                                                                    |
+| `pnpm check:node-version`             | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                             |
+| `pnpm check:harness`                  | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                             |
+| `pnpm check:toolchain`                | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                        |
+| `pnpm check:license-headers`          | Every tracked file outside `templates/**` carries an SPDX header or is exempted by `REUSE.toml`; `-- --fix` inserts a missing header (see "Definition of Done")                                                                                                                                                                             |
+| `pnpm eval`                           | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), and on `typescript-guidance` against a deliberately degraded project; needs `claude`, credentials, network. Skips cleanly without `claude`. See `.claude/rules/evals.md`   |
+| `pnpm verify`                         | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                              |
+| `pnpm test:watch`                     | Vitest in watch mode for local iteration -- not a `verify` step                                                                                                                                                                                                                                                                             |
+| `pnpm prepare`                        | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                             |
 
 Run `pnpm verify` (or just push -- `lefthook`'s `pre-push` runs the same
 steps) before considering any task here done.
@@ -274,34 +287,10 @@ steps) before considering any task here done.
   tsconfig `extends` resolver (`toolchain/tsconfig-chain.ts`) is shared with
   `survey-toolchain.ts`, so the survey's `effectiveFlags` and the grade cannot
   disagree.
-- **Behavioural evals (`pnpm eval`, `bin/eval.mjs`) are a separate, paid layer
-  from `check:harness`** and are deliberately not in `pnpm verify` or
-  `pre-push`: they make real model calls. Three suites, all driven by
-  `claude plugin eval`. The third, `toolchain`, runs `typescript-guidance` against
-  a bootstrapped project degraded only in ways `tsc` and ESLint cannot see
-  (`evals/core-toolchain/toolchain-repair/`): the fixture captures the gate's
-  output to `toolchain-gate.txt`, so the case needs no shell tool in the sandbox,
-  and graders check the skill names the findings, edits nothing, and holds the
-  floor rather than silencing the gate. The eval sandbox has **no web tools**, so
-  the case cannot measure upstream research; it measures use of the gate's
-  findings and honesty about that limit (a claim about upstream it could not have
-  fetched fails). The judge reads only the final message, hence the prompt's
-  request for one self-contained summary. Its `fixture.sh` is a template -- it uses
-  `__M3L_CLI__`, substituted by `writeToolchainPlugin` when the case is copied.
-  `packages/plugin/evals/` grades `/customize` itself
-  (`fresh-interview`, `adopt-reconcile`); each case's `fixture.sh` runs this
-  repo's own **built** CLI to make a genuine fresh/adopted project, so
-  `pnpm eval` runs `pnpm build` first. `evals/core-harness/triggers.json` is a
-  `{skill, query, should_trigger}` corpus that `bin/lib/eval-lib.mjs` turns
-  into a throwaway plugin wrapping `templates/core`'s skills plus one case per
-  entry; `eval-lib.test.ts` fails if a baseline skill ships without a positive
-  and a negative entry. The interview is graded by an `llm` rubric rather than
-  a `tool_used: AskUserQuestion` grader because that tool is not available in
-  the eval sandbox (Claude falls back to plain-text questions). Under
-  `--ablation with-without` a `tool_used: Skill` grader stops counting toward
-  the score, so the suites default to `--ablation none`. `--check` ratchets
-  against `evals/baseline.json` and `--update` rewrites it -- record it at
-  `--runs 3` or more, because a one-run baseline flakes.
+- **Behavioural evals (`pnpm eval`) are a separate, paid layer from
+  `check:harness`**, deliberately excluded from `pnpm verify`/`pre-push`
+  since they make real model calls. Full detail: `.claude/rules/evals.md`
+  (auto-loads on `evals/**`, `packages/plugin/evals/**`, `bin/eval.mjs`).
 - **`templates/core`'s caps bind the baseline only, verified by counting
   (`packages/cli/src/caps.ts`'s `countBaselineCaps`/`CAP_LIMITS`), not
   every installed pack on top of it:** ≤5 agents, ≤8 skills (7 in
@@ -327,119 +316,14 @@ steps) before considering any task here done.
   pack-contributed steps this repo's own list has no use for). Add a new
   gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
   bespoke script invocation in either YAML file.
-- **Continuous integration (`.github/`).** `ci.yml` has five lane jobs
-  (`format`/`lint`/`typecheck`/`build`/`test`), each `node bin/verify.mjs
---group <name>`, plus an `e2e` job (`pnpm build` then `pnpm test:e2e`), a
-  `node-current` job (a full `pnpm verify` + `pnpm test:e2e` on whatever
-  Node.js currently calls its Current release line, so a drift against the
-  pinned `.node-version` surfaces before that line becomes the next LTS --
-  a separate job, never a matrix, for the same `gate-lane-parity` reason as
-  below), and a `verify` aggregator -- the check the `main` ruleset gates on
-  (see "Git Workflow"). The aggregator demands an explicit `success` from
-  every lane, since testing only for `failure` reports green over a
-  cancelled or skipped one. Two rules keep `gate-lane-parity` (the
-  toolchain grader) working against this repo: **never name a step id in a
-  workflow** (name a group), and **never matrix the lanes** --
-  `--group ${{ matrix.group }}` reads as dynamic, and because the grader
-  concatenates every workflow file into one surface, that one line
-  switches the check off for all of them. `pnpm eval` never runs in CI
-  (paid model calls). **CodeQL is GitHub-managed default setup and has no
-  file in this repo -- do not add a `codeql.yml`**, it collides with
-  default setup. `bin/check-node-version.mjs` is live here now: every
-  lane that runs the pinned toolchain takes Node from
-  `node-version-file: .node-version`; `node-current` is the one
-  deliberate, documented exception, and the gate's own regex (which only
-  rejects a hardcoded _digit_) already allows it. `release.yml` follows
-  the same two rules and adds a third: **it never writes the text
-  `verify.mjs`**. The grader reads a workflow as text, so a bare or
-  dynamic invocation there switches `gate-lane-parity` off for `ci.yml` too
-  -- measured, not assumed: the structural check count drops 42 to 37 and
-  no finding is raised. Its `pack` job runs `pnpm verify` instead, which
-  the scraper cannot see and which is a full run of every group anyway.
-  Every action in every workflow (including `scorecard.yml` below) is
-  pinned by commit SHA with a `# vX.Y.Z` comment naming the tag pinned to
-  -- Dependabot (`.github/dependabot.yml`) opens a PR to move the pin
-  forward, the same as it would for a floating tag, so this costs nothing
-  in maintenance and closes the "a compromised upstream tag" class of
-  supply-chain risk a floating `@v7` doesn't. `scorecard.yml` runs
-  `ossf/scorecard-action` weekly (plus on push to `main` and
-  `workflow_dispatch`) and publishes results for the README badge; it is
-  read-only and not a required check. The README's Socket badge
-  (`badge.socket.dev`) is a deliberate complement, not a duplicate: it
-  scores the _published package's_ behavior (install scripts,
-  obfuscation, requested permissions), where Scorecard scores the
-  _repo's_ practices. Bundlephobia and Snyk were considered and
-  rejected: Bundlephobia measures browser-bundle size, which doesn't
-  apply to a bin-only CLI with no importable entry point (see
-  `packages/cli/package.json`'s `exports`), and Snyk overlaps with both
-  Socket and `dependency-review.yml`/Dependabot for a package that has
-  zero runtime dependencies to begin with -- one vulnerability-scanning
-  badge is enough. `gitleaks.yml` runs `gitleaks/gitleaks-action` (secret
-  scanning) on the same push/PR/weekly/dispatch shape as `scorecard.yml`,
-  and is not a required check today (see "Known gaps" -- adding it to
-  `main`'s ruleset needs at least one successful run on `main` first). Its
-  `GITLEAKS_VERSION` is pinned above the action's own stale built-in
-  default and Dependabot doesn't track it, so bump it by hand
-  periodically; `GITLEAKS_LICENSE` (a free org license, required because
-  this repo is org-owned) is an org-level secret set up outside this repo.
-- **`claude.yml` and `claude-pr-review.yml` run Anthropic's official
-  `anthropics/claude-code-action`** (SHA-pinned, same convention as every
-  other action here), both running but failing cleanly on an auth error
-  until the one-time setup below is done. `claude.yml` is interactive
-  `@claude`-mention mode: it never opens a PR itself (it commits to a branch
-  and links back to a PR-creation page), so it never bypasses the
-  human-opened-PR rule above. `claude-pr-review.yml` reviews every
-  opened/updated PR with `contents: read` only -- Claude posts a comment, it
-  cannot push code, submit a formal GitHub review, or approve a PR, so it
-  cannot satisfy or bypass `main`'s required checks or its 0-approval rule
-  either way. `claude-pr-review.yml` pins
-  `claude_args: --model claude-opus-5-5 --fallback-model claude-sonnet-5`
-  (there is no `model:`/`fallback_model:` input -- both are deprecated
-  action inputs, per claude-code-action's own docs/usage.md, in favor of
-  configuring both through `claude_args`); `claude.yml` is left on the
-  action's default. Two reasons for pinning at all, not one: no official
-  source states whether the action's undocumented default can change
-  silently between action releases, which matters for an unattended,
-  repeated job the way it doesn't for `claude.yml`'s interactive, humanly-
-  invoked sessions; and Opus 5.5 is Anthropic's own explicit recommendation
-  for agentic code review specifically (a third-party eval measured a 72%
-  known-bug catch rate against the prior Opus generation's 56%, with fewer
-  false alarms). The fallback only triggers on an overload/unavailable/
-  non-retryable-server-error response, never on an auth, billing,
-  rate-limit, or policy failure -- a real, currently-unfixed gap
-  (anthropics/claude-code-action#594, redirected to and auto-closed
-  `not_planned` as anthropics/claude-code#8413) -- but it's worth having
-  for the failure mode it does cover, and Sonnet 5 is a separate model pool
-  from Opus so it isn't overloaded by the same demand spike.
-  `claude_args` also carries an explicit `--allowedTools` naming
-  `mcp__github_inline_comment__create_inline_comment` and `gh pr comment`/
-  `diff`/`view` -- load-bearing, not decorative: the action's automation
-  mode (a `prompt` input, no `track_progress`) only sends a review's
-  findings to the PR through a tool Claude is actually granted, per
-  Anthropic's own docs/en/github-actions, and omitting the allowlist fails
-  silently and green -- five runs of an earlier version of this workflow
-  each completed successfully with real turns and spend but left only a
-  placeholder comment on the PR, no review content at all.
-  `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs
-  (the changesets version-PR, Dependabot) and fork PRs explicitly, rather
-  than relying on the action's own internal bot/permission checks, so a run
-  that would just fail on missing secrets never starts -- the fork-PR half
-  of that check is now also backstopped by "Git Workflow"'s
-  collaborators-only pull request policy, but the explicit `if:` stays as
-  defense in depth. `claude.yml` has no PR to gate (it only triggers on
-  issues and comments, which stay open to everyone even under
-  collaborators-only PRs), so its `if:` instead requires the triggering
-  actor's `author_association` to be `OWNER`, `MEMBER` or `COLLABORATOR`.
-  **One-time setup,
-  done by hand:** install the [Claude GitHub App](https://github.com/apps/claude),
-  then `claude setup-token` locally and
-  `gh secret set CLAUDE_CODE_OAUTH_TOKEN` -- this repo uses a Claude
-  subscription's OAuth token, not a stored API key or Workload Identity
-  Federation. `templates/packs/claude-action` ships the mention-mode
-  workflow as an optional pack for bootstrapped projects, defaulting to a
-  stored API key instead (the more universal choice for a project of
-  unknown ownership) with the other two auth options documented as
-  comments in the file.
+- **Continuous integration (`.github/`) and the two Claude Code Actions
+  workflows.** `ci.yml` runs five verify lanes plus `e2e`/`node-current`
+  behind a `verify` aggregator (the check `main`'s ruleset gates on --
+  see "Git Workflow"); `claude.yml`/`claude-pr-review.yml` run Anthropic's
+  official action, model-pinned and scoped to read-only PR comments. Full
+  detail, including the `gate-lane-parity` rules that must never be broken
+  and the one-time GitHub App setup: `.claude/rules/ci.md` (auto-loads on
+  `.github/**`, `lefthook.yml`, `bin/verify.mjs`, `bin/lib/verify-steps.mjs`).
 - **A pack never edits YAML or JavaScript.** It extends three JSON files
   the baseline already reads at runtime (`.claude/settings.json`,
   `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json`) via the pure
@@ -455,134 +339,24 @@ steps) before considering any task here done.
   project's real gate runner) -- see `templates/packs/README.md`.
 - **Design system: `design/` is this repo's own vendored copy of
   m3l-design, this repo only -- `templates/**` stays brand-neutral.**
-  `design/source/` is a verbatim copy of the m3l-design Claude Design
-  artifact (DTCG 2025.10 tokens, component CSS, brand book, fonts) --
-  see `design/README.md` for provenance and the re-sync rule (never
-  hand-edit `source/`). `design/tokens.css` is generated from it by
-  `bin/build-design-tokens.mjs`, whose resolver (`bin/lib/design-tokens.mjs`)
-  is a small, zero-dependency DTCG resolver: it follows
-  `m3l.resolver.json`'s own `resolutionOrder` (primitives -> semantic ->
-  theme -> motion -> components) -- checked, not just assumed:
-  `loadDesignSystem` asserts the manifest still declares that exact set/
-  modifier/context shape and order before any theme resolves, so a re-sync
-  that reorders or renames one of them fails loudly instead of silently
-  merging in the wrong precedence -- resolves `{alias}` references with
-  cycle/missing-alias errors, and flattens the resolved tree into the same
-  dashed-name convention m3l-design's own flattened `tokens.json` uses
-  (`color-surface-default`, `button-primary-bg`, ...) -- that vendored
-  `tokens.json` is kept only as a parity oracle
-  (`packages/cli/tests/design-tokens.test.ts`), never read by the build
-  itself; the DTCG files are canonical, per `design/README.md`. Every
-  formatter (`formatColor`, `formatDimension`, `formatEasing`,
-  `formatShadow`) validates its input's shape and throws `DesignTokenError`
-  rather than interpolating `undefined` into the generated CSS -- see
-  `deriveTypeTreatment`, the typography distillation, for the same
-  fail-loud rule applied to letter-spacing/word-spacing/shared-flag
-  agreement across styles. `node bin/build-design-tokens.mjs --check` is
-  the `design-tokens` step in `bin/lib/verify-steps.mjs`'s `lint` group (a
-  `CORE_STEPS`-shaped entry with no `package.json` script, same pattern as
-  the harness/toolchain gates) -- it fails on drift rather than writing, so
-  a change to `design/source/dtcg/` must be followed by re-running the
-  plain (no-flag) command and committing `design/tokens.css` in the same
-  change. It is run through this repo's own Prettier config before being
-  written, so `pnpm format:check` and this step never disagree about its
-  formatting. The same generator also emits `packages/cli/src/palette.ts` --
-  the six terminal status/text colors, light and dark, `packages/cli/src/term.ts`
-  paints console output with (`paint()`, `supportsColor()`): color only when
-  the stream is a TTY, never when `NO_COLOR` is set, always when `FORCE_COLOR`
-  is; truecolor SGR when `COLORTERM` is `truecolor`/`24bit`, else the nearest
-  of the 16 standard ANSI colors by RGB distance; theme follows `COLORFGBG`
-  when present, defaults to dark otherwise. Piped/non-TTY output is
-  byte-identical to plain text -- every string-matched test keeps passing
-  without needing to know about color at all. `bin/lib/term.mjs` is the
-  root-tooling twin (`bin/verify.mjs`, `bin/lib/report.mjs`,
-  `bin/lint-commit.mjs`, `bin/eval.mjs`, `.claude/hooks/statusline-layout.mjs`):
-  it resolves its own palette straight from `design/source/dtcg/` rather than
-  importing a generated file, since root tooling has no build step to emit
-  one into -- not compared against `term.ts` by a parity test, unlike the
-  harness/toolchain grader twins, since a drift here is cosmetic (two
-  terminals' output), not a behavioral contract.
+  Never hand-edit `design/source/`; after a DTCG change, re-run
+  `node bin/build-design-tokens.mjs` and commit `design/tokens.css` in the
+  same change (`--check` is the `lint`-group verify step). The same
+  generator also emits `packages/cli/src/palette.ts`, the terminal palette
+  `packages/cli/src/term.ts` paints console output with. Full detail:
+  `.claude/rules/design-system.md` (auto-loads on `design/**`,
+  `bin/build-design-tokens.mjs`, `packages/cli/src/{palette,term}.ts`).
 - **The docs site** (`.github/workflows/docs.yml`, deployed from `main` to
-  `https://groundwork.monte3l.com` on Cloudflare Workers Static Assets --
-  see `docs/cloudflare-docs.md`) is a restricted, zero-dependency
-  GFM-to-HTML renderer (`bin/lib/markdown.mjs`) plus a builder
-  (`bin/build-docs.mjs`) that renders ten of this repo's own pages --
-  README (as `index.html`), CONTRIBUTING, SECURITY, GOVERNANCE, ROADMAP,
-  CODE_OF_CONDUCT, and four `docs/*.md` pages (`docs/research/*` is
-  excluded, an internal tracker, not reader-facing) -- styled with
-  `design/tokens.css`, `design/source/components/bundle.css`, and
-  `design/local/site.css` (the page-shell layout `design/README.md`'s
-  "design/local/" section reserves for exactly this: something no single
-  vendored component covers). The renderer is restricted, not a general
-  CommonMark implementation: it covers exactly the markdown inventory those
-  ten pages use (ATX headings h1-h3 with GitHub-compatible slug ids, pipe
-  tables, fenced code, lists, blockquotes -- a GitHub alert
-  `[!NOTE|TIP|IMPORTANT|WARNING|CAUTION]` becomes a status `m3l-callout`, a
-  plain blockquote a neutral one -- footnotes, code spans, bold/italic, and
-  images, including a link wrapping a badge image) and throws a
-  `MarkdownError` rather than guessing at anything outside that set (an
-  h4+, an unknown footnote reference). Every internal link is rewritten:
-  one of the ten pages becomes a relative link to its sibling output file
-  (`.md` -> `.html`, anchor kept); anything else in the repo (`CLAUDE.md`,
-  `LICENSE`, `templates/packs/README.md`, a `.github/**` file) becomes a
-  `github.com/.../blob/main/<path>` link -- there is no raw-HTML pass-
-  through and no unescaped text anywhere in the output. The builder also
-  emits `404.html` (Cloudflare's `not_found_handling: "404-page"` serves it
-  for any unmatched path) and a Cloudflare `_headers` file
-  (`bin/lib/site-headers.mjs`) carrying a real `Content-Security-Policy` --
-  `script-src` pins the exact SHA-256 hash of the page's one inline
-  `<script>` rather than `'unsafe-inline'` -- plus HSTS, `X-Content-Type-Options`,
-  `Referrer-Policy`, `Permissions-Policy` and `Cross-Origin-Opener-Policy`.
-  `node bin/build-docs.mjs --check` (the `docs` step,
-  `bin/lib/verify-steps.mjs`'s `build` group) builds to a throwaway temp
-  directory and fails on any broken internal link or anchor, a stray
-  italic `_x_`/`*x*` emphasis span surviving in one of the ten sources --
-  the same bold-not-italic rule `.claude/rules/docs.md` states, enforced
-  here from the moment this gate existed rather than only once that rule
-  file did -- or a `_headers` file that would exceed Cloudflare's own
-  limits (100 rule blocks, 2,000 characters per line). `--out <dir>`
-  (plain, no `--check`) writes the real site; `docs.yml`'s `build` job runs
-  it with no `pnpm install` first, since the builder is Node-builtins-only.
-  The `deploy` job then runs `wrangler deploy` from `.github/deploy-tools/`
-  (a pinned, lockfile-verified `wrangler`, installed with `--ignore-scripts`
-  -- verified locally that an assets-only deploy needs neither esbuild's
-  nor workerd's postinstall-fetched binaries) against
-  `.github/deploy-tools/wrangler.jsonc`, authenticating with a Cloudflare
-  API token held in the `docs-cloudflare` GitHub environment (`main`-only,
-  no GitHub App: Cloudflare's Git-integration path, Workers Builds, needs
-  its own GitHub App installed with repo access, and this repo's Known-gaps
-  list already flagged that app for tighter scoping -- direct-upload from
-  Actions avoids installing it at all).
-- **Environment cleanup** (`.github/workflows/environments.yml`,
-  `bin/cleanup-environments.mjs`, `bin/lib/environment-cleanup.mjs`) removes
-  stale GitHub Deployments/Environments this repo's own CI leaves behind --
-  GitHub auto-creates an environment the first time a workflow job
-  references it and never removes it again on its own, so a renamed or
-  retired workflow (or one that fails partway through, as the old
-  `pages.yml` once did before it was replaced by `docs.yml` above) leaves a
-  permanent trail. `bin/lib/environment-cleanup.mjs` is a pure planner
-  (`planCleanup`) over the repo's real environments/deployments plus
-  `.github/environments.json`'s policy: an environment NOT in the policy is
-  deleted outright (its deployments deactivated then deleted, then the
-  environment itself), unless it looks like a real, protected gate
-  (required reviewers or secrets), in which case it's left alone and
-  reported as `refused` rather than silently skipped or destroyed. A
-  **listed** environment is trimmed to its policy's retention window
-  (always keeping its newest successful deployment) and checked for
-  `drift` against the policy's expected settings (required reviewers,
-  allowed branches) -- reported, never auto-corrected.
-  `bin/cleanup-environments.mjs` is the thin I/O executor (GitHub REST API
-  via `fetch`, zero dependencies) that always deactivates a deployment
-  before deleting it (GitHub's own delete rule: a repo with more than one
-  deployment can only delete an inactive one), and exits non-zero on any
-  drift or refusal so a problem surfaces as a red run rather than a buried
-  log line. Deleting an **environment** needs Administration: write, which
-  the default `GITHUB_TOKEN` cannot hold, so `environments.yml` mints a
-  token from a dedicated, narrowly-scoped GitHub App (installed on this
-  repo only) rather than widening the release workflow's own App -- see
-  `docs/environment-janitor.md` for the App's exact permissions and
-  one-time setup. Runs weekly (applying the plan) and on manual dispatch
-  (defaulting to `--dry-run`).
+  `https://groundwork.monte3l.com` on Cloudflare Workers Static Assets) is a
+  restricted, zero-dependency GFM-to-HTML renderer that throws rather than
+  guessing at markdown outside the ten rendered pages' inventory. Full
+  detail: `.claude/rules/docs-site.md` (auto-loads on `bin/build-docs.mjs`,
+  `bin/lib/markdown.mjs`, `.github/workflows/docs.yml`).
+- **Environment cleanup** (`.github/workflows/environments.yml`) removes
+  stale GitHub Deployments/Environments this repo's own CI leaves behind,
+  since GitHub never removes one on its own. Full detail:
+  `.claude/rules/environments.md` (auto-loads on
+  `.github/workflows/environments.yml`, `bin/cleanup-environments.mjs`).
 
 ## Git Workflow
 
@@ -611,8 +385,8 @@ This is local-only enforcement: a squash merge and the release bot's own
 commit don't pass through the hook, which is why the PR template also
 carries a sign-off checkbox.
 
-CI runs on every push and PR to `main` (see "Continuous integration" above),
-and a repository ruleset named `main` enforces the rest. It targets
+CI runs on every push and PR to `main` (see `.claude/rules/ci.md`), and a
+repository ruleset named `main` enforces the rest. It targets
 `~DEFAULT_BRANCH` with an empty `bypass_actors` list -- nobody, the org owner
 included, can push to `main` directly, force-push it, or delete it while the
 ruleset is active. Every change lands through a pull request whose `verify`
@@ -634,11 +408,12 @@ Signing is machine-local: `commit.gpgsign` is in `~/.gitconfig` but
 `user.signingkey` is tracked nowhere in this repo, so on a fresh box
 `git commit` fails outright (`gpg failed to sign the data`) until the key is
 configured. Fix the key -- never `commit.gpgsign=false`, which produces
-commits the ruleset rejects only at merge time. Nothing in this repo's own
-hooks blocks a local commit to `main` the way `guard-branch-isolation.mjs`
-does for `templates/core`'s _emitted_ projects (that guard ships in the
-baseline; it doesn't apply to building the bootstrapper itself); the ruleset
-is the remote-side catch and only bites at push time, so branch first.
+commits the ruleset rejects only at merge time. `guard-branch-isolation.mjs`
+**is** installed on this repo's own root (see "Agent Operating Model" below)
+and blocks a `packages/*/src/`/`packages/*/tests/` write while `HEAD` is
+`main` -- but nothing in this repo's own hooks blocks committing any other
+file straight to `main` locally; the ruleset is the remote-side catch and
+only bites at push time, so branch first regardless.
 
 The ruleset is configured with `gh api`, not committed as JSON: GitHub never
 reads a checked-in export, so it would drift silently, and a gate to keep it
@@ -703,177 +478,52 @@ Full dispatch-sizing and recovery guidance:
 `.claude/skills/**` or `.claude/agents/**`). Path-scoped rules auto-load on
 matching files the same way: `.claude/rules/src.md` on `packages/*/src/**`,
 `.claude/rules/tests.md` on `**/tests/**`/`**/*.test.ts`,
-`.claude/rules/refactoring.md` on both (behavior-preserving changes), and
+`.claude/rules/refactoring.md` on both (behavior-preserving changes),
 `.claude/rules/docs.md` on this repo's own markdown (`templates/**`
 excluded, since it ships brand-neutral into every bootstrapped project) --
 the m3l-design content conventions (bold not italics, GitHub alerts for a
-must-not-miss point, plain copy, tabular data in tables).
+must-not-miss point, plain copy, tabular data in tables) -- and six more
+covering this repo's own area-specific surfaces: `.claude/rules/ci.md`,
+`.claude/rules/releases.md`, `.claude/rules/design-system.md`,
+`.claude/rules/docs-site.md`, `.claude/rules/environments.md`, and
+`.claude/rules/evals.md`. Each names its own trigger paths in its
+frontmatter and is cross-referenced from the section above it replaced.
 
 **Forbidden patterns, hook-enforced:** `any` implied by CommonJS constructs,
 a missing `.js` extension on a relative import, a hand-edit to `dist/` or
-`coverage/`, a `packages/*/src/`/`tests/` write while on `main`, a real
-secret written to disk (`guard-secret-writes.mjs`). **Conscious-care only,
-no automated guard:** no `any` in a public API, never swallow an error
-silently, no top-level side effects, never `git push --force`.
+`coverage/` (`guard-protected-paths.mjs`), a `packages/*/src/`/`tests/`
+write while on `main`, a real secret written to disk
+(`guard-secret-writes.mjs`), an unsigned `git push` when `commit.gpgsign`
+is on (`guard-git-push-signed.mjs`), and stacking `run_in_background: true`
+with a shell-level detach construct in the same Bash call
+(`guard-double-background.mjs`). **Conscious-care only, no automated
+guard:** no `any` in a public API, never swallow an error silently, no
+top-level side effects, never `git push --force`.
 
 ## Releases
 
 Only `@monte3l/groundwork` (the CLI, `packages/cli`) ships to npm.
 `@monte3l/groundwork-plugin` (`/customize`, `packages/plugin`) is `private`
-and never published there -- it distributes only through the Claude Code
-marketplace, `.claude-plugin/marketplace.json`'s single entry, whose `source`
-is a **relative path** into `packages/plugin` in this same repo, not an npm
-source -- the documented, no-registry way to ship a Claude Code plugin that
-lives in the same repo as its CLI, and there is no equivalent reason to run
-the plugin through a registry the way `npx @scope/pkg` needs one for the CLI.
+and distributes only through the Claude Code marketplace
+(`.claude-plugin/marketplace.json`'s relative-path `source`), never npm.
+A PR with a user-visible CLI change adds a changeset (`pnpm changeset`); a
+push to `main` runs `release.yml`, which opens a version PR or publishes.
+Prerelease `rc` mode is on -- only `patch` changesets land until GA.
 
-**The flow.** A PR with a user-visible change to the CLI adds a changeset
-(`pnpm changeset`) -- the plugin never takes one, since it has no release of
-its own. A push to `main` runs `release.yml`, whose `select-mode` job decides:
-with a changeset pending it opens a `chore(release): version packages` PR
-(`pnpm version:packages` = `changeset version`, then
-`bin/sync-plugin-version.mjs` copying the new CLI version into `plugin.json`,
-then a lockfile refresh); with none pending and an unpublished version it
-publishes. Publishing is `pack` (the full `pnpm verify`, then `pnpm test:e2e`,
-then `changesets/action/pack`) followed by `publish`, the only job holding
-`id-token: write`. The CLI gets provenance, a git tag and a GitHub Release
-with its changelog -- **at the moment `npm stage publish` succeeds, not at the
-moment the package is actually live**; see "staged, not direct" below.
-`publish` also fetches the exact tarball `pack` already built and tested
-back out of its own artifact (never rebuilt), runs
-`actions/attest-build-provenance` on it, and attaches it to the GitHub
-Release with `gh release upload` -- a second, independent proof alongside
-npm provenance itself; see `SECURITY.md`'s "Verifying releases". A
-plugin-only change needs no release step at all: it is live for marketplace
-users (`/plugin marketplace update`) the moment it lands on `main`;
-`plugin.json`'s version just trails the CLI's for display.
+A few invariants matter even when this file isn't open: **renaming or
+moving `release.yml` breaks npm's trusted publisher**; publishes are
+**staged, not direct** (`npm stage approve` is a separate, non-automatable
+2FA step -- the git tag and GitHub Release exist before the package is
+actually installable); the version PR authenticates as a GitHub App, not
+`GITHUB_TOKEN`, because `main`'s ruleset requires checks a bot-token PR
+can't trigger; and a plugin-only change needs no changeset or release step
+at all.
 
-**Prerelease mode is on** (`.changeset/pre.json`, tag `rc`): the CLI shipped
-one `0.x` line (`0.1.0-next.0`/`.1`, on the `next` dist-tag) before the public
-API was defined, then switched tags (`pnpm changeset pre exit` immediately
-followed by `pnpm changeset pre enter rc`, both in one commit -- splitting
-them across commits lets `changeset version` run in the intervening `exit`
-state and skip the prerelease suffix entirely) alongside a `major` changeset.
-Changesets' prerelease counter does not reset across a tag switch, so the
-first `rc` version continued from the `next` line's counter rather than
-starting at `.0` or `.1` -- read `pnpm changeset status --verbose` before
-relying on a specific number. The CLI's versions are now `1.0.0-rc.N` on the
-`rc` dist-tag, so the README says `npx @monte3l/groundwork@rc`; `@next`
-users must switch explicitly, since a prerelease range never crosses from
-`0.1.0-next.N` to `1.0.0-rc.N` on its own. The public API (see the README's
-"Versioning policy") is frozen as of the first `rc`: only `patch` changesets
-land for the rest of the series, and any further API change waits for a
-`1.1` after GA. Leave `rc` mode with `pnpm changeset pre exit` plus a normal
-version PR once the promotion checklist is met, then drop `@rc` from the
-README (and repoint the `next` dist-tag, and any marketplace channel, to the
-stable release -- see the release plan for the full GA checklist).
-Changesets itself warns against sitting in pre mode on the default branch
-indefinitely.
-
-**One-time setup, done by hand, that this design depends on.** npm cannot
-configure a trusted publisher for a package that does not exist yet, so
-`@monte3l/groundwork` was first published once as a `0.0.0` placeholder with a
-temporary token (`@monte3l/groundwork-plugin` needs none of this -- it never
-touches npm). That is also why `latest` points at `0.0.0` until the first
-stable release. The trusted publisher is bound to the workflow filename
-`release.yml` (the bare name, not a path): **renaming or moving that file
-breaks publishing** until it is reconfigured on npmjs.com. The version job's
-PR is opened with a GitHub App installation token, not the default
-`GITHUB_TOKEN` (see "The version PR authenticates as a GitHub App" below),
-so despite an earlier version of this doc, the repo's own
-_Allow GitHub Actions to create and approve pull requests_ toggle
-(`can_approve_pull_request_reviews`) is not actually needed for that step --
-see "Known gaps" for turning it off. The trusted publisher's **allowed actions is
-staged-only** (`npm stage publish`, no direct `npm publish`) -- npm's own
-default for any trusted publisher created since 2026-09-03, and its explicit
-recommendation over direct publish; see "staged, not direct" below for what
-that costs and why it was kept rather than switched off.
-
-**The version PR authenticates as a GitHub App, not the default
-`GITHUB_TOKEN`.** `main`'s branch ruleset (see "Git Workflow" above) requires
-`verify`, `Dependency Review` and `CodeQL` on every PR, with an empty
-bypass list -- including this one. A PR opened with the default
-`GITHUB_TOKEN` never triggers `pull_request`-event workflows (GitHub's own
-anti-recursion rule), so those three checks would never post and the PR could
-never merge. `release.yml`'s `version` job instead mints a one-hour
-installation token from a GitHub App installed on just this repo
-(`actions/create-github-app-token@v3`, reading the `APP_CLIENT_ID` /
-`APP_PRIVATE_KEY` repo secrets) and passes it as `changesets/action/version`'s
-`github-token`. That makes the PR behave like any human-opened one: the same
-three checks run and satisfy the ruleset through its normal path, and the
-`version` job's own `permissions:` stays `contents: read` -- the App token
-does the actual writing, scoped to exactly `contents: write` +
-`pull-requests: write` on the App itself. This is what both GitHub's own docs
-("GITHUB_TOKEN") and changesets' own automating guide recommend for this
-exact situation -- an App token over a PAT (shorter-lived, not tied to a
-person) or a ruleset bypass (which would skip the checks rather than
-satisfy them, undermining the empty `bypass_actors` list "Git Workflow"
-describes).
-
-**Things that look wrong but are deliberate.**
-
-- **Staged, not direct.** `@monte3l/groundwork`'s trusted publisher only allows
-  `npm stage publish`, not `npm publish` -- npmjs.com's own recommended,
-  stronger setting, and its default for any trusted publisher created after
-  2026-09-03 (this one was). A maintainer must separately run
-  `npm stage approve <id>` (2FA, on the CLI or npmjs.com -- **never
-  automatable**, by npm's own design) before a version is actually
-  installable. `npm stage list --package @monte3l/groundwork` finds the id;
-  the `publish` job's last step tries this too, best-effort, but that job
-  never holds a login session so it may print nothing. The alternative --
-  checking "allow npm publish" -- was considered and rejected: this package
-  is a solo-maintainer pre-1.0 CLI, not the "high-impact, widely-used"
-  case npm is targeting, but the version PR is already a real, reviewed gate
-  before anything reaches `publish` at all, and the `publish` job's own
-  containment (no build/test code, `--ignore-scripts`) already limits what a
-  compromised token could do -- staging adds a second, stronger gate on top
-  of a design that already had one. That trade means accepting the ordering
-  cost above: the git tag and GitHub Release exist for a few minutes to
-  however long approval takes, before `npm install` actually resolves the
-  version.
-- **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to `npm stage
-publish`.** Two stacked reasons, not one: changesets publishes through
-  `pnpm publish` in a pnpm workspace, and pnpm 12's native publish is
-  rejected by npmjs.com's OIDC exchange (403 "OIDC permission denied"; still
-  unfixed through pnpm 12.5.1 when this was written) -- and separately, a
-  _direct_ `npm publish` would get the identical 403 for the unrelated
-  staged-only reason above. The shim translates only changesets' exact
-  invocation and refuses any flag it does not recognise; everything else
-  passes through to pnpm. Delete the pnpm-OIDC half of this once pnpm's
-  publish authenticates; the staged-vs-direct half stays regardless.
-- **Changesets, not a hand-written publish script, owns the publish plan, tags
-  and Releases.** Tarballs are packed in one job and published in another so the
-  OIDC token is never present where build or test code runs. The `publish` job
-  installs with `--ignore-scripts` and pins an exact `npm@` version (`npm
-stage publish` needs >= 11.15.0, Node >= 22.14.0 -- already covered by
-  `.node-version`'s 24), not a range or `latest` -- OpenSSF Scorecard's
-  Pinned-Dependencies check flags a floating install the same way it flags
-  an unpinned Action, and this job holds the OIDC token.
-- **No package-manager cache in `release.yml`**, and no `cancel-in-progress`: a
-  restored cache is an input an attacker can poison in the jobs that publish,
-  and a half-published release is worse than a queued one.
-
-**Versions that must agree.** `packages/plugin/.claude-plugin/plugin.json`'s
-version tracks `packages/cli/package.json`'s (`bin/sync-plugin-version.mjs`
-edits the text in place, not re-serializing JSON, so Prettier stays
-satisfied). `check-plugin-version` (the `lint`-group gate,
-`bin/check-plugin-version.mjs`) fails on that drift, and separately asserts
-`packages/plugin/package.json` stays `private` and that
-`.claude-plugin/marketplace.json`'s entry names the plugin correctly, points
-at a non-npm source, and carries no version pin of its own -- three structural
-guards against this design quietly regrowing the npm-publish shape it
-deliberately dropped.
-
-**The `npm-publish` environment closes the tag/Release ordering gap.**
-`release.yml`'s `publish` job has `environment: npm-publish`, a GitHub
-environment (created once, by hand, via `gh api` -- not committed as JSON,
-same reasoning as the branch ruleset above) with one required reviewer (the
-maintainer, self-review allowed since there's only one) and deployments
-restricted to `main`. This pauses the job itself -- before the git tag, the
-GitHub Release, or `npm stage publish` exist -- rather than only gating
-`npm stage approve` afterward, which is the second, independent approval
-this design accepts on top of npm's own staged-publish gate. Read the live
-state with `gh api repos/monte3l/m3l-groundwork/environments/npm-publish`.
+Full detail -- the publish flow, the prerelease/GA plan, the one-time npm
+and GitHub App setup, `bin/pnpm-publish-shim.mjs`'s OIDC workaround, and the
+`npm-publish` environment gate: `.claude/rules/releases.md` (auto-loads on
+`.github/workflows/release.yml`, `.changeset/**`, `.claude-plugin/**`,
+`packages/*/package.json`).
 
 ## Testing
 
@@ -924,9 +574,26 @@ removed from `templates/core`. Anything that changes what the CLI's tarball
 ships or how it locates its data is proved by `pack.e2e.test.ts`, not by
 running the CLI from the checkout, where every path resolves regardless. If
 you touched this repo's _own_ `.claude/` (agents, hooks, skills, rules,
-`settings.json` at root, not `templates/core/`), `node bin/check-harness.mjs`
-must stay green the same way it does for the baseline: structural failures
-gate, rubric findings only warn.
+`settings.json` at root, not `templates/core/`), grade it the same way the
+baseline's `bin/check-harness.mjs` grades `templates/core` -- there is no
+`package.json` script for this (only the emitted baseline gets one), so
+point the same rule module at the repo root instead:
+
+```sh
+node -e '
+import("./bin/lib/report.mjs").then(async (report) => {
+  const rules = await import("./templates/core/bin/lib/harness-rules.mjs");
+  const reporter = report.createReporter(false);
+  const root = process.cwd();
+  rules.reportGrade(rules.gradeHarness(root), reporter);
+  rules.reportOfficialValidation(root, reporter);
+  reporter.finish();
+});
+'
+```
+
+Structural failures gate, rubric findings only warn -- same rule as the
+baseline.
 
 **A new tracked file outside `templates/**` needs an SPDX header** (a
 `SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors` +
@@ -972,13 +639,14 @@ set for one file.
   Adopting it means teaching that gate (and its `templates/core` twin) about
   both forms first.
 - **`.claude/` harness support for working _in this repo_ (as opposed to what
-  it emits) is now installed** -- see "Agent Operating Model" below for what
+  it emits) is now installed** -- see "Agent Operating Model" above for what
   and why. It arrived by running this repo's own published CLI against
   itself (`npx @monte3l/groundwork@next .`, adopt mode) and its own
   `/customize` skill, the same path any adopter follows -- self-hosting as
-  the first real end-to-end proof of both, not a hand-rolled install. Root's
-  own `bin/check-harness.mjs` grades it (58 structural checks, 100% rubric)
-  with the exact rule module `templates/core`'s twin uses.
+  the first real end-to-end proof of both, not a hand-rolled install. Grade
+  it with the same rule module `templates/core`'s `bin/check-harness.mjs`
+  uses (see "Definition of Done" for the command) -- 0 structural findings
+  expected.
   What _does_ already exist independently is `.claude/worktrees/`, created ad hoc whenever
   a background agent runs with `isolation: "worktree"`: a full second
   checkout of this repo, uncommitted state included. `.prettierignore`,
@@ -1001,28 +669,24 @@ set for one file.
   go over budget," not precise enough to be the final word; `/customize`'s
   Step 0 confirmation round settles it for real.
 - **A 2026-09-26 GitHub-settings audit found real gaps this repo's own docs
-  hadn't caught up to; some are fixed, several are still pending a manual
-  `gh api` call or a dashboard toggle** (both org-write and secret-write
-  actions need a human, not an agent, in this project's own tooling).
-  Applied: `pull_request_creation_policy: collaborators_only` (see "Git
-  Workflow"), and `gitleaks.yml`/the `claude.yml` `author_association`
-  guard landed in the same change as this entry. Still pending, tracked
-  here rather than left to drift like the ruleset already warns against:
-  turn off `can_approve_pull_request_reviews` (repo and org --
-  `PUT .../actions/permissions/workflow`; safe, since the release version
-  PR uses a GitHub App token, not `GITHUB_TOKEN` -- see "Releases");
-  require approval for all external contributors' workflow runs, not just
-  first-time ones (`PUT .../actions/permissions/fork-pr-contributor-approval`
-  with `all_external_contributors`); enforce SHA pinning and an actions
-  allowlist (`sha_pinning_required: true`, `allowed_actions: selected`,
-  covering `gitleaks/gitleaks-action` alongside the existing third-party
-  actions); a tag-protection ruleset on `refs/tags/**` (deletion/
-  non-fast-forward/update, empty `bypass_actors`) -- there is currently
-  none, only the branch ruleset; restrict the org's `CLAUDE_CODE_OAUTH_TOKEN`
-  and `GITLEAKS_LICENSE` secrets to the repos that actually use them
-  (currently org-wide visibility); set the org's default repository
-  permission below `admin`; and scope the Cloudflare and Claude GitHub App
-  installations to selected repositories instead of every org repo. Once
-  `gitleaks.yml` has a clean run on `main`, add it to the `main` ruleset's
-  `required_status_checks` the same way `verify`/`Dependency Review`/
-  `CodeQL` are pinned by `integration_id`.
+  hadn't caught up to.** Both org-write and secret-write actions need a
+  human, not an agent, in this project's own tooling, so most items below
+  are still pending a manual `gh api` call or a dashboard toggle -- tracked
+  here rather than left to drift like the ruleset already warns against.
+  Applied so far: `pull_request_creation_policy: collaborators_only` (see
+  "Git Workflow") and `gitleaks.yml`/the `claude.yml` `author_association`
+  guard, both landed in the same change as this entry.
+
+  | Pending item                                                                            | How to apply                                                                                                                              | Why it's safe                                                                                         |
+  | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+  | Turn off `can_approve_pull_request_reviews` (repo and org)                              | `PUT .../actions/permissions/workflow`                                                                                                    | The release version PR uses a GitHub App token, not `GITHUB_TOKEN` -- see `.claude/rules/releases.md` |
+  | Require approval for all external contributors' workflow runs, not just first-time ones | `PUT .../actions/permissions/fork-pr-contributor-approval` with `all_external_contributors`                                               | Closes the gap left by first-time-only approval                                                       |
+  | Enforce SHA pinning and an actions allowlist                                            | `sha_pinning_required: true`, `allowed_actions: selected`, covering `gitleaks/gitleaks-action` alongside the existing third-party actions | Matches what's already done by hand                                                                   |
+  | Add a tag-protection ruleset on `refs/tags/**`                                          | Deletion/non-fast-forward/update, empty `bypass_actors`                                                                                   | There is currently none, only the branch ruleset                                                      |
+  | Restrict `CLAUDE_CODE_OAUTH_TOKEN` and `GITLEAKS_LICENSE` to the repos that use them    | Org secret settings                                                                                                                       | Currently org-wide visibility                                                                         |
+  | Set the org's default repository permission below `admin`                               | Org settings                                                                                                                              | Reduces blast radius of a compromised member account                                                  |
+  | Scope the Cloudflare and Claude GitHub App installations to selected repositories       | App settings                                                                                                                              | Currently installed on every org repo                                                                 |
+
+  Once `gitleaks.yml` has a clean run on `main`, add it to the `main`
+  ruleset's `required_status_checks` the same way `verify`/
+  `Dependency Review`/`CodeQL` are pinned by `integration_id`.

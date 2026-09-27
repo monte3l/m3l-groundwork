@@ -111,11 +111,19 @@
   "statusLine": {
     "type": "command",
     "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.mjs\"",
-    "refreshInterval": 30,
-    "padding": 1
+    "padding": 1,
+    "refreshInterval": 30
   },
   "subagentStatusLine": {
     "type": "command",
     "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-statusline.mjs\""
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true
   }
 }
