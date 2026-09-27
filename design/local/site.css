@@ -1,0 +1,82 @@
+/* SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+   SPDX-License-Identifier: MIT */
+
+/* This repo's own docs-site page shell -- the one divergence design/README.md's
+   "design/local/" section reserves for a need the shared m3l-design system
+   doesn't cover: page *layout* (a header, a sidebar, a content column), as
+   opposed to a single component. Every rule here still spends only
+   design/tokens.css's own custom properties or design/source/components/
+   bundle.css's own classes -- never a new color, space, or radius literal.
+   Built by bin/build-docs.mjs; see docs/architecture.md's "Design system". */
+
+.m3l-site-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-index-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--inset-container);
+  background: var(--color-surface-default);
+  border-bottom: var(--border-width-default) solid var(--color-border-subtle);
+}
+
+.m3l-site-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-6);
+  max-width: var(--breakpoint-lg);
+  margin: 0 auto;
+  padding: var(--space-6) var(--inset-container);
+}
+
+.m3l-site-sidebar {
+  position: sticky;
+  top: calc(var(--space-16) + var(--space-4));
+  flex: none;
+  width: 14rem;
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-subtle);
+}
+
+.m3l-site-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.m3l-footnotes {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: var(--border-width-default) solid var(--color-border-subtle);
+}
+
+.m3l-footnotes hr {
+  display: none;
+}
+
+.m3l-footnotes ol {
+  padding-left: var(--space-5);
+  color: var(--color-text-secondary);
+}
+
+.m3l-footnotes li {
+  margin-bottom: var(--space-2);
+}
+
+.m3l-footnotes p {
+  display: inline;
+}
+
+@media (max-width: 47.99rem) {
+  .m3l-site-layout {
+    flex-direction: column;
+  }
+
+  .m3l-site-sidebar {
+    position: static;
+    width: auto;
+    align-self: stretch;
+  }
+}

@@ -90,11 +90,19 @@ an interim disabled/neutral fill. This repo inherits that as-is; fixing it
 is an upstream m3l-design change, not something to patch locally in
 `design/local/` (see below).
 
-## `design/local/` -- reserved, currently empty
+## `design/local/` -- this repo's own, non-vendored divergence
 
 If this repo ever needs to diverge from upstream m3l-design (a token this
 repo needs that the shared system doesn't have yet, a component variant
 specific to this repo), that divergence goes in a new `design/local/`
 directory, clearly separated from the vendored `source/` tree, rather than
-edited into `source/` where a re-sync would silently discard it. Empty for
-now -- this repo has needed no divergence yet.
+edited into `source/` where a re-sync would silently discard it.
+
+- `local/site.css` -- the docs site's page-shell layout (a sticky header, a
+  sidebar + content grid, the footnotes section): a page-layout concern none
+  of the seven vendored components cover, since each of those styles one
+  component, not a page. It spends only `design/tokens.css`'s own custom
+  properties and `source/components/bundle.css`'s own classes -- never a new
+  color, space, or radius literal -- so it stays a layout addition, not a
+  second design system. See `bin/build-docs.mjs` and `docs/architecture.md`'s
+  "Design system".

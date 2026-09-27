@@ -3,6 +3,8 @@ dist/
 coverage/
 pnpm-lock.yaml
 CHANGELOG.md
+# The docs site build output -- see .gitignore.
+_site/
 # A worktree the harness creates for a background agent (Agent tool
 # `isolation: "worktree"`, or /EnterWorktree) lands under here as a full,
 # independent checkout -- including its own copy of every file this repo

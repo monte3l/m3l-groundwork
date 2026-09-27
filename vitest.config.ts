@@ -20,6 +20,8 @@ export default defineConfig({
       // pnpm install) into a temp directory and is slow by design; it is
       // run explicitly via `test:e2e`, not as part of the default unit run.
       "**/*.e2e.test.ts",
+      // The docs site build output -- generated, never a test fixture.
+      "_site/**",
     ],
     coverage: {
       provider: "v8",

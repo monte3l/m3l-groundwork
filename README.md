@@ -247,7 +247,7 @@ examples. From 1.0.0, the public API is:
 6. **`/customize`'s invocation name**, and the promise that it reads every
    inventory `schemaVersion` the CLI has ever emitted since 1.0.
 
-**Not covered by this policy:** the _contents_ of the baseline the CLI
+**Not covered by this policy:** the **contents** of the baseline the CLI
 emits (`templates/core/`, `templates/packs/`). What a fresh bootstrap
 writes into your project follows current upstream TypeScript and Anthropic
 guidance and can change in a minor release -- that's the whole point of

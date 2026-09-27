@@ -63,7 +63,7 @@ date.
 - **`emit.ts`** walks a template tree and writes it into the target,
   applying `tokens.ts`'s plain `__KEY__` string substitution -- not a
   templating engine, deliberately (see [`CLAUDE.md`](../CLAUDE.md)).
-- **`survey/*.ts`** (adopt mode) is an index, not an interpretation: each
+- `survey/*.ts` (adopt mode) is an index, not an interpretation: each
   collector records verifiable facts (which files exist, their content,
   which keys are set) and never infers a verdict. Anything a collector
   can't parse goes into `ProjectSurvey.undetermined` rather than being
@@ -130,6 +130,17 @@ root tooling (`bin/lib/term.mjs`) paint console output in the same palette --
 color only on a real TTY, honoring `NO_COLOR`/`FORCE_COLOR`, truecolor or the
 nearest ANSI-16 color depending on `COLORTERM`. Piped output stays plain
 text either way.
+
+This repo's own docs site (published to GitHub Pages by
+`.github/workflows/pages.yml`) is built by a small, restricted,
+zero-dependency markdown-to-HTML renderer (`bin/lib/markdown.mjs`) and site
+builder (`bin/build-docs.mjs`), styled with the same generated
+`design/tokens.css` plus the vendored component CSS and one repo-specific
+addition, `design/local/site.css`, for the page-shell layout no single
+vendored component covers. `bin/build-docs.mjs --check` fails the build on
+a broken internal link or anchor, or on a stray italic emphasis span --
+see [`CLAUDE.md`](../CLAUDE.md#architecture-notes) for the full renderer
+contract.
 
 ## Trust boundaries and threat model
 

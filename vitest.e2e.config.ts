@@ -18,6 +18,7 @@ export default defineConfig({
       "packages/cli/plugin/**",
       // Same reason as vitest.config.ts.
       "**/.claude/worktrees/**",
+      "_site/**",
     ],
     testTimeout: 300_000,
     hookTimeout: 300_000,

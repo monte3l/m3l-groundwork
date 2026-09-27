@@ -25,3 +25,8 @@ lefthook-local.yml
 # `pnpm eval` results (behavioural harness evals)
 .eval-results/
 packages/plugin/evals/results/
+
+# The docs site build output (`node bin/build-docs.mjs --out _site`, the
+# conventional GitHub Pages staging directory `.github/workflows/pages.yml`
+# builds into) -- generated, never committed.
+_site/
