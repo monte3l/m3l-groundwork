@@ -39,3 +39,27 @@ jobs:
           # permissive; this repo never redistributes npm, it only shells
           # out to it in a CI job that installs with --ignore-scripts.
           allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0, BlueOak-1.0.0, Artistic-2.0, CC-BY-3.0
+          # Per-package, not per-license: `wrangler`'s dependency tree
+          # (.github/deploy-tools/package-lock.json, docs/cloudflare-docs.md)
+          # pulls in `sharp`'s prebuilt libvips binaries, which carry
+          # LGPL-3.0-or-later (some combined with Apache-2.0/MIT). LGPL isn't
+          # added to allow-licenses above -- that would accept it repo-wide --
+          # these specific packages are named instead. Same non-redistribution
+          # reasoning as npm above: this repo never ships these binaries to
+          # anyone, it only installs them (--ignore-scripts) in a CI job that
+          # uploads static HTML/CSS to Cloudflare.
+          allow-dependencies-licenses: >-
+            pkg:npm/%40img/sharp-libvips-darwin-arm64,
+            pkg:npm/%40img/sharp-libvips-darwin-x64,
+            pkg:npm/%40img/sharp-libvips-linux-arm,
+            pkg:npm/%40img/sharp-libvips-linux-arm64,
+            pkg:npm/%40img/sharp-libvips-linux-ppc64,
+            pkg:npm/%40img/sharp-libvips-linux-riscv64,
+            pkg:npm/%40img/sharp-libvips-linux-s390x,
+            pkg:npm/%40img/sharp-libvips-linux-x64,
+            pkg:npm/%40img/sharp-libvips-linuxmusl-arm64,
+            pkg:npm/%40img/sharp-libvips-linuxmusl-x64,
+            pkg:npm/%40img/sharp-wasm32,
+            pkg:npm/%40img/sharp-win32-arm64,
+            pkg:npm/%40img/sharp-win32-ia32,
+            pkg:npm/%40img/sharp-win32-x64
