@@ -8,6 +8,9 @@ m3l-groundwork is a command-line tool that sets up (or reports on) a
 TypeScript project's toolchain and [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
 setup, then keeps that setup current with live upstream guidance.
 
+Read this project's rendered docs site at
+[groundwork.monte3l.com](https://groundwork.monte3l.com).
+
 ## Who is this for
 
 - Someone starting a **new TypeScript project** who wants a strict

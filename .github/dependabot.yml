@@ -22,14 +22,28 @@ updates:
   # .github/release-tools/ pins the exact npm version the release
   # workflow's publish job installs (see release.yml's `npm ci --prefix`
   # step) via a committed package-lock.json's integrity hash, not a bare
-  # version string in YAML -- this is the one npm-ecosystem directory
-  # Dependabot is pointed at, so bumping that pin stays a normal reviewed
+  # version string in YAML -- so bumping that pin stays a normal reviewed
   # PR instead of a hand-regenerated lockfile. This package runs holding
   # the publish job's OIDC token, so it gets the same one-day cooldown
   # pnpm-workspace.yaml's minimumReleaseAge already holds every other
   # dependency to -- Dependabot's own cooldown default is 0.
   - package-ecosystem: "npm"
     directory: "/.github/release-tools"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 1
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+
+  # .github/deploy-tools/ pins the exact wrangler version docs.yml's deploy
+  # job installs, the same lockfile-integrity-hash pattern as release-tools
+  # above. Its job holds a Cloudflare API token (see docs/cloudflare-docs.md),
+  # so it gets the same one-day cooldown.
+  - package-ecosystem: "npm"
+    directory: "/.github/deploy-tools"
     schedule:
       interval: "weekly"
     cooldown:

@@ -88,11 +88,15 @@ packages/plugin/        Phase B: the /customize skill
 
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
                          verify lanes + e2e + node-current + the `verify`
-                         aggregator), release.yml (see "Releases"), pages.yml
-                         (builds and deploys the docs site -- see "Design
-                         system"), dependency-review.yml, scorecard.yml,
-                         gitleaks.yml, claude.yml, claude-pr-review.yml,
-                         dependabot.yml, ISSUE_TEMPLATE/,
+                         aggregator), release.yml (see "Releases"), docs.yml
+                         (builds the docs site and deploys it to Cloudflare
+                         Workers Static Assets -- see "Design system" and
+                         docs/cloudflare-docs.md), dependency-review.yml,
+                         scorecard.yml, gitleaks.yml, claude.yml,
+                         claude-pr-review.yml, dependabot.yml,
+                         deploy-tools/ (pins the exact wrangler version
+                         docs.yml's deploy job installs, same pattern as
+                         release-tools/), ISSUE_TEMPLATE/,
                          pull_request_template.md
 
 design/                 m3l-design, vendored -- see design/README.md and
@@ -496,14 +500,16 @@ steps) before considering any task here done.
   one into -- not compared against `term.ts` by a parity test, unlike the
   harness/toolchain grader twins, since a drift here is cosmetic (two
   terminals' output), not a behavioral contract.
-- **The docs site** (`.github/workflows/pages.yml`, deployed from `main` to
-  GitHub Pages) is a restricted, zero-dependency GFM-to-HTML renderer
-  (`bin/lib/markdown.mjs`) plus a builder (`bin/build-docs.mjs`) that renders
-  ten of this repo's own pages -- README (as `index.html`), CONTRIBUTING,
-  SECURITY, GOVERNANCE, ROADMAP, CODE_OF_CONDUCT, and four `docs/*.md` pages
-  (`docs/research/*` is excluded, an internal tracker, not reader-facing) --
-  styled with `design/tokens.css`, `design/source/components/bundle.css`,
-  and `design/local/site.css` (the page-shell layout `design/README.md`'s
+- **The docs site** (`.github/workflows/docs.yml`, deployed from `main` to
+  `https://groundwork.monte3l.com` on Cloudflare Workers Static Assets --
+  see `docs/cloudflare-docs.md`) is a restricted, zero-dependency
+  GFM-to-HTML renderer (`bin/lib/markdown.mjs`) plus a builder
+  (`bin/build-docs.mjs`) that renders ten of this repo's own pages --
+  README (as `index.html`), CONTRIBUTING, SECURITY, GOVERNANCE, ROADMAP,
+  CODE_OF_CONDUCT, and four `docs/*.md` pages (`docs/research/*` is
+  excluded, an internal tracker, not reader-facing) -- styled with
+  `design/tokens.css`, `design/source/components/bundle.css`, and
+  `design/local/site.css` (the page-shell layout `design/README.md`'s
   "design/local/" section reserves for exactly this: something no single
   vendored component covers). The renderer is restricted, not a general
   CommonMark implementation: it covers exactly the markdown inventory those
@@ -518,15 +524,33 @@ steps) before considering any task here done.
   (`.md` -> `.html`, anchor kept); anything else in the repo (`CLAUDE.md`,
   `LICENSE`, `templates/packs/README.md`, a `.github/**` file) becomes a
   `github.com/.../blob/main/<path>` link -- there is no raw-HTML pass-
-  through and no unescaped text anywhere in the output. `node
-bin/build-docs.mjs --check` (the `docs` step, `bin/lib/verify-steps.mjs`'s
-  `build` group) builds to a throwaway temp directory and fails on any
-  broken internal link or anchor, or on a stray italic `_x_`/`*x*` emphasis
-  span surviving in one of the ten sources -- the same bold-not-italic rule
-  `.claude/rules/docs.md` states, enforced here from the moment this gate
-  existed rather than only once that rule file did. `--out <dir>`
-  (plain, no `--check`) writes the real site; `pages.yml`'s `build` job runs
+  through and no unescaped text anywhere in the output. The builder also
+  emits `404.html` (Cloudflare's `not_found_handling: "404-page"` serves it
+  for any unmatched path) and a Cloudflare `_headers` file
+  (`bin/lib/site-headers.mjs`) carrying a real `Content-Security-Policy` --
+  `script-src` pins the exact SHA-256 hash of the page's one inline
+  `<script>` rather than `'unsafe-inline'` -- plus HSTS, `X-Content-Type-Options`,
+  `Referrer-Policy`, `Permissions-Policy` and `Cross-Origin-Opener-Policy`.
+  `node bin/build-docs.mjs --check` (the `docs` step,
+  `bin/lib/verify-steps.mjs`'s `build` group) builds to a throwaway temp
+  directory and fails on any broken internal link or anchor, a stray
+  italic `_x_`/`*x*` emphasis span surviving in one of the ten sources --
+  the same bold-not-italic rule `.claude/rules/docs.md` states, enforced
+  here from the moment this gate existed rather than only once that rule
+  file did -- or a `_headers` file that would exceed Cloudflare's own
+  limits (100 rule blocks, 2,000 characters per line). `--out <dir>`
+  (plain, no `--check`) writes the real site; `docs.yml`'s `build` job runs
   it with no `pnpm install` first, since the builder is Node-builtins-only.
+  The `deploy` job then runs `wrangler deploy` from `.github/deploy-tools/`
+  (a pinned, lockfile-verified `wrangler`, installed with `--ignore-scripts`
+  -- verified locally that an assets-only deploy needs neither esbuild's
+  nor workerd's postinstall-fetched binaries) against
+  `.github/deploy-tools/wrangler.jsonc`, authenticating with a Cloudflare
+  API token held in the `docs-cloudflare` GitHub environment (`main`-only,
+  no GitHub App: Cloudflare's Git-integration path, Workers Builds, needs
+  its own GitHub App installed with repo access, and this repo's Known-gaps
+  list already flagged that app for tighter scoping -- direct-upload from
+  Actions avoids installing it at all).
 
 ## Git Workflow
 

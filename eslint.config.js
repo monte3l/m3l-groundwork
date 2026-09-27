@@ -57,6 +57,8 @@ export default defineConfig(
       // The docs site build output -- generated HTML/CSS, never hand-edited
       // or linted; see .gitignore.
       "_site/**",
+      // Wrangler's local cache/state dir -- see .gitignore.
+      ".github/deploy-tools/.wrangler/**",
     ],
   },
   js.configs.recommended,

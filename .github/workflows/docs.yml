@@ -1,0 +1,125 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+name: Docs
+
+# What this does: builds this repo's own docs site (bin/build-docs.mjs) and
+# deploys it to Cloudflare Workers Static Assets at
+# https://groundwork.monte3l.com, on a Custom Domain
+# (.github/deploy-tools/wrangler.jsonc). Runs on every push to `main` and on
+# manual dispatch -- not on every PR, since a PR's docs changes are already
+# checked by `pnpm verify`'s `docs` step (bin/build-docs.mjs --check, in the
+# `build` group); this workflow is what actually ships the result.
+#
+# Cloudflare has no GitHub OIDC as of this writing, so the deploy job
+# authenticates with a long-lived, narrowly-scoped API token (Workers
+# Scripts: Edit + Workers Routes: Edit on the monte3l.com zone only), stored
+# as a `docs-cloudflare` environment secret restricted to `main`. See
+# docs/cloudflare-docs.md for the one-time setup and the token's scope
+# rationale.
+#
+# Previously deployed to GitHub Pages (`pages.yml`); replaced because the
+# maintainer owns monte3l.com on Cloudflare and wants every project's docs
+# site hosted there, not on GitHub's own domain.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  # A half-published site is worse than a queued one; let an in-flight
+  # deploy finish rather than cancelling it out from under a viewer.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+
+      # Belt and suspenders: `verify`'s `docs` step already gates every PR,
+      # but `main` has no branch protection against a direct push bypassing
+      # that (this repo's own ruleset forbids it, but a fork or a future
+      # policy change shouldn't be the only thing standing between a broken
+      # link and a live deploy) -- `--check` re-validates before `--out`
+      # ever writes anything this job would publish.
+      - run: node bin/build-docs.mjs --check
+
+      - run: node bin/build-docs.mjs --out _site
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-site
+          path: _site
+          retention-days: 1
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: docs-cloudflare
+      url: https://groundwork.monte3l.com
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: docs-site
+          path: _site
+
+      # --ignore-scripts is safe here: an assets-only `wrangler deploy` (no
+      # bundling, no `wrangler dev`) needs neither esbuild's nor workerd's
+      # postinstall-fetched binaries -- verified locally before adding this
+      # step. Same pattern as release.yml's `npm ci --ignore-scripts --prefix
+      # .github/release-tools`.
+      - run: npm ci --ignore-scripts --prefix .github/deploy-tools
+
+      - name: Deploy to Cloudflare
+        working-directory: .github/deploy-tools
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Opt out of Cloudflare's anonymous usage telemetry for this CI job.
+          WRANGLER_SEND_METRICS: "false"
+        run: node_modules/.bin/wrangler deploy --config wrangler.jsonc
+
+      # Confirms the deploy actually took effect and the security headers in
+      # bin/lib/site-headers.mjs's generated _headers file are being served
+      # -- a successful `wrangler deploy` only proves the upload succeeded,
+      # not that Cloudflare's edge is serving the new version yet.
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          status_and_headers() {
+            curl -fsS -D - -o /dev/null --retry 5 --retry-delay 5 --retry-connrefused "$1"
+          }
+          echo "Checking https://groundwork.monte3l.com/ ..."
+          headers=$(status_and_headers "https://groundwork.monte3l.com/")
+          echo "$headers" | grep -qi '^content-security-policy:' || { echo "missing CSP header"; exit 1; }
+          echo "Checking https://groundwork.monte3l.com/does-not-exist ..."
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://groundwork.monte3l.com/does-not-exist")
+          [ "$code" = "404" ] || { echo "expected 404, got $code"; exit 1; }
+          echo "ok  smoke test passed"
