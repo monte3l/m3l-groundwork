@@ -67,12 +67,17 @@ file is the one-time setup and later-projects runbook.
      re-issuance. Verify Advanced Certificates' actual issuing CA(s) before
      adding CAA records at the zone level.
 6. **First deploy:** merging the PR that adds `docs.yml` triggers the
-   `build`/`deploy` jobs on the next push to `main`. Watch the run; the
-   `deploy` job's own smoke test (`curl` against `/` and a 404 path)
-   catches most failures. Once the run is green, run
-   `curl -sI https://groundwork.monte3l.com` by hand and confirm the CSP,
-   HSTS and other headers from `bin/lib/site-headers.mjs` are present, and
-   that the certificate is valid.
+   `build`/`deploy` jobs on the next push to `main`. Watch the run; a green
+   `wrangler deploy` step means the upload itself succeeded. There's no
+   automated post-deploy smoke test (see `docs.yml`'s own header comment
+   for why: Cloudflare's Bot Fight Mode reliably 403s a GitHub
+   Actions-runner `curl`, and that can't be selectively bypassed without
+   either weakening the zone's bot protection or allowlisting GitHub
+   Actions' entire rotating IP range) -- verify the deploy by hand instead:
+   run `curl -sI https://groundwork.monte3l.com` and confirm the CSP, HSTS
+   and other headers from `bin/lib/site-headers.mjs` are present, that the
+   certificate is valid, and that a bad path (e.g.
+   `https://groundwork.monte3l.com/does-not-exist`) returns a real 404.
 7. **Uninstall (or de-scope) the Cloudflare Workers & Pages GitHub App**,
    if it's installed on this org: it's only needed for Cloudflare's Git
    integration (Workers Builds), which this setup deliberately doesn't use
