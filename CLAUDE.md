@@ -91,13 +91,15 @@ packages/plugin/        Phase B: the /customize skill
                          aggregator), release.yml (see "Releases"), docs.yml
                          (builds the docs site and deploys it to Cloudflare
                          Workers Static Assets -- see "Design system" and
-                         docs/cloudflare-docs.md), dependency-review.yml,
-                         scorecard.yml, gitleaks.yml, claude.yml,
-                         claude-pr-review.yml, dependabot.yml,
+                         docs/cloudflare-docs.md), environments.yml (weekly
+                         cleanup of stale GitHub Deployments/Environments --
+                         see "Environment cleanup" below),
+                         dependency-review.yml, scorecard.yml, gitleaks.yml,
+                         claude.yml, claude-pr-review.yml, dependabot.yml,
                          deploy-tools/ (pins the exact wrangler version
                          docs.yml's deploy job installs, same pattern as
-                         release-tools/), ISSUE_TEMPLATE/,
-                         pull_request_template.md
+                         release-tools/), environments.json (the cleanup
+                         policy), ISSUE_TEMPLATE/, pull_request_template.md
 
 design/                 m3l-design, vendored -- see design/README.md and
                          "Design system" below. source/ is a verbatim copy;
@@ -551,6 +553,36 @@ steps) before considering any task here done.
   its own GitHub App installed with repo access, and this repo's Known-gaps
   list already flagged that app for tighter scoping -- direct-upload from
   Actions avoids installing it at all).
+- **Environment cleanup** (`.github/workflows/environments.yml`,
+  `bin/cleanup-environments.mjs`, `bin/lib/environment-cleanup.mjs`) removes
+  stale GitHub Deployments/Environments this repo's own CI leaves behind --
+  GitHub auto-creates an environment the first time a workflow job
+  references it and never removes it again on its own, so a renamed or
+  retired workflow (or one that fails partway through, as the old
+  `pages.yml` once did before it was replaced by `docs.yml` above) leaves a
+  permanent trail. `bin/lib/environment-cleanup.mjs` is a pure planner
+  (`planCleanup`) over the repo's real environments/deployments plus
+  `.github/environments.json`'s policy: an environment NOT in the policy is
+  deleted outright (its deployments deactivated then deleted, then the
+  environment itself), unless it looks like a real, protected gate
+  (required reviewers or secrets), in which case it's left alone and
+  reported as `refused` rather than silently skipped or destroyed. A
+  **listed** environment is trimmed to its policy's retention window
+  (always keeping its newest successful deployment) and checked for
+  `drift` against the policy's expected settings (required reviewers,
+  allowed branches) -- reported, never auto-corrected.
+  `bin/cleanup-environments.mjs` is the thin I/O executor (GitHub REST API
+  via `fetch`, zero dependencies) that always deactivates a deployment
+  before deleting it (GitHub's own delete rule: a repo with more than one
+  deployment can only delete an inactive one), and exits non-zero on any
+  drift or refusal so a problem surfaces as a red run rather than a buried
+  log line. Deleting an **environment** needs Administration: write, which
+  the default `GITHUB_TOKEN` cannot hold, so `environments.yml` mints a
+  token from a dedicated, narrowly-scoped GitHub App (installed on this
+  repo only) rather than widening the release workflow's own App -- see
+  `docs/environment-janitor.md` for the App's exact permissions and
+  one-time setup. Runs weekly (applying the plan) and on manual dispatch
+  (defaulting to `--dry-run`).
 
 ## Git Workflow
 

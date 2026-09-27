@@ -73,10 +73,12 @@ triage issues, merge PRs, and cut a release within about a week. What that
 depends on, concretely:
 
 - **GitHub org ownership** -- controls the `main` branch ruleset, repo
-  secrets (`APP_CLIENT_ID`, `APP_PRIVATE_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`),
-  the `npm-publish` environment's reviewer list, and the GitHub App
-  installation the release workflow's `version` job uses. A second org
-  owner already holds this independently -- see "Roles" above.
+  secrets (`APP_CLIENT_ID`, `APP_PRIVATE_KEY`, `JANITOR_APP_CLIENT_ID`,
+  `JANITOR_APP_PRIVATE_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`), the `npm-publish`
+  environment's reviewer list, and the two GitHub App installations
+  (the release workflow's `version` job, and the environment-cleanup
+  workflow -- see `docs/environment-janitor.md`). A second org owner
+  already holds this independently -- see "Roles" above.
 - **npm package ownership** on `@monte3l/groundwork`, plus the account
   holding 2FA for `npm stage approve`. Unlike GitHub, this is not
   independently held by a second person today -- recovering it depends on
