@@ -18,8 +18,16 @@ description: >-
 
 One skill, two modes, sharing one allowlist
 (`references/typescript-sources.md`) so they can't drift apart. Pick the
-mode from how you were invoked: a specific question → `research`; a
-periodic or `/customize`-driven sweep → `refresh`.
+mode by what's actually being asked, not by surface phrasing: a question
+that names one flag, one setting, or one narrow facet — even when phrased
+as "is X still current" — stays `research`, because there's one thing to
+look up and answer. A request that names no specific facet, that asks
+about the whole TypeScript-facing surface ("our tsconfig", "our toolchain",
+"are we behind"), or that's periodic/`/customize`-driven, is `refresh`.
+When genuinely torn between the two, default to `research` — it's cheaper
+and faster — and say in the answer that a full `refresh` sweep is
+available if the question turns out to implicate more than the one facet
+asked about.
 
 **Must only run in the main (hub) agent, never inside a subagent** — it ends
 in `EnterPlanMode` (refresh) or an `AskUserQuestion` (either mode,
