@@ -217,12 +217,20 @@ confirmed in Step 0.4:
   may not exist by the time this runs). Before installing, call
   `recommendPacks(answers)` from `pack-map.ts` (alongside this file, same
   copy mechanism as `kind-facet-map.ts`) with the now-confirmed
-  `InterviewAnswers` and compare its verdict against Step 0.4's decision. For
-  both shipped packs this never disagrees (neither recommendation varies by
-  kind), but a future kind-scoped pack might — if it does, surface the
-  conflict rather than silently overriding the user's Step 0.4 answer,
-  mirroring Step 4's "the one exception" rule for guidance findings. To
-  install: copy `.groundwork/packs/<name>/files/` into the project (respecting
+  `InterviewAnswers` and compare its verdict against Step 0.4's decision.
+  `harness-extras` and `github` never disagree (neither recommendation
+  varies by kind), but `publishing`'s does (recommended for `library`/`cli`,
+  not for `frontend`/`service`) — if the comparison surfaces a real
+  conflict there or for any future kind-scoped pack, raise it rather than
+  silently overriding the user's Step 0.4 answer, mirroring Step 4's "the
+  one exception" rule for guidance findings. Before installing, check the
+  pack's own `modes`: a pack whose `modes` doesn't include `"adopt"` (today,
+  `publishing` — its release flow encodes decisions too project-specific to
+  apply blind) is never auto-installed here even if staged and approved;
+  instead, state in Step 6 that it needs a manual install (point at
+  `.groundwork/packs/<name>/` and the pack's own `adoptNotes`) and stop
+  there for that pack. For an adopt-capable pack, install by copying
+  `.groundwork/packs/<name>/files/` into the project (respecting
   any approved per-file conflict decision the same way the baseline's own
   additions are applied), then translate `pack.json`'s `wiring` by hand
   against what Step 0.2's deep read already found — a `.claude/settings.json`

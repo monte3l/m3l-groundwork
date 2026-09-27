@@ -75,14 +75,47 @@ function recommendGithub(): PackRecommendation {
 }
 
 /**
- * Every pack's recommendation for the given interview answers. `answers`
- * is currently unused by either pack (`harness-extras`, `github` -- no
- * recommendation varies by kind), but the parameter exists now so a future
- * kind-scoped pack (e.g. a `publishing` pack recommended only for
- * `kind: "library"`) needs no API change here.
+ * `publishing` is the one kind-scoped pack: a release pipeline (a changesets
+ * version PR, then a staged, provenance-attested npm publish via trusted
+ * publishing) plus the OpenSSF supply-chain posture that goes with shipping
+ * to a registry (gitleaks secret scanning, Scorecard, SPDX/REUSE license
+ * headers). A `library` or `cli` typically publishes an npm package; a
+ * `frontend` or `service` is typically deployed instead, so it is not
+ * pre-selected there -- but it stays on offer. It is fresh-mode only and
+ * needs one-time npm and GitHub setup the pack cannot perform itself.
+ */
+function recommendPublishing(answers: InterviewAnswers): PackRecommendation {
+  const recommended = answers.kind === "library" || answers.kind === "cli";
+  return {
+    name: "publishing",
+    recommended,
+    because: recommended
+      ? "a library or CLI typically ships an npm package, so this pack's " +
+        "release pipeline applies: a changesets version PR, then a staged, " +
+        "provenance-attested npm publish via trusted publishing -- plus the " +
+        "OpenSSF supply-chain posture that goes with publishing (gitleaks " +
+        "secret scanning, Scorecard, SPDX/REUSE license headers). It is " +
+        "fresh-mode only and needs one-time npm and GitHub setup (the " +
+        "trusted publisher, the release credentials) the pack cannot do " +
+        "itself."
+      : "a frontend or service is typically deployed rather than published " +
+        "to a package registry, so a changesets/npm release pipeline is not " +
+        "recommended by default -- it is still available if this project " +
+        "does publish an npm package.",
+  };
+}
+
+/**
+ * Every pack's recommendation for the given interview answers. Only
+ * `publishing` varies by `answers.kind` today; `harness-extras` and
+ * `github` are recommended for every kind.
  */
 export function recommendPacks(
-  _answers: InterviewAnswers,
+  answers: InterviewAnswers,
 ): PackRecommendation[] {
-  return [recommendHarnessExtras(), recommendGithub()];
+  return [
+    recommendHarnessExtras(),
+    recommendGithub(),
+    recommendPublishing(answers),
+  ];
 }

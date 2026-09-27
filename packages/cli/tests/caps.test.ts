@@ -92,6 +92,28 @@ describe("countBaselineCaps / countPackBudget", () => {
     }
   });
 
+  it("adds the second argument's own key count on top of the files/ tree's own package.json scripts", () => {
+    const root = makeRoot();
+    try {
+      // makeRoot()'s own package.json already declares 2 scripts (build, test).
+      const counts = countPackBudget(root, { foo: "bar", baz: "qux" });
+      expect(counts.scripts).toBe(4);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("is backward compatible: omitting the second argument behaves exactly like passing an empty object", () => {
+    const root = makeRoot();
+    try {
+      expect(countPackBudget(root, {}).scripts).toBe(
+        countPackBudget(root).scripts,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("reports 0 scripts when package.json has no scripts block, or fails to parse, or is absent", () => {
     const dir = mkdtempSync(join(tmpdir(), "caps-scripts-"));
     try {
@@ -133,8 +155,12 @@ describe("every templates/packs/*/pack.json", () => {
 
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
         budget: CapCounts;
+        wiring: { packageScripts?: Record<string, string> };
       };
-      const actual = countPackBudget(join(packDir, "files"));
+      const actual = countPackBudget(
+        join(packDir, "files"),
+        manifest.wiring?.packageScripts,
+      );
       expect(manifest.budget, `pack "${entry.name}"`).toEqual(actual);
     }
   });

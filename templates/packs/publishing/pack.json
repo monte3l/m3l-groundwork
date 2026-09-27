@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "name": "publishing",
+  "description": "A release pipeline plus its OpenSSF supply-chain posture for a project that ships an npm package. Release half: release.yml (changesets version-PR / staged, provenance-attested npm publish via trusted publishing OIDC, including a direct check-publish-version.mjs call right before packing), .changeset/config.json + README.md, the pnpm-to-npm-stage-publish shim, and one build-group gate (check-dts-deps.mjs). Supply-chain half: gitleaks.yml (secret scanning) and scorecard.yml (OpenSSF Scorecard), plus check-license-headers.mjs and a REUSE.toml template as a lint-group gate. Not adopt-capable: the release flow assumes decisions (registry access, npm trusted-publisher setup, a GitHub App for the version PR) too project-specific to install blind -- see adoptNotes.",
+  "modes": ["fresh"],
+  "budget": {
+    "agents": 0,
+    "skills": 0,
+    "hooks": 0,
+    "workflows": 3,
+    "scripts": 2
+  },
+  "wiring": {
+    "settings": {},
+    "packageScripts": {
+      "changeset": "changeset",
+      "version:packages": "changeset version && pnpm install --lockfile-only"
+    },
+    "verifySteps": [
+      {
+        "id": "dts-deps",
+        "group": "build",
+        "name": "Check .d.ts dependency declarations",
+        "cmd": ["node", "bin/check-dts-deps.mjs"]
+      },
+      {
+        "id": "license-headers",
+        "group": "lint",
+        "name": "Check SPDX license headers",
+        "cmd": ["node", "bin/check-license-headers.mjs"]
+      }
+    ]
+  },
+  "adoptNotes": "REQUIRED right after install, before the first pnpm verify -- two one-time steps, or pnpm verify fails immediately, not from a real regression but from two setup gaps this pack cannot close itself: (1) `pnpm add -D @changesets/cli` -- the wiring contract only extends package.json's scripts, never its dependencies (see templates/packs/README.md), so the wired `changeset`/`version:packages` scripts reference a binary knip's own unlisted-binaries check correctly flags as missing until this is installed; (2) `node bin/check-license-headers.mjs --fix`, then commit the result -- templates/core has never had a license-header gate before this pack, so every one of its own files (hooks, bin/ scripts, CI workflows, the placeholder src/tests) is missing the SPDX header this pack's own license-headers gate now requires, the same one-time cost this repo itself paid when it adopted the same gate (see CLAUDE.md's Definition of Done). Fresh mode only: a release pipeline encodes decisions (whether the package is actually public, which registry, whether a GitHub App backs the version PR) this pack cannot survey or guess at safely, so it is staged like every other pack (at .groundwork/packs/publishing/) but never auto-installed in adopt mode -- if an adopted project wants it, copy .groundwork/packs/publishing/files/ (or templates/packs/publishing/files/ from this repo directly) by hand and work through the one-time setup below. check-publish-version.mjs is deliberately NOT one of this pack's wired verify steps: with changesets, package.json's version on the release branch is always the one just published between releases, so a version-already-published check running on every ordinary push (via pnpm verify / pre-push) would fail every single time until the next version PR lands -- it is instead invoked directly as a step inside release.yml's pack job, the one place \"is this version about to collide with an already-published one\" is actually the right question to ask. The two remaining verify-group gates (dts-deps, license-headers) install anywhere a bin/verify.mjs-shaped gate runner exists; wire them into the project's real one if it differs. Both check-publish-version.mjs and check-dts-deps.mjs no-op (checked: 0, not a failure) on a package.json with `private: true` (the baseline's own default) or (check-dts-deps.mjs only) with no dist/**/*.d.ts yet -- flip `private` to `false` (and set a real `name`) once the package is actually meant to publish. `@changesets/changelog-github` (and its `repo` option) is a drop-in swap for `.changeset/config.json`'s plain default changelog generator, once this project's GitHub repository is known, for changelog entries that link back to the originating PR/commit -- see `.changeset/README.md`. One-time setup before release.yml's first real run (distinct from the two pnpm-verify prerequisites above), distilled from this repo's own .claude/rules/releases.md: (1) npm cannot configure a trusted publisher for a package that doesn't exist yet -- publish once by hand with a temporary token first; (2) the trusted publisher is bound to the exact workflow filename `release.yml` -- renaming or moving it breaks publishing until reconfigured on npmjs.com; (3) set the trusted publisher's allowed actions to staged-only (`npm stage publish`, npm's own default and recommendation since 2026-09-03) -- a maintainer runs `npm stage approve <id>` (2FA, never automatable) before a version actually installs; (4) create an `npm-publish` GitHub environment (via `gh api`, not committed as JSON) with a required reviewer, restricted to the release branch, so the `publish` job itself pauses before the git tag/Release/stage-publish exist; (5) if branch protection requires status checks on every PR with no bypass actor, the version-PR job needs a GitHub App installation token (`APP_CLIENT_ID`/`APP_PRIVATE_KEY` repo secrets), not the default GITHUB_TOKEN, or those checks never trigger and the PR can never merge -- if this project has no such rule, `github-token: ${{ secrets.GITHUB_TOKEN }}` is enough and the app-token step can be dropped. gitleaks.yml needs a free GITLEAKS_LICENSE repo secret for an organization-owned repository (gitleaks-action's own requirement); scorecard.yml assumes a public repository (`publish_results: true` needs one) -- set it `false` for a private repo. Both are read-only and not required checks by default; add either to branch protection once it has a clean run."
+}

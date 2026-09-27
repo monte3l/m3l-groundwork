@@ -598,7 +598,7 @@ set for one file.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships two packs, each covering one theme rather than
+- `templates/packs/` ships three packs, each covering one theme rather than
   one theme per artifact. `harness-extras` is Claude Code session
   ergonomics: a type-design analyzer agent, the compaction-handoff hook
   pair, `guard-readonly-bash`, a `check-file-budget` gate (the four
@@ -621,15 +621,24 @@ set for one file.
   code-scanning alerts to file:line, report only, never edits code), and
   `watching-pr-checks` (check a PR's CI status, hand off to a project's own
   `/triaging-ci` on a real failure). Both workflows need an auth secret the
-  pack cannot create -- see its `adoptNotes`. One candidate from the same
-  predecessor build (its `EXTRACTION-MANIFEST.md`, written to a scratchpad
-  during the original build, not checked into this repo) remains deferred:
-  a `publishing` pack (a release workflow, `check-publish-version`,
-  `check-dts-deps`, plus the OpenSSF supply-chain workflows this repo
-  itself carries -- gitleaks, Scorecard, license headers -- needs a
-  registry/scope/`publishConfig` story the baseline doesn't have yet; this
-  repo now has one to copy -- see "Releases" -- but `templates/core` is
-  also at its three-workflow cap).
+  pack cannot create -- see its `adoptNotes`. `publishing` is a release
+  pipeline plus its OpenSSF supply-chain posture, adapted from this repo's
+  own working implementation (see "Releases"): `release.yml` (changesets
+  version-PR / staged, provenance-attested npm publish via trusted
+  publishing OIDC), `check-publish-version.mjs` (no-ops on `private: true`
+  or an unreachable registry), `check-dts-deps.mjs` (a published `.d.ts`
+  file must not import a package that's only a devDependency), `gitleaks.yml`,
+  `scorecard.yml`, `check-license-headers.mjs` (generalized from this
+  repo's own copy with a `__PROJECT_NAME__` token in place of a hardcoded
+  copyright holder, and with the `templates/**` brand-neutrality exemption
+  dropped -- an emitted project has no such tree of its own) and a
+  `REUSE.toml` template. Fresh mode only: the release flow encodes
+  decisions (registry access, npm trusted-publisher setup, a GitHub App for
+  the version PR) too project-specific for an automated adopt-mode install
+  -- see its `adoptNotes`. It cannot wire `@changesets/cli` itself either,
+  since the wiring contract only extends `package.json`'s `scripts`, never
+  its `dependencies`/`devDependencies` -- its shipped `.changeset/README.md`
+  says so.
 - **No standalone "add a pack to an already-bootstrapped project" flag.**
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is
