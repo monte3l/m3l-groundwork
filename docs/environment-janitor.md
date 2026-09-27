@@ -21,9 +21,14 @@ on this repository only.
        environment: `DELETE /repos/{owner}/{repo}/environments/{name}`).
      - Deployments: **Read and write** (required to deactivate/delete a
        deployment).
-     - Secrets: **Read-only** (lets the planner tell whether an unlisted
-       environment holds secrets, so it's refused rather than deleted --
-       see `bin/lib/environment-cleanup.mjs`'s safety rail).
+     - Environments: **Read-only** (lets the planner tell whether an
+       unlisted environment holds secrets, so it's refused rather than
+       deleted -- see `bin/lib/environment-cleanup.mjs`'s safety rail).
+       **Not** the "Secrets" permission -- that category covers only
+       repository-level Actions secrets and does not grant access to
+       `GET /repos/{owner}/{repo}/environments/{name}/secrets` (confirmed
+       live: this workflow's first real run failed with `403 Resource not
+accessible by integration` under a Secrets-only grant).
      - Metadata: Read-only (mandatory minimum for any GitHub App).
    - No webhook needed; disable webhook delivery.
    - Do not grant any organization-level permission.

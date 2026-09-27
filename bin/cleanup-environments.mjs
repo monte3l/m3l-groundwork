@@ -15,9 +15,12 @@
  * silently-ignored log line.
  *
  * Requires `GH_TOKEN` (a token with Administration: write, Deployments:
- * write, and Secrets: read on this repo -- see docs/environment-janitor.md
- * for the GitHub App this is minted from) and `GITHUB_REPOSITORY`
- * (`owner/repo`, set automatically inside Actions). Zero dependencies:
+ * write, and Environments: read on this repo -- NOT Secrets: read, a
+ * different permission category that does not cover the
+ * environment-scoped secrets endpoint `hasSecrets()` below calls -- see
+ * docs/environment-janitor.md for the GitHub App this is minted from) and
+ * `GITHUB_REPOSITORY` (`owner/repo`, set automatically inside Actions).
+ * Zero dependencies:
  * only Node's built-in `fetch`.
  */
 import { appendFile, readFile } from "node:fs/promises";
@@ -101,6 +104,7 @@ async function branchPolicyNamesFor(token, repo, envName, branchPolicy) {
   return null;
 }
 
+/** Requires the App's Environments permission (read) -- the generic repo-level Secrets permission does not cover this endpoint. */
 async function hasSecrets(token, repo, envName) {
   const data = await githubRequest(
     token,
