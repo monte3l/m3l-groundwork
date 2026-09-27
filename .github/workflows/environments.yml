@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+name: Environments
+
+# What this does: cleans up stale GitHub Deployments/Environments this
+# repo's own CI has left behind. GitHub auto-creates an environment the
+# first time a workflow job references it (`environment: ...`), and never
+# removes it again on its own -- a workflow that gets renamed, replaced, or
+# simply fails partway through (see this repo's own `github-pages`
+# environment, left by the now-retired pages.yml, none of whose failed
+# deployments were ever auto-deactivated) leaves a permanent, growing trail
+# in the repo's Environments settings.
+#
+# bin/cleanup-environments.mjs (a pure planner, bin/lib/environment-cleanup.mjs,
+# plus a thin executor) reads .github/environments.json's policy and the
+# repo's real environments/deployments, then: deletes any environment NOT
+# in the policy (unless it looks like a real, protected gate -- required
+# reviewers or secrets -- in which case it's left alone and reported), and
+# trims each *listed* environment down to its policy's retention window.
+# See docs/environment-janitor.md for the one-time GitHub App setup this
+# depends on, and CLAUDE.md's "Environment cleanup" architecture note for
+# this pipeline's own design notes.
+#
+# Deleting an ENVIRONMENT needs Administration: write, which the default
+# GITHUB_TOKEN cannot hold -- so this job mints a token from a dedicated,
+# narrowly-scoped GitHub App (installed on this repo only) rather than
+# widening the release workflow's own App. Deactivating/deleting
+# DEPLOYMENTS only needs Deployments: write, which the same App token also
+# carries so one mint covers the whole job.
+on:
+  schedule:
+    # Weekly. This is cleanup, not anything time-sensitive -- a stale
+    # environment sitting for a few extra days costs nothing.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the plan without making any change"
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Clean up stale environments
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: env-janitor
+      # This job never creates a deployment of its own -- it only reads
+      # and deletes other environments' deployments -- so it uses this
+      # environment purely to scope its secrets to `main`, not as a
+      # deployment target.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+
+      - id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.JANITOR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.JANITOR_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-administration: write
+          permission-deployments: write
+          permission-secrets: read
+
+      - name: Run cleanup
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # The scheduled run always applies the plan. A manual dispatch
+          # defaults to --dry-run (the input's own `default: true`) and only
+          # applies when the person running it explicitly unchecks it.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            node bin/cleanup-environments.mjs --dry-run
+          else
+            node bin/cleanup-environments.mjs
+          fi
