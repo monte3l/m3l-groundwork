@@ -47,8 +47,14 @@ function recommendHarnessExtras(): PackRecommendation {
 /**
  * `github`'s workflow assumes only GitHub, which this baseline's whole
  * toolchain (CI, Dependency Review, rulesets) already does -- nothing about
- * any project kind. It is not zero-setup: it adds one GitHub Actions
- * workflow and needs an auth secret the pack cannot create itself.
+ * any project kind. Beyond the mention-mode Action (`claude.yml`) it ships a
+ * second workflow, `claude-pr-review.yml`, which posts an automated Claude
+ * review comment on every PR, plus three GitHub-operations skills:
+ * `reviewing-dependabot-prs` (classifies and batch-merges open Dependabot
+ * PRs), `triaging-scan-alerts` (triages open code-scanning alerts to
+ * file:line) and `watching-pr-checks`. It is not zero-setup: it adds two
+ * GitHub Actions workflows and needs an auth secret the pack cannot create
+ * itself.
  */
 function recommendGithub(): PackRecommendation {
   return {
@@ -57,8 +63,14 @@ function recommendGithub(): PackRecommendation {
     because:
       "the baseline's toolchain already assumes GitHub (CI, Dependency " +
       "Review, rulesets), so a Claude Code Action integration applies to " +
-      "any project kind. It does add one GitHub Actions workflow and needs " +
-      "an auth secret configured by hand -- the pack cannot create it.",
+      "any project kind. Alongside the mention-mode Action it adds a " +
+      "second workflow (claude-pr-review.yml) that posts an automated " +
+      "Claude review comment on every PR, plus skills for classifying and " +
+      "batch-merging open Dependabot PRs (reviewing-dependabot-prs), " +
+      "triaging open code-scanning alerts to file:line " +
+      "(triaging-scan-alerts) and watching a PR's checks " +
+      "(watching-pr-checks). It does add two GitHub Actions workflows and " +
+      "needs an auth secret configured by hand -- the pack cannot create it.",
   };
 }
 
