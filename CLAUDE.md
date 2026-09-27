@@ -405,6 +405,15 @@ steps) before considering any task here done.
   `not_planned` as anthropics/claude-code#8413) -- but it's worth having
   for the failure mode it does cover, and Sonnet 5 is a separate model pool
   from Opus so it isn't overloaded by the same demand spike.
+  `claude_args` also carries an explicit `--allowedTools` naming
+  `mcp__github_inline_comment__create_inline_comment` and `gh pr comment`/
+  `diff`/`view` -- load-bearing, not decorative: the action's automation
+  mode (a `prompt` input, no `track_progress`) only sends a review's
+  findings to the PR through a tool Claude is actually granted, per
+  Anthropic's own docs/en/github-actions, and omitting the allowlist fails
+  silently and green -- five runs of an earlier version of this workflow
+  each completed successfully with real turns and spend but left only a
+  placeholder comment on the PR, no review content at all.
   `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs
   (the changesets version-PR, Dependabot) and fork PRs explicitly, rather
   than relying on the action's own internal bot/permission checks, so a run
