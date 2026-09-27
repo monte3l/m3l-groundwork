@@ -18,9 +18,9 @@ name: Environments
 # in the policy (unless it looks like a real, protected gate -- required
 # reviewers or secrets -- in which case it's left alone and reported), and
 # trims each *listed* environment down to its policy's retention window.
-# See docs/cloudflare-docs.md for the one-time GitHub App setup this
-# depends on, and CLAUDE.md's Known-gaps analog for this pipeline's own
-# design notes.
+# See docs/environment-janitor.md for the one-time GitHub App setup this
+# depends on, and CLAUDE.md's "Environment cleanup" architecture note for
+# this pipeline's own design notes.
 #
 # Deleting an ENVIRONMENT needs Administration: write, which the default
 # GITHUB_TOKEN cannot hold -- so this job mints a token from a dedicated,

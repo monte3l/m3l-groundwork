@@ -1,5 +1,5 @@
 {
-  "$comment": "Policy for bin/cleanup-environments.mjs (.github/workflows/environments.yml). An environment NOT listed here is deleted outright, along with its deployments, unless it looks like a real protected gate (required reviewers or secrets), in which case it's left alone and reported. See docs/cloudflare-docs.md and CLAUDE.md's Known-gaps analog for this pipeline. This file is also the interface a future shared workflow would take as an input.",
+  "$comment": "Policy for bin/cleanup-environments.mjs (.github/workflows/environments.yml). An environment NOT listed here is deleted outright, along with its deployments, unless it looks like a real protected gate (required reviewers or secrets), in which case it's left alone and reported. See docs/environment-janitor.md and CLAUDE.md's 'Environment cleanup' architecture note for this pipeline. This file is also the interface a future shared workflow would take as an input.",
   "environments": {
     "npm-publish": {
       "retain": "all",
