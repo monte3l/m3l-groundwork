@@ -15,7 +15,7 @@ automatically).
 ```bash
 # currently a 1.0.0 release candidate, shipping on the `rc` dist-tag
 npx @monte3l/groundwork@rc my-new-project
-npx @monte3l/groundwork@rc my-new-project --pack statusline
+npx @monte3l/groundwork@rc my-new-project --pack harness-extras
 npx @monte3l/groundwork@rc ../existing-project
 ```
 

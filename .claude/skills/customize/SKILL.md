@@ -233,7 +233,13 @@ confirmed in Step 0.4:
   `mergeSettingsTopLevel` treats a differing value as a hard error and this
   hand-applied path must not be laxer than the automated one (also check
   `.claude/settings.local.json` and the user's `~/.claude/settings.json`,
-  either of which can shadow a project `statusLine`);
+  either of which can shadow a project `statusLine`). For `harness-extras`
+  specifically, a `statusLine`/`subagentStatusLine` collision is never a
+  reason to fail the whole pack install: skip just those two settings keys
+  and the three statusline scripts (`statusline.mjs`, `statusline-layout.mjs`,
+  `subagent-statusline.mjs`) and install the pack's other artifacts (the
+  compaction-handoff hooks, `guard-readonly-bash`, the type-design-analyzer
+  agent, the file-budget gate) normally, stating the skip plainly in Step 6;
   `wiring.verifySteps` becomes a step in whatever this project's real gate
   runner is (a `package.json` script plus a line in its `lefthook.yml`/
   `.husky/pre-push`/CI workflow, written by hand to match its actual shape)

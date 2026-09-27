@@ -22,19 +22,23 @@ stable `1.0.0` is the immediate goal, once the promotion checklist in
   already-bootstrapped project means re-running the CLI (auto-detected as
   adopt mode) and then `/customize`. A dedicated additive-install flag is
   real, planned work -- see [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
-- **Two more optional packs**, deferred from the original build for cap
-  reasons rather than a generalization failure (see
+- **GitHub-repository-maintenance skills** (`reviewing-dependabot-prs`,
+  `triaging-scan-alerts`) planned to join the `github` pack, and a
+  `publishing` pack, both deferred from the original build for cap reasons
+  rather than a generalization failure (see
   [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far)):
-  - a `github-ops` pack -- GitHub-repository-maintenance skills
-    (`reviewing-dependabot-prs`, `triaging-scan-alerts`), named for the kind
-    of ongoing repo upkeep it covers rather than a release concern;
+  - `reviewing-dependabot-prs`/`triaging-scan-alerts` join `github`
+    alongside its existing Claude Code GitHub Action, rather than shipping
+    as a separate `github-ops` pack -- both are GitHub-hosted collaboration
+    concerns;
   - a `publishing` pack (a release workflow, `check-publish-version`,
-    `check-dts-deps`) -- this repo's own `release.yml` is now a copyable
-    reference for the registry/scope/`publishConfig` story that pack needs.
-    `publishConfig` is the `package.json` field that overrides how `npm
-publish` behaves for a given package (registry, access level, and so
-    on); the baseline doesn't have one yet because it emits an application,
-    not a published package.
+    `check-dts-deps`, plus the OpenSSF supply-chain workflows this repo
+    itself carries -- gitleaks, Scorecard, license headers) -- this repo's
+    own `release.yml` is now a copyable reference for the
+    registry/scope/`publishConfig` story that pack needs. `publishConfig` is
+    the `package.json` field that overrides how `npm publish` behaves for a
+    given package (registry, access level, and so on); the baseline doesn't
+    have one yet because it emits an application, not a published package.
 - **Growing the bus factor past 1.** See [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor).
   No committed timeline -- this depends on finding a second maintainer
   willing to take on release and security-response duties, not on writing

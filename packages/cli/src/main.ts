@@ -302,7 +302,7 @@ export interface CapsSummary {
  * @example
  * ```ts
  * const summary = formatCapsSummary(baselineCounts, [
- *   { name: "statusline", budget: packBudget },
+ *   { name: "harness-extras", budget: packBudget },
  * ]);
  * console.log(summary.text);
  * ```

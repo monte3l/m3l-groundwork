@@ -9,7 +9,7 @@
  * scripts are loaded by path rather than imported; every platform branch is
  * driven through injected inputs, so the whole matrix runs on whichever OS
  * runs the suite. The end-to-end behaviour (a real bootstrap, real stdin, the
- * emitted project's own lint) lives in packs-statusline.e2e.test.ts.
+ * emitted project's own lint) lives in packs.e2e.test.ts.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
@@ -26,7 +26,7 @@ const hooksDir = join(
   "..",
   "templates",
   "packs",
-  "statusline",
+  "harness-extras",
   "files",
   ".claude",
   "hooks",

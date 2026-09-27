@@ -19,10 +19,15 @@ export interface PackRecommendation {
 }
 
 /**
- * `harness-extras`'s four artifacts (a type-design-analyzer agent, the
- * compaction-handoff hook pair, a read-only Bash guard, a file-budget gate)
- * are language- and harness-level, not domain-level -- they apply to any
- * TypeScript project regardless of what it's building.
+ * `harness-extras`'s four original artifacts (a type-design-analyzer agent,
+ * the compaction-handoff hook pair, a read-only Bash guard, a file-budget
+ * gate) are language- and harness-level, not domain-level -- they apply to
+ * any TypeScript project regardless of what it's building. Its folded-in
+ * statusLine scripts read only the stdin payload, `.git/HEAD` (via
+ * `node:fs`, never a `git` subprocess) and `os.freemem()`/`os.totalmem()`,
+ * and `statusLine` is the only documented surface carrying live
+ * `context_window.used_percentage`: no hook event receives token or context
+ * data, so "when to compact" can live nowhere else.
  */
 function recommendHarnessExtras(): PackRecommendation {
   return {
@@ -31,38 +36,23 @@ function recommendHarnessExtras(): PackRecommendation {
     because:
       "its four artifacts (a type-design review agent, compaction-handoff " +
       "hooks, a read-only Bash guard, a file-budget gate) are language- " +
-      "and harness-level, not tied to any particular project kind.",
-  };
-}
-
-/**
- * `statusline`'s three scripts read only the stdin payload, `.git/HEAD` (via
- * `node:fs`, never a `git` subprocess) and `os.freemem()`/`os.totalmem()` --
- * nothing about any project kind. `statusLine` is also the only documented
- * surface carrying live `context_window.used_percentage`: no hook event
- * receives token or context data, so "when to compact" can live nowhere else.
- */
-function recommendStatusline(): PackRecommendation {
-  return {
-    name: "statusline",
-    recommended: true,
-    because:
+      "and harness-level, not tied to any particular project kind; its " +
       "statusLine is the only surface that exposes live context-window " +
-      "pressure -- no hook event receives token data -- and its scripts " +
-      "read only the stdin payload plus local git and memory state, so " +
-      "they apply to any project kind. It does occupy five terminal rows.",
+      "pressure -- no hook event receives token data -- and reads only the " +
+      "stdin payload plus local git and memory state. It does occupy five " +
+      "terminal rows (session, model, context, quota, work).",
   };
 }
 
 /**
- * `claude-action`'s workflow assumes only GitHub, which this baseline's
- * whole toolchain (CI, Dependency Review, rulesets) already does -- nothing
- * about any project kind. It is not zero-setup: it adds one GitHub Actions
+ * `github`'s workflow assumes only GitHub, which this baseline's whole
+ * toolchain (CI, Dependency Review, rulesets) already does -- nothing about
+ * any project kind. It is not zero-setup: it adds one GitHub Actions
  * workflow and needs an auth secret the pack cannot create itself.
  */
-function recommendClaudeAction(): PackRecommendation {
+function recommendGithub(): PackRecommendation {
   return {
-    name: "claude-action",
+    name: "github",
     recommended: true,
     because:
       "the baseline's toolchain already assumes GitHub (CI, Dependency " +
@@ -74,17 +64,13 @@ function recommendClaudeAction(): PackRecommendation {
 
 /**
  * Every pack's recommendation for the given interview answers. `answers`
- * is currently unused by any of the three packs (no recommendation varies
- * by kind), but the parameter exists now so a future kind-scoped pack (e.g.
- * a `publishing` pack recommended only for `kind: "library"`) needs no API
- * change here.
+ * is currently unused by either pack (`harness-extras`, `github` -- no
+ * recommendation varies by kind), but the parameter exists now so a future
+ * kind-scoped pack (e.g. a `publishing` pack recommended only for
+ * `kind: "library"`) needs no API change here.
  */
 export function recommendPacks(
   _answers: InterviewAnswers,
 ): PackRecommendation[] {
-  return [
-    recommendHarnessExtras(),
-    recommendStatusline(),
-    recommendClaudeAction(),
-  ];
+  return [recommendHarnessExtras(), recommendGithub()];
 }

@@ -66,9 +66,9 @@ packages/cli/          Phase A: the offline bootstrapper CLI
   scripts/                vendor-assets.mjs -- prepack/postpack: copies templates/
                           and the plugin payload into the package for a pack
   tests/                  unit tests + bootstrap.e2e.test.ts + adopt.e2e.test.ts
-                          + packs.e2e.test.ts + packs-statusline.e2e.test.ts
-                          + packs-claude-action.e2e.test.ts + pack.e2e.test.ts
-                          (the published tarball, run from outside the repo)
+                          + packs.e2e.test.ts + packs-github.e2e.test.ts
+                          + pack.e2e.test.ts (the published tarball, run
+                          from outside the repo)
 
 packages/plugin/        Phase B: the /customize skill
   skills/customize/       SKILL.md (Step 0 is the adopt-mode reconcile step)
@@ -78,8 +78,9 @@ packages/plugin/        Phase B: the /customize skill
 .claude/                THIS repo's own harness (not the baseline's): agents/,
                          hooks/, rules/, skills/, settings.json -- installed by
                          self-adopting `templates/core`'s harness plus the
-                         `statusline` pack. See "Agent Operating Model".
-                         worktrees/ is unrelated -- see "Known gaps".
+                         `harness-extras` pack's statusline half. See "Agent
+                         Operating Model". worktrees/ is unrelated -- see
+                         "Known gaps".
 
 .changeset/             Changesets config, prerelease state (pre.json), and any
                          pending changesets. See "Releases".
@@ -139,37 +140,37 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          placeholder src/tests. See its own CLAUDE.md.
 
 templates/packs/        Optional add-on bundles installed on top of the
-                         baseline. `harness-extras/`, `statusline/` and
-                         `claude-action/` ship today; see its own README.md
-                         for the wiring contract and "Known gaps" below for
-                         the deferred candidates.
+                         baseline. `harness-extras/` and `github/` ship
+                         today; see its own README.md for the wiring
+                         contract and "Known gaps" below for the deferred
+                         candidates.
 ```
 
 ## Commands
 
 Run any task with `pnpm <script>`.
 
-| Script                                | What it does                                                                                                                                                                                                                                                                                                                                |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm build`                          | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                                |
-| `pnpm typecheck`                      | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                         |
-| `pnpm lint` / `lint:fix`              | ESLint over the whole repo (excludes `templates/**`), `--max-warnings 0` -- a warning fails the gate the same as an error                                                                                                                                                                                                                   |
-| `pnpm format` / `format:check`        | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                             |
-| `pnpm test` / `test:coverage`         | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                        |
-| `pnpm test:e2e`                       | The real acceptance test: `bootstrap.e2e.test.ts`, `adopt.e2e.test.ts`, `packs.e2e.test.ts`, `packs-statusline.e2e.test.ts`, `packs-claude-action.e2e.test.ts` and `pack.e2e.test.ts` -- slow and network-touching (real `pnpm install`s and a packed tarball). None are part of `pnpm test`; see "Testing" below for what each one guards. |
-| `pnpm knip`                           | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                               |
-| `pnpm check:exports`                  | publint + attw against `packages/cli`'s packed tarball -- the one published package                                                                                                                                                                                                                                                         |
-| `pnpm check:plugin-version`           | `plugin.json`'s version matches the CLI's, `packages/plugin/package.json` stays private, and `marketplace.json`'s entry names it correctly and carries no npm source or version pin of its own                                                                                                                                              |
-| `pnpm check:plugin-manifest`          | Runs Anthropic's `claude plugin validate --strict` against the marketplace manifest and `packages/plugin`; skips cleanly with a warning when the `claude` CLI isn't installed                                                                                                                                                               |
-| `pnpm changeset` / `version:packages` | Add a changeset; version the packages (what the release workflow runs -- see "Releases")                                                                                                                                                                                                                                                    |
-| `pnpm check:node-version`             | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                             |
-| `pnpm check:harness`                  | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                             |
-| `pnpm check:toolchain`                | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                        |
-| `pnpm check:license-headers`          | Every tracked file outside `templates/**` carries an SPDX header or is exempted by `REUSE.toml`; `-- --fix` inserts a missing header (see "Definition of Done")                                                                                                                                                                             |
-| `pnpm eval`                           | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), and on `typescript-guidance` against a deliberately degraded project; needs `claude`, credentials, network. Skips cleanly without `claude`. See `.claude/rules/evals.md`   |
-| `pnpm verify`                         | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                              |
-| `pnpm test:watch`                     | Vitest in watch mode for local iteration -- not a `verify` step                                                                                                                                                                                                                                                                             |
-| `pnpm prepare`                        | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                             |
+| Script                                | What it does                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                          | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                              |
+| `pnpm typecheck`                      | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                                       |
+| `pnpm lint` / `lint:fix`              | ESLint over the whole repo (excludes `templates/**`), `--max-warnings 0` -- a warning fails the gate the same as an error                                                                                                                                                                                                                 |
+| `pnpm format` / `format:check`        | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                           |
+| `pnpm test` / `test:coverage`         | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                      |
+| `pnpm test:e2e`                       | The real acceptance test: `bootstrap.e2e.test.ts`, `adopt.e2e.test.ts`, `packs.e2e.test.ts`, `packs-github.e2e.test.ts` and `pack.e2e.test.ts` -- slow and network-touching (real `pnpm install`s and a packed tarball). None are part of `pnpm test`; see "Testing" below for what each one guards.                                      |
+| `pnpm knip`                           | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                             |
+| `pnpm check:exports`                  | publint + attw against `packages/cli`'s packed tarball -- the one published package                                                                                                                                                                                                                                                       |
+| `pnpm check:plugin-version`           | `plugin.json`'s version matches the CLI's, `packages/plugin/package.json` stays private, and `marketplace.json`'s entry names it correctly and carries no npm source or version pin of its own                                                                                                                                            |
+| `pnpm check:plugin-manifest`          | Runs Anthropic's `claude plugin validate --strict` against the marketplace manifest and `packages/plugin`; skips cleanly with a warning when the `claude` CLI isn't installed                                                                                                                                                             |
+| `pnpm changeset` / `version:packages` | Add a changeset; version the packages (what the release workflow runs -- see "Releases")                                                                                                                                                                                                                                                  |
+| `pnpm check:node-version`             | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                           |
+| `pnpm check:harness`                  | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                           |
+| `pnpm check:toolchain`                | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                      |
+| `pnpm check:license-headers`          | Every tracked file outside `templates/**` carries an SPDX header or is exempted by `REUSE.toml`; `-- --fix` inserts a missing header (see "Definition of Done")                                                                                                                                                                           |
+| `pnpm eval`                           | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), and on `typescript-guidance` against a deliberately degraded project; needs `claude`, credentials, network. Skips cleanly without `claude`. See `.claude/rules/evals.md` |
+| `pnpm verify`                         | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                            |
+| `pnpm test:watch`                     | Vitest in watch mode for local iteration -- not a `verify` step                                                                                                                                                                                                                                                                           |
+| `pnpm prepare`                        | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                           |
 
 Run `pnpm verify` (or just push -- `lefthook`'s `pre-push` runs the same
 steps) before considering any task here done.
@@ -597,25 +598,34 @@ set for one file.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships three packs. `statusline` (a five-row statusLine
-  plus a `subagentStatusLine` renderer, recovered from the retired
-  predecessor's transcripts and stripped of its project-specific segments)
-  is the only one that uses `wiring.settingsTopLevel`. `harness-extras` (a
-  type-design analyzer agent, the compaction-handoff hook pair,
-  `guard-readonly-bash`, a `check-file-budget` gate) -- the four artifacts
-  the original build cut purely to fit a cap, not because they failed the
-  generalization test. `claude-action` ships Anthropic's official
-  `anthropics/claude-code-action` in mention-mode, and needs an auth secret
-  the pack cannot create -- see its `adoptNotes`. Two
-  more candidates from that same build (recorded in its
+- `templates/packs/` ships two packs, each covering one theme rather than
+  one theme per artifact. `harness-extras` is Claude Code session
+  ergonomics: a type-design analyzer agent, the compaction-handoff hook
+  pair, `guard-readonly-bash`, a `check-file-budget` gate (the four
+  artifacts the original baseline build cut purely to fit a cap, not
+  because they failed the generalization test), plus a five-row statusLine
+  and a `subagentStatusLine` renderer (recovered from the retired
+  predecessor's transcripts and stripped of its project-specific segments,
+  originally its own `statusline` pack, folded in here because both halves
+  are language- and harness-level rather than domain-level). It's the only
+  pack that uses `wiring.settingsTopLevel`, and in adopt mode a project that
+  already defines `statusLine`/`subagentStatusLine` skips just those keys
+  and the three statusline scripts rather than failing the whole install.
+  `github` (renamed from `claude-action`) is GitHub-hosted collaboration:
+  Anthropic's official `anthropics/claude-code-action` in mention-mode,
+  needing an auth secret the pack cannot create -- see its `adoptNotes`.
+  One candidate from the predecessor build (recorded in its
   `EXTRACTION-MANIFEST.md`, written to a scratchpad during the original
-  build, not checked into this repo) remain deferred: a `github-ops` pack
-  (`reviewing-dependabot-prs`, `triaging-scan-alerts` -- the most
-  m3l-coupled of the original nine candidates) and a `publishing` pack (a
-  release workflow, `check-publish-version`, `check-dts-deps` -- needs a
-  registry/scope/`publishConfig` story the baseline doesn't have yet; this repo
-  now has one to copy -- see "Releases" -- but `templates/core` is also at its
-  three-workflow cap).
+  build, not checked into this repo) remains deferred: a `publishing` pack
+  (a release workflow, `check-publish-version`, `check-dts-deps`, plus the
+  OpenSSF supply-chain workflows this repo itself carries -- gitleaks,
+  Scorecard, license headers -- needs a registry/scope/`publishConfig` story
+  the baseline doesn't have yet; this repo now has one to copy -- see
+  "Releases" -- but `templates/core` is also at its three-workflow cap). The
+  predecessor's `reviewing-dependabot-prs`/`triaging-scan-alerts` candidates
+  are planned to join `github`'s existing GitHub Action, rather than
+  shipping as a separate `github-ops` pack, but aren't built yet -- `github`
+  today ships only the Action.
 - **No standalone "add a pack to an already-bootstrapped project" flag.**
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is

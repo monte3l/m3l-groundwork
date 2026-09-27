@@ -122,7 +122,7 @@ paths:
   App](https://github.com/apps/claude), then `claude setup-token` locally
   and `gh secret set CLAUDE_CODE_OAUTH_TOKEN` -- this repo uses a Claude
   subscription's OAuth token, not a stored API key or Workload Identity
-  Federation. `templates/packs/claude-action` ships the mention-mode
+  Federation. `templates/packs/github` ships the mention-mode
   workflow as an optional pack for bootstrapped projects, defaulting to a
   stored API key instead (the more universal choice for a project of
   unknown ownership) with the other two auth options documented as
