@@ -126,8 +126,8 @@ surveys which packs apply and stages them under `.groundwork/packs/`;
 
 ## Install and run
 
-The Quickstart above covers the common case. Two other ways to run this
-project:
+The Quickstart above covers the common case. Here are two other ways to
+run this project.
 
 To run it from a checkout instead (or to work on it), build it and call the
 built entry point directly:
