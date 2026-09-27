@@ -25,8 +25,10 @@ versions yet.
 ## Reporting a vulnerability
 
 Use GitHub's [private vulnerability reporting](https://github.com/monte3l/m3l-groundwork/security/advisories/new)
-for this repository. Do not open a public issue for a suspected
-vulnerability.
+for this repository.
+
+> [!IMPORTANT]
+> Do not open a public issue for a suspected vulnerability.
 
 Include what you'd include in any good bug report: affected version,
 reproduction steps, and the impact you think it has. If it's specific to
@@ -105,9 +107,11 @@ intentionally no other key to distribute or compare against.
 In plain terms: a successful verification means both commands exit
 without error and print that identity -- proof the package or tarball you
 have really was built by this repository's own `release.yml` workflow, not
-substituted or tampered with afterward. If either command errors, or
-reports a different identity, treat the artifact as unverified and do not
-install or use it.
+substituted or tampered with afterward.
+
+> [!WARNING]
+> If either command errors, or reports a different identity, treat the
+> artifact as unverified and do not install or use it.
 
 ### Reproducing a release
 

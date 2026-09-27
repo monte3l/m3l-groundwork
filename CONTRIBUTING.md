@@ -110,9 +110,12 @@ to the npm account behind `npm stage approve` during a release -- see
 
 Every change lands through a pull request -- nobody, maintainer included,
 can push directly to `main` (see [`CLAUDE.md`](CLAUDE.md#git-workflow)).
-**Pull request creation is collaborators-only**; if you don't already have
-collaborator access, open an issue instead (see "Small tasks for
-newcomers" below) rather than a PR, which GitHub will refuse to create.
+
+> [!IMPORTANT]
+> Pull request creation is collaborators-only. If you don't already have
+> collaborator access, open an issue instead (see "Small tasks for
+> newcomers" below) -- GitHub will refuse to create the PR otherwise.
+
 Branch off `main`, keep the PR focused, and make sure CI's `verify`
 aggregator, Dependency Review, and CodeQL are all green before asking for a
 merge -- `gitleaks.yml` and `Scorecard` also run, but aren't required

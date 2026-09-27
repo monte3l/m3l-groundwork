@@ -514,8 +514,8 @@ bin/build-docs.mjs --check` (the `docs` step, `bin/lib/verify-steps.mjs`'s
   `build` group) builds to a throwaway temp directory and fails on any
   broken internal link or anchor, or on a stray italic `_x_`/`*x*` emphasis
   span surviving in one of the ten sources -- the same bold-not-italic rule
-  `docs/m3l-content-rules` states, enforced here from the moment this gate
-  existed rather than only once that rule document does. `--out <dir>`
+  `.claude/rules/docs.md` states, enforced here from the moment this gate
+  existed rather than only once that rule file did. `--out <dir>`
   (plain, no `--check`) writes the real site; `pages.yml`'s `build` job runs
   it with no `pnpm install` first, since the builder is Node-builtins-only.
 
@@ -638,7 +638,11 @@ Full dispatch-sizing and recovery guidance:
 `.claude/skills/**` or `.claude/agents/**`). Path-scoped rules auto-load on
 matching files the same way: `.claude/rules/src.md` on `packages/*/src/**`,
 `.claude/rules/tests.md` on `**/tests/**`/`**/*.test.ts`,
-`.claude/rules/refactoring.md` on both (behavior-preserving changes).
+`.claude/rules/refactoring.md` on both (behavior-preserving changes), and
+`.claude/rules/docs.md` on this repo's own markdown (`templates/**`
+excluded, since it ships brand-neutral into every bootstrapped project) --
+the m3l-design content conventions (bold not italics, GitHub alerts for a
+must-not-miss point, plain copy, tabular data in tables).
 
 **Forbidden patterns, hook-enforced:** `any` implied by CommonJS constructs,
 a missing `.js` extension on a relative import, a hand-edit to `dist/` or
