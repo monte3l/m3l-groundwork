@@ -66,8 +66,37 @@ export function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Strips every HTML comment, repeating the replacement until a pass
+ * changes nothing (CodeQL's own documented fix for
+ * `js/incomplete-multi-character-sanitization`, which flagged the original
+ * single-pass version of this function). That loop alone still isn't a
+ * complete guarantee: HTML comments cannot actually nest, so `<!--` opens
+ * one non-greedily up to the *first* `-->`, and a comment written (by
+ * mistake, or adversarially) as if it nested inside another --
+ * `<!-- outer <!-- inner --> still-outer -->` -- has its real closing
+ * marker survive stripping as a dangling, un-paired `-->`, no matter how
+ * many times the same bracketed pattern is reapplied, since the matching
+ * `<!--` it would need is already gone. Rather than silently letting that
+ * fragment leak into the rendered page as literal (if harmlessly escaped)
+ * junk text, a bare `<!--`/`-->` surviving the loop throws a loud
+ * `MarkdownError` -- malformed/nested comment markup is outside this
+ * renderer's supported inventory, the same as every other construct it
+ * refuses to guess at.
+ */
 function stripHtmlComments(source) {
-  return source.replace(/<!--[\s\S]*?-->/g, "");
+  let previous;
+  let current = source;
+  do {
+    previous = current;
+    current = previous.replace(/<!--[\s\S]*?-->/g, "");
+  } while (current !== previous);
+  if (current.includes("<!--") || current.includes("-->")) {
+    throw new MarkdownError(
+      'malformed or nested HTML comment: a bare "<!--" or "-->" remains after stripping',
+    );
+  }
+  return current;
 }
 
 function leadingSpaces(line) {

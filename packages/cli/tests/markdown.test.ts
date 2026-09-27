@@ -443,6 +443,23 @@ describe("renderMarkdown: thematic breaks and HTML comments", () => {
       '<p class="body">before</p><p class="body">after</p>',
     );
   });
+
+  it("strips two separate, non-nested HTML comments in the same document", () => {
+    expect(lib.renderMarkdown("<!--a-->x<!--b-->y\n").html).toBe(
+      '<p class="body">xy</p>',
+    );
+  });
+
+  it("throws MarkdownError for a malformed, nested-looking HTML comment instead of leaking a dangling --> fragment", () => {
+    const source = "before<!-- outer <!-- inner --> still-outer -->after\n";
+    let thrown: unknown;
+    try {
+      lib.renderMarkdown(source);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(lib.MarkdownError);
+  });
 });
 
 describe("renderMarkdown: footnotes", () => {
