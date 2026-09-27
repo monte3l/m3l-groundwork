@@ -30,6 +30,20 @@ const IMG_SRC_RE = /<img\b[^>]*?\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const ABSOLUTE_HTTP_RE = /^https?:\/\//i;
 
 /**
+ * Known HTTP redirect targets for specific badge-image hosts whose badge
+ * endpoint 302s to a different origin than the one written in markdown
+ * source (verified by hand with `curl -I`; this module stays offline/pure
+ * -- no network call from a required CI gate -- so a redirect target that
+ * changes on the provider's side has to be updated here by hand too: if a
+ * badge silently stops rendering after that, check this map first).
+ * Keyed by the literal host found in an <img> src; each value is every
+ * additional host the browser will actually load the image from.
+ */
+const KNOWN_BADGE_REDIRECT_TARGETS = {
+  "api.securityscorecards.dev": ["img.shields.io"],
+};
+
+/**
  * Computes the CSP source expression for an inline script:
  * `"sha256-" + base64(SHA-256(UTF-8 bytes))`.
  *
@@ -62,7 +76,9 @@ export function hashInlineScript(scriptSource) {
 /**
  * Collects every distinct host an absolute `http(s)://` `<img src>` points
  * at across the given rendered HTML pages. Relative srcs and `<img>` tags
- * without a `src` are ignored.
+ * without a `src` are ignored. A host listed in
+ * `KNOWN_BADGE_REDIRECT_TARGETS` also contributes the hosts its badge
+ * endpoint redirects to.
  *
  * @param {string[]} htmlPages rendered HTML (fragments or whole pages)
  * @returns {string[]} sorted, de-duplicated, lowercased bare hostnames
@@ -90,6 +106,17 @@ export function externalImageHosts(htmlPages) {
         });
       }
       hosts.add(url.hostname.toLowerCase());
+    }
+  }
+  // Expand known badge redirects so the CSP also allows the origin the
+  // browser actually ends up loading from. `Object.hasOwn` (not `in` or a
+  // bare index) so a host literally named e.g. `constructor` never picks up
+  // an inherited Object.prototype member.
+  for (const host of [...hosts]) {
+    if (Object.hasOwn(KNOWN_BADGE_REDIRECT_TARGETS, host)) {
+      for (const target of KNOWN_BADGE_REDIRECT_TARGETS[host]) {
+        hosts.add(target);
+      }
     }
   }
   return [...hosts].sort();

@@ -125,8 +125,13 @@ describe("externalImageHosts", () => {
     const page =
       '<p class="body"><a class="m3l-link" href="https://api.securityscorecards.dev/projects/github.com/monte3l/m3l-groundwork">' +
       '<img src="https://api.securityscorecards.dev/projects/github.com/monte3l/m3l-groundwork/badge" alt="OpenSSF Scorecard"></a></p>';
+    // Expected output includes the known badge-redirect target this host
+    // 302s to in reality; see the "expands the api.securityscorecards.dev
+    // badge host..." and sibling tests below for the expansion behavior
+    // itself, which is what this fixture's updated expectation relies on.
     expect(lib.externalImageHosts([page])).toEqual([
       "api.securityscorecards.dev",
+      "img.shields.io",
     ]);
   });
 
@@ -193,6 +198,45 @@ describe("externalImageHosts", () => {
     expect(
       lib.externalImageHosts(['<img src="HTTPS://Badge.Socket.DEV/x.png">']),
     ).toEqual(["badge.socket.dev"]);
+  });
+
+  it("expands the api.securityscorecards.dev badge host to include its known redirect target, img.shields.io", () => {
+    const page =
+      '<img src="https://api.securityscorecards.dev/projects/github.com/monte3l/m3l-groundwork/badge">';
+    expect(lib.externalImageHosts([page])).toEqual([
+      "api.securityscorecards.dev",
+      "img.shields.io",
+    ]);
+  });
+
+  it("expands only the securityscorecards host in a mixed page, sorting the literal and expanded hosts together", () => {
+    const page =
+      '<img src="https://api.securityscorecards.dev/projects/x/badge">' +
+      '<img src="https://badge.socket.dev/x.svg">';
+    expect(lib.externalImageHosts([page])).toEqual([
+      "api.securityscorecards.dev",
+      "badge.socket.dev",
+      "img.shields.io",
+    ]);
+  });
+
+  it("does not expand a host that merely resembles a known redirect target's bare domain", () => {
+    // "shields.io" (no "img." subdomain) is not itself a key in the
+    // redirect map -- only the literal host actually found in an <img> src
+    // is looked up, so an unrelated host is never expanded.
+    expect(
+      lib.externalImageHosts(['<img src="https://shields.io/x.svg">']),
+    ).toEqual(["shields.io"]);
+  });
+
+  it("does not duplicate img.shields.io when a page already references it directly alongside the securityscorecards host", () => {
+    const page =
+      '<img src="https://api.securityscorecards.dev/projects/x/badge">' +
+      '<img src="https://img.shields.io/some-other-badge.svg">';
+    expect(lib.externalImageHosts([page])).toEqual([
+      "api.securityscorecards.dev",
+      "img.shields.io",
+    ]);
   });
 });
 
