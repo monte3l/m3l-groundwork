@@ -448,9 +448,12 @@ at. For a piece of work with a clear contract:
 2. `code-implementer` makes them pass with the minimal correct
    implementation, then refactors while green (GREEN phase).
 3. Read-only review spokes (`code-reviewer` always; `silent-failure-hunter`
-   when the diff has error-handling paths) run in parallel over the diff.
-   Must-fix findings route back to `code-implementer`, and the loop repeats
-   until clean.
+   when the diff has error-handling paths; `baseline-impact-reviewer` when
+   the diff touches `templates/core/` or `templates/packs/`, checking the
+   baseline's own structural contracts -- caps, `domain-map.ts` coverage,
+   dotfile escaping, pack budgets -- that the other two don't know about)
+   run in parallel over the diff. Must-fix findings route back to
+   `code-implementer`, and the loop repeats until clean.
 
 **A Claude Code Enterprise/managed deployment sits above this and can
 silently disable it.** Anthropic's settings precedence puts managed
@@ -576,24 +579,10 @@ running the CLI from the checkout, where every path resolves regardless. If
 you touched this repo's _own_ `.claude/` (agents, hooks, skills, rules,
 `settings.json` at root, not `templates/core/`), grade it the same way the
 baseline's `bin/check-harness.mjs` grades `templates/core` -- there is no
-`package.json` script for this (only the emitted baseline gets one), so
-point the same rule module at the repo root instead:
-
-```sh
-node -e '
-import("./bin/lib/report.mjs").then(async (report) => {
-  const rules = await import("./templates/core/bin/lib/harness-rules.mjs");
-  const reporter = report.createReporter(false);
-  const root = process.cwd();
-  rules.reportGrade(rules.gradeHarness(root), reporter);
-  rules.reportOfficialValidation(root, reporter);
-  reporter.finish();
-});
-'
-```
-
-Structural failures gate, rubric findings only warn -- same rule as the
-baseline.
+`package.json` script for this (only the emitted baseline gets one), so use
+the `grade-own-harness` skill (`/grade-own-harness`), which points the same
+rule module at the repo root instead. Structural failures gate, rubric
+findings only warn -- same rule as the baseline.
 
 **A new tracked file outside `templates/**` needs an SPDX header** (a
 `SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors` +

@@ -22,9 +22,10 @@ contract (a documented behavior, an interface to satisfy):
 2. `code-implementer` makes them pass with the minimal correct implementation,
    then refactors while green (GREEN).
 3. Read-only reviewers (`code-reviewer` always; `silent-failure-hunter` when
-   the change has try/catch, async/await, or retry/poll logic) run in
-   parallel over the diff. Must-fix findings route back to
-   `code-implementer` and the loop repeats until clean.
+   the change has try/catch, async/await, or retry/poll logic;
+   `baseline-impact-reviewer` when the diff touches `templates/core/` or
+   `templates/packs/`) run in parallel over the diff. Must-fix findings
+   route back to `code-implementer` and the loop repeats until clean.
 
 ## Dispatch sizing
 
