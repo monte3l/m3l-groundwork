@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "name": "claude-action",
-  "description": "Anthropic's official Claude Code GitHub Action (anthropics/claude-code-action), wired for @claude mention-mode only: responds when someone with write access mentions @claude on an issue, PR, or review comment, commits to a branch, and links back to a PR-creation page for a human to open -- it never opens a PR itself.",
+  "name": "github",
+  "description": "GitHub-hosted collaboration on top of the baseline: Anthropic's official Claude Code GitHub Action (anthropics/claude-code-action), wired for @claude mention-mode only -- responds when someone with write access mentions @claude on an issue, PR, or review comment, commits to a branch, and links back to a PR-creation page for a human to open, never opening a PR itself.",
   "modes": ["fresh", "adopt"],
   "budget": {
     "agents": 0,

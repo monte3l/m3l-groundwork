@@ -233,8 +233,8 @@ describe("parseArgs (CliUsageError)", () => {
   });
 
   it("accepts a valid, real pack name shape and parses it into packs", () => {
-    const options = parseArgs(["/tmp/x", "--pack", "statusline"]);
-    expect(options.packs).toEqual(["statusline"]);
+    const options = parseArgs(["/tmp/x", "--pack", "harness-extras"]);
+    expect(options.packs).toEqual(["harness-extras"]);
   });
 
   it("accepts every real pack name under templates/packs/ against --pack's shape-validation pattern", () => {

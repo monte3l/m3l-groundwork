@@ -339,7 +339,7 @@ export function terminalColumns(env) {
   return Number.isFinite(n) && n > 0 ? n : 80;
 }
 
-// This project's own `.claude/hooks/` -- unlike `templates/packs/statusline`,
+// This project's own `.claude/hooks/` -- unlike `templates/packs/harness-extras`,
 // which stays brand-neutral for whatever project installs the pack -- paints
 // with m3l-design's palette instead of the basic ANSI 16 (see CLAUDE.md's
 // "Design system" note). The statusLine subprocess always runs piped (there

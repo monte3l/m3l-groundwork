@@ -100,6 +100,84 @@ function isValidBudget(budget: unknown): budget is CapCounts {
   });
 }
 
+/** The two CLI modes a pack's `modes` may name (see mode.ts). */
+const PACK_MODES: readonly string[] = ["fresh", "adopt"];
+
+/** The `bin/lib/verify-steps.mjs` groups a pack's verify step may join. */
+const VERIFY_GROUPS: readonly string[] = [
+  "format",
+  "lint",
+  "typecheck",
+  "build",
+  "test",
+];
+
+/** Throws, naming the entry's 0-based `index` and the offending field, when one `wiring.verifySteps[]` entry isn't an object, lacks a string `id`/`name`, lacks a non-empty string-array `cmd`, or names an unknown `group`. Each field is read once into a local before it is checked. */
+function assertValidVerifyStep(
+  name: string,
+  step: unknown,
+  index: number,
+): void {
+  const where = `pack "${name}": pack.json's wiring.verifySteps[${String(index)}]`;
+  if (!isRecord(step)) {
+    throw new Error(
+      `${where} must be an object, got ${String(JSON.stringify(step))}`,
+    );
+  }
+  for (const key of ["id", "name"] as const) {
+    const value: unknown = Object.hasOwn(step, key) ? step[key] : undefined;
+    if (typeof value !== "string") {
+      throw new Error(
+        `${where}.${key} must be a string, got ${String(JSON.stringify(value))}`,
+      );
+    }
+  }
+  const cmd: unknown = Object.hasOwn(step, "cmd") ? step["cmd"] : undefined;
+  if (
+    !Array.isArray(cmd) ||
+    cmd.length === 0 ||
+    !(cmd as unknown[]).every((part) => typeof part === "string")
+  ) {
+    throw new Error(
+      `${where}.cmd must be a non-empty array of strings, got ${String(JSON.stringify(cmd))}`,
+    );
+  }
+  const group: unknown = Object.hasOwn(step, "group")
+    ? step["group"]
+    : undefined;
+  if (typeof group !== "string" || !VERIFY_GROUPS.includes(group)) {
+    throw new Error(
+      `${where} group ${String(JSON.stringify(group))} must be one of ${VERIFY_GROUPS.join(", ")}`,
+    );
+  }
+}
+
+/** Throws, naming the offending key or value, when `wiring.settings`/`packageScripts` is missing or isn't an object, `verifySteps` is missing or isn't an array, or any `verifySteps[]` entry is malformed (see {@link assertValidVerifyStep}). */
+function assertValidWiringShape(
+  name: string,
+  wiring: Record<string, unknown>,
+): void {
+  for (const key of ["settings", "packageScripts"] as const) {
+    const value: unknown = Object.hasOwn(wiring, key) ? wiring[key] : undefined;
+    if (!isRecord(value)) {
+      throw new Error(
+        `pack "${name}": pack.json's wiring.${key} must be an object`,
+      );
+    }
+  }
+  const steps: unknown = Object.hasOwn(wiring, "verifySteps")
+    ? wiring["verifySteps"]
+    : undefined;
+  if (!Array.isArray(steps)) {
+    throw new Error(
+      `pack "${name}": pack.json's wiring.verifySteps must be an array`,
+    );
+  }
+  (steps as unknown[]).forEach((step, index) => {
+    assertValidVerifyStep(name, step, index);
+  });
+}
+
 /** Loads and validates one pack's manifest from under `root` (default `templates/packs`, overridable for tests). Throws, naming the available packs, if unknown or malformed. */
 export function loadPack(name: string, root: string = packsRootDir()): Pack {
   const packDir = join(root, name);
@@ -119,7 +197,13 @@ export function loadPack(name: string, root: string = packsRootDir()): Pack {
     );
   }
 
-  const manifest = parsed.value as PackManifest;
+  const raw: unknown = parsed.value;
+  if (!isRecord(raw)) {
+    throw new Error(
+      `pack "${name}": pack.json must be an object, got ${String(JSON.stringify(raw))}`,
+    );
+  }
+  const manifest = raw as unknown as PackManifest;
   if (manifest.schemaVersion !== 1) {
     throw new Error(
       `pack "${name}": unsupported pack.json schemaVersion ${JSON.stringify(manifest.schemaVersion)}`,
@@ -144,10 +228,17 @@ export function loadPack(name: string, root: string = packsRootDir()): Pack {
       `pack "${name}": pack.json's modes must be a non-empty array of strings`,
     );
   }
+  const badMode = modes.find((mode) => !PACK_MODES.includes(mode));
+  if (badMode !== undefined) {
+    throw new Error(
+      `pack "${name}": pack.json's mode ${JSON.stringify(badMode)} must be one of ${PACK_MODES.join(", ")}`,
+    );
+  }
   const wiring: unknown = manifest.wiring;
   if (!isRecord(wiring)) {
     throw new Error(`pack "${name}": pack.json's wiring must be an object`);
   }
+  assertValidWiringShape(name, wiring);
   const budget: unknown = manifest.budget;
   if (!isValidBudget(budget)) {
     throw new Error(

@@ -22,6 +22,7 @@ import {
   stagePackFiles,
 } from "../src/packs.js";
 import type { PackManifest } from "../src/packs.js";
+import { walkBounded } from "../src/survey/fs-walk.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const realPacksRoot = join(here, "..", "..", "..", "templates", "packs");
@@ -47,6 +48,25 @@ function writeManifest(
       ...manifest,
     }),
   );
+}
+
+/**
+ * Writes `pack.json` from exactly the given raw object, with no defaults
+ * injected -- unlike {@link writeManifest} (typed `Partial<PackManifest>`,
+ * always spread over a fully valid base), this lets a test construct a
+ * manifest missing an entire required key (e.g. `wiring` missing one or
+ * more of its own required sub-keys) that `Partial<PackManifest>` can't
+ * express. Also creates the pack's empty `files/` directory, matching
+ * `writeManifest`'s side effect.
+ */
+function writeRawManifest(
+  packsRoot: string,
+  name: string,
+  overrides: Record<string, unknown>,
+): void {
+  const packDir = join(packsRoot, name);
+  mkdirSync(join(packDir, "files"), { recursive: true });
+  writeFileSync(join(packDir, "pack.json"), JSON.stringify(overrides));
 }
 
 describe("packsRootDir", () => {
@@ -202,6 +222,278 @@ describe("listPackNames / loadPack", () => {
       }),
     );
     expect(() => loadPack("no-modes", packsRoot)).toThrow(/modes/i);
+  });
+});
+
+describe("loadPack hardened validation", () => {
+  let packsRoot: string;
+
+  beforeEach(() => {
+    packsRoot = mkdtempSync(join(tmpdir(), "packs-hardening-root-"));
+  });
+
+  afterEach(() => {
+    rmSync(packsRoot, { recursive: true, force: true });
+  });
+
+  it("throws naming the bad value when modes contains something other than fresh/adopt", () => {
+    writeManifest(packsRoot, "typo-mode", { modes: ["fresh", "adpot"] });
+    expect(() => loadPack("typo-mode", packsRoot)).toThrow(/adpot/);
+  });
+
+  it("throws when wiring.settings is present but not an object", () => {
+    const packDir = join(packsRoot, "settings-not-object");
+    mkdirSync(join(packDir, "files"), { recursive: true });
+    writeFileSync(
+      join(packDir, "pack.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "settings-not-object",
+        description: "a test pack",
+        modes: ["fresh", "adopt"],
+        budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+        wiring: { settings: "nope", packageScripts: {}, verifySteps: [] },
+      }),
+    );
+    expect(() => loadPack("settings-not-object", packsRoot)).toThrow(
+      /wiring\.settings/,
+    );
+  });
+
+  it("throws when wiring.packageScripts is present but not an object", () => {
+    const packDir = join(packsRoot, "scripts-not-object");
+    mkdirSync(join(packDir, "files"), { recursive: true });
+    writeFileSync(
+      join(packDir, "pack.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "scripts-not-object",
+        description: "a test pack",
+        modes: ["fresh", "adopt"],
+        budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+        wiring: { settings: {}, packageScripts: ["nope"], verifySteps: [] },
+      }),
+    );
+    expect(() => loadPack("scripts-not-object", packsRoot)).toThrow(
+      /wiring\.packageScripts/,
+    );
+  });
+
+  it("throws when wiring.verifySteps is present but not an array", () => {
+    const packDir = join(packsRoot, "steps-not-array");
+    mkdirSync(join(packDir, "files"), { recursive: true });
+    writeFileSync(
+      join(packDir, "pack.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "steps-not-array",
+        description: "a test pack",
+        modes: ["fresh", "adopt"],
+        budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+        wiring: { settings: {}, packageScripts: {}, verifySteps: {} },
+      }),
+    );
+    expect(() => loadPack("steps-not-array", packsRoot)).toThrow(
+      /wiring\.verifySteps/,
+    );
+  });
+
+  it("throws naming the bad group when a verifySteps[] entry's group isn't format/lint/typecheck/build/test", () => {
+    const packDir = join(packsRoot, "bad-group");
+    mkdirSync(join(packDir, "files"), { recursive: true });
+    writeFileSync(
+      join(packDir, "pack.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "bad-group",
+        description: "a test pack",
+        modes: ["fresh", "adopt"],
+        budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+        wiring: {
+          settings: {},
+          packageScripts: {},
+          verifySteps: [
+            {
+              id: "x",
+              group: "verify-everything",
+              name: "X",
+              cmd: ["node", "x.mjs"],
+            },
+          ],
+        },
+      }),
+    );
+    expect(() => loadPack("bad-group", packsRoot)).toThrow(/verify-everything/);
+  });
+
+  it("loads successfully when modes, wiring.settings, wiring.packageScripts and wiring.verifySteps are all well-formed", () => {
+    writeManifest(packsRoot, "well-formed", {
+      modes: ["fresh", "adopt"],
+      wiring: {
+        settings: {},
+        packageScripts: { build: "tsc" },
+        verifySteps: [
+          { id: "y", group: "build", name: "Y", cmd: ["node", "y.mjs"] },
+        ],
+      },
+    });
+    const pack = loadPack("well-formed", packsRoot);
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(pack.manifest.wiring.packageScripts).toEqual({ build: "tsc" });
+    expect(pack.manifest.wiring.verifySteps).toEqual([
+      { id: "y", group: "build", name: "Y", cmd: ["node", "y.mjs"] },
+    ]);
+  });
+});
+
+describe("loadPack hardened validation -- missing wiring keys", () => {
+  let packsRoot: string;
+
+  beforeEach(() => {
+    packsRoot = mkdtempSync(join(tmpdir(), "packs-missing-wiring-root-"));
+  });
+
+  afterEach(() => {
+    rmSync(packsRoot, { recursive: true, force: true });
+  });
+
+  test.each([
+    [
+      "settings, packageScripts and verifySteps all missing",
+      {},
+      /wiring\.settings/,
+    ],
+    [
+      "packageScripts and verifySteps missing",
+      { settings: {} },
+      /wiring\.packageScripts/,
+    ],
+    [
+      "verifySteps missing",
+      { settings: {}, packageScripts: {} },
+      /wiring\.verifySteps/,
+    ],
+  ] satisfies Array<[string, Record<string, unknown>, RegExp]>)(
+    "throws naming the missing key when wiring is missing: %s",
+    (label, wiringOverride, expectedKey) => {
+      const dirName = `missing-wiring-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+      writeRawManifest(packsRoot, dirName, {
+        schemaVersion: 1,
+        name: dirName,
+        description: "a test pack with an incomplete wiring block",
+        modes: ["fresh", "adopt"],
+        budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+        wiring: wiringOverride,
+      });
+      expect(() => loadPack(dirName, packsRoot)).toThrow(expectedKey);
+    },
+  );
+});
+
+describe("loadPack hardened validation -- malformed verifySteps entries", () => {
+  let packsRoot: string;
+
+  beforeEach(() => {
+    packsRoot = mkdtempSync(join(tmpdir(), "packs-bad-steps-root-"));
+  });
+
+  afterEach(() => {
+    rmSync(packsRoot, { recursive: true, force: true });
+  });
+
+  function writeStepsManifest(name: string, verifySteps: unknown[]): void {
+    writeRawManifest(packsRoot, name, {
+      schemaVersion: 1,
+      name,
+      description: "a test pack with a malformed verifySteps entry",
+      modes: ["fresh", "adopt"],
+      budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+      wiring: {
+        settings: {},
+        packageScripts: {},
+        verifySteps,
+      },
+    });
+  }
+
+  it("throws naming the entry's index when cmd is not an array and id/name are absent", () => {
+    writeStepsManifest("step-missing-fields", [
+      { group: "lint", cmd: "node x.mjs" },
+    ]);
+    expect(() => loadPack("step-missing-fields", packsRoot)).toThrow(
+      /verifySteps\[0\]/,
+    );
+  });
+
+  it("throws naming the entry's index when id and name are present but not strings", () => {
+    writeStepsManifest("step-non-string-fields", [
+      { id: 123, group: "lint", name: 456, cmd: ["node", "x.mjs"] },
+    ]);
+    expect(() => loadPack("step-non-string-fields", packsRoot)).toThrow(
+      /verifySteps\[0\]/,
+    );
+  });
+
+  it("throws naming the entry's index when cmd is an empty array", () => {
+    writeStepsManifest("step-empty-cmd", [
+      { id: "x", group: "lint", name: "X", cmd: [] },
+    ]);
+    expect(() => loadPack("step-empty-cmd", packsRoot)).toThrow(
+      /verifySteps\[0\]/,
+    );
+  });
+
+  it("throws naming the entry's index when cmd contains a non-string element", () => {
+    writeStepsManifest("step-non-string-cmd-element", [
+      { id: "x", group: "lint", name: "X", cmd: ["node", 123] },
+    ]);
+    expect(() => loadPack("step-non-string-cmd-element", packsRoot)).toThrow(
+      /verifySteps\[0\]/,
+    );
+  });
+
+  it("names the second entry's index (1), not the first, when only the second entry is malformed", () => {
+    writeStepsManifest("step-second-entry-bad", [
+      { id: "ok", group: "lint", name: "OK", cmd: ["node", "ok.mjs"] },
+      { group: "lint", cmd: "node x.mjs" },
+    ]);
+    expect(() => loadPack("step-second-entry-bad", packsRoot)).toThrow(
+      /verifySteps\[1\]/,
+    );
+  });
+
+  test.each([
+    ["a bare string", ["not-an-object"]],
+    ["null", [null]],
+  ] satisfies Array<[string, unknown[]]>)(
+    "throws naming the entry itself as not an object when a verifySteps[] entry is %s",
+    (_label, verifySteps) => {
+      writeStepsManifest("step-not-an-object", verifySteps);
+      expect(() => loadPack("step-not-an-object", packsRoot)).toThrow(
+        /verifySteps\[0\].*must be an object/i,
+      );
+    },
+  );
+});
+
+describe("loadPack hardened validation -- non-object pack.json", () => {
+  let packsRoot: string;
+
+  beforeEach(() => {
+    packsRoot = mkdtempSync(join(tmpdir(), "packs-non-object-manifest-root-"));
+  });
+
+  afterEach(() => {
+    rmSync(packsRoot, { recursive: true, force: true });
+  });
+
+  it("throws a named error rather than an unrelated TypeError when pack.json parses to a non-object JSON value", () => {
+    const packDir = join(packsRoot, "null-manifest");
+    mkdirSync(join(packDir, "files"), { recursive: true });
+    writeFileSync(join(packDir, "pack.json"), "null");
+    expect(() => loadPack("null-manifest", packsRoot)).toThrow(
+      /pack\.json must be an object/,
+    );
   });
 });
 
@@ -604,7 +896,7 @@ describe("observeWiring", () => {
 });
 
 describe("the real harness-extras pack", () => {
-  it("loads cleanly from the real templates/packs directory", () => {
+  it("loads cleanly from the real templates/packs directory and declares both the original four artifacts' verify step and the folded-in statusline top-level keys", () => {
     const names = listPackNames();
     expect(names).toContain("harness-extras");
     const pack = loadPack("harness-extras");
@@ -612,16 +904,7 @@ describe("the real harness-extras pack", () => {
     expect(existsSync(pack.filesDir)).toBe(true);
     // packsRootDir()'s default resolves to the real templates/packs tree.
     expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
-  });
-});
 
-describe("the real statusline pack", () => {
-  it("loads cleanly and declares its two top-level settings keys, no hooks and no gate", () => {
-    expect(listPackNames()).toContain("statusline");
-    const pack = loadPack("statusline");
-    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
-    expect(pack.manifest.wiring.settings).toEqual({});
-    expect(pack.manifest.wiring.verifySteps).toEqual([]);
     expect(Object.keys(pack.manifest.wiring.settingsTopLevel ?? {})).toEqual([
       "statusLine",
       "subagentStatusLine",
@@ -633,10 +916,17 @@ describe("the real statusline pack", () => {
         "$CLAUDE_PROJECT_DIR/.claude/hooks/",
       );
     }
+    expect(
+      pack.manifest.wiring.verifySteps.some(
+        (step) => step.id === "file-budget",
+      ),
+    ).toBe(true);
   });
 
-  it("installs alongside harness-extras: every hook registration and both top-level keys survive together", () => {
-    const targetDir = mkdtempSync(join(tmpdir(), "packs-both-"));
+  it("installs alone: settings.json gains $schema, hooks (all three events) and both statusline top-level keys", () => {
+    const targetDir = mkdtempSync(
+      join(tmpdir(), "packs-harness-extras-alone-"),
+    );
     try {
       mkdirSync(join(targetDir, ".claude"), { recursive: true });
       mkdirSync(join(targetDir, "bin", "lib"), { recursive: true });
@@ -647,7 +937,6 @@ describe("the real statusline pack", () => {
         JSON.stringify({ $schema: "s", hooks: {} }),
       );
       installPack(loadPack("harness-extras"), targetDir, {});
-      installPack(loadPack("statusline"), targetDir, {});
       const settings = JSON.parse(
         readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
       ) as Record<string, unknown>;
@@ -668,15 +957,41 @@ describe("the real statusline pack", () => {
   });
 });
 
-describe("the real claude-action pack", () => {
+describe("the real github pack", () => {
   it("loads cleanly and declares an empty wiring surface -- pure file drop, no hooks/settings/scripts/gate", () => {
-    expect(listPackNames()).toContain("claude-action");
-    const pack = loadPack("claude-action");
+    expect(listPackNames()).toContain("github");
+    const pack = loadPack("github");
     expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
     expect(pack.manifest.wiring.settings).toEqual({});
     expect(pack.manifest.wiring.packageScripts).toEqual({});
     expect(pack.manifest.wiring.verifySteps).toEqual([]);
     expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
     expect(existsSync(pack.filesDir)).toBe(true);
+  });
+});
+
+describe("cross-pack and pack/templates-core path collisions", () => {
+  it("emits no path collision between any two real packs, nor between a pack and templates/core", () => {
+    const owners = new Map<string, string>();
+    const coreDir = join(here, "..", "..", "..", "templates", "core");
+    for (const entry of walkBounded(coreDir, 30)) {
+      if (entry.isDirectory) continue;
+      owners.set(entry.relPath, "templates/core");
+    }
+
+    const packNames = listPackNames();
+    expect(packNames.length).toBeGreaterThan(0);
+    for (const name of packNames) {
+      const pack = loadPack(name);
+      for (const entry of walkBounded(pack.filesDir, 30)) {
+        if (entry.isDirectory) continue;
+        const owner = owners.get(entry.relPath);
+        expect(
+          owner,
+          `"${entry.relPath}" is emitted by both "${name}" and "${String(owner)}"`,
+        ).toBeUndefined();
+        owners.set(entry.relPath, name);
+      }
+    }
   });
 });

@@ -96,14 +96,13 @@ describe("published tarball end-to-end", () => {
     );
   });
 
-  it("lists all three packs from the vendored templates/packs", () => {
+  it("lists both packs from the vendored templates/packs", () => {
     const output = execFileSync("node", [installedBin, "--list-packs"], {
       encoding: "utf8",
     });
 
     expect(output).toContain("harness-extras");
-    expect(output).toContain("statusline");
-    expect(output).toContain("claude-action");
+    expect(output).toContain("github");
   });
 
   it("emits exactly what the source checkout emits, dotfiles included", () => {
@@ -114,11 +113,9 @@ describe("published tarball end-to-end", () => {
       "pack-e2e",
       "--skip-install",
       "--pack",
-      "claude-action",
+      "github",
       "--pack",
       "harness-extras",
-      "--pack",
-      "statusline",
     ];
 
     execFileSync("node", [installedBin, fromTarball, ...args], {

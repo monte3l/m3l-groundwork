@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The claude-action pack's acceptance test: bootstrap a throwaway project
- * with `--pack claude-action` using the built CLI and confirm it is a pure
- * file drop -- the workflow file lands byte-identical to its source, and
- * (unlike harness-extras/statusline) settings.json and verify-steps.packs.json
- * come through completely untouched, since the pack registers no hooks, no
- * top-level settings keys, no package scripts and no gate. Kept apart from
- * packs.e2e.test.ts / packs-statusline.e2e.test.ts for the same reason those
- * are split from each other.
+ * The github pack's acceptance test: bootstrap a throwaway project with
+ * `--pack github` using the built CLI and confirm it is a pure file drop --
+ * the workflow file lands byte-identical to its source, and (unlike
+ * harness-extras) settings.json and verify-steps.packs.json come through
+ * completely untouched, since the pack registers no hooks, no top-level
+ * settings keys, no package scripts and no gate. Kept apart from
+ * packs.e2e.test.ts for the same reason harness-extras's own statusline
+ * scripts are exercised there instead of here.
  */
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
@@ -21,7 +21,7 @@ import { execFileSync } from "node:child_process";
 const here = dirname(fileURLToPath(import.meta.url));
 const binPath = join(here, "..", "bin", "m3l-groundwork.mjs");
 
-describe("claude-action pack end-to-end", () => {
+describe("github pack end-to-end", () => {
   it("installs the workflow file, leaves settings/verify-steps untouched, and the emitted project's own pnpm verify passes", () => {
     const targetDir = mkdtempSync(join(tmpdir(), "m3l-groundwork-ca-e2e-"));
     try {
@@ -31,10 +31,10 @@ describe("claude-action pack end-to-end", () => {
           binPath,
           targetDir,
           "--name",
-          "claude-action-e2e-project",
+          "github-e2e-project",
           "--skip-install",
           "--pack",
-          "claude-action",
+          "github",
         ],
         { stdio: "inherit" },
       );
@@ -53,7 +53,7 @@ describe("claude-action pack end-to-end", () => {
         "..",
         "templates",
         "packs",
-        "claude-action",
+        "github",
         "files",
         ".github",
         "workflows",

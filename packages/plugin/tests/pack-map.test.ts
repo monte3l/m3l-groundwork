@@ -3,14 +3,18 @@
 
 // This test verifies recommendPacks (src/pack-map.ts), which /customize uses
 // to suggest optional templates/packs/* bundles during its interview: given a
-// set of interview answers, it must deterministically recommend the same
-// packs (harness-extras, statusline, claude-action) across every project
-// kind, and every recommendation must carry non-empty "because" evidence and
-// a non-empty name. Without this test, a change to pack-map.ts could silently
-// stop recommending a pack for some project kind, or return a recommendation
-// with no justification shown to the user, or make the mapping
-// non-deterministic across identical answers -- none of which any other test
-// in this repo would catch.
+// set of interview answers, it must deterministically recommend the same two
+// packs (harness-extras, github) across every project kind, and every
+// recommendation must carry non-empty "because" evidence and a non-empty
+// name. harness-extras now folds in the former statusline pack, so its
+// evidence must speak to both halves (the four original artifacts and the
+// five-row statusLine/context-window-pressure segment) -- not just restate
+// the whole sentence, but name a substring from each half so a future edit
+// that silently drops one half's evidence is caught. Without this test, a
+// change to pack-map.ts could silently stop recommending a pack for some
+// project kind, or return a recommendation with no justification shown to
+// the user, or make the mapping non-deterministic across identical answers --
+// none of which any other test in this repo would catch.
 import { describe, expect, it } from "vitest";
 import { recommendPacks } from "../src/pack-map.js";
 import type { InterviewAnswers } from "../src/kind-facet-map.js";
@@ -30,7 +34,12 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("recommends harness-extras with non-empty evidence, for every project kind", () => {
+  it("returns exactly two recommendations: harness-extras and github", () => {
+    const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
+    expect(names).toEqual(["harness-extras", "github"]);
+  });
+
+  it("recommends harness-extras with evidence naming a substring from both the four original artifacts and the folded-in statusline segment, for every project kind", () => {
     for (const kind of ["library", "cli", "frontend", "service"] as const) {
       const recommendations = recommendPacks({ ...BASE_ANSWERS, kind });
       const harnessExtras = recommendations.find(
@@ -38,26 +47,28 @@ describe("recommendPacks", () => {
       );
       expect(harnessExtras?.recommended).toBe(true);
       expect(harnessExtras?.because.length).toBeGreaterThan(0);
+      // A substring distinguishing the four original artifacts (a type-design
+      // review agent, compaction-handoff hooks, a read-only Bash guard, a
+      // file-budget gate) -- not the whole sentence.
+      expect(harnessExtras?.because).toMatch(/type.design/i);
+      expect(harnessExtras?.because).toMatch(/compaction/i);
+      expect(harnessExtras?.because).toMatch(/read-only Bash/i);
+      expect(harnessExtras?.because).toMatch(/file-budget/i);
+      // A substring distinguishing the folded-in statusline segment: live
+      // context-window pressure, rendered across the five documented rows
+      // (session, model, context, quota, work).
+      expect(harnessExtras?.because).toMatch(/context.window/i);
+      expect(harnessExtras?.because).toMatch(/session|model|quota|work/i);
     }
   });
 
-  it("recommends statusline with non-empty evidence, for every project kind", () => {
+  it("recommends github with non-empty evidence, for every project kind", () => {
     for (const kind of ["library", "cli", "frontend", "service"] as const) {
-      const statusline = recommendPacks({ ...BASE_ANSWERS, kind }).find(
-        (r) => r.name === "statusline",
+      const github = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "github",
       );
-      expect(statusline?.recommended).toBe(true);
-      expect(statusline?.because.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("recommends claude-action with non-empty evidence, for every project kind", () => {
-    for (const kind of ["library", "cli", "frontend", "service"] as const) {
-      const claudeAction = recommendPacks({ ...BASE_ANSWERS, kind }).find(
-        (r) => r.name === "claude-action",
-      );
-      expect(claudeAction?.recommended).toBe(true);
-      expect(claudeAction?.because.length).toBeGreaterThan(0);
+      expect(github?.recommended).toBe(true);
+      expect(github?.because.length).toBeGreaterThan(0);
     }
   });
 
