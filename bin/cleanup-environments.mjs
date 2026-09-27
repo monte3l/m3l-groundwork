@@ -15,10 +15,10 @@
  * silently-ignored log line.
  *
  * Requires `GH_TOKEN` (a token with Administration: write, Deployments:
- * write, and Secrets: read on this repo -- see docs/cloudflare-docs.md's
- * sibling runbook note in `.github/workflows/environments.yml`) and
- * `GITHUB_REPOSITORY` (`owner/repo`, set automatically inside Actions).
- * Zero dependencies: only Node's built-in `fetch`.
+ * write, and Secrets: read on this repo -- see docs/environment-janitor.md
+ * for the GitHub App this is minted from) and `GITHUB_REPOSITORY`
+ * (`owner/repo`, set automatically inside Actions). Zero dependencies:
+ * only Node's built-in `fetch`.
  */
 import { appendFile, readFile } from "node:fs/promises";
 import process from "node:process";
