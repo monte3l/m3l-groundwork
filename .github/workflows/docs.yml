@@ -113,13 +113,44 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          status_and_headers() {
-            curl -fsS -D - -o /dev/null --retry 5 --retry-delay 5 --retry-connrefused "$1"
+          # Cloudflare's edge can return a transient error for a short window
+          # right after a fresh Custom Domain's first attachment (observed:
+          # a 403 immediately after `wrangler deploy` reported success,
+          # resolved to a normal 200 within minutes with no other change) --
+          # retry that class of response rather than failing the whole
+          # deploy on a timing artifact. A non-transient, wrong status (e.g.
+          # 200 where a 404 was expected) still fails immediately, since
+          # retrying it would never change the answer.
+          is_transient() {
+            case "$1" in
+              000 | 403 | 429 | 500 | 502 | 503 | 504) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+          fetch_status() {
+            curl -sS -D "$2" -o /dev/null -w '%{http_code}' "$1" || echo 000
+          }
+          check() {
+            url="$1"
+            want="$2"
+            header_file="$3"
+            for attempt in 1 2 3 4 5 6; do
+              status=$(fetch_status "$url" "$header_file")
+              if [ "$status" = "$want" ]; then
+                return 0
+              fi
+              if is_transient "$status" && [ "$attempt" -lt 6 ]; then
+                echo "  $url -> $status (transient, attempt $attempt/6, retrying in 5s)"
+                sleep 5
+                continue
+              fi
+              echo "  $url -> $status, expected $want"
+              return 1
+            done
           }
           echo "Checking https://groundwork.monte3l.com/ ..."
-          headers=$(status_and_headers "https://groundwork.monte3l.com/")
-          echo "$headers" | grep -qi '^content-security-policy:' || { echo "missing CSP header"; exit 1; }
+          check "https://groundwork.monte3l.com/" 200 /tmp/root-headers.txt
+          grep -qi '^content-security-policy:' /tmp/root-headers.txt || { echo "missing CSP header"; exit 1; }
           echo "Checking https://groundwork.monte3l.com/does-not-exist ..."
-          code=$(curl -s -o /dev/null -w '%{http_code}' "https://groundwork.monte3l.com/does-not-exist")
-          [ "$code" = "404" ] || { echo "expected 404, got $code"; exit 1; }
+          check "https://groundwork.monte3l.com/does-not-exist" 404 /tmp/404-headers.txt
           echo "ok  smoke test passed"

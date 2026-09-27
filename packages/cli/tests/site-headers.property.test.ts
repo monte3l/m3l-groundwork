@@ -93,6 +93,38 @@ describe("externalImageHosts: sortedness, de-duplication, subset relationship", 
   });
 });
 
+describe("externalImageHosts: badge-redirect host expansion", () => {
+  it("always includes img.shields.io, and stays sorted/de-duplicated, when the securityscorecards badge host appears among synthetic hosts", () => {
+    fc.assert(
+      fc.property(fc.array(hostArb, { maxLength: 10 }), (extraHosts) => {
+        const hosts = [...extraHosts, "api.securityscorecards.dev"];
+        const pages = hosts.map((host) => `<img src="https://${host}/x.png">`);
+        const result = lib.externalImageHosts(pages);
+
+        // The known redirect target is always present, even though it was
+        // never itself written into any <img src>.
+        expect(result).toContain("img.shields.io");
+
+        // Every literal host fed in is still present (nothing lost by the
+        // expansion step).
+        for (const host of new Set(hosts)) {
+          expect(result).toContain(host);
+        }
+
+        // Still sorted, same invariant the non-expansion property above
+        // asserts.
+        const sorted = [...result].sort();
+        expect(result).toEqual(sorted);
+
+        // Still de-duplicated: the expansion never introduces a host that
+        // was already present as a literal.
+        expect(new Set(result).size).toBe(result.length);
+      }),
+      { numRuns: 200 },
+    );
+  });
+});
+
 describe("externalImageHosts: case-insensitive host and scheme handling", () => {
   it("returns the same lowercase host regardless of casing in the host or the scheme", () => {
     fc.assert(

@@ -77,7 +77,13 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-administration: write
           permission-deployments: write
-          permission-secrets: read
+          # NOT permission-secrets (repo-level Actions secrets, a different
+          # category) -- environment-scoped secrets are gated by the
+          # Environments permission, confirmed by the 403 the older
+          # permission-secrets grant got on
+          # GET .../environments/{name}/secrets ("Resource not accessible by
+          # integration") the first time this workflow ran for real.
+          permission-environments: read
 
       - name: Run cleanup
         env:
