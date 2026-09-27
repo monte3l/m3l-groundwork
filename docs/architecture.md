@@ -131,15 +131,19 @@ color only on a real TTY, honoring `NO_COLOR`/`FORCE_COLOR`, truecolor or the
 nearest ANSI-16 color depending on `COLORTERM`. Piped output stays plain
 text either way.
 
-This repo's own docs site (published to GitHub Pages by
-`.github/workflows/pages.yml`) is built by a small, restricted,
-zero-dependency markdown-to-HTML renderer (`bin/lib/markdown.mjs`) and site
-builder (`bin/build-docs.mjs`), styled with the same generated
-`design/tokens.css` plus the vendored component CSS and one repo-specific
-addition, `design/local/site.css`, for the page-shell layout no single
-vendored component covers. `bin/build-docs.mjs --check` fails the build on
-a broken internal link or anchor, or on a stray italic emphasis span --
-see [`CLAUDE.md`](../CLAUDE.md#architecture-notes) for the full renderer
+This repo's own docs site (published to
+[`https://groundwork.monte3l.com`](https://groundwork.monte3l.com) by
+`.github/workflows/docs.yml`, on Cloudflare Workers Static Assets -- see
+[`docs/cloudflare-docs.md`](cloudflare-docs.md)) is built by a small,
+restricted, zero-dependency markdown-to-HTML renderer
+(`bin/lib/markdown.mjs`) and site builder (`bin/build-docs.mjs`), styled
+with the same generated `design/tokens.css` plus the vendored component CSS
+and one repo-specific addition, `design/local/site.css`, for the page-shell
+layout no single vendored component covers. `bin/build-docs.mjs --check`
+fails the build on a broken internal link or anchor, a stray italic
+emphasis span, or a generated `_headers` file (`bin/lib/site-headers.mjs`)
+that would exceed Cloudflare's own limits -- see
+[`CLAUDE.md`](../CLAUDE.md#architecture-notes) for the full renderer
 contract.
 
 ## Trust boundaries and threat model

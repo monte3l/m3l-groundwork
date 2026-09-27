@@ -49,6 +49,15 @@ path = ["design/source/licenses/**"]
 SPDX-FileCopyrightText = "Copyright 2020-2024 The Atkinson Hyperlegible Next Project Authors, Copyright 2020-2024 The Atkinson Hyperlegible Mono Project Authors"
 SPDX-License-Identifier = "OFL-1.1"
 
+# .jsonc supports its own `//` comments (see the file itself), but the
+# license-headers gate's extension list (bin/check-license-headers.mjs) only
+# recognizes .json, not .jsonc, so it still needs a REUSE annotation the same
+# way **/*.json below covers plain JSON.
+[[annotations]]
+path = [".github/deploy-tools/*.jsonc"]
+SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
+SPDX-License-Identifier = "MIT"
+
 # Everything else with no comment syntax of its own to carry a header in:
 # data files, prose, and dotfiles.
 [[annotations]]

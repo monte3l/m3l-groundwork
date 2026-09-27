@@ -29,7 +29,12 @@
         // packages/cli/tests/markdown*.test.ts: without this entry,
         // slugifyHeading (used only via that test file's dynamically
         // imported module object) reports as unused.
-        "bin/lib/markdown.mjs"
+        "bin/lib/markdown.mjs",
+        // Same reason, same dynamic-import pattern, from
+        // packages/cli/tests/site-headers*.test.ts: without this entry,
+        // HeadersLimitError (thrown, not imported, by bin/build-docs.mjs's
+        // production usage) reports as unused.
+        "bin/lib/site-headers.mjs"
       ],
       "project": ["bin/**/*.mjs", ".claude/hooks/**/*.mjs"]
     },

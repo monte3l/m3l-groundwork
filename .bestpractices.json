@@ -251,7 +251,7 @@
   "test_branch_coverage80_status": "Met",
   "test_branch_coverage80_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/vitest.config.ts's v8 coverage gate: 80% branch coverage, per file.",
   "hardened_site_status": "Met",
-  "hardened_site_justification": "GitHub (repository) and npmjs.com (download site) both serve CSP, HSTS, X-Content-Type-Options: nosniff, and X-Frame-Options -- verified with `curl -sI` against https://github.com/monte3l/m3l-groundwork and https://www.npmjs.com/package/@monte3l/groundwork.",
+  "hardened_site_justification": "GitHub (repository), npmjs.com (download site), and this project's own docs site at https://groundwork.monte3l.com (Cloudflare Workers Static Assets, bin/lib/site-headers.mjs's generated _headers file) all serve CSP, HSTS, X-Content-Type-Options: nosniff, and X-Frame-Options or frame-ancestors -- verified with `curl -sI` against all three.",
   "security_review_status": "Met",
   "security_review_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/docs/security-review.md -- reviewed and signed off by the maintainer on 2026-09-26, considering the security requirements and boundary from docs/assurance-case.md."
 }

@@ -10,16 +10,21 @@
  * `design/source/components/bundle.css`, `design/local/site.css` -- the
  * one docs-site-specific layout divergence `design/README.md`'s
  * "design/local/" section reserves for exactly this). `docs/research/*` is
- * deliberately excluded (internal trackers, not reader-facing pages).
+ * deliberately excluded (internal trackers, not reader-facing pages). Also
+ * emits a synthetic `404.html` and a Cloudflare Workers static-assets
+ * `_headers` file (`bin/lib/site-headers.mjs`), read by
+ * `.github/deploy-tools/wrangler.jsonc`'s `not_found_handling` and by
+ * Cloudflare's edge respectively -- see docs/cloudflare-docs.md.
  *
  * `node bin/build-docs.mjs --out <dir>` writes the site there. `--check`
  * instead builds to a throwaway temp directory and fails, without writing
  * `--out`, on any internal link or same-page/cross-page anchor this build
  * cannot resolve (including an anchor into a non-page repo file, such as
- * `CLAUDE.md#some-heading`), a disallowed link scheme, or an italic
- * `_x_`/`*x*` emphasis span surviving in one of `PAGES`' sources --
- * registered as the `docs` step in `bin/lib/verify-steps.mjs`'s `build`
- * group.
+ * `CLAUDE.md#some-heading`), a disallowed link scheme, an italic
+ * `_x_`/`*x*` emphasis span surviving in one of `PAGES`' sources, or a
+ * `_headers` file that would exceed Cloudflare's own limits (100 rule
+ * blocks, 2,000 characters per line) -- registered as the `docs` step in
+ * `bin/lib/verify-steps.mjs`'s `build` group.
  */
 import {
   mkdir,
@@ -40,6 +45,11 @@ import {
   escapeHtml,
   MarkdownError,
 } from "./lib/markdown.mjs";
+import {
+  hashInlineScript,
+  externalImageHosts,
+  buildHeadersFile,
+} from "./lib/site-headers.mjs";
 import { repoRoot } from "./lib/report.mjs";
 
 const REPO_URL = "https://github.com/monte3l/m3l-groundwork";
@@ -363,6 +373,50 @@ ${html}
 `;
 }
 
+/**
+ * The Cloudflare Custom Domain's own `not_found_handling: "404-page"`
+ * (`.github/deploy-tools/wrangler.jsonc`) serves this page for any path
+ * that matches no real asset. It isn't one of `PAGES` -- no markdown
+ * source, no nav/sidebar `aria-current` entry -- so it's rendered through
+ * the same `renderPage` shell with a synthetic single-entry `rendered` map
+ * rather than looping it into `PAGES` (which also drives the sidebar's four
+ * groups and the top nav's active-page check; a 404 page is never "current"
+ * on either).
+ */
+const NOT_FOUND_PAGE = { src: "__404__", out: "404.html", label: "Not found" };
+
+function renderNotFoundPage() {
+  const rendered = new Map([
+    [
+      NOT_FOUND_PAGE.src,
+      {
+        html: `<h1 id="page-not-found">Page not found</h1>\n<p>The page you're looking for doesn't exist. <a href="index.html">Return to the docs home</a>.</p>`,
+        headings: [
+          { level: 1, text: "Page not found", slug: "page-not-found" },
+        ],
+      },
+    ],
+  ]);
+  return renderPage(NOT_FOUND_PAGE, rendered);
+}
+
+/**
+ * Builds and writes the Cloudflare Workers static-assets `_headers` file
+ * (`bin/lib/site-headers.mjs`). `imageHosts` is derived from the rendered
+ * page HTML itself (currently just the badge images README's markdown
+ * embeds), so a new external image host added to any page's source is
+ * picked up automatically instead of silently violating its own CSP. The
+ * synthetic 404 page (above) has no markdown source and never embeds an
+ * image, so it's deliberately not scanned here.
+ */
+async function writeHeadersFile(outDir, rendered) {
+  const htmlPages = [...rendered.values()].map((page) => page.html);
+  const scriptHash = hashInlineScript(THEME_TOGGLE_SCRIPT);
+  const imageHosts = externalImageHosts(htmlPages);
+  const headersText = buildHeadersFile({ scriptHash, imageHosts });
+  await writeFile(path.join(outDir, "_headers"), headersText, "utf8");
+}
+
 async function copyAssets(root, outDir) {
   const assetsDir = path.join(outDir, "assets");
   await mkdir(path.join(assetsDir, "source", "components"), {
@@ -401,6 +455,12 @@ async function writeSite(root, outDir, rendered) {
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, html, "utf8");
   }
+  await writeFile(
+    path.join(outDir, NOT_FOUND_PAGE.out),
+    renderNotFoundPage(),
+    "utf8",
+  );
+  await writeHeadersFile(outDir, rendered);
 }
 
 async function main() {
