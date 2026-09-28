@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * `.claude/skills/customize/{domain-map,pack-map,kind-facet-map}.ts` are
- * hand-synced copies of `packages/plugin/src/{domain-map,pack-map,kind-facet-map}.ts`,
+ * `.claude/skills/customize/{domain-map,pack-map,kind-facet-map,plugin-map}.ts`
+ * are hand-synced copies of
+ * `packages/plugin/src/{domain-map,pack-map,kind-facet-map,plugin-map}.ts`,
  * and `.claude/skills/customize/SKILL.md` is a hand-synced copy of
  * `packages/plugin/skills/customize/SKILL.md` -- this repo's own self-hosted
  * `/customize` install (see CLAUDE.md's "Known gaps" section on
@@ -25,6 +26,7 @@ const syncedFiles: [name: string, sourceDir: string][] = [
   ["domain-map.ts", srcDir],
   ["pack-map.ts", srcDir],
   ["kind-facet-map.ts", srcDir],
+  ["plugin-map.ts", srcDir],
   ["SKILL.md", skillDir],
 ];
 

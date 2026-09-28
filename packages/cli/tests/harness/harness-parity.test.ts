@@ -73,9 +73,11 @@ function write(rel: string, content: string): void {
  * (`BARE_ENTRY_POINT` and the `.pathname` form -- see H2), a skill with no
  * frontmatter, a skill with no `SKILL.md`, an oversized skill with a dead
  * `references/` link and an over-length description, a mismatched agent
- * with a stale model and no `tools`, a rule with an empty `paths` and a
- * dead glob, a `CLAUDE.md` naming a file that does not exist, and a
- * malformed `.claude/settings.local.json` (H3).
+ * with a stale model and no `tools`, an otherwise-valid agent declaring an
+ * `mcpServers` entry (`ghost-server`) that neither `.claude/settings.json`'s
+ * `enabledPlugins` nor a root `.mcp.json` supplies, a rule with an empty
+ * `paths` and a dead glob, a `CLAUDE.md` naming a file that does not exist,
+ * and a malformed `.claude/settings.local.json` (H3).
  */
 function writeBrokenHarness(dir: string): void {
   const w = (rel: string, content: string): void => writeTo(dir, rel, content);
@@ -123,6 +125,15 @@ function writeBrokenHarness(dir: string): void {
   w(
     ".claude/agents/a.md",
     "---\nname: b\ndescription: short\nmodel: claude-3-opus\n---\n",
+  );
+  // Otherwise-valid so it doesn't ALSO trip agentShape/modelPinCurrency/
+  // agentToolScope -- the only defect here is the unsupplied mcpServers
+  // entry (H4: agent-mcp-source). Neither settings.json's enabledPlugins
+  // (there is none above) nor any .mcp.json (none is written) supplies
+  // "ghost-server".
+  w(
+    ".claude/agents/mcp-agent.md",
+    "---\nname: mcp-agent\ndescription: Exercises agent-mcp-source with an unsupplied MCP server declaration.\nmodel: sonnet\ntools: Read\nmcpServers: [ghost-server]\n---\n",
   );
   w(".claude/rules/r.md", '---\npaths:\n  - "nowhere/**"\n---\n');
   w(".claude/rules/empty.md", "---\npaths:\n---\nbody\n");
@@ -211,6 +222,112 @@ describe("the TypeScript grader and its emitted .mjs twin", () => {
       rmSync(dirA, { recursive: true, force: true });
       rmSync(dirB, { recursive: true, force: true });
       rmSync(dirC, { recursive: true, force: true });
+    }
+  });
+
+  // `agent-mcp-source` (rubric, agents category): for every `mcpServers`
+  // entry an agent declares, is that server name "supplied" by either (a) an
+  // `enabledPlugins` key in `.claude/settings.json` whose name-before-`@`
+  // matches and whose value is exactly `true`, or (b) a root `.mcp.json`'s
+  // `mcpServers` object, by key name. Each fixture below is its own temp dir
+  // so it isolates cleanly from `writeBrokenHarness`'s H4 case above.
+  it("agent-mcp-source: an mcpServers entry is supplied by settings.json's enabledPlugins", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-parity-mcp-a-"));
+    try {
+      writeTo(
+        dir,
+        ".claude/agents/consumer.md",
+        "---\nname: consumer\ndescription: Declares an mcpServers entry supplied by an enabledPlugins key.\nmodel: sonnet\ntools: Read\nmcpServers: [context7]\n---\n",
+      );
+      writeTo(
+        dir,
+        ".claude/settings.json",
+        JSON.stringify({
+          enabledPlugins: { "context7@claude-plugins-official": true },
+        }),
+      );
+
+      const ts = gradeHarness(dir);
+      expect(
+        ts.findings.filter((f) => f.ruleId === "agent-mcp-source"),
+      ).toEqual([]);
+      expect(plain(emitted.gradeHarness(dir))).toEqual(plain(ts));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("agent-mcp-source: an mcpServers entry is supplied by a root .mcp.json", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-parity-mcp-b-"));
+    try {
+      writeTo(
+        dir,
+        ".claude/agents/consumer.md",
+        "---\nname: consumer\ndescription: Declares an mcpServers entry supplied by a root .mcp.json file.\nmodel: sonnet\ntools: Read\nmcpServers: [local-tool]\n---\n",
+      );
+      writeTo(
+        dir,
+        ".mcp.json",
+        JSON.stringify({ mcpServers: { "local-tool": { command: "x" } } }),
+      );
+
+      const ts = gradeHarness(dir);
+      expect(
+        ts.findings.filter((f) => f.ruleId === "agent-mcp-source"),
+      ).toEqual([]);
+      expect(plain(emitted.gradeHarness(dir))).toEqual(plain(ts));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("agent-mcp-source: an mcpServers entry nothing supplies fails, naming the server", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-parity-mcp-c-"));
+    try {
+      writeTo(
+        dir,
+        ".claude/agents/consumer.md",
+        "---\nname: consumer\ndescription: Declares an mcpServers entry nothing in the harness supplies.\nmodel: sonnet\ntools: Read\nmcpServers: [unsupplied]\n---\n",
+      );
+
+      const ts = gradeHarness(dir);
+      const findings = ts.findings.filter(
+        (f) => f.ruleId === "agent-mcp-source",
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.message).toContain("unsupplied");
+      expect(findings[0]?.message.toLowerCase()).toContain("not supplied");
+      expect(findings[0]?.subject).toBe(".claude/agents/consumer.md");
+      expect(plain(emitted.gradeHarness(dir))).toEqual(plain(ts));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("agent-mcp-source: an enabledPlugins entry present but set to false does not supply the server", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-parity-mcp-d-"));
+    try {
+      writeTo(
+        dir,
+        ".claude/agents/consumer.md",
+        "---\nname: consumer\ndescription: Declares an mcpServers entry whose enabledPlugins key is explicitly false.\nmodel: sonnet\ntools: Read\nmcpServers: [context7]\n---\n",
+      );
+      writeTo(
+        dir,
+        ".claude/settings.json",
+        JSON.stringify({
+          enabledPlugins: { "context7@claude-plugins-official": false },
+        }),
+      );
+
+      const ts = gradeHarness(dir);
+      const findings = ts.findings.filter(
+        (f) => f.ruleId === "agent-mcp-source",
+      );
+      expect(findings).toHaveLength(1);
+      expect(plain(emitted.gradeHarness(dir))).toEqual(plain(ts));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

@@ -255,6 +255,49 @@ confirmed in Step 0.4:
   other artifacts and state plainly in Step 6 that the gate was not wired,
   rather than inventing a runner the project never asked for.
 
+**Plugins (both modes), after packs are settled above.** Build a
+`PluginRecommendationContext`: `chosenPacks` is whatever the packs decision
+just above actually landed on (fresh: what `--pack` installed at bootstrap
+time, detectable from the installed files -- e.g. `.changeset/config.json`
+means `publishing`, `.github/workflows/claude-pr-review.yml` means `github`
+(the only marker `plugin-map.ts` actually reads; `harness-extras` has no
+plugin that varies by its presence, so it needs no marker here); adopt: the
+packs Step 0.4(c) confirmed, revised by this step's own `recommendPacks`
+comparison if it changed anything); `hasCustomSkills` is `false` for a fresh
+bootstrap (nothing has authored a skill yet) and, for adopt mode, whatever
+Step 0's survey found beyond the baseline's own known skill names and any
+already-installed pack's skills (e.g. the `github` pack's three). Call
+`recommendPlugins(answers, context)` from `plugin-map.ts`
+(alongside this file, same copy mechanism as `pack-map.ts`) with the
+now-confirmed `InterviewAnswers`, and ask **one** `AskUserQuestion`
+(multi-select) offering all seven, pre-selected per each entry's
+`recommended` boolean with its `because` shown as the evidence -- same
+"visible reasoning" principle as every other inference in this skill.
+
+Write every confirmed `true` entry into `.claude/settings.json`'s
+`enabledPlugins` (`{"<id>": true}` per entry, e.g.
+`"context7@claude-plugins-official": true`) -- additive and entry-by-entry,
+same discipline as the CLI's own `mergeSettingsHooks` (which owns the
+`hooks` block entry-by-entry, as opposed to `mergeSettingsTopLevel`'s
+whole-key-at-a-time semantics): never remove or flip an entry the project
+already sets explicitly (an existing `false` is a decision the user made,
+not an oversight to correct), and never touch `.claude/settings.local.json`
+or the user's own `~/.claude/settings.json` scope. `claude-plugins-official`
+is a built-in marketplace, so no `extraKnownMarketplaces` entry is needed
+for any of the seven.
+
+**Committing this entry does not install the plugin for anyone.** A
+project-scope `enabledPlugins: true` with no local install produces no
+folder-trust auto-prompt -- Claude Code's `/plugin` Errors tab instead shows
+"enabled in project settings but isn't installed here" until someone runs
+the install by hand. So for every newly-`true` entry, print the exact
+follow-up command in Step 6's report: `claude plugin install <id> --scope
+project` (or `/plugin install <id>` inside a running session) -- the user,
+and every collaborator who pulls this change, still has to run it once. Do
+the same for each recommendation's `prerequisites` (the
+`typescript-language-server` binary, Python 3.8+) -- print them as
+follow-ups, never attempt to install them.
+
 Nothing else is touched. A project file the user didn't approve a change to
 stays exactly as it was.
 
@@ -317,3 +360,10 @@ the CLI's report missed (if anything), which conflicts were resolved and
 how, any domain-map coverage gap Step 4 surfaced, and **which packs were
 installed and what each wired** (or, for a pack whose gate had no runner to
 attach to, that it was skipped and why).
+
+Also list **which plugins were enabled** (each newly-`true`
+`enabledPlugins` entry, with the exact `claude plugin install <id> --scope
+project` follow-up command it still needs) and which were offered but
+declined, plus any prerequisite named against an enabled plugin
+(`typescript-language-server` on `PATH`, Python 3.8+) as a follow-up the
+user still has to satisfy.

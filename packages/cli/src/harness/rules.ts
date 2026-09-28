@@ -37,6 +37,13 @@ export interface HarnessSnapshot {
    * parsed or is absent -- the distinction `settingsLocal` alone cannot make.
    */
   settingsLocalError: string | undefined;
+  /**
+   * Root `.mcp.json`, parsed, or `undefined` when absent/unparseable. A
+   * malformed or absent `.mcp.json` is never a structural failure -- it just
+   * means `agent-mcp-source` (a rubric-only rule) can't see anything it
+   * supplies.
+   */
+  mcpJson: unknown;
   /** Hook filename to source text. */
   hooks: Map<string, string>;
   /** Agent filename (with `.md`) to text. */
@@ -610,6 +617,57 @@ const agentToolScope: HarnessRule = {
   },
 };
 
+/** Assumes a plugin id's name segment (`context7` in `context7@claude-plugins-official`) is the MCP server name it supplies -- true for context7, not guaranteed in general. Reads only `.claude/settings.json`'s `enabledPlugins`, never user-scope settings or `.claude/settings.local.json`, so a plugin enabled only there yields a false positive. */
+function enabledPluginNames(settings: unknown): Set<string> {
+  const names = new Set<string>();
+  if (!isRecord(settings) || !isRecord(settings["enabledPlugins"])) {
+    return names;
+  }
+  for (const [key, value] of Object.entries(settings["enabledPlugins"])) {
+    if (value !== true) continue;
+    const name = key.split("@")[0];
+    if (name !== undefined && name !== "") names.add(name);
+  }
+  return names;
+}
+
+/** Reads only a root `.mcp.json`, never user-scope or `.claude/settings.local.json` MCP config, so a server supplied only there yields a false positive. */
+function mcpJsonServerNames(mcpJson: unknown): Set<string> {
+  if (!isRecord(mcpJson) || !isRecord(mcpJson["mcpServers"])) {
+    return new Set<string>();
+  }
+  return new Set(Object.keys(mcpJson["mcpServers"]));
+}
+
+/** An agent whose `mcpServers` names a server no `enabledPlugins` entry or `.mcp.json` actually supplies is a grant that silently does nothing -- exactly the gap the baseline's own code-implementer.md has (`mcpServers: [context7]`) until a project enables the context7 plugin. Rubric, not structural: this is expected mid-customize, only a nudge to finish wiring it. */
+const agentMcpSource: HarnessRule = {
+  id: "agent-mcp-source",
+  level: "rubric",
+  category: "agents",
+  check: (s) => {
+    const failures: RuleFailure[] = [];
+    let checked = 0;
+    const supplied = new Set<string>([
+      ...enabledPluginNames(s.settings.parsed),
+      ...mcpJsonServerNames(s.mcpJson),
+    ]);
+    for (const [file, text] of s.agents) {
+      const parsed = parseFrontmatter(text);
+      if (!parsed.ok) continue;
+      for (const server of fieldList(parsed.fields, "mcpServers") ?? []) {
+        checked++;
+        if (!supplied.has(server)) {
+          failures.push({
+            subject: `.claude/agents/${file}`,
+            message: `mcpServers names "${server}", which is not supplied by any enabledPlugins entry or .mcp.json`,
+          });
+        }
+      }
+    }
+    return { checked, failures };
+  },
+};
+
 /** A hook registration with no `timeout` can hang the whole session indefinitely if the hook itself ever gets stuck. */
 const hookTimeout: HarnessRule = {
   id: "hook-timeout",
@@ -697,6 +755,7 @@ export const RULES: readonly HarnessRule[] = [
   descriptionSubstance,
   modelPinCurrency,
   agentToolScope,
+  agentMcpSource,
   hookTimeout,
   ruleGlobsLive,
   skillReferencesResolve,
