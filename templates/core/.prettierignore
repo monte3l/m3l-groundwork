@@ -3,3 +3,7 @@ dist/
 coverage/
 pnpm-lock.yaml
 CHANGELOG.md
+# A worktree the harness creates (see .gitignore) is a full, independent
+# checkout under here -- without this, prettier double-visits (and can fail
+# on) that copy's own in-progress state, which is a different session's WIP.
+.claude/worktrees/

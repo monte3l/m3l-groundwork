@@ -208,6 +208,13 @@ const SKIP_DIR_NAMES = new Set([
   ".nx",
 ]);
 
+// Claude Code creates git worktrees at `.claude/worktrees/<name>/` -- each a
+// full second checkout that must not be walked twice. Matched as an exact
+// path relative to the walk root, never by bare name: a directory literally
+// named `worktrees` elsewhere (`src/worktrees/`, `.claude/skills/worktrees/`)
+// is real project content and must stay visible to every grade.
+const SKIP_REL_DIR_PATHS = new Set([".claude/worktrees"]);
+
 const isRecord = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const lower = (value) =>
@@ -229,9 +236,11 @@ function walkBounded(root, maxDepth) {
     for (const entry of entries) {
       if (entry.isDirectory() && SKIP_DIR_NAMES.has(entry.name)) continue;
       const path = join(dir, entry.name);
+      const relPath = relative(root, path).split("\\").join("/");
+      if (entry.isDirectory() && SKIP_REL_DIR_PATHS.has(relPath)) continue;
       results.push({
         path,
-        relPath: relative(root, path).split("\\").join("/"),
+        relPath,
         isDirectory: entry.isDirectory(),
       });
       if (entry.isDirectory()) visit(path, depth + 1);

@@ -22,6 +22,11 @@ export default defineConfig(
       ".claude/agents/**",
       ".claude/skills/**",
       ".claude/rules/**",
+      // A worktree the harness creates (see .prettierignore) is a full,
+      // independent checkout under here, with its own eslint-relevant files
+      // -- without this, `pnpm lint` from the main checkout also walks (and
+      // can fail on) that copy's own in-progress state.
+      ".claude/worktrees/**",
     ],
   },
   js.configs.recommended,

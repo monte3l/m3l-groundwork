@@ -42,6 +42,65 @@ describe("walkBounded", () => {
     expect(relPaths).toEqual(["kept.ts"]);
   });
 
+  it("skips exactly .claude/worktrees", () => {
+    // A background agent's `.claude/worktrees/<name>/` is a full second
+    // checkout with its own src/tests trees -- the survey must not walk into
+    // it any more than it walks into node_modules or dist. The skip is
+    // scoped to this exact relative path, not a bare directory name -- see
+    // the next two tests for why that distinction is load-bearing.
+    mkdirSync(join(dir, ".claude", "worktrees", "x"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "worktrees", "x", "index.ts"), "");
+    writeFileSync(join(dir, "kept.ts"), "");
+
+    const entries = walkBounded(dir, 5);
+    const relPaths = entries.map((e) => e.relPath).sort();
+
+    // `.claude` itself is a real, non-skipped directory and stays listed;
+    // nothing under (or at) `.claude/worktrees` appears at all.
+    expect(relPaths).toEqual([".claude", "kept.ts"]);
+  });
+
+  // The skip is scoped by exact relative PATH (`.claude/worktrees`), not by
+  // bare directory name -- a directory that merely happens to be named
+  // "worktrees" elsewhere in the tree is an ordinary directory and must be
+  // walked like any other. This guards against a legitimate
+  // `src/worktrees/`/`worktrees/` directory in an adopted project silently
+  // disappearing from every adopt-mode survey and the harness/toolchain
+  // graders.
+  it("does NOT skip a directory literally named worktrees outside .claude/", () => {
+    mkdirSync(join(dir, "worktrees", "x"), { recursive: true });
+    writeFileSync(join(dir, "worktrees", "x", "index.ts"), "");
+    mkdirSync(join(dir, "src", "worktrees"), { recursive: true });
+    writeFileSync(join(dir, "src", "worktrees", "y.ts"), "");
+
+    const entries = walkBounded(dir, 5);
+    const relPaths = entries.map((e) => e.relPath);
+
+    expect(relPaths).toContain("worktrees");
+    expect(relPaths).toContain("worktrees/x");
+    expect(relPaths).toContain("worktrees/x/index.ts");
+    expect(relPaths).toContain("src");
+    expect(relPaths).toContain("src/worktrees");
+    expect(relPaths).toContain("src/worktrees/y.ts");
+  });
+
+  // Same path-scoping guarantee as above, exercised against a plausible
+  // real skill name nested under `.claude/skills/` -- only the exact
+  // `.claude/worktrees` relative path is skipped, so a skill that happens
+  // to be named "worktrees" is walked normally.
+  it("does NOT skip .claude/skills/worktrees (a plausible real skill name)", () => {
+    mkdirSync(join(dir, ".claude", "skills", "worktrees"), {
+      recursive: true,
+    });
+    writeFileSync(join(dir, ".claude", "skills", "worktrees", "SKILL.md"), "");
+
+    const entries = walkBounded(dir, 5);
+    const relPaths = entries.map((e) => e.relPath);
+
+    expect(relPaths).toContain(".claude/skills/worktrees");
+    expect(relPaths).toContain(".claude/skills/worktrees/SKILL.md");
+  });
+
   it("stops descending past maxDepth", () => {
     mkdirSync(join(dir, "a", "b", "c"), { recursive: true });
     writeFileSync(join(dir, "a", "b", "c", "deep.ts"), "");

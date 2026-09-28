@@ -76,6 +76,11 @@ surface the decisions still open.
 
 ### 5 — Act on the confirmed decisions
 
+If `.claude/skills/working-in-worktrees/` exists (an optional add-on, not
+part of this baseline), use its start mode for this step instead of a bare
+`git switch -c` — it gets the same branch, plus an isolated worktree and its
+own installed dependencies in one move. Otherwise:
+
 ```bash
 git switch -c feat/<slug>   # or fix/<slug>
 ```

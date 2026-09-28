@@ -670,14 +670,33 @@ set for one file.
   it with the same rule module `templates/core`'s `bin/check-harness.mjs`
   uses (see "Definition of Done" for the command) -- 0 structural findings
   expected.
-  What _does_ already exist independently is `.claude/worktrees/`, created ad hoc whenever
-  a background agent runs with `isolation: "worktree"`: a full second
-  checkout of this repo, uncommitted state included. `.prettierignore`,
-  `eslint.config.js` and both vitest configs exclude it explicitly -- without
-  that, prettier fails on a sibling session's in-progress formatting and
-  every test in the repo runs twice. Add the same exclusion to any new
-  file-discovery config (a future ESLint plugin config, a coverage include
-  list) rather than assuming the existing excludes cover it.
+  What _does_ already exist independently is `.claude/worktrees/**`,
+  created ad hoc whenever a background agent runs with
+  `isolation: "worktree"`: a full second checkout of this repo, uncommitted
+  state included. `.gitignore`, `.prettierignore`, `eslint.config.js` and both
+  vitest configs exclude it explicitly -- without that, prettier fails on a
+  sibling session's in-progress formatting and every test in the repo runs
+  twice. Add the same exclusion to any new file-discovery config (a future
+  ESLint plugin config, a coverage include list) rather than assuming the
+  existing excludes cover it. `templates/core` carries the same four
+  exclusions, plus `.gitignore` entries for `.env`/`.env.local`/
+  `.env.*.local` (never commit secrets, regardless of whether a project adds
+  its own `.worktreeinclude` file) so an emitted project gets the same
+  protection from day one -- see
+  `packages/cli/tests/survey/fs-walk.test.ts` and
+  `packages/cli/tests/post-edit-verify.test.ts` for the regression coverage.
+  `.claude/hooks/post-edit-verify.mjs` (both this repo's own copy and
+  `templates/core`'s) resolves the git working-tree root that actually
+  contains the edited file (`resolveVerifyRoot`) rather than trusting
+  `CLAUDE_PROJECT_DIR`, which Claude Code pins to the session's original
+  root and does not move into a worktree -- see the hook's own
+  header comment. `finishing-work` and `starting-work` know about a linked
+  worktree too (checking `git worktree list --porcelain` before deleting a
+  branch, and handing off to the optional `worktrees` pack's own skill for
+  the branch step when it's installed), but nothing here yet **enforces**
+  worktree-only development or automates per-worktree dependency
+  installation -- that is the `worktrees` pack, tracked as separate,
+  not-yet-landed work.
 - **Adopt mode's `inventory.json` records `templateRoot` as an absolute
   path.** If the CLI ran from a location that no longer exists by the time
   `/customize` runs (a deleted temp checkout, a different machine), the

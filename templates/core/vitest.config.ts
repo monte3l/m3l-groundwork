@@ -4,7 +4,14 @@ export default defineConfig({
   test: {
     pool: "forks",
     include: ["**/tests/**/*.test.ts", "**/*.test.ts"],
-    exclude: ["**/dist/**", "**/node_modules/**"],
+    exclude: [
+      "**/dist/**",
+      "**/node_modules/**",
+      // A worktree the harness creates (see .prettierignore) is a full,
+      // independent checkout under here, with its own tests/ tree --
+      // without this every test in the project runs twice, once per copy.
+      "**/.claude/worktrees/**",
+    ],
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
