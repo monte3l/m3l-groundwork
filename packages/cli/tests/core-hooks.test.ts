@@ -23,6 +23,7 @@ import {
 } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -31,6 +32,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -302,6 +304,277 @@ describe("baseline guards run through a symlinked hooks directory", () => {
       { encoding: "utf8", env: envWithoutRepoLocals() },
     );
     expect(commits.stdout.trim()).toBe("0");
+  });
+});
+
+describe("post-edit-verify resolves the worktree root, not CLAUDE_PROJECT_DIR", () => {
+  let scratch: string;
+  let stubBinDir: string;
+  let logFile: string;
+  let symlinkParent: string | undefined;
+
+  function git(cwd: string, ...args: string[]): void {
+    const result = spawnSync(
+      "git",
+      [
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "commit.gpgsign=false",
+        ...args,
+      ],
+      { cwd, encoding: "utf8", env: envWithoutRepoLocals() },
+    );
+    expect(result.status, result.stderr).toBe(0);
+  }
+
+  /**
+   * Builds a real repo with a linked worktree, both `git worktree add`- and
+   * scratch-fixture-created directories rooted under the same
+   * `realpathSync`-resolved scratch dir so every path this test constructs
+   * already shares the canonical prefix `git rev-parse --show-toplevel`
+   * itself returns (macOS's `$TMPDIR` is a symlink into `/private`, and a
+   * mismatch here would make the hook's own `dir.startsWith(root)` package
+   * walk fail for reasons unrelated to what this test exists to prove).
+   */
+  function buildRepoWithWorktree(worktreeHasNodeModules: boolean): {
+    repoRoot: string;
+    worktreeDir: string;
+    filePath: string;
+  } {
+    scratch = realpathSync(
+      mkdtempSync(join(tmpdir(), "post-edit-verify-worktree-")),
+    );
+    const repoRoot = join(scratch, "repo");
+    mkdirSync(join(repoRoot, "node_modules"), { recursive: true });
+    writeFileSync(
+      join(repoRoot, "package.json"),
+      JSON.stringify({ name: "x", type: "module" }),
+    );
+    git(repoRoot, "init", "-b", "main");
+    git(repoRoot, "add", "-A");
+    git(repoRoot, "commit", "-m", "init");
+
+    const worktreeDir = join(repoRoot, ".claude", "worktrees", "w");
+    mkdirSync(dirname(worktreeDir), { recursive: true });
+    git(repoRoot, "worktree", "add", worktreeDir, "-b", "feat/w");
+
+    if (worktreeHasNodeModules) {
+      mkdirSync(join(worktreeDir, "node_modules"), { recursive: true });
+    }
+    writeFileSync(
+      join(worktreeDir, "package.json"),
+      JSON.stringify({ name: "x", type: "module" }),
+    );
+    mkdirSync(join(worktreeDir, "src"), { recursive: true });
+    const filePath = join(worktreeDir, "src", "a.ts");
+    writeFileSync(filePath, "export const a = 1;\n");
+
+    return { repoRoot, worktreeDir, filePath };
+  }
+
+  /** Installs a stub `pnpm` on a scratch bin dir that logs `<cwd>\t<args>` to `logFile` and exits 0 without doing anything real. */
+  function installStubPnpm(): void {
+    stubBinDir = mkdtempSync(join(tmpdir(), "post-edit-verify-stub-bin-"));
+    logFile = join(scratch, "stub.log");
+    const stubPath = join(stubBinDir, "pnpm");
+    writeFileSync(
+      stubPath,
+      [
+        "#!/usr/bin/env node",
+        'import { appendFileSync } from "node:fs";',
+        'import process from "node:process";',
+        "appendFileSync(",
+        "  process.env.STUB_LOG,",
+        '  `${process.cwd()}\\t${process.argv.slice(2).join(" ")}\\n`,',
+        ");",
+        "process.exit(0);",
+        "",
+      ].join("\n"),
+    );
+    chmodSync(stubPath, 0o755);
+  }
+
+  afterEach(() => {
+    rmSync(scratch, { recursive: true, force: true });
+    rmSync(stubBinDir, { recursive: true, force: true });
+    if (symlinkParent !== undefined) {
+      rmSync(symlinkParent, { recursive: true, force: true });
+      symlinkParent = undefined;
+    }
+  });
+
+  it("runs its steps with cwd set to the linked worktree's root, not the original project root", () => {
+    const { repoRoot, worktreeDir, filePath } = buildRepoWithWorktree(true);
+    installStubPnpm();
+
+    const result = spawnSync("node", [join(hooksDir, "post-edit-verify.mjs")], {
+      input: JSON.stringify({
+        tool_name: "Write",
+        tool_input: { file_path: filePath },
+        cwd: worktreeDir,
+      }),
+      encoding: "utf8",
+      env: {
+        ...envWithoutRepoLocals(),
+        PATH: `${stubBinDir}:${process.env["PATH"] ?? ""}`,
+        CLAUDE_PROJECT_DIR: repoRoot,
+        STUB_LOG: logFile,
+      },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(logFile)).toBe(true);
+    const invocations = readFileSync(logFile, "utf8").trim().split("\n");
+    expect(invocations.length).toBeGreaterThan(0);
+    const cwds = invocations.map((line) => line.split("\t")[0]);
+    expect(cwds).toContain(worktreeDir);
+    expect(cwds).not.toContain(repoRoot);
+  });
+
+  it("skips with a node_modules hint on stderr, and never spawns a step, when the worktree has no dependencies installed", () => {
+    const { repoRoot, worktreeDir, filePath } = buildRepoWithWorktree(false);
+    installStubPnpm();
+
+    const result = spawnSync("node", [join(hooksDir, "post-edit-verify.mjs")], {
+      input: JSON.stringify({
+        tool_name: "Write",
+        tool_input: { file_path: filePath },
+        cwd: worktreeDir,
+      }),
+      encoding: "utf8",
+      env: {
+        ...envWithoutRepoLocals(),
+        PATH: `${stubBinDir}:${process.env["PATH"] ?? ""}`,
+        CLAUDE_PROJECT_DIR: repoRoot,
+        STUB_LOG: logFile,
+      },
+    });
+
+    // The hook now exits 2 (not 0) here -- see the module's own header
+    // comment: "On any failure it exits 2 with a concise stderr summary,
+    // which Claude Code surfaces back to the model as advisory feedback."
+    // stderr on exit 0 is not reliably surfaced to the model; missing
+    // dependencies is actionable feedback worth surfacing the same way a
+    // real check failure is.
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("node_modules");
+    expect(existsSync(logFile)).toBe(false);
+  });
+
+  it("checks the owning package's own node_modules, not a git-toplevel ancestor that lacks one, when the project is nested inside a larger repo", () => {
+    // The repo ROOT here deliberately has no package.json/node_modules of its
+    // own -- only the nested-project/ subdirectory does. Before the fix, the
+    // hook checked `<git-toplevel>/node_modules`, which would wrongly skip
+    // this edit even though the actual owning package has its dependencies
+    // installed.
+    scratch = realpathSync(
+      mkdtempSync(join(tmpdir(), "post-edit-verify-nested-")),
+    );
+    const repoRoot = join(scratch, "outer-repo");
+    mkdirSync(repoRoot, { recursive: true });
+    git(repoRoot, "init", "-b", "main");
+
+    const nestedDir = join(repoRoot, "nested-project");
+    mkdirSync(join(nestedDir, "node_modules"), { recursive: true });
+    writeFileSync(
+      join(nestedDir, "package.json"),
+      JSON.stringify({ name: "nested", type: "module" }),
+    );
+    mkdirSync(join(nestedDir, "src"), { recursive: true });
+    const filePath = join(nestedDir, "src", "a.ts");
+    writeFileSync(filePath, "export const a = 1;\n");
+
+    git(repoRoot, "add", "-A");
+    git(repoRoot, "commit", "-m", "init");
+
+    installStubPnpm();
+
+    const result = spawnSync("node", [join(hooksDir, "post-edit-verify.mjs")], {
+      input: JSON.stringify({
+        tool_name: "Write",
+        tool_input: { file_path: filePath },
+        cwd: nestedDir,
+      }),
+      encoding: "utf8",
+      env: {
+        ...envWithoutRepoLocals(),
+        PATH: `${stubBinDir}:${process.env["PATH"] ?? ""}`,
+        CLAUDE_PROJECT_DIR: repoRoot,
+        STUB_LOG: logFile,
+      },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain("node_modules");
+    expect(existsSync(logFile)).toBe(true);
+  });
+
+  // End-to-end proof that the hook's own entry-point body -- not just the
+  // library-level `canonicalize`/`resolveVerifyRoot` composition tested in
+  // post-edit-verify.test.ts -- actually canonicalizes the edited file's
+  // path before comparing it against the (always-canonical)
+  // `git rev-parse --show-toplevel` root. Removing `canonicalize(...)` from
+  // around `abs` in the hook's body would make `rel` start with a bogus
+  // `..` here (the symlinked directory segment never appears in the
+  // canonical root), which the hook's own `rel.startsWith("..")` guard
+  // treats as "outside the project" and silently skips -- the exact
+  // symlink regression this fixes. A silent skip means no `pnpm`
+  // invocation at all, so an empty `logFile` (or a missing one) is what a
+  // regressed hook would produce here.
+  it("resolves a file reached through a SYMLINKED project path, not the canonical one, and actually runs its steps (symlink regression, end-to-end)", () => {
+    scratch = realpathSync(
+      mkdtempSync(join(tmpdir(), "post-edit-verify-symlink-")),
+    );
+    const repoRoot = join(scratch, "repo");
+    mkdirSync(join(repoRoot, "node_modules"), { recursive: true });
+    writeFileSync(
+      join(repoRoot, "package.json"),
+      JSON.stringify({ name: "x", type: "module" }),
+    );
+    git(repoRoot, "init", "-b", "main");
+    git(repoRoot, "add", "-A");
+    git(repoRoot, "commit", "-m", "init");
+
+    mkdirSync(join(repoRoot, "src"), { recursive: true });
+    writeFileSync(join(repoRoot, "src", "a.ts"), "export const a = 1;\n");
+
+    // A dedicated symlink hop, not a reliance on the host's own /tmp being a
+    // symlink (macOS's is; Linux's typically isn't) -- reproduces the bug
+    // class host-independently, same approach as the library-level
+    // regression test in post-edit-verify.test.ts.
+    symlinkParent = mkdtempSync(
+      join(tmpdir(), "post-edit-verify-symlink-parent-"),
+    );
+    const symlinkedRepo = join(symlinkParent, "repo-link");
+    symlinkSync(repoRoot, symlinkedRepo, "dir");
+    const symlinkedFile = join(symlinkedRepo, "src", "a.ts");
+
+    installStubPnpm();
+
+    const result = spawnSync("node", [join(hooksDir, "post-edit-verify.mjs")], {
+      input: JSON.stringify({
+        tool_name: "Write",
+        tool_input: { file_path: symlinkedFile },
+        cwd: symlinkedRepo,
+      }),
+      encoding: "utf8",
+      env: {
+        ...envWithoutRepoLocals(),
+        PATH: `${stubBinDir}:${process.env["PATH"] ?? ""}`,
+        CLAUDE_PROJECT_DIR: symlinkedRepo,
+        STUB_LOG: logFile,
+      },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(logFile)).toBe(true);
+    const invocations = readFileSync(logFile, "utf8").trim().split("\n");
+    expect(invocations.length).toBeGreaterThan(0);
+    const cwds = invocations.map((line) => line.split("\t")[0]);
+    expect(cwds).toContain(repoRoot);
   });
 });
 

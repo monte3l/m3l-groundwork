@@ -14,6 +14,23 @@ coverage/
 # Local overrides
 lefthook-local.yml
 
+# A worktree the harness creates (`claude --worktree`, Agent tool
+# `isolation: "worktree"`, or `EnterWorktree`) lands under here as a full,
+# independent checkout -- including its own copy of every file this project
+# already scans. Without this, prettier/eslint/vitest all double-visit (and
+# can fail on) that copy's own in-progress state, which belongs to a
+# different session, not this project's tracked content.
+.claude/worktrees/
+
+# Never commit secrets. (Also relevant to worktrees: a project that adds a
+# `.worktreeinclude` file -- gitignore-syntax, Claude Code convention, see
+# code.claude.com/docs/en/worktrees -- can only carry a gitignored file like
+# this into a new worktree, never a tracked one, so it stays gitignored
+# regardless of whether that file exists here.)
+.env
+.env.local
+.env.*.local
+
 # Scratch state written by opt-in harness-extras pack hooks (e.g. the
 # compaction-handoff artifact) -- harmless if the pack isn't installed.
 tmp/

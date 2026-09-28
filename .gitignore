@@ -19,6 +19,12 @@ coverage/
 # Local overrides
 lefthook-local.yml
 
+# A worktree the harness creates (`claude --worktree`, Agent tool
+# `isolation: "worktree"`, or `EnterWorktree`) lands under here as a full,
+# independent checkout -- see .prettierignore/eslint.config.js/vitest.config.ts
+# for why every tool that walks this tree already excludes it.
+.claude/worktrees/
+
 # Adopt mode's own output, from testing it against this repo itself
 .groundwork/
 

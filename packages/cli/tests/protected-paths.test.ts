@@ -104,6 +104,34 @@ describe("isProtectedPath", () => {
       ),
     ).toBe(false);
   });
+
+  it("protects a src/ file inside an IN-REPO worktree (.claude/worktrees/<name>/), since its absolute path still starts with projectDir", () => {
+    expect(
+      lib.isProtectedPath(
+        "/Users/dev/my-actual-project/.claude/worktrees/x/packages/cli/src/a.ts",
+        "/Users/dev/my-actual-project",
+      ),
+    ).toBe(true);
+  });
+
+  // KNOWN GAP, not fixed here: a linked worktree can also live entirely
+  // OUTSIDE the original project directory (`git worktree add <path>` accepts
+  // any path, and Claude Code's own worktree feature can place one as a
+  // sibling checkout). Such a path never starts with the original
+  // `projectDir`, so `isProtectedPath` -- which only ever compares an
+  // absolute `filePath` against a single `projectDir` prefix -- cannot
+  // recognize it as protected today. Closing this is the `worktrees` pack's
+  // own `guard-worktree-only.mjs` hook's job (asking git which worktree
+  // actually contains the file, the same approach `post-edit-verify.mjs`'s
+  // `resolveVerifyRoot` uses), not a change to this function's contract.
+  it("does not protect a sibling git worktree outside projectDir (known gap — closed by the worktrees pack's own guard, not by isProtectedPath itself)", () => {
+    expect(
+      lib.isProtectedPath(
+        "/Users/dev/other-checkout/packages/cli/src/a.ts",
+        "/Users/dev/my-actual-project",
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("canonicalize", () => {
