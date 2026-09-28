@@ -56,7 +56,7 @@ export async function fetchPublishedVersions(name, fetchImpl) {
   let response;
   try {
     response = await fetchImpl(
-      `https://registry.npmjs.org/${encodeURIComponent(name).replace("%40", "@")}`,
+      `https://registry.npmjs.org/${encodeURIComponent(name).replaceAll("%40", "@")}`,
       { signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS) },
     );
   } catch (cause) {
