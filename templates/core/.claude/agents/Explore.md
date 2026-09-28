@@ -4,7 +4,6 @@ description: Fast read-only search agent for locating and understanding code. Us
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 disallowedTools: Agent
 model: claude-haiku-4-5
-effort: low
 maxTurns: 40
 color: cyan
 ---

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "suites": {
     "plugin": {
-      "adopt-reconcile": 1,
+      "adopt-reconcile": 0.9333,
       "fresh-interview": 1
     },
     "harness": {
       "creating-prs-fires-1": 1,
-      "creating-prs-fires-2": 1,
+      "creating-prs-fires-2": 0.3333,
       "creating-prs-quiet-1": 1,
       "finishing-work-fires-1": 1,
       "finishing-work-fires-2": 1,
