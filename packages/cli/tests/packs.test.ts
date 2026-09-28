@@ -1032,6 +1032,116 @@ describe("the real publishing pack", () => {
   });
 });
 
+describe("the real worktrees pack", () => {
+  it("loads cleanly with modes fresh+adopt, a 0/1/2/0/0 budget, and a requires.paths dependency on bin/lib/protected-paths.mjs", () => {
+    expect(listPackNames()).toContain("worktrees");
+    const pack = loadPack("worktrees");
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(pack.manifest.budget).toEqual({
+      agents: 0,
+      skills: 1,
+      hooks: 2,
+      workflows: 0,
+      scripts: 0,
+    });
+    expect(pack.manifest.requires?.paths).toContain(
+      "bin/lib/protected-paths.mjs",
+    );
+    expect(existsSync(pack.filesDir)).toBe(true);
+    expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
+  });
+
+  it("installs alone: settings.json gains a SessionStart[startup|resume] entry and a PreToolUse[Write|Edit] entry, and both hooks, the skill and .worktreeinclude land on disk", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-worktrees-alone-"));
+    try {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      mkdirSync(join(targetDir, "bin", "lib"), { recursive: true });
+      writeFileSync(join(targetDir, "bin", "lib", "protected-paths.mjs"), "");
+      writeFileSync(
+        join(targetDir, ".claude", "settings.json"),
+        JSON.stringify({ hooks: {} }),
+      );
+
+      installPack(loadPack("worktrees"), targetDir, {});
+
+      const settings = JSON.parse(
+        readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
+      ) as {
+        hooks: Record<
+          string,
+          { matcher?: string; hooks: { command: string }[] }[]
+        >;
+      };
+      expect(settings.hooks["SessionStart"]).toHaveLength(1);
+      expect(settings.hooks["SessionStart"]?.[0]?.matcher).toBe(
+        "startup|resume",
+      );
+      expect(settings.hooks["PreToolUse"]).toHaveLength(1);
+      expect(settings.hooks["PreToolUse"]?.[0]?.matcher).toBe("Write|Edit");
+
+      expect(
+        existsSync(
+          join(targetDir, ".claude", "hooks", "guard-worktree-only.mjs"),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(targetDir, ".claude", "hooks", "ensure-worktree-deps.mjs"),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            targetDir,
+            ".claude",
+            "skills",
+            "working-in-worktrees",
+            "SKILL.md",
+          ),
+        ),
+      ).toBe(true);
+      expect(existsSync(join(targetDir, ".worktreeinclude"))).toBe(true);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+
+  it("co-installs alongside harness-extras without a merge collision: both add a DIFFERENT-matcher SessionStart entry, ending up as two separate array entries", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-worktrees-coinstall-"));
+    try {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      mkdirSync(join(targetDir, "bin", "lib"), { recursive: true });
+      // harness-extras's own requires.paths dependencies.
+      writeFileSync(join(targetDir, "bin", "lib", "agent-roster.mjs"), "");
+      writeFileSync(join(targetDir, "bin", "lib", "report.mjs"), "");
+      // worktrees's own requires.paths dependency.
+      writeFileSync(join(targetDir, "bin", "lib", "protected-paths.mjs"), "");
+      writeFileSync(
+        join(targetDir, ".claude", "settings.json"),
+        JSON.stringify({ $schema: "s", hooks: {} }),
+      );
+
+      installPack(loadPack("harness-extras"), targetDir, {});
+      installPack(loadPack("worktrees"), targetDir, {});
+
+      const settings = JSON.parse(
+        readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
+      ) as {
+        hooks: Record<
+          string,
+          { matcher?: string; hooks: { command: string }[] }[]
+        >;
+      };
+      const sessionStart = settings.hooks["SessionStart"] ?? [];
+      expect(sessionStart).toHaveLength(2);
+      const matchers = sessionStart.map((entry) => entry.matcher).sort();
+      expect(matchers).toEqual(["compact|resume|startup", "startup|resume"]);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("cross-pack and pack/templates-core path collisions", () => {
   it("emits no path collision between any two real packs, nor between a pack and templates/core", () => {
     const owners = new Map<string, string>();

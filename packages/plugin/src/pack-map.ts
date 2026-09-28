@@ -106,9 +106,32 @@ function recommendPublishing(answers: InterviewAnswers): PackRecommendation {
 }
 
 /**
+ * `worktrees` is opt-in for every project kind: rather than adding a
+ * nicety on top of the existing workflow, it changes the workflow itself --
+ * every `src/`/`tests/` write must happen inside a git worktree, not the
+ * main checkout. That is a day-to-day process decision for the maintainer,
+ * not something any interview answer can infer, so it is never pre-selected
+ * -- but it stays on offer.
+ */
+function recommendWorktrees(): PackRecommendation {
+  return {
+    name: "worktrees",
+    recommended: false,
+    because:
+      "it changes the day-to-day workflow rather than adding a nicety on " +
+      "top of it: every src/ and tests/ write has to happen inside a git " +
+      "worktree instead of the main checkout. That is a process choice " +
+      "for whoever works in this repo, not something any project kind " +
+      "implies, so it is opt-in -- still available if parallel, isolated " +
+      "worktree sessions are how this project wants to work.",
+  };
+}
+
+/**
  * Every pack's recommendation for the given interview answers. Only
  * `publishing` varies by `answers.kind` today; `harness-extras` and
- * `github` are recommended for every kind.
+ * `github` are recommended for every kind, and `worktrees` is opt-in for
+ * every kind.
  */
 export function recommendPacks(
   answers: InterviewAnswers,
@@ -117,5 +140,6 @@ export function recommendPacks(
     recommendHarnessExtras(),
     recommendGithub(),
     recommendPublishing(answers),
+    recommendWorktrees(),
   ];
 }

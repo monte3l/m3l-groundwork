@@ -141,10 +141,10 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          placeholder src/tests. See its own CLAUDE.md.
 
 templates/packs/        Optional add-on bundles installed on top of the
-                         baseline. `harness-extras/` and `github/` ship
-                         today; see its own README.md for the wiring
-                         contract and "Known gaps" below for the deferred
-                         candidates.
+                         baseline. `harness-extras/`, `github/`,
+                         `publishing/`, and `worktrees/` ship today; see its
+                         own README.md for the wiring contract and "Known
+                         gaps" below for the deferred candidates.
 ```
 
 ## Commands
@@ -609,7 +609,7 @@ set for one file.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships three packs, each covering one theme rather than
+- `templates/packs/` ships four packs, each covering one theme rather than
   one theme per artifact. `harness-extras` is Claude Code session
   ergonomics: a type-design analyzer agent, the compaction-handoff hook
   pair, `guard-readonly-bash`, a `check-file-budget` gate (the four
@@ -649,7 +649,23 @@ set for one file.
   -- see its `adoptNotes`. It cannot wire `@changesets/cli` itself either,
   since the wiring contract only extends `package.json`'s `scripts`, never
   its `dependencies`/`devDependencies` -- its shipped `.changeset/README.md`
-  says so.
+  says so. `worktrees` enforces that all src/tests development happens
+  inside an isolated git worktree, on any branch, for any caller
+  (`guard-worktree-only.mjs`, stricter than the baseline's own
+  `guard-branch-isolation.mjs`/`guard-hub-src-writes.mjs`, which only block
+  on `main` and only block the hub respectively), plus a
+  `working-in-worktrees` skill (start/status/sync/finish/fan-out), an
+  `ensure-worktree-deps.mjs` `SessionStart` backstop that installs
+  dependencies into a freshly created worktree, and a `.worktreeinclude`
+  copying `.env`/`.env.local` into every worktree Claude Code creates. It's
+  the pack this repo's
+  own `.claude/hooks/post-edit-verify.mjs` and `finishing-work`/
+  `starting-work` worktree-awareness (see `.claude/hooks/post-edit-verify.mjs`'s
+  own header comment) were a prerequisite for, not a replacement of -- those
+  fixes make the harness _correct_ inside a worktree that already exists;
+  this pack is what makes worktree-only development the _default_ workflow.
+  `recommended: false` in `pack-map.ts` deliberately, since it changes the
+  day-to-day workflow rather than adding a nicety -- see its `adoptNotes`.
 - **No standalone "add a pack to an already-bootstrapped project" flag.**
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is

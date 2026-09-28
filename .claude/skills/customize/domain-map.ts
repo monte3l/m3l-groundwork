@@ -114,6 +114,7 @@ export const HARNESS_DOMAIN_GLOBS = [
   ".claude/commands/**",
   ".claude-plugin/**",
   ".mcp.json",
+  ".worktreeinclude",
   "CLAUDE.md",
   "docs/research/harness-refresh.md",
 ] as const;

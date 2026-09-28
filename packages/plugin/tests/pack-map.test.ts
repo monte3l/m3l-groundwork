@@ -34,9 +34,25 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly three recommendations: harness-extras, github and publishing", () => {
+  it("returns exactly four recommendations: harness-extras, github, publishing and worktrees", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
-    expect(names).toEqual(["harness-extras", "github", "publishing"]);
+    expect(names).toEqual([
+      "harness-extras",
+      "github",
+      "publishing",
+      "worktrees",
+    ]);
+  });
+
+  it("recommends worktrees as opt-in (not recommended by default) with non-empty evidence, for every project kind -- it changes the day-to-day workflow rather than being a zero-cost addition", () => {
+    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+      const worktrees = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "worktrees",
+      );
+      expect(worktrees).toBeDefined();
+      expect(worktrees?.recommended).toBe(false);
+      expect(worktrees?.because.length).toBeGreaterThan(0);
+    }
   });
 
   it("recommends harness-extras with evidence naming a substring from both the four original artifacts and the folded-in statusline segment, for every project kind", () => {
