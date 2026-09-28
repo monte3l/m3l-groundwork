@@ -5,3 +5,4 @@
 export * from "./kind-facet-map.js";
 export * from "./domain-map.js";
 export * from "./pack-map.js";
+export * from "./plugin-map.js";

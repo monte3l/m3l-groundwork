@@ -32,14 +32,16 @@ function customizeSkillPayload(
     ["kind-facet-map.ts", join(dataSourceDir, "kind-facet-map.ts")],
     ["domain-map.ts", join(dataSourceDir, "domain-map.ts")],
     ["pack-map.ts", join(dataSourceDir, "pack-map.ts")],
+    ["plugin-map.ts", join(dataSourceDir, "plugin-map.ts")],
   ];
 }
 
 /**
  * Copies `skills/customize/SKILL.md` and its backing data
- * (`src/kind-facet-map.ts`, `src/domain-map.ts`, `src/pack-map.ts`) from
- * `sourceDir` into `destDir`. A missing source file is a broken install,
- * not something to degrade past silently -- it throws.
+ * (`src/kind-facet-map.ts`, `src/domain-map.ts`, `src/pack-map.ts`,
+ * `src/plugin-map.ts`) from `sourceDir` into `destDir`. A missing source
+ * file is a broken install, not something to degrade past silently -- it
+ * throws.
  */
 function copyCustomizeSkillFiles(
   destDir: string,
@@ -100,11 +102,11 @@ function isCustomizeSkillCurrent(
 
 /**
  * Adopt-mode install: purely additive, never overwrites. If the project
- * already has its own `.claude/skills/customize/SKILL.md` and any of the
- * four payload files (SKILL.md plus its three backing data files) is missing
- * or differs from what this CLI ships, the skill is written to
- * `.groundwork/customize/` instead -- reported in the adoption report
- * rather than silently overwriting whatever the project already had there.
+ * already has its own `.claude/skills/customize/SKILL.md` and any file
+ * `customizeSkillPayload()` names is missing or differs from what this CLI
+ * ships, the skill is written to `.groundwork/customize/` instead --
+ * reported in the adoption report rather than silently overwriting whatever
+ * the project already had there.
  */
 export function installCustomizeSkillGuarded(
   targetDir: string,

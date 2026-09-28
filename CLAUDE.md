@@ -72,8 +72,9 @@ packages/cli/          Phase A: the offline bootstrapper CLI
 
 packages/plugin/        Phase B: the /customize skill
   skills/customize/       SKILL.md (Step 0 is the adopt-mode reconcile step)
-  src/                    kind-facet-map.ts, domain-map.ts, pack-map.ts, index.ts
-  tests/                  unit tests for all three
+  src/                    kind-facet-map.ts, domain-map.ts, pack-map.ts,
+                          plugin-map.ts, index.ts
+  tests/                  unit tests for all four
 
 .claude/                THIS repo's own harness (not the baseline's): agents/,
                          hooks/, rules/, skills/, settings.json -- installed by
@@ -242,6 +243,16 @@ steps) before considering any task here done.
   new template file gets caught before it becomes a silent blind spot for
   both guidance sweeps. Update the glob lists in the same commit that adds
   the file, not as a follow-up.
+- **`pack-map.ts` and `plugin-map.ts` are the same "infer once, visibly,
+  with reasoning attached" pattern applied to two different install
+  surfaces.** `recommendPacks` (`pack-map.ts`) recommends which
+  `templates/packs/*` bundle(s) to install; `recommendPlugins`
+  (`plugin-map.ts`) recommends which locally-installed, built-in
+  `claude-plugins-official` marketplace plugin(s) to enable -- both pure
+  functions of the interview answers (plus, for `plugin-map.ts`, which
+  packs were chosen and whether the project authors its own skills), each
+  with its own unit-tested table so a recommendation's evidence is never
+  invented fresh at `/customize` run time.
 - **The harness grader has two implementations that must not drift.**
   `packages/cli/src/harness/` (TypeScript: `frontmatter.ts`, `rules.ts`,
   `grade.ts`) feeds adopt mode's `## Harness grade` report section and the

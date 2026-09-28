@@ -81,11 +81,16 @@ function loadSnapshot(root: string): HarnessSnapshot {
   const settingsLocal = readSettings(
     join(root, ".claude", "settings.local.json"),
   );
+  const mcpJsonResult = readJsoncFile(join(root, ".mcp.json"));
 
   return {
     settings: readSettings(join(root, ".claude", "settings.json")),
     settingsLocal: settingsLocal.parsed,
     settingsLocalError: settingsLocal.error,
+    // A malformed or absent .mcp.json is never a structural failure -- it
+    // just means agent-mcp-source (a rubric-only rule) can't see anything
+    // it supplies.
+    mcpJson: mcpJsonResult.ok ? mcpJsonResult.value : undefined,
     hooks: readEach(/^\.claude\/hooks\/[^/]+$/, ".claude/hooks/"),
     agents: readEach(/^\.claude\/agents\/[^/]+\.md$/, ".claude/agents/"),
     skills,

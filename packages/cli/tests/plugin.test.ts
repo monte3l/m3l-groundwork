@@ -43,6 +43,10 @@ describe("installCustomizeSkill", () => {
       join(sourceDir, "src", "pack-map.ts"),
       "export const z = 3;\n",
     );
+    writeFileSync(
+      join(sourceDir, "src", "plugin-map.ts"),
+      "export const w = 4;\n",
+    );
   });
 
   afterEach(() => {
@@ -50,10 +54,10 @@ describe("installCustomizeSkill", () => {
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  it("copies SKILL.md and all three data files into .claude/skills/customize/", () => {
+  it("copies SKILL.md and all four data files into .claude/skills/customize/", () => {
     const result = installCustomizeSkill(targetDir, sourceDir);
 
-    expect(result.filesWritten).toHaveLength(4);
+    expect(result.filesWritten).toHaveLength(5);
 
     const destDir = join(targetDir, ".claude", "skills", "customize");
     expect(readFileSync(join(destDir, "SKILL.md"), "utf8")).toContain(
@@ -68,6 +72,9 @@ describe("installCustomizeSkill", () => {
     expect(readFileSync(join(destDir, "pack-map.ts"), "utf8")).toBe(
       "export const z = 3;\n",
     );
+    expect(readFileSync(join(destDir, "plugin-map.ts"), "utf8")).toBe(
+      "export const w = 4;\n",
+    );
   });
 
   it("resolves a default source directory when none is passed", () => {
@@ -76,7 +83,7 @@ describe("installCustomizeSkill", () => {
     // packages/plugin, which really exists, so this just confirms the
     // default-parameter branch resolves to real files rather than throwing.
     const result = installCustomizeSkill(targetDir);
-    expect(result.filesWritten).toHaveLength(4);
+    expect(result.filesWritten).toHaveLength(5);
   });
 
   it("throws rather than silently skip a missing source file", () => {
@@ -121,6 +128,10 @@ describe("installCustomizeSkillGuarded", () => {
     writeFileSync(
       join(sourceDir, "src", "pack-map.ts"),
       "export const z = 3;\n",
+    );
+    writeFileSync(
+      join(sourceDir, "src", "plugin-map.ts"),
+      "export const w = 4;\n",
     );
   });
 
