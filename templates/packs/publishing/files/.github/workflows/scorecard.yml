@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright the __PROJECT_NAME__ contributors
+# SPDX-License-Identifier: NOASSERTION
+
+name: Scorecard
+
+# What this does: runs OpenSSF Scorecard, a tool that scores a repository's
+# supply-chain security practices (branch protection, pinned dependencies,
+# signed releases, and similar checks) and can publish a badge from the
+# result. It runs weekly, on every push to the release branch, and on
+# manual dispatch -- not on every PR, since supply-chain posture doesn't
+# change per-commit the way tests do. Read-only: this workflow only
+# inspects the repo and uploads a report, it never writes to it.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 4 * * 1" # every Monday
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # Required by ossf/scorecard-action's own documented minimum.
+      security-events: write # to upload SARIF results
+      id-token: write # to publish results and get a badge (publish_results: true)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # `publish_results: true` is what makes a README badge resolve,
+          # and needs the repository to actually be public -- see this
+          # pack's adoptNotes. Set this `false` for a private repository.
+          publish_results: true
+
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          sarif_file: results.sarif

@@ -93,7 +93,17 @@ export function countBaselineCaps(templateRoot: string): CapCounts {
  * the same shape as {@link countBaselineCaps} but without the `/customize`
  * adjustment, since a pack never ships that skill. Used to verify a pack's
  * declared `budget` matches what its own file tree actually contains.
+ * `packageScripts` is the pack's `wiring.packageScripts`, added to the
+ * `scripts` count -- those are merged into the target's real `package.json`
+ * at install time, never shipped as a file, so the tree walk can't see them.
  */
-export function countPackBudget(packFilesDir: string): CapCounts {
-  return countArtifacts(packFilesDir);
+export function countPackBudget(
+  packFilesDir: string,
+  packageScripts?: Record<string, string>,
+): CapCounts {
+  const raw = countArtifacts(packFilesDir);
+  return {
+    ...raw,
+    scripts: raw.scripts + Object.keys(packageScripts ?? {}).length,
+  };
 }

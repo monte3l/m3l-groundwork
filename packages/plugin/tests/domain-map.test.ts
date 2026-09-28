@@ -71,6 +71,15 @@ describe("classifyPath", () => {
     );
   });
 
+  it("classifies the publishing pack's release-pipeline and supply-chain config files as typescript-domain", () => {
+    expect(classifyPath(".changeset/config.json")).toBe("typescript");
+    expect(classifyPath(".github/release-tools/package.json")).toBe(
+      "typescript",
+    );
+    expect(classifyPath("REUSE.toml")).toBe("typescript");
+    expect(classifyPath(".gitleaks.toml")).toBe("typescript");
+  });
+
   it("classifies explicitly neutral files as neutral, not uncovered", () => {
     expect(classifyPath("README.md")).toBe("neutral");
   });

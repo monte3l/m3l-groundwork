@@ -970,6 +970,68 @@ describe("the real github pack", () => {
   });
 });
 
+describe("the real publishing pack", () => {
+  it("loads cleanly, is fresh-mode only, and wires two package scripts and two verify steps across the lint/build groups", () => {
+    expect(listPackNames()).toContain("publishing");
+    const pack = loadPack("publishing");
+    expect(pack.manifest.modes).toEqual(["fresh"]);
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
+    expect(Object.keys(pack.manifest.wiring.packageScripts).sort()).toEqual([
+      "changeset",
+      "version:packages",
+    ]);
+    expect(pack.manifest.budget.scripts).toBe(2);
+
+    const steps = pack.manifest.wiring.verifySteps;
+    expect(steps.map((step) => step.id).sort()).toEqual([
+      "dts-deps",
+      "license-headers",
+    ]);
+    const byId = new Map(steps.map((step) => [step.id, step]));
+    expect(byId.get("license-headers")?.group).toBe("lint");
+    expect(byId.get("dts-deps")?.group).toBe("build");
+
+    expect(existsSync(pack.filesDir)).toBe(true);
+  });
+
+  it("installs alone: package.json gains both scripts, verify-steps.packs.json gains both steps", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-publishing-alone-"));
+    try {
+      writeFileSync(
+        join(targetDir, "package.json"),
+        JSON.stringify({ name: "x", scripts: {} }),
+      );
+      installPack(loadPack("publishing"), targetDir, {});
+
+      const pkg = JSON.parse(
+        readFileSync(join(targetDir, "package.json"), "utf8"),
+      ) as { scripts: Record<string, string> };
+      expect(Object.keys(pkg.scripts).sort()).toEqual([
+        "changeset",
+        "version:packages",
+      ]);
+
+      const stepsPath = join(
+        targetDir,
+        "bin",
+        "lib",
+        "verify-steps.packs.json",
+      );
+      expect(existsSync(stepsPath)).toBe(true);
+      const steps = JSON.parse(readFileSync(stepsPath, "utf8")) as Array<{
+        id: string;
+      }>;
+      expect(steps.map((step) => step.id).sort()).toEqual([
+        "dts-deps",
+        "license-headers",
+      ]);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("cross-pack and pack/templates-core path collisions", () => {
   it("emits no path collision between any two real packs, nor between a pack and templates/core", () => {
     const owners = new Map<string, string>();

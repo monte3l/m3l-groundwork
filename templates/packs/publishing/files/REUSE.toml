@@ -1,0 +1,27 @@
+# REUSE Software (https://reuse.software) annotations for files that cannot,
+# or by this project's own convention should not, carry an inline SPDX
+# header -- see bin/check-license-headers.mjs for the gate that gap-checks
+# this file's globs against that expectation.
+version = 1
+SPDX-PackageName = "__PROJECT_NAME__"
+
+# Data files, prose, and dotfiles with no comment syntax of their own to
+# carry a header in. SPDX-License-Identifier is left as NOASSERTION -- edit
+# both this block and bin/check-license-headers.mjs's headerLines() once
+# this project's actual license is decided (a LICENSE file, if one exists,
+# is the source of truth).
+[[annotations]]
+path = [
+  "**/*.json",
+  "**/*.md",
+  "pnpm-lock.yaml",
+  ".node-version",
+  ".npmrc",
+  ".gitignore",
+  ".prettierignore",
+  "LICENSE",
+  "REUSE.toml",
+  ".gitleaks.toml",
+]
+SPDX-FileCopyrightText = "Copyright the __PROJECT_NAME__ contributors"
+SPDX-License-Identifier = "NOASSERTION"

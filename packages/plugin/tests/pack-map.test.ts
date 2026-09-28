@@ -34,9 +34,9 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly two recommendations: harness-extras and github", () => {
+  it("returns exactly three recommendations: harness-extras, github and publishing", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
-    expect(names).toEqual(["harness-extras", "github"]);
+    expect(names).toEqual(["harness-extras", "github", "publishing"]);
   });
 
   it("recommends harness-extras with evidence naming a substring from both the four original artifacts and the folded-in statusline segment, for every project kind", () => {
@@ -86,6 +86,44 @@ describe("recommendPacks", () => {
       expect(github?.because).toMatch(/dependabot/i);
       // A substring distinguishing triaging-scan-alerts.
       expect(github?.because).toMatch(/scan.alert/i);
+    }
+  });
+
+  it("recommends publishing only for kinds that ship an npm package (library, cli), not for frontend or service", () => {
+    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+      const publishing = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "publishing",
+      );
+      expect(publishing).toBeDefined();
+      expect(publishing?.because.length).toBeGreaterThan(0);
+      expect(publishing?.recommended).toBe(
+        kind === "library" || kind === "cli",
+      );
+    }
+  });
+
+  it("recommends publishing (for a library) with evidence naming the release pipeline and its supply-chain posture", () => {
+    const publishing = recommendPacks({
+      ...BASE_ANSWERS,
+      kind: "library",
+    }).find((r) => r.name === "publishing");
+    expect(publishing?.recommended).toBe(true);
+    // A substring distinguishing the release half: changesets, trusted
+    // publishing, or npm itself.
+    expect(publishing?.because).toMatch(/changeset|trusted publish|npm/i);
+    // A substring distinguishing the supply-chain half: secret scanning.
+    expect(publishing?.because).toMatch(/gitleaks|secret/i);
+    // A substring distinguishing the supply-chain half: OpenSSF Scorecard.
+    expect(publishing?.because).toMatch(/scorecard|supply.chain/i);
+  });
+
+  it("explains why publishing is not recommended for frontend/service kinds", () => {
+    for (const kind of ["frontend", "service"] as const) {
+      const publishing = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "publishing",
+      );
+      expect(publishing?.recommended).toBe(false);
+      expect(publishing?.because).toMatch(/deploy|not.*publish|registry/i);
     }
   });
 

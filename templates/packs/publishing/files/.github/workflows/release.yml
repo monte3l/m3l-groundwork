@@ -1,0 +1,277 @@
+# SPDX-FileCopyrightText: Copyright the __PROJECT_NAME__ contributors
+# SPDX-License-Identifier: NOASSERTION
+
+name: Release
+
+# What this does: on every push to `main`, this workflow either opens a PR
+# that bumps the package version and changelog, or -- once that PR has
+# merged -- packs and publishes the package to npm. It runs
+# [Changesets](https://github.com/changesets/changesets), the tool this
+# project uses to track pending releases (each PR that changes the
+# package's user-facing behavior adds a small Markdown file under
+# `.changeset/` describing the change and its version bump; this workflow
+# reads those files to decide what to do next).
+#
+# The flow, one job each:
+#   1. select-mode  reads the repo and decides: "version", "publish", or "none"
+#   2. version      opens or updates the "Version Packages" PR
+#   3. pack         builds, runs every gate, and packs the tarball
+#   4. publish      uploads that tarball to npm via trusted publishing
+#
+# "Trusted publishing" is npm's passwordless publish mechanism: instead of a
+# long-lived npm token stored as a secret, this workflow proves its identity
+# to npm via OIDC (OpenID Connect -- a short-lived, cryptographically signed
+# token GitHub Actions mints for the running job, which npm verifies against
+# the trusted-publisher config for this exact repo and workflow file). This
+# is the shape the changesets docs recommend for trusted publishing: the one
+# job that holds the OIDC token (`publish`, via `id-token: write`) never runs
+# build, test, or repo-script code -- it only runs the changesets CLI and the
+# pnpm shim below, with `--ignore-scripts`. `pack` holds nothing beyond
+# `contents: read`.
+#
+# "Staged" publish (vs. a "direct" one) means `npm stage publish` uploads the
+# tarball and creates the version, but it isn't installable yet until a
+# maintainer separately approves it with 2FA (`npm stage approve`) -- npm's
+# own stronger default over a direct `npm publish`, which would make the
+# version live immediately. "Provenance" is the signed, publicly verifiable
+# record npm attaches to a trusted-published package, linking it back to the
+# exact commit and workflow run that built it.
+#
+# npm trusted publishers are configured per package, against this exact file
+# name (`release.yml`, not a path) -- see this pack's adoptNotes for the
+# one-time setup this depends on.
+on:
+  push:
+    branches: [main]
+
+# Reset, then grant per job.
+permissions: {}
+
+# Releases must not be cancelled midway: a half-published release is worse
+# than a queued one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  select-mode:
+    name: Select mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      mode: ${{ steps.select-mode.outputs.mode }}
+      publish-plan-artifact-id: ${{ steps.select-mode.outputs.publish-plan-artifact-id }}
+    permissions:
+      contents: read # actions/checkout
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # `.node-version` is the single Node pin, so this file must never carry
+      # a literal version (see check-node-version.mjs). No package-manager
+      # cache anywhere in this file: a restored cache is an input an attacker
+      # can poison, and these jobs are the ones that publish.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - id: select-mode
+        uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
+
+  version:
+    name: Open version PR
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'version'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # actions/checkout; see below for who does the actual writing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      # If this project's branch protection requires status checks on every
+      # PR with no bypass actor, a PR opened with the default GITHUB_TOKEN
+      # never triggers `pull_request`-event workflows (GitHub's own
+      # anti-recursion rule) and could therefore never merge -- this mints a
+      # short-lived token from a GitHub App installed on this repo instead.
+      # See this pack's adoptNotes: if that's not this project's situation,
+      # drop this step and pass `github-token: ${{ secrets.GITHUB_TOKEN }}`
+      # to the version step below instead. The App needs only
+      # `contents: write` and `pull-requests: write`; its token auto-expires
+      # in an hour and this action revokes it when the job ends.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
+        with:
+          # Both created as repo secrets (`gh secret set`), not vars: the
+          # client ID isn't sensitive on its own, but keeping both next to
+          # each other avoids a second place to remember to update.
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: pnpm version:packages
+          commit-message: "chore(release): version packages"
+          pr-title: "chore(release): version packages"
+
+  pack:
+    name: Verify and pack
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
+    permissions:
+      contents: read # actions/checkout
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      # The whole gate, before a tarball exists. `pnpm verify` is one full
+      # run of every group, the same steps ci.yml spreads across its lanes.
+      - run: pnpm verify
+      # Deliberately not one of pnpm verify's own steps: package.json's
+      # version only changes in the version PR, so this check would fail
+      # every ordinary push between releases (the version it's checking is
+      # always the one already published) if it ran there. This is the one
+      # place "is this version about to collide with an already-published
+      # one" is the right question to ask -- right before packing it.
+      - run: node bin/check-publish-version.mjs
+      - id: pack
+        uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
+        with:
+          publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
+
+  publish:
+    name: Publish to npm
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Gates the git tag, the GitHub Release, and `npm stage publish` behind a
+    # required reviewer -- without this, all three already exist by the time
+    # a maintainer even sees there's a staged version to approve with
+    # `npm stage approve`. The environment (created once, by hand, via
+    # `gh api` -- see this pack's adoptNotes) has no branch restriction
+    # beyond the release branch and no wait timer: it exists to require a
+    # person, not to add a delay.
+    environment: npm-publish
+    permissions:
+      contents: write # changesets/action/publish pushes tags and creates GitHub Releases
+      id-token: write # npm trusted publishing (OIDC) and provenance
+      attestations: write # actions/attest-build-provenance on the packed tarball
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      # Only the changesets CLI is needed here, not any package's lifecycle scripts.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # `npm stage publish` needs npm >= 11.15.0 (Node >= 22.14.0 -- already
+      # covered by .node-version). Pinned to an exact version, not a range or
+      # `latest`: this job holds the OIDC token, and an unpinned
+      # package-manager install is exactly what OpenSSF Scorecard's
+      # Pinned-Dependencies check flags. `.github/release-tools/` pins the
+      # exact tarball via its committed lockfile's integrity hash, and
+      # `npm ci` verifies the install against it -- bumping the pin is then
+      # a normal reviewed PR (a lockfile diff), not a hand-edited version
+      # string.
+      - run: npm ci --ignore-scripts --prefix .github/release-tools
+      - run: echo "$GITHUB_WORKSPACE/.github/release-tools/node_modules/.bin" >> "$GITHUB_PATH"
+      # changesets publishes through `pnpm publish` in a pnpm-managed
+      # project, and pnpm 12's native publish is rejected by npmjs.com's OIDC
+      # exchange (403 "OIDC permission denied"). This puts a `pnpm` ahead of
+      # the real one that forwards everything except `publish`, which goes
+      # to `npm stage publish` instead (see bin/pnpm-publish-shim.mjs -- the
+      # trusted publisher only allows staged publishing, npm's own default
+      # since 2026-09-03; a direct `npm publish` gets the same 403 for a
+      # different reason). Remove both once pnpm's own publish authenticates.
+      - name: Route publish through the npm CLI
+        run: |
+          shim_dir="$RUNNER_TEMP/pnpm-shim"
+          mkdir -p "$shim_dir"
+          printf '#!/bin/sh\nexport PNPM_SHIM_DIR=%s\nexec node "%s/bin/pnpm-publish-shim.mjs" "$@"\n' \
+            "$shim_dir" "$GITHUB_WORKSPACE" > "$shim_dir/pnpm"
+          chmod +x "$shim_dir/pnpm"
+          echo "$shim_dir" >> "$GITHUB_PATH"
+      - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
+        id: publish
+        with:
+          pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
+      # npm provenance alone already meets most supply-chain "signed
+      # releases" criteria (a Sigstore-backed, OIDC-issued attestation with
+      # no long-lived key). These three steps add a second, independent
+      # proof on the GitHub Release itself: the exact tarball `pack` already
+      # built and tested, fetched back out of its own artifact (never
+      # rebuilt), attested, and attached. `if:` guards all three on
+      # `publish` actually having published -- `select-mode` only decides
+      # the job should run, not that a version was new.
+      # `continue-on-error: true` on all three: `npm stage publish` has
+      # already succeeded by this point, so a failure here (a transient
+      # download error, say) must never fail the whole job and leave a
+      # staged, tagged, unreleased version behind -- this block is
+      # best-effort supplementary evidence, the same status as the
+      # "List pending stages" step below.
+      - name: Fetch the packed tarball back out of the pack job's artifact
+        if: steps.publish.outputs.published == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.pack.outputs.pack-dir-artifact-id }}
+          path: .release-artifacts
+          merge-multiple: true
+      - name: Attest build provenance for the published tarball
+        if: steps.publish.outputs.published == 'true'
+        continue-on-error: true
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          # actions/attest-build-provenance's own glob support (not the
+          # shell's), so `**` resolves correctly regardless of `globstar`.
+          subject-path: .release-artifacts/**/*.tgz
+      - name: Attach the attested tarball to the GitHub Release
+        if: steps.publish.outputs.published == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `changeset pack` writes into <outDir>/packages/*.tgz, not
+          # <outDir>/*.tgz -- found by path, not a bare shell glob the
+          # default (non-globstar) bash would pass through unexpanded on
+          # no match.
+          tarball="$(find .release-artifacts -name '*.tgz' -print -quit)"
+          if [ -z "$tarball" ]; then
+            echo "no packed tarball found under .release-artifacts/ -- skipping the release-asset upload" >&2
+            exit 0
+          fi
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          gh release upload "${name}@${version}" \
+            "$tarball" --clobber --repo "${{ github.repository }}"
+      # Staging succeeds unattended; going live needs a maintainer's 2FA
+      # (`npm stage approve <id>`, on the CLI or npmjs.com -- never
+      # automatable, by design). Best-effort convenience only: this job
+      # never logs in with a token (it publishes purely via the OIDC
+      # exchange scoped to the publish call itself), so `npm stage list` may
+      # print nothing useful -- `|| true` means that possibility never fails
+      # the job.
+      - name: List pending stages (best effort)
+        if: always()
+        run: npm stage list --package "$(node -p "require('./package.json').name")" || true
