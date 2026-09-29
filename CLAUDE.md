@@ -768,7 +768,7 @@ set for one file.
   `--check` first). An agent's attempt to apply them was refused by Claude
   Code's permission classifier, which confirms the rule above: run them
   yourself. When you do, the SHA-pinning allowlist must cover sub-path
-  actions (`changesets/action/pack@...`), so allow `changesets/*`, not
+  actions (`changesets/action/pack@...`), so allow `changesets/action/*` as well as
   `changesets/action@*`.
 
   | Pending item                                                                            | How to apply                                                                                                                              | Why it's safe                                                                                         |
