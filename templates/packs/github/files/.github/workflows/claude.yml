@@ -33,10 +33,11 @@ jobs:
     # `@claude` text match alone would let an outside commenter trigger a job
     # holding `contents: write` and your auth secret. Each branch below also
     # requires the `author_association` of the comment's, review's or
-    # issue's author to be OWNER, MEMBER or COLLABORATOR. Two consequences: an org member whose
-    # membership is private can surface as CONTRIBUTOR and be skipped, and on
-    # `issues` the check is on the issue's author, not on whoever assigned it,
-    # so assigning an outsider's issue does not start a run.
+    # issue's author to be OWNER, MEMBER or COLLABORATOR. Two consequences:
+    # an org member whose membership is private can surface as CONTRIBUTOR
+    # and be skipped, and on `issues` the check is on the issue's author, not
+    # on whoever assigned it, so assigning an outsider's issue does not start
+    # a run.
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||

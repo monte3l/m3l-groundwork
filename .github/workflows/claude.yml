@@ -4,9 +4,9 @@
 name: Claude Code
 
 # What this does: lets an owner, member or collaborator mention "@claude" in
-# an issue, a PR review, or a review comment to ask Claude Code to make a change or answer a question,
-# interactively. It runs whenever one of those events contains "@claude" in
-# its text, and does nothing otherwise.
+# an issue, a PR review, or a review comment to ask Claude Code to make a
+# change or answer a question, interactively. It runs whenever one of those
+# events contains "@claude" in its text, and does nothing otherwise.
 #
 # Interactive mode only (no `prompt` input) -- Claude commits to a branch and
 # links back to a PR-creation page; it never opens a PR itself, so this
