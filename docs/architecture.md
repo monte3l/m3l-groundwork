@@ -151,3 +151,10 @@ contract.
 See [`docs/assurance-case.md`](assurance-case.md) for the security-focused
 view of this same architecture: what's trusted, what's untrusted input, and
 how each boundary is enforced.
+
+## GitHub setup
+
+See [`docs/github-blueprint.md`](github-blueprint.md) for how this repository
+is configured on GitHub's side (rulesets, environments, Actions policy,
+security features), what a template repository cannot carry over, and the
+checklist for reproducing the setup in a new repository.
