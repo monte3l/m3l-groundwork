@@ -30,6 +30,24 @@
     },
     "toolchain": {
       "toolchain-repair": 1
+    },
+    "packs": {
+      "recommending-ts-tooling-fires-1": 1,
+      "recommending-ts-tooling-quiet-1": 1,
+      "reviewing-dependabot-prs-fires-1": 1,
+      "reviewing-dependabot-prs-quiet-1": 1,
+      "starting-work-fires-1": 1,
+      "triaging-ci-fires-1": 1,
+      "triaging-ci-quiet-1": 1,
+      "triaging-scan-alerts-fires-1": 1,
+      "triaging-scan-alerts-quiet-1": 1,
+      "typescript-guidance-fires-1": 1,
+      "typescript-guidance-quiet-1": 1,
+      "watching-pr-checks-fires-1": 1,
+      "watching-pr-checks-quiet-1": 1,
+      "watching-pr-checks-quiet-2": 1,
+      "working-in-worktrees-fires-1": 1,
+      "working-in-worktrees-quiet-1": 1
     }
   }
 }
