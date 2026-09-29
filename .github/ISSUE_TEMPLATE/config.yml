@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
 # SPDX-License-Identifier: MIT
 
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
     url: https://github.com/monte3l/m3l-groundwork/security/advisories/new

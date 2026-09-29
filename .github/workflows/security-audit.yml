@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+name: Security Audit (Scheduled)
+
+# What this does: runs `pnpm audit` against the workspace lockfile every day
+# and opens one issue if it finds a high-severity advisory. Dependabot's npm
+# updates are off for the root workspace on purpose (see dependabot.yml), and
+# Dependency Review only looks at what a pull request changes, so nothing
+# else would notice an advisory published against a dependency that is
+# already locked in. Same shape as the workflow `templates/core` emits.
+on:
+  schedule:
+    # 06:00 UTC daily: catches a newly disclosed advisory without waiting for
+    # the next PR to touch the lockfile.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+# A manual dispatch overlapping the daily run would otherwise race to open
+# the same failure issue.
+concurrency:
+  group: security-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write # only the failure-path issue below writes
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: pnpm audit
+        run: pnpm audit --audit-level=high
+      - name: Open an issue on failure
+        if: failure()
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const title = "Scheduled security audit failed";
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "security",
+            });
+            if (existing.some((issue) => issue.title === title)) return;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              labels: ["security"],
+              body: `\`pnpm audit --audit-level=high\` failed on the scheduled run. See the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+            });

@@ -1,0 +1,8 @@
+# Normalize line endings so a Windows checkout cannot break shell scripts,
+# workflow files or the byte-exact SHA-256 the docs site pins for its inline
+# script.
+* text=auto eol=lf
+*.sh text eol=lf
+*.mjs text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

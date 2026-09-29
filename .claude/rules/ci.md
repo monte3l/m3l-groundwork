@@ -69,6 +69,12 @@ paths:
   default and Dependabot doesn't track it, so bump it by hand periodically;
   `GITLEAKS_LICENSE` (a free org license, required because this repo is
   org-owned) is an org-level secret set up outside this repo.
+- `security-audit.yml` runs `pnpm audit --audit-level=high` daily (and on
+  dispatch) and opens one `security`-labelled issue if it fails. Root
+  Dependabot has npm updates off on purpose and Dependency Review only sees
+  what a PR changes, so this is the only thing that notices an advisory
+  published against an already-locked dependency. It mirrors the workflow
+  `templates/core` emits, at the root's own `pnpm/action-setup` pin.
 - **`claude.yml` and `claude-pr-review.yml` run Anthropic's official
   `anthropics/claude-code-action`** (SHA-pinned, same convention as every
   other action here), both running but failing cleanly on an auth error
