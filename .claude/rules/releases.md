@@ -168,8 +168,9 @@ deliberately dropped.
 **The `npm-publish` environment closes the tag/Release ordering gap.**
 `release.yml`'s `publish` job has `environment: npm-publish`, a GitHub
 environment (created once, by hand, via `gh api` -- not committed as JSON,
-same reasoning as the branch ruleset) with one required reviewer (the
-maintainer, self-review allowed since there's only one) and deployments
+same reasoning as the branch ruleset) with two required reviewers (the
+maintainer and a second org owner, see `GOVERNANCE.md`; self-review is
+currently allowed) and deployments
 restricted to `main`. This pauses the job itself -- before the git tag, the
 GitHub Release, or `npm stage publish` exist -- rather than only gating
 `npm stage approve` afterward, which is the second, independent approval
