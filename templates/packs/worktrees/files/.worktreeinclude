@@ -1,0 +1,10 @@
+# Copies gitignored local-secrets files into every worktree Claude Code
+# creates itself (`claude --worktree`, `isolation: "worktree"`,
+# `EnterWorktree` without a `path`) -- gitignore syntax, per
+# code.claude.com/docs/en/worktrees. Only ever copies a file that is ALSO
+# gitignored, so nothing tracked is ever duplicated. This does NOT fire for
+# a worktree the `working-in-worktrees` skill's `start` mode creates with a
+# plain `git worktree add` -- that mode copies these same files by hand; see
+# its own step for why.
+.env
+.env.local

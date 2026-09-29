@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "name": "worktrees",
+  "description": "Enforces that all development happens inside isolated git worktrees rather than the main checkout: a skill that creates, lists, syncs, and safely tears down a worktree per unit of work; a hook that installs dependencies into a freshly created worktree automatically; and a guard that blocks a src/tests write outside a worktree the same way guard-branch-isolation.mjs blocks one on main.",
+  "modes": ["fresh", "adopt"],
+  "budget": {
+    "agents": 0,
+    "skills": 1,
+    "hooks": 2,
+    "workflows": 0,
+    "scripts": 0
+  },
+  "requires": {
+    "paths": ["bin/lib/protected-paths.mjs"]
+  },
+  "wiring": {
+    "settings": {
+      "SessionStart": [
+        {
+          "matcher": "startup|resume",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/ensure-worktree-deps.mjs\"",
+              "timeout": 300
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "matcher": "Write|Edit",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-worktree-only.mjs\"",
+              "timeout": 30
+            }
+          ]
+        }
+      ]
+    },
+    "packageScripts": {},
+    "verifySteps": []
+  },
+  "adoptNotes": "ensure-worktree-deps.mjs runs `pnpm install --frozen-lockfile --prefer-offline` automatically the first time a session starts inside a freshly created worktree with no node_modules yet -- this runs every dependency's lifecycle scripts the same way any `pnpm install` does, limited only by whatever `allowBuilds`/`onlyBuiltDependencies` policy the project's own pnpm config already sets (see typescript-guidance's pnpm supply-chain coverage if none is set). If the project sets `worktree.symlinkDirectories: [\"node_modules\"]` in .claude/settings.json, the hook detects the symlink and skips -- installing there would mutate the main checkout's own node_modules through the symlink. guard-worktree-only.mjs blocks every src/tests write outside a linked worktree under .claude/worktrees/, on any branch, for any caller (hub or writer spoke) -- this is stricter than guard-branch-isolation.mjs (which only blocks on main) and guard-hub-src-writes.mjs (which only blocks the hub); confirm the team actually wants every change routed through a worktree before installing this pack, since it changes the day-to-day workflow, not just adds a nicety. `.claude/worktrees/` should already be gitignored (the baseline's own .gitignore covers this); if adopting into a project with a hand-rolled .gitignore that doesn't, add it before installing."
+}

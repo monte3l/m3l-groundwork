@@ -102,6 +102,18 @@ describe("classifyPath", () => {
     expect(classifyPath(".mcp.json")).toBe("harness");
   });
 
+  // The worktrees pack ships `.worktreeinclude` at the project root
+  // (templates/packs/worktrees/files/.worktreeinclude) -- gitignore-syntax
+  // config for Claude Code's own worktree-creation feature (which files get
+  // copied into a worktree Claude Code creates itself), documented at
+  // code.claude.com/docs/en/worktrees. It is Anthropic/Claude-Code-specific
+  // behavior, the same category as `.mcp.json` above, not a TypeScript
+  // toolchain file -- so it belongs in HARNESS_DOMAIN_GLOBS, not left
+  // uncovered.
+  it("classifies the worktrees pack's .worktreeinclude as harness-domain, not uncovered", () => {
+    expect(classifyPath(".worktreeinclude")).toBe("harness");
+  });
+
   it("does not let a broadened typescript glob swallow .claude/settings.json", () => {
     expect(classifyPath(".claude/settings.json")).toBe("harness");
   });
