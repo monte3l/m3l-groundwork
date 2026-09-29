@@ -6,14 +6,18 @@
  * The behavioural half of harness grading: runs Anthropic's `claude plugin
  * eval` against (1) `packages/plugin`, the /customize skill, (2) a generated
  * wrapper over `templates/core`'s skills that measures whether each one fires
- * on the right prompts, and (3) that same wrapper carrying authored cases from
- * `evals/core-toolchain/` that run a skill against a deliberately degraded
- * project (the `toolchain` suite). Unlike `pnpm check:harness` this makes real
- * model calls -- it needs the `claude` CLI, credentials, network, and money --
- * so it is NEVER part of `pnpm verify`, and skips cleanly (exit 0) when
- * `claude` is not installed.
+ * on the right prompts (the `harness` suite), (3) that same wrapper extended
+ * with every `templates/packs/*\/files/.claude/skills` merged in, so a pack
+ * skill and a core skill compete for the same triggers in one run (the
+ * `packs` suite -- see `evals/packs-harness/triggers.json`'s cross-pack
+ * negatives), and (4) the `harness`-suite wrapper carrying authored cases
+ * from `evals/core-toolchain/` that run a skill against a deliberately
+ * degraded project (the `toolchain` suite). Unlike `pnpm check:harness` this
+ * makes real model calls -- it needs the `claude` CLI, credentials, network,
+ * and money -- so it is NEVER part of `pnpm verify`, and skips cleanly (exit
+ * 0) when `claude` is not installed.
  *
- *   node bin/eval.mjs [--suite plugin|harness|toolchain|all] [--runs N] [--max-cost-usd N]
+ *   node bin/eval.mjs [--suite plugin|harness|packs|toolchain|all] [--runs N] [--max-cost-usd N]
  *                     [--model M] [--judge-model M] [--ablation none|with-without]
  *                     [--threshold 0..1] [--case GLOB] [-j N] [--check] [--update]
  *                     [--keep-temp]
@@ -48,7 +52,9 @@ import { paint } from "./lib/term.mjs";
 import {
   baselineMissingForCheck,
   compareToBaseline,
+  coreHarnessParams,
   evalArgs,
+  packsHarnessParams,
   parseArgs,
   shouldUpdateBaseline,
   suiteMissingForCheck,
@@ -174,19 +180,14 @@ try {
         outDir: target,
         cliPath: resolve(root, "packages", "cli", "bin", "m3l-groundwork.mjs"),
       });
+    } else if (name === "packs") {
+      target = mkdtempSync(join(tmpdir(), "m3l-packs-plugin-"));
+      tempDirs.push(target);
+      writeHarnessPlugin({ ...packsHarnessParams(root), outDir: target });
     } else {
       target = mkdtempSync(join(tmpdir(), "m3l-harness-plugin-"));
       tempDirs.push(target);
-      writeHarnessPlugin({
-        skillsDir: resolve(root, "templates", "core", ".claude", "skills"),
-        corpus: JSON.parse(
-          readFileSync(
-            resolve(root, "evals", "core-harness", "triggers.json"),
-            "utf8",
-          ),
-        ),
-        outDir: target,
-      });
+      writeHarnessPlugin({ ...coreHarnessParams(root), outDir: target });
     }
 
     const { summary, code } = runSuite(name, target, extra, opts, resultsRoot);
