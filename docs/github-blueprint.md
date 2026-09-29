@@ -39,7 +39,7 @@ each with its own delivery mechanism.
 | Layer                    | What it holds                                                                                                                                             | Delivered by                                                                                 |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | L1 repo files            | Workflows, `dependabot.yml`, `LICENSE`, `CODEOWNERS` if used, `.gitattributes`, `.editorconfig`                                                           | The repo itself. In this project, `templates/core` plus the `github` and `publishing` packs. |
-| L2 organization defaults | `CODE_OF_CONDUCT`, `CONTRIBUTING`, `SECURITY`, `SUPPORT`, `GOVERNANCE`, issue and PR templates, `FUNDING.yml`, `profile/README.md`, `workflow-templates/` | A public `.github` repository in the organization                                            |
+| L2 organization defaults | `CODE_OF_CONDUCT`, `CONTRIBUTING`, `SECURITY`, `SUPPORT`, `GOVERNANCE`, issue and PR templates, `FUNDING.yml`, `profile/README.md`, `workflow-templates/` | The public [`monte3l/.github`](https://github.com/monte3l/.github) repository                |
 | L3 per-repo settings     | Rulesets, merge settings, Actions permissions, security toggles, environments, labels, immutable releases                                                 | Repository REST API calls, scripted and idempotent                                           |
 | L4 organization policy   | Default repository permission, secret visibility, app installation scope, fork-PR approval, SHA pinning, defaults for new repositories                    | Organization settings, applied by an organization owner                                      |
 
@@ -79,8 +79,10 @@ re-run every lane. `CLAUDE.md`'s "Git Workflow" has the full reasoning.
 GitHub can import and export a ruleset as JSON
 ([managing rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/managing-rulesets-for-a-repository)),
 and [`github/ruleset-recipes`](https://github.com/github/ruleset-recipes)
-publishes importable examples. `integration_id` values are specific to a
-GitHub App, so check them again in a new organization.
+publishes importable examples. The `integration_id` values are GitHub's own
+apps (15368 is GitHub Actions, 57789 is code scanning), so they are the same
+in every organization. A check produced by a different app needs that app's
+id instead.
 
 ### Environments (L3)
 
@@ -121,10 +123,17 @@ Not present, by choice or not yet: `CODEOWNERS` (deliberate, see
 
 1. Create the repository from `templates/core` with the CLI, adding
    `--pack github` and `--pack publishing` as needed.
-2. Confirm the organization defaults (L2, L4) are in place. Until a public
-   `monte3l/.github` repository exists, copy the community files by hand.
-3. Apply the L3 settings below with the repository's own name.
-4. Compare the result with the reference tables above.
+2. Confirm the organization policy (L4) is in place. The L2 defaults come
+   from [`monte3l/.github`](https://github.com/monte3l/.github), which
+   needs no per-repository step.
+3. Compare the new repository with the blueprint, then apply it:
+   `bin/apply-repo-baseline.sh monte3l/REPO --check`, then `--apply`. The
+   script and its data are in
+   [`monte3l/.github`](https://github.com/monte3l/.github/tree/main/blueprint),
+   and it covers the repository-scope rows of the checklist below (settings,
+   Actions policy, security toggles, both rulesets, labels). Environments
+   and organization policy stay manual.
+4. Run `--check` again. It should report no drift.
 
 ## Settings checklist
 
@@ -168,6 +177,11 @@ list every third-party action a workflow uses. To recompute it, run
 | 12  | Tag ruleset                                                            | `gh api -X POST repos/monte3l/REPO/rulesets --input tag-ruleset.json`, with the file below                                                                                                                                                                                                                           |
 | 13  | Add Gitleaks to the required checks                                    | Fetch the ruleset, append the check, send it back, see below                                                                                                                                                                                                                                                         |
 | 14  | Stop self-approval of npm publishes                                    | `gh api -X PUT repos/monte3l/REPO/environments/npm-publish --input npm-publish-env.json`, with the file below                                                                                                                                                                                                        |
+
+`bin/apply-repo-baseline.sh` in `monte3l/.github` covers rows 9 to 12. Rows 13
+and 14 are not in it: the blueprint's `main` ruleset matches this repository's
+live one, which does not require Gitleaks yet, and reviewer ids are specific
+to each repository.
 
 Row 12, `tag-ruleset.json`. Tag creation stays allowed, so the release flow
 can still tag. Updating or deleting a tag is blocked, and nobody can bypass
