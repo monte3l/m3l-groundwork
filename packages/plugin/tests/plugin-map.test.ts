@@ -326,6 +326,12 @@ describe("recommendPlugins", () => {
       const rec = find(recommendPlugins(BASE_ANSWERS), "claude-code-setup");
       expect(rec?.because).toMatch(/customize/i);
     });
+
+    it("also points TypeScript-toolchain gaps specifically at the ts-advisor pack, alongside the /customize overlap reasoning", () => {
+      const rec = find(recommendPlugins(BASE_ANSWERS), "claude-code-setup");
+      expect(rec?.because).toMatch(/customize/i);
+      expect(rec?.because).toMatch(/ts-advisor/i);
+    });
   });
 
   it("type: PluginRecommendation's fields are readonly and prerequisites is optional", () => {

@@ -218,10 +218,11 @@ confirmed in Step 0.4:
   `recommendPacks(answers)` from `pack-map.ts` (alongside this file, same
   copy mechanism as `kind-facet-map.ts`) with the now-confirmed
   `InterviewAnswers` and compare its verdict against Step 0.4's decision.
-  `harness-extras`, `github`, and `worktrees` never disagree (none of the
-  three's recommendation varies by kind or answer -- `worktrees` is always
-  `recommended: false`, since it changes the day-to-day workflow rather
-  than adding a nicety), but `publishing`'s does (recommended for
+  `harness-extras`, `github`, `worktrees`, and `ts-advisor` never disagree
+  (none of the four's recommendation varies by kind or answer --
+  `worktrees` is always `recommended: false`, since it changes the
+  day-to-day workflow rather than adding a nicety, and the other three are
+  always `recommended: true`), but `publishing`'s does (recommended for
   `library`/`cli`, not for `frontend`/`service`) — if the comparison surfaces a real
   conflict there or for any future kind-scoped pack, raise it rather than
   silently overriding the user's Step 0.4 answer, mirroring Step 4's "the
@@ -268,7 +269,8 @@ packs Step 0.4(c) confirmed, revised by this step's own `recommendPacks`
 comparison if it changed anything); `hasCustomSkills` is `false` for a fresh
 bootstrap (nothing has authored a skill yet) and, for adopt mode, whatever
 Step 0's survey found beyond the baseline's own known skill names and any
-already-installed pack's skills (e.g. the `github` pack's three). Call
+already-installed pack's skills (e.g. the `github` pack's three, or the
+`ts-advisor` pack's `recommending-ts-tooling`). Call
 `recommendPlugins(answers, context)` from `plugin-map.ts`
 (alongside this file, same copy mechanism as `pack-map.ts`) with the
 now-confirmed `InterviewAnswers`, and ask **one** `AskUserQuestion`
@@ -321,6 +323,12 @@ Each sweep reads its own tracker (`docs/research/typescript-refresh.md` /
 Step 2's plan to decide which facet gets the deepest attention this run,
 not which facets it's allowed to touch — and enters plan mode with a
 remediation plan if it finds drift.
+
+If the `ts-advisor` pack is installed, also offer its `recommending-ts-tooling`
+skill here for gaps rather than drift — what TypeScript-ecosystem tooling the
+project is missing entirely, as opposed to either sweep's "is what's already
+configured still current." It is not a third mandatory sweep: run it only if
+the user wants a tooling-gap pass alongside the two refreshes.
 
 **In adopt mode**, a sweep's domain is the project's real files, classified
 by `domain-map.ts`'s `classifyPath` (the same module and glob lists that

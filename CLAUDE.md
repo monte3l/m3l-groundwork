@@ -142,9 +142,10 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
 
 templates/packs/        Optional add-on bundles installed on top of the
                          baseline. `harness-extras/`, `github/`,
-                         `publishing/`, and `worktrees/` ship today; see its
-                         own README.md for the wiring contract and "Known
-                         gaps" below for the deferred candidates.
+                         `publishing/`, `worktrees/`, and `ts-advisor/` ship
+                         today; see its own README.md for the wiring
+                         contract and "Known gaps" below for the deferred
+                         candidates.
 ```
 
 ## Commands
@@ -609,7 +610,7 @@ set for one file.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships four packs, each covering one theme rather than
+- `templates/packs/` ships five packs, each covering one theme rather than
   one theme per artifact. `harness-extras` is Claude Code session
   ergonomics: a type-design analyzer agent, the compaction-handoff hook
   pair, `guard-readonly-bash`, a `check-file-budget` gate (the four
@@ -666,6 +667,23 @@ set for one file.
   this pack is what makes worktree-only development the _default_ workflow.
   `recommended: false` in `pack-map.ts` deliberately, since it changes the
   day-to-day workflow rather than adding a nicety -- see its `adoptNotes`.
+  `ts-advisor` is a read-only `recommending-ts-tooling` skill: profiles the
+  project's TypeScript toolchain offline (scripts, dependencies, the
+  resolved tsconfig chain, eslint/vitest/knip config, cap counts, verify-step
+  wiring), then fans out live `Explore` research over official upstream
+  tooling sources before recommending what's missing -- tsconfig flags,
+  module resolution, typed linting, testing, packaging validation,
+  dependency hygiene, pnpm supply-chain settings, scripts/verify gates,
+  monorepo/catalogs, Node pinning, release automation. Every recommendation
+  carries a source fetched in that run; an unverifiable claim is reported as
+  such, never recommended anyway. It reuses `typescript-guidance`'s own
+  TypeScript-owner allowlist for that tier rather than duplicating it, and
+  ships a sibling allowlist (`references/tooling-sources.md`) for the rest of
+  the ecosystem. No hooks, no settings, no scripts, no gate -- a pure file
+  drop of one skill plus its reference material. It never rules on config
+  that already exists -- that stays `typescript-guidance`'s authority (see
+  the skill's own "Authority split" section); this pack covers only what's
+  absent.
 - **No standalone "add a pack to an already-bootstrapped project" flag.**
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is

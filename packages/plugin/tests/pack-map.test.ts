@@ -34,13 +34,14 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly four recommendations: harness-extras, github, publishing and worktrees", () => {
+  it("returns exactly five recommendations: harness-extras, github, publishing, worktrees and ts-advisor", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
     expect(names).toEqual([
       "harness-extras",
       "github",
       "publishing",
       "worktrees",
+      "ts-advisor",
     ]);
   });
 
@@ -147,6 +148,22 @@ describe("recommendPacks", () => {
     for (const rec of recommendPacks(BASE_ANSWERS)) {
       expect(rec.because.length).toBeGreaterThan(0);
       expect(rec.name.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("recommends ts-advisor unconditionally, for every project kind, with non-empty evidence distinguishing it from the other packs", () => {
+    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+      const tsAdvisor = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "ts-advisor",
+      );
+      expect(tsAdvisor).toBeDefined();
+      expect(tsAdvisor?.recommended).toBe(true);
+      expect(tsAdvisor?.because.length).toBeGreaterThan(0);
+      // A substring distinguishing this pack's own job -- recommending
+      // missing TypeScript-ecosystem tooling -- from every other pack's
+      // evidence above (harness ergonomics, GitHub operations, releases,
+      // worktree isolation).
+      expect(tsAdvisor?.because).toMatch(/recommending-ts-tooling/i);
     }
   });
 });
