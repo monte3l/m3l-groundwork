@@ -29,11 +29,26 @@ permissions: {}
 
 jobs:
   claude:
+    # Issues and comments are open to anyone on a public repository, so the
+    # `@claude` text match alone would let an outside commenter trigger a job
+    # holding `contents: write` and your auth secret. Each branch below also
+    # requires the `author_association` of the comment's, review's or
+    # issue's author to be OWNER, MEMBER or COLLABORATOR. Two consequences:
+    # an org member whose membership is private can surface as CONTRIBUTOR
+    # and be skipped, and on `issues` the check is on the issue's author, not
+    # on whoever assigned it, so assigning an outsider's issue does not start
+    # a run.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association))
+    # One run per issue/PR at a time. A later @claude mention queues behind
+    # the run in flight without cancelling it; GitHub keeps only the latest
+    # pending run per group, so a burst of mentions can drop the middle ones.
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -61,6 +76,11 @@ jobs:
           # GitHub App (https://github.com/apps/claude) and add
           # ANTHROPIC_API_KEY as a repository secret.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Commit through the GitHub API instead of local `git`, so GitHub
+          # signs the commits -- a branch ruleset requiring signed commits
+          # would otherwise reject whatever this job pushes.
+          use_commit_signing: true
 
           # Option 2: a Claude subscription's OAuth token instead of an API
           # key -- generate once locally with `claude setup-token`, then add
