@@ -68,6 +68,8 @@ path = [
   ".node-version",
   ".npmrc",
   ".gitignore",
+  ".gitattributes",
+  ".editorconfig",
   ".prettierignore",
   "LICENSE",
   "REUSE.toml",

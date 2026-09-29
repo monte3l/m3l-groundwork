@@ -99,6 +99,8 @@ packages/plugin/        Phase B: the /customize skill
                          cleanup of stale GitHub Deployments/Environments --
                          see .claude/rules/environments.md),
                          dependency-review.yml, scorecard.yml, gitleaks.yml,
+                         security-audit.yml (daily `pnpm audit`, opens one
+                         issue on a high-severity advisory),
                          claude.yml, claude-pr-review.yml, dependabot.yml,
                          deploy-tools/ (pins the exact wrangler version
                          docs.yml's deploy job installs, same pattern as
@@ -752,6 +754,22 @@ set for one file.
   Applied so far: `pull_request_creation_policy: collaborators_only` (see
   "Git Workflow") and `gitleaks.yml`/the `claude.yml` `author_association`
   guard, both landed in the same change as this entry.
+
+  A 2026-09-29 re-audit read the live settings and found every item below
+  still pending, plus four more: `prevent_self_review` is `false` on the
+  `npm-publish` environment, the org's defaults for new repositories have no
+  security feature on, the standard labels (`dependencies`, `security`) don't
+  exist, and rebase-merge is still enabled at repo level (the ruleset blocks
+  it, so it only confuses). Immutable releases are deliberately **not** on
+  the list: `release.yml` uploads assets after the Release exists, which
+  immutability would block. The exact commands are in
+  [`docs/github-blueprint.md`](docs/github-blueprint.md); the repo-scope ones
+  are also scripted in `monte3l/.github` (`bin/apply-repo-baseline.sh`,
+  `--check` first). An agent's attempt to apply them was refused by Claude
+  Code's permission classifier, which confirms the rule above: run them
+  yourself. When you do, the SHA-pinning allowlist must cover sub-path
+  actions (`changesets/action/pack@...`), so allow `changesets/*`, not
+  `changesets/action@*`.
 
   | Pending item                                                                            | How to apply                                                                                                                              | Why it's safe                                                                                         |
   | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
