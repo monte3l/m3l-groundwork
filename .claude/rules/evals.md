@@ -15,7 +15,7 @@ paths:
 
 **Behavioural evals (`pnpm eval`, `bin/eval.mjs`) are a separate, paid layer
 from `check:harness`** and are deliberately not in `pnpm verify` or
-`pre-push`: they make real model calls. Three suites, all driven by
+`pre-push`: they make real model calls. Four suites, all driven by
 `claude plugin eval`.
 
 The third, `toolchain`, runs `typescript-guidance` against a bootstrapped
@@ -42,6 +42,22 @@ corpus that `bin/lib/eval-lib.mjs` turns into a throwaway plugin wrapping
 is the standalone entry point for inspecting or iterating on that generated
 plugin without spending anything); `eval-lib.test.ts` fails if a baseline
 skill ships without a positive and a negative entry.
+
+The fourth suite, `packs`, is the same mechanism widened: `writeHarnessPlugin`
+and `writeSkillPlugin` both take `skillsDirs` (plural) as well as the original
+`skillsDir`, merging several skill directories into one wrapper and throwing
+on a skill-name collision across them rather than silently shadowing one.
+`listPackSkillDirs` enumerates every `templates/packs/<name>/files/.claude/skills`
+directory that actually exists (a pack with no skills of its own, like
+`harness-extras` or `publishing`, contributes nothing), and `bin/eval.mjs`
+merges that list with `templates/core`'s own skills into one plugin, graded
+against `evals/packs-harness/triggers.json`. Running core and pack skills
+together in one plugin is the point: a query like "what tooling are we
+missing" must fire `recommending-ts-tooling` and stay quiet on
+`typescript-guidance`, and vice versa for "is our tsconfig current" -- a
+cross-negative neither suite could catch wrapped alone.
+`bin/make-harness-plugin.mjs --packs <dir>` writes this suite's wrapper for
+local inspection the same way the bare form does for `harness`.
 
 The interview is graded by an `llm` rubric rather than a
 `tool_used: AskUserQuestion` grader because that tool is not available in

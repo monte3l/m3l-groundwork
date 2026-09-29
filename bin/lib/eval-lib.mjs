@@ -20,8 +20,8 @@ import { join } from "node:path";
 
 const SKILL_NAME = /^[\w-]+$/;
 
-/** The three `claude plugin eval` suites `bin/eval.mjs` knows how to run. */
-export const SUITES = ["plugin", "harness", "toolchain"];
+/** The four `claude plugin eval` suites `bin/eval.mjs` knows how to run. */
+export const SUITES = ["plugin", "harness", "packs", "toolchain"];
 
 /**
  * Parses `bin/eval.mjs`'s argv into a validated options object. Pure and
@@ -71,7 +71,7 @@ export function parseArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (opts.suite !== "all" && !SUITES.includes(opts.suite)) {
-    throw new Error(`--suite must be plugin, harness, toolchain, or all`);
+    throw new Error(`--suite must be one of ${SUITES.join(", ")}, or all`);
   }
   if (!Number.isInteger(opts.runs) || opts.runs < 1) {
     throw new Error("--runs must be a positive integer");
@@ -141,11 +141,15 @@ export function validateCorpus(corpus) {
  * One `claude plugin eval` case per corpus entry. A positive entry passes
  * when Claude invoked the skill; a negative one passes when Claude did NOT
  * invoke that skill (other skills may fire -- only the named one is judged).
+ * `tag` labels every case (default `"core-harness"`, the `harness` suite's
+ * own tag); the `packs` suite passes `"packs-harness"` so its cases aren't
+ * mislabeled as the narrower core-only suite's.
  * @public Exported for the unit tests (see `validateCorpus`).
  * @param {ReturnType<typeof validateCorpus>} corpus
+ * @param {string} [tag]
  * @returns {{ dir: string, prompt: string, grader: string }[]}
  */
-export function buildTriggerCases(corpus) {
+export function buildTriggerCases(corpus, tag = "core-harness") {
   const counts = new Map();
   return corpus.map(({ skill, query, should_trigger: shouldTrigger }) => {
     const kind = shouldTrigger ? "fires" : "quiet";
@@ -159,7 +163,7 @@ export function buildTriggerCases(corpus) {
 max_turns: 2
 timeout_seconds: 90
 allowed_tools: [Read, Glob, Grep, Skill]
-tags: [core-harness, ${skill}, ${shouldTrigger ? "positive" : "negative"}]
+tags: [${tag}, ${skill}, ${shouldTrigger ? "positive" : "negative"}]
 ---
 
 ${query.trim()}
@@ -175,32 +179,63 @@ ${bounds}---
 }
 
 /**
+ * Normalizes the `skillsDir`/`skillsDirs` pair every skill-wrapping function
+ * below accepts: a single directory (the original, still-supported shape) or
+ * several, merged in the given order. Throws if neither is given, or both.
+ * @param {{ skillsDir?: string, skillsDirs?: readonly string[] }} params
+ * @returns {string[]}
+ */
+function resolveSkillsDirs({ skillsDir, skillsDirs }) {
+  if (skillsDir !== undefined && skillsDirs !== undefined) {
+    throw new Error("pass skillsDir or skillsDirs, not both");
+  }
+  if (skillsDirs !== undefined) {
+    if (skillsDirs.length === 0) {
+      throw new Error("skillsDirs must not be empty");
+    }
+    return [...skillsDirs];
+  }
+  if (skillsDir === undefined) {
+    throw new Error("skillsDir or skillsDirs is required");
+  }
+  return [skillsDir];
+}
+
+/**
  * Writes a throwaway plugin that wraps a project's `.claude/skills` plus one
  * eval case per corpus entry, so the emitted baseline's skills can be
  * evaluated as a plugin under test. Hooks and agents are deliberately not
  * wrapped: hooks are behaviourally covered by core-hooks.test.ts (which runs
  * them for real), and a triggering corpus has nothing to say about agents.
- * @param {{ skillsDir: string, corpus: unknown, outDir: string }} params
+ * `skillsDirs` merges several skill directories into one wrapper (used by the
+ * `packs` suite to combine `templates/core`'s skills with every
+ * `templates/packs/*\/files/.claude/skills`, so a pack skill and a core skill
+ * can be judged as competing triggers in the same run) -- `skillsDir` (a
+ * single directory) still works unchanged for the `harness` suite.
+ * @param {{ skillsDir?: string, skillsDirs?: readonly string[], corpus: unknown, outDir: string, name?: string, description?: string, tag?: string }} params
  */
-export function writeHarnessPlugin({ skillsDir, corpus, outDir }) {
+export function writeHarnessPlugin({
+  skillsDir,
+  skillsDirs,
+  corpus,
+  outDir,
+  name = "m3l-baseline-harness",
+  description = "Throwaway wrapper over templates/core's skills, generated to evaluate their triggering.",
+  tag = "core-harness",
+}) {
+  const dirs = resolveSkillsDirs({ skillsDir, skillsDirs });
   const entries = validateCorpus(corpus);
   for (const { skill } of entries) {
-    if (!existsSync(join(skillsDir, skill, "SKILL.md"))) {
+    if (!dirs.some((dir) => existsSync(join(dir, skill, "SKILL.md")))) {
       throw new Error(
-        `trigger corpus names skill "${skill}" but ${join(skillsDir, skill, "SKILL.md")} does not exist`,
+        `trigger corpus names skill "${skill}" but no SKILL.md for it was found under: ${dirs.join(", ")}`,
       );
     }
   }
 
-  writeSkillPlugin({
-    skillsDir,
-    outDir,
-    name: "m3l-baseline-harness",
-    description:
-      "Throwaway wrapper over templates/core's skills, generated to evaluate their triggering.",
-  });
+  writeSkillPlugin({ skillsDirs: dirs, outDir, name, description });
 
-  const cases = buildTriggerCases(entries);
+  const cases = buildTriggerCases(entries, tag);
   for (const { dir, prompt, grader } of cases) {
     const caseDir = join(outDir, "evals", dir);
     mkdirSync(join(caseDir, "graders"), { recursive: true });
@@ -212,12 +247,52 @@ export function writeHarnessPlugin({ skillsDir, corpus, outDir }) {
 
 /**
  * Writes the throwaway plugin shell both generated suites share: a
- * `plugin.json` and a copy of `templates/core`'s skills.
+ * `plugin.json` and a copy of one or more skill directories, merged into a
+ * single `skills/` tree. A `skillsDirs` entry that doesn't exist on disk is a
+ * hard error, not a silent empty contribution -- a wrong or renamed path
+ * would otherwise produce a plugin with fewer (or zero) skills and no
+ * indication why. A skill directory name repeated across two entries is a
+ * hard error too, naming both source directories, rather than a silent
+ * last-write-wins copy that would make the eval measure the wrong one
+ * without anyone noticing. Both checks run in a first pass, before ANY file
+ * -- including `plugin.json` itself -- is written, so a thrown error never
+ * leaves `outDir` half-merged -- `bin/eval.mjs`'s callers always use a fresh
+ * temp `outDir` where that wouldn't matter, but `bin/make-harness-plugin.mjs`
+ * lets a caller point `outDir` at an existing directory, where it would.
  * @public Exported for the unit tests, which import this file by URL and so
  * are invisible to knip.
- * @param {{ skillsDir: string, outDir: string, name: string, description: string }} params
+ * @param {{ skillsDir?: string, skillsDirs?: readonly string[], outDir: string, name: string, description: string }} params
  */
-export function writeSkillPlugin({ skillsDir, outDir, name, description }) {
+export function writeSkillPlugin({
+  skillsDir,
+  skillsDirs,
+  outDir,
+  name,
+  description,
+}) {
+  const dirs = resolveSkillsDirs({ skillsDir, skillsDirs });
+
+  // Pass 1: validate every directory exists and detect a cross-directory
+  // name collision, without writing anything to outDir yet.
+  const owners = new Map();
+  for (const dir of dirs) {
+    if (!existsSync(dir)) {
+      throw new Error(`skills directory does not exist: ${dir}`);
+    }
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const priorOwner = owners.get(entry.name);
+      if (priorOwner !== undefined) {
+        throw new Error(
+          `duplicate skill "${entry.name}" found in both ${priorOwner} and ${dir}`,
+        );
+      }
+      owners.set(entry.name, dir);
+    }
+  }
+
+  // Pass 2: now that every directory is known to exist and no name collides,
+  // it's safe to start writing outDir.
   mkdirSync(join(outDir, ".claude-plugin"), { recursive: true });
   writeFileSync(
     join(outDir, ".claude-plugin", "plugin.json"),
@@ -232,7 +307,81 @@ export function writeSkillPlugin({ skillsDir, outDir, name, description }) {
       2,
     )}\n`,
   );
-  cpSync(skillsDir, join(outDir, "skills"), { recursive: true });
+
+  const destSkills = join(outDir, "skills");
+  mkdirSync(destSkills, { recursive: true });
+  for (const [skillName, dir] of owners) {
+    cpSync(join(dir, skillName), join(destSkills, skillName), {
+      recursive: true,
+    });
+  }
+}
+
+/**
+ * Every `templates/packs/<name>/files/.claude/skills` directory that
+ * actually exists under `packsRoot`, sorted by pack name for deterministic
+ * plugin assembly. A pack with no skills of its own (`harness-extras`,
+ * `publishing`) contributes nothing, and neither function above needs to
+ * know that -- they merge whatever list they're handed.
+ * @param {string} packsRoot
+ * @returns {string[]}
+ */
+export function listPackSkillDirs(packsRoot) {
+  if (!existsSync(packsRoot)) return [];
+  return readdirSync(packsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+    .map((name) => join(packsRoot, name, "files", ".claude", "skills"))
+    .filter((dir) => existsSync(dir));
+}
+
+/**
+ * The `writeHarnessPlugin` params for the `harness` suite (`templates/core`'s
+ * skills only) -- every field but `outDir`, which each caller supplies per
+ * run (a fresh temp dir in `bin/eval.mjs`, a user-given path in
+ * `bin/make-harness-plugin.mjs`). A single source of truth for this suite's
+ * shape so the two entry points can't quietly drift apart.
+ * @param {string} root
+ */
+export function coreHarnessParams(root) {
+  return {
+    skillsDir: join(root, "templates", "core", ".claude", "skills"),
+    corpus: JSON.parse(
+      readFileSync(
+        join(root, "evals", "core-harness", "triggers.json"),
+        "utf8",
+      ),
+    ),
+  };
+}
+
+/**
+ * The `writeHarnessPlugin` params for the `packs` suite (`templates/core`'s
+ * skills merged with every `templates/packs/*\/files/.claude/skills`) --
+ * every field but `outDir`. See `coreHarnessParams`'s own doc for why this is
+ * a shared function rather than two copies of the same object literal.
+ * @param {string} root
+ */
+export function packsHarnessParams(root) {
+  return {
+    skillsDirs: [
+      join(root, "templates", "core", ".claude", "skills"),
+      ...listPackSkillDirs(join(root, "templates", "packs")),
+    ],
+    corpus: JSON.parse(
+      readFileSync(
+        join(root, "evals", "packs-harness", "triggers.json"),
+        "utf8",
+      ),
+    ),
+    name: "m3l-baseline-packs",
+    description:
+      "Throwaway wrapper over templates/core's skills plus every " +
+      "templates/packs/*/files/.claude/skills, generated to evaluate " +
+      "triggering across both -- including cross-pack negatives.",
+    tag: "packs-harness",
+  };
 }
 
 /**

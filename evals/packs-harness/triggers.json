@@ -1,0 +1,82 @@
+[
+  {
+    "skill": "reviewing-dependabot-prs",
+    "query": "Review the open Dependabot PRs and batch-merge the safe ones.",
+    "should_trigger": true
+  },
+  {
+    "skill": "reviewing-dependabot-prs",
+    "query": "Explain what a dependency confusion attack is.",
+    "should_trigger": false
+  },
+  {
+    "skill": "triaging-scan-alerts",
+    "query": "Triage our open code-scanning alerts and map each one to a file and line.",
+    "should_trigger": true
+  },
+  {
+    "skill": "triaging-scan-alerts",
+    "query": "Review the open Dependabot PRs and batch-merge the safe ones.",
+    "should_trigger": false
+  },
+  {
+    "skill": "watching-pr-checks",
+    "query": "Check whether CI passed on my PR -- is it ready to merge?",
+    "should_trigger": true
+  },
+  {
+    "skill": "watching-pr-checks",
+    "query": "Triage our open code-scanning alerts.",
+    "should_trigger": false
+  },
+  {
+    "skill": "triaging-ci",
+    "query": "Why did CI fail on my PR? Dig into the actual failure.",
+    "should_trigger": true
+  },
+  {
+    "skill": "watching-pr-checks",
+    "query": "Why did CI fail on my PR? Dig into the actual failure.",
+    "should_trigger": false
+  },
+  {
+    "skill": "triaging-ci",
+    "query": "Check whether CI passed on my PR -- is it ready to merge?",
+    "should_trigger": false
+  },
+  {
+    "skill": "working-in-worktrees",
+    "query": "Start a new worktree for this feature and get me set up inside it.",
+    "should_trigger": true
+  },
+  {
+    "skill": "starting-work",
+    "query": "Implement a new feature: add a slugify helper that turns a title into a URL slug. Let's get going.",
+    "should_trigger": true
+  },
+  {
+    "skill": "working-in-worktrees",
+    "query": "Implement a new feature: add a slugify helper that turns a title into a URL slug. Let's get going.",
+    "should_trigger": false
+  },
+  {
+    "skill": "recommending-ts-tooling",
+    "query": "What TypeScript tooling are we missing in this project?",
+    "should_trigger": true
+  },
+  {
+    "skill": "recommending-ts-tooling",
+    "query": "Is our tsconfig still current?",
+    "should_trigger": false
+  },
+  {
+    "skill": "typescript-guidance",
+    "query": "Is our tsconfig still current?",
+    "should_trigger": true
+  },
+  {
+    "skill": "typescript-guidance",
+    "query": "What TypeScript tooling are we missing in this project?",
+    "should_trigger": false
+  }
+]

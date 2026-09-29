@@ -10,20 +10,18 @@
       "entry": [
         "bin/*.mjs",
         ".claude/hooks/*.mjs",
-        // Unlike every other bin/lib/*.mjs helper (each fully covered by a
-        // real entry script's own static imports), design-tokens.mjs is a
-        // general-purpose DTCG resolver whose full API is exercised only
-        // from packages/cli/tests/design-tokens*.test.ts, via a dynamic
+        // Unlike a bin/lib/*.mjs helper fully covered by a real entry
+        // script's own static imports, design-tokens.mjs is a general-purpose
+        // DTCG resolver whose full API is exercised only from
+        // packages/cli/tests/design-tokens*.test.ts, via a dynamic
         // `import(pathToFileURL(...))` (the same load-by-URL pattern
         // eval-lib.test.ts uses for its own bin/lib module -- see that
-        // file's header; eval-lib.mjs itself is NOT a knip entry, because
-        // every one of its exports also has a real static consumer in
-        // bin/eval.mjs or bin/make-harness-plugin.mjs). Knip's static
-        // analysis cannot trace a property read off a dynamically-imported
-        // module object back to a named export the way it traces a
-        // same-language `import {...}` -- without this entry, several
-        // exports used only by that test file (mergeTokenTrees,
-        // resolveTree, isColorValue, DesignTokenError) report as unused.
+        // file's header). Knip's static analysis cannot trace a property read
+        // off a dynamically-imported module object back to a named export
+        // the way it traces a same-language `import {...}` -- without this
+        // entry, several exports used only by that test file
+        // (mergeTokenTrees, resolveTree, isColorValue, DesignTokenError)
+        // report as unused.
         "bin/lib/design-tokens.mjs",
         // Same reason, same dynamic-import pattern, from
         // packages/cli/tests/markdown*.test.ts: without this entry,
@@ -34,7 +32,15 @@
         // packages/cli/tests/site-headers*.test.ts: without this entry,
         // HeadersLimitError (thrown, not imported, by bin/build-docs.mjs's
         // production usage) reports as unused.
-        "bin/lib/site-headers.mjs"
+        "bin/lib/site-headers.mjs",
+        // Same reason, same dynamic-import pattern, from
+        // packages/cli/tests/eval-lib.test.ts: listPackSkillDirs's only
+        // static consumer used to be bin/eval.mjs and
+        // bin/make-harness-plugin.mjs directly; once both were refactored to
+        // go through packsHarnessParams (eval-lib.mjs's own shared param
+        // builder) instead, its only remaining static consumer is inside
+        // eval-lib.mjs itself, so it reports as unused without this entry.
+        "bin/lib/eval-lib.mjs"
       ],
       "project": ["bin/**/*.mjs", ".claude/hooks/**/*.mjs"]
     },

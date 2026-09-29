@@ -20,6 +20,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..");
 const corePath = join(repoRoot, "templates", "core", ".claude", "skills");
 const corpusPath = join(repoRoot, "evals", "core-harness", "triggers.json");
+const packsHarnessCorpusPath = join(
+  repoRoot,
+  "evals",
+  "packs-harness",
+  "triggers.json",
+);
+const packsRoot = join(repoRoot, "templates", "packs");
 
 interface Entry {
   skill: string;
@@ -42,18 +49,35 @@ const lib = (await import(
   pathToFileURL(join(repoRoot, "bin", "lib", "eval-lib.mjs")).href
 )) as {
   validateCorpus: (corpus: unknown) => Entry[];
-  buildTriggerCases: (corpus: Entry[]) => Case[];
+  buildTriggerCases: (corpus: Entry[], tag?: string) => Case[];
   writeHarnessPlugin: (params: {
-    skillsDir: string;
+    skillsDir?: string;
+    skillsDirs?: string[];
     corpus: unknown;
     outDir: string;
+    name?: string;
+    description?: string;
+    tag?: string;
   }) => number;
   writeSkillPlugin: (params: {
-    skillsDir: string;
+    skillsDir?: string;
+    skillsDirs?: string[];
     outDir: string;
     name: string;
     description: string;
   }) => void;
+  listPackSkillDirs: (packsRoot: string) => string[];
+  coreHarnessParams: (root: string) => {
+    skillsDir: string;
+    corpus: unknown;
+  };
+  packsHarnessParams: (root: string) => {
+    skillsDirs: string[];
+    corpus: unknown;
+    name: string;
+    description: string;
+    tag: string;
+  };
   writeToolchainPlugin: (params: {
     skillsDir: string;
     casesDir: string;
@@ -190,6 +214,17 @@ describe("buildTriggerCases", () => {
     ]);
     expect(parsed.body.trim()).toBe("Do X.");
   });
+
+  it("uses the given tag in place of the default core-harness tag", () => {
+    const tagged = lib.buildTriggerCases([good], "packs-harness");
+    const parsed = parseFrontmatter(tagged[0]?.prompt ?? "");
+    if (!parsed.ok) throw new Error("prompt must parse");
+    expect(parsed.fields.get("tags")).toEqual([
+      "packs-harness",
+      "starting-work",
+      "positive",
+    ]);
+  });
 });
 
 describe("writeHarnessPlugin", () => {
@@ -246,6 +281,80 @@ describe("writeHarnessPlugin", () => {
       }),
     ).toThrow(/starting-work/);
   });
+
+  it("finds the corpus's skill across skillsDirs regardless of which entry holds it", () => {
+    const dirA = skills("unrelated-skill");
+    const dirB = join(dir, "skills-src-2");
+    mkdirSync(join(dirB, "starting-work"), { recursive: true });
+    writeFileSync(
+      join(dirB, "starting-work", "SKILL.md"),
+      "---\nname: starting-work\n---\n",
+    );
+    const out = join(dir, "out");
+    const count = lib.writeHarnessPlugin({
+      skillsDirs: [dirA, dirB],
+      corpus: [good],
+      outDir: out,
+    });
+    expect(count).toBe(1);
+    expect(existsSync(join(out, "skills", "starting-work", "SKILL.md"))).toBe(
+      true,
+    );
+  });
+
+  it("throws when the corpus names a skill present in neither skillsDirs entry", () => {
+    const dirA = skills("other-a");
+    const dirB = join(dir, "skills-src-2");
+    mkdirSync(join(dirB, "other-b"), { recursive: true });
+    writeFileSync(
+      join(dirB, "other-b", "SKILL.md"),
+      "---\nname: other-b\n---\n",
+    );
+    expect(() =>
+      lib.writeHarnessPlugin({
+        skillsDirs: [dirA, dirB],
+        corpus: [good],
+        outDir: join(dir, "out"),
+      }),
+    ).toThrow(/starting-work/);
+  });
+
+  it("passes tag through to the generated cases' frontmatter", () => {
+    const out = join(dir, "out");
+    lib.writeHarnessPlugin({
+      skillsDir: skills("starting-work"),
+      corpus: [good],
+      outDir: out,
+      tag: "packs-harness",
+    });
+    const prompt = readFileSync(
+      join(out, "evals", "starting-work-fires-1", "prompt.md"),
+      "utf8",
+    );
+    const parsed = parseFrontmatter(prompt);
+    if (!parsed.ok) throw new Error("prompt must parse");
+    expect(parsed.fields.get("tags")).toEqual([
+      "packs-harness",
+      "starting-work",
+      "positive",
+    ]);
+  });
+
+  it("writes an overridden name and description into the plugin manifest", () => {
+    const out = join(dir, "out");
+    lib.writeHarnessPlugin({
+      skillsDir: skills("starting-work"),
+      corpus: [good],
+      outDir: out,
+      name: "custom-name",
+      description: "custom desc",
+    });
+    expect(
+      JSON.parse(
+        readFileSync(join(out, ".claude-plugin", "plugin.json"), "utf8"),
+      ),
+    ).toMatchObject({ name: "custom-name", description: "custom desc" });
+  });
 });
 
 describe("writeSkillPlugin", () => {
@@ -279,6 +388,131 @@ describe("writeSkillPlugin", () => {
       author: { name: "m3l-groundwork" },
     });
     expect(existsSync(join(out, "skills", "one", "SKILL.md"))).toBe(true);
+  });
+
+  it("merges skillsDirs into one skills tree", () => {
+    const dirA = join(dir, "a");
+    const dirB = join(dir, "b");
+    mkdirSync(join(dirA, "skill-a"), { recursive: true });
+    writeFileSync(
+      join(dirA, "skill-a", "SKILL.md"),
+      "---\nname: skill-a\n---\n",
+    );
+    mkdirSync(join(dirB, "skill-b"), { recursive: true });
+    writeFileSync(
+      join(dirB, "skill-b", "SKILL.md"),
+      "---\nname: skill-b\n---\n",
+    );
+    const out = join(dir, "out");
+    lib.writeSkillPlugin({
+      skillsDirs: [dirA, dirB],
+      outDir: out,
+      name: "merged",
+      description: "d",
+    });
+    expect(existsSync(join(out, "skills", "skill-a", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(out, "skills", "skill-b", "SKILL.md"))).toBe(true);
+  });
+
+  it("throws when given both skillsDir and skillsDirs", () => {
+    expect(() =>
+      lib.writeSkillPlugin({
+        skillsDir: join(dir, "a"),
+        skillsDirs: [join(dir, "b")],
+        outDir: join(dir, "out"),
+        name: "n",
+        description: "d",
+      }),
+    ).toThrow(/not both/);
+  });
+
+  it("throws when given neither skillsDir nor skillsDirs", () => {
+    expect(() =>
+      lib.writeSkillPlugin({
+        outDir: join(dir, "out"),
+        name: "n",
+        description: "d",
+      }),
+    ).toThrow(/is required/);
+  });
+
+  it("throws when skillsDirs is an empty array", () => {
+    expect(() =>
+      lib.writeSkillPlugin({
+        skillsDirs: [],
+        outDir: join(dir, "out"),
+        name: "n",
+        description: "d",
+      }),
+    ).toThrow(/must not be empty/);
+  });
+
+  it("throws naming the skill when two skillsDirs entries both contain it", () => {
+    const dirA = join(dir, "a");
+    const dirB = join(dir, "b");
+    mkdirSync(join(dirA, "dup-skill"), { recursive: true });
+    writeFileSync(
+      join(dirA, "dup-skill", "SKILL.md"),
+      "---\nname: dup-skill\n---\n",
+    );
+    mkdirSync(join(dirB, "dup-skill"), { recursive: true });
+    writeFileSync(
+      join(dirB, "dup-skill", "SKILL.md"),
+      "---\nname: dup-skill\n---\n",
+    );
+    expect(() =>
+      lib.writeSkillPlugin({
+        skillsDirs: [dirA, dirB],
+        outDir: join(dir, "out"),
+        name: "n",
+        description: "d",
+      }),
+    ).toThrow(/dup-skill/);
+  });
+
+  it("throws when a skillsDirs entry does not exist on disk", () => {
+    const dirA = join(dir, "a");
+    mkdirSync(join(dirA, "skill-a"), { recursive: true });
+    writeFileSync(
+      join(dirA, "skill-a", "SKILL.md"),
+      "---\nname: skill-a\n---\n",
+    );
+    const missing = join(dir, "does-not-exist");
+    expect(() =>
+      lib.writeSkillPlugin({
+        skillsDirs: [dirA, missing],
+        outDir: join(dir, "out"),
+        name: "n",
+        description: "d",
+      }),
+    ).toThrow(new RegExp(missing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  });
+
+  it("does not half-merge: a collision detected in a later dir leaves an earlier, non-colliding dir's skill uncopied", () => {
+    const dirA = join(dir, "a");
+    const dirB = join(dir, "b");
+    mkdirSync(join(dirA, "skill-a"), { recursive: true });
+    writeFileSync(
+      join(dirA, "skill-a", "SKILL.md"),
+      "---\nname: skill-a\n---\n",
+    );
+    // dirB collides with dirA on "skill-a", so pass 1 must throw before any
+    // copy happens -- even though dirA alone would have succeeded.
+    mkdirSync(join(dirB, "skill-a"), { recursive: true });
+    writeFileSync(
+      join(dirB, "skill-a", "SKILL.md"),
+      "---\nname: skill-a (dup)\n---\n",
+    );
+    const out = join(dir, "out");
+    expect(() =>
+      lib.writeSkillPlugin({
+        skillsDirs: [dirA, dirB],
+        outDir: out,
+        name: "n",
+        description: "d",
+      }),
+    ).toThrow(/dup/i);
+    expect(existsSync(join(out, "skills", "skill-a"))).toBe(false);
   });
 
   it("leaves writeHarnessPlugin's manifest byte-identical after the extraction", () => {
@@ -527,8 +761,8 @@ describe("evalArgs", () => {
 });
 
 describe("SUITES", () => {
-  it("names the three eval suites", () => {
-    expect(lib.SUITES).toEqual(["plugin", "harness", "toolchain"]);
+  it("names the four eval suites", () => {
+    expect(lib.SUITES).toEqual(["plugin", "harness", "packs", "toolchain"]);
   });
 });
 
@@ -846,5 +1080,167 @@ describe("the real trigger corpus", () => {
       gaps,
       `skills missing positive or negative trigger coverage: ${gaps.join(", ")}`,
     ).toEqual([]);
+  });
+});
+
+describe("listPackSkillDirs", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "eval-lib-packs-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns only the pack directory that has a files/.claude/skills tree", () => {
+    mkdirSync(
+      join(dir, "with-skills", "files", ".claude", "skills", "some-skill"),
+      { recursive: true },
+    );
+    mkdirSync(join(dir, "without-skills", "files"), { recursive: true });
+    const result = lib.listPackSkillDirs(dir);
+    expect(result).toEqual([
+      join(dir, "with-skills", "files", ".claude", "skills"),
+    ]);
+    expect(existsSync(result[0] as string)).toBe(true);
+  });
+
+  it("sorts returned paths by pack directory name", () => {
+    mkdirSync(join(dir, "zeta", "files", ".claude", "skills", "z-skill"), {
+      recursive: true,
+    });
+    mkdirSync(join(dir, "alpha", "files", ".claude", "skills", "a-skill"), {
+      recursive: true,
+    });
+    expect(lib.listPackSkillDirs(dir)).toEqual([
+      join(dir, "alpha", "files", ".claude", "skills"),
+      join(dir, "zeta", "files", ".claude", "skills"),
+    ]);
+  });
+
+  it("returns an empty array when packsRoot does not exist", () => {
+    expect(lib.listPackSkillDirs(join(dir, "does-not-exist"))).toEqual([]);
+  });
+
+  it("excludes a pack directory with no files/ subtree at all", () => {
+    mkdirSync(join(dir, "bare-pack"), { recursive: true });
+    expect(lib.listPackSkillDirs(dir)).toEqual([]);
+  });
+});
+
+describe("coreHarnessParams", () => {
+  it("points at templates/core's skills and the real core-harness corpus", () => {
+    const params = lib.coreHarnessParams(repoRoot);
+    expect(params.skillsDir).toBe(
+      join(repoRoot, "templates", "core", ".claude", "skills"),
+    );
+    expect(Array.isArray(params.corpus)).toBe(true);
+    expect((params.corpus as unknown[]).length).toBeGreaterThan(0);
+  });
+});
+
+describe("packsHarnessParams", () => {
+  it("merges templates/core's skills with every pack's skills and the real packs-harness corpus", () => {
+    const params = lib.packsHarnessParams(repoRoot);
+    const expectedPackDirs = lib.listPackSkillDirs(
+      join(repoRoot, "templates", "packs"),
+    );
+    expect(params.skillsDirs[0]).toBe(
+      join(repoRoot, "templates", "core", ".claude", "skills"),
+    );
+    expect(params.skillsDirs.slice(1)).toEqual(expectedPackDirs);
+    expect(Array.isArray(params.corpus)).toBe(true);
+    expect((params.corpus as unknown[]).length).toBeGreaterThan(0);
+    expect(params.name).toBe("m3l-baseline-packs");
+    expect(params.tag).toBe("packs-harness");
+  });
+
+  it("writes a working plugin end to end from the real corpus and skill dirs", () => {
+    const dir = mkdtempSync(join(tmpdir(), "eval-lib-packs-e2e-"));
+    try {
+      const out = join(dir, "out");
+      const count = lib.writeHarnessPlugin({
+        ...lib.packsHarnessParams(repoRoot),
+        outDir: out,
+      });
+      expect(count).toBeGreaterThan(0);
+      expect(readdirSync(join(out, "evals")).length).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the real packs trigger corpus", () => {
+  const corpus = lib.validateCorpus(
+    JSON.parse(readFileSync(packsHarnessCorpusPath, "utf8")),
+  );
+  const coreSkillNames = readdirSync(corePath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+  const packSkillDirs = lib.listPackSkillDirs(packsRoot);
+  const packSkillNames = packSkillDirs.flatMap((skillsDir) =>
+    readdirSync(skillsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name),
+  );
+  const allSkillNames = [
+    ...new Set([...coreSkillNames, ...packSkillNames]),
+  ].sort();
+
+  it("names only skills that exist in templates/core or a pack", () => {
+    const unknown = [...new Set(corpus.map((e) => e.skill))].filter(
+      (s) => !allSkillNames.includes(s),
+    );
+    expect(
+      unknown,
+      `corpus names skills that do not exist: ${unknown.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("covers every pack skill with at least one positive and one negative case", () => {
+    const gaps = packSkillNames.filter(
+      (skill) =>
+        !corpus.some((e) => e.skill === skill && e.should_trigger) ||
+        !corpus.some((e) => e.skill === skill && !e.should_trigger),
+    );
+    expect(
+      gaps,
+      `pack skills missing positive or negative trigger coverage: ${gaps.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("includes the three documented cross-pack negatives, each with a matching positive proving the right skill wins", () => {
+    const negativeEntries = (skill: string, substring: string): Entry[] =>
+      corpus.filter(
+        (e) =>
+          e.skill === skill && !e.should_trigger && e.query.includes(substring),
+      );
+    const hasMatchingPositive = (negative: Entry): boolean =>
+      corpus.some(
+        (e) =>
+          e.skill !== negative.skill &&
+          e.should_trigger &&
+          e.query.includes(negative.query),
+      );
+
+    const knownPairs: [skill: string, substring: string][] = [
+      ["recommending-ts-tooling", "tsconfig"],
+      ["typescript-guidance", "tooling"],
+      ["working-in-worktrees", "Implement"],
+      ["watching-pr-checks", "Why did CI fail"],
+    ];
+
+    for (const [skill, substring] of knownPairs) {
+      const negatives = negativeEntries(skill, substring);
+      expect(
+        negatives.length,
+        `expected a negative entry for "${skill}" matching "${substring}"`,
+      ).toBeGreaterThan(0);
+      expect(
+        negatives.some(hasMatchingPositive),
+        `expected a positive entry for a different skill on the same query as ${skill}'s "${substring}" negative`,
+      ).toBe(true);
+    }
   });
 });
