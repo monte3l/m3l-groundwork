@@ -1228,6 +1228,7 @@ describe("the real packs trigger corpus", () => {
       ["recommending-ts-tooling", "tsconfig"],
       ["typescript-guidance", "tooling"],
       ["working-in-worktrees", "Implement"],
+      ["watching-pr-checks", "Why did CI fail"],
     ];
 
     for (const [skill, substring] of knownPairs) {
