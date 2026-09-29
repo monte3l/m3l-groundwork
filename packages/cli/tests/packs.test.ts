@@ -1142,6 +1142,126 @@ describe("the real worktrees pack", () => {
   });
 });
 
+describe("the real ts-advisor pack", () => {
+  const templatesCoreRoot = join(here, "..", "..", "..", "templates", "core");
+
+  it("loads cleanly, declares a 0/1/0/0/0 budget, and requires typescript-guidance's real allowlist file from templates/core", () => {
+    expect(listPackNames()).toContain("ts-advisor");
+    const pack = loadPack("ts-advisor");
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(pack.manifest.budget).toEqual({
+      agents: 0,
+      skills: 1,
+      hooks: 0,
+      workflows: 0,
+      scripts: 0,
+    });
+    expect(pack.manifest.requires?.paths).toContain(
+      ".claude/skills/typescript-guidance/references/typescript-sources.md",
+    );
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
+    expect(pack.manifest.wiring.packageScripts).toEqual({});
+    expect(pack.manifest.wiring.verifySteps).toEqual([]);
+    expect(existsSync(pack.filesDir)).toBe(true);
+    expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
+  });
+
+  it("depends on a real file that actually exists under templates/core's own typescript-guidance skill, not a synthetic stub", () => {
+    expect(
+      existsSync(
+        join(
+          templatesCoreRoot,
+          ".claude",
+          "skills",
+          "typescript-guidance",
+          "references",
+          "typescript-sources.md",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("installs alone: the recommending-ts-tooling skill and both reference files land on disk, and settings.json/verify-steps.packs.json stay untouched", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-ts-advisor-alone-"));
+    try {
+      mkdirSync(
+        join(
+          targetDir,
+          ".claude",
+          "skills",
+          "typescript-guidance",
+          "references",
+        ),
+        { recursive: true },
+      );
+      writeFileSync(
+        join(
+          targetDir,
+          ".claude",
+          "skills",
+          "typescript-guidance",
+          "references",
+          "typescript-sources.md",
+        ),
+        "",
+      );
+      writeFileSync(
+        join(targetDir, ".claude", "settings.json"),
+        JSON.stringify({ hooks: {} }),
+      );
+
+      installPack(loadPack("ts-advisor"), targetDir, {});
+
+      expect(
+        existsSync(
+          join(
+            targetDir,
+            ".claude",
+            "skills",
+            "recommending-ts-tooling",
+            "SKILL.md",
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            targetDir,
+            ".claude",
+            "skills",
+            "recommending-ts-tooling",
+            "references",
+            "area-catalog.md",
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            targetDir,
+            ".claude",
+            "skills",
+            "recommending-ts-tooling",
+            "references",
+            "tooling-sources.md",
+          ),
+        ),
+      ).toBe(true);
+
+      const settings = JSON.parse(
+        readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(settings).toEqual({ hooks: {} });
+      expect(
+        existsSync(join(targetDir, "bin", "lib", "verify-steps.packs.json")),
+      ).toBe(false);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("cross-pack and pack/templates-core path collisions", () => {
   it("emits no path collision between any two real packs, nor between a pack and templates/core", () => {
     const owners = new Map<string, string>();

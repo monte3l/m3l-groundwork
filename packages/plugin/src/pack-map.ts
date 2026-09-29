@@ -128,10 +128,34 @@ function recommendWorktrees(): PackRecommendation {
 }
 
 /**
+ * `ts-advisor` ships a single read-only skill, `recommending-ts-tooling`,
+ * that recommends TypeScript-ecosystem tooling a project is missing, grounded
+ * on live research each run rather than a baked-in answer. It never passes a
+ * verdict on configuration that already exists -- that stays
+ * `typescript-guidance`'s authority -- and it adds no hooks, settings,
+ * scripts or verify gate: one skill, nothing else. Recommended for any
+ * project kind (see `templates/packs/README.md`'s pack table).
+ */
+function recommendTsAdvisor(): PackRecommendation {
+  return {
+    name: "ts-advisor",
+    recommended: true,
+    because:
+      "its recommending-ts-tooling skill recommends TypeScript-ecosystem " +
+      "tooling the project is missing, grounded on live research each run " +
+      "rather than a baked-in answer that goes stale -- it never passes a " +
+      "verdict on configuration that already exists, which stays " +
+      "typescript-guidance's authority. It is read-only: no hooks, no " +
+      "settings, no scripts and no gate -- it adds exactly one skill and " +
+      "nothing else.",
+  };
+}
+
+/**
  * Every pack's recommendation for the given interview answers. Only
- * `publishing` varies by `answers.kind` today; `harness-extras` and
- * `github` are recommended for every kind, and `worktrees` is opt-in for
- * every kind.
+ * `publishing` varies by `answers.kind` today; `harness-extras`, `github`
+ * and `ts-advisor` are recommended for every kind, and `worktrees` is
+ * opt-in for every kind.
  */
 export function recommendPacks(
   answers: InterviewAnswers,
@@ -141,5 +165,6 @@ export function recommendPacks(
     recommendGithub(),
     recommendPublishing(answers),
     recommendWorktrees(),
+    recommendTsAdvisor(),
   ];
 }

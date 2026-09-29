@@ -191,7 +191,9 @@ function recommendSkillCreator(
  * already doing, against a baseline designed for it. Running both would
  * produce two competing sets of suggestions, so it is never pre-selected;
  * it is listed with that reason rather than silently omitted, so the user
- * can see why.
+ * can see why. TypeScript-toolchain gaps are a distinct question from Claude
+ * Code automation and are answered instead by the `ts-advisor` pack's
+ * `recommending-ts-tooling` skill, when that pack is installed.
  */
 function recommendClaudeCodeSetup(): PluginRecommendation {
   return {
@@ -201,8 +203,11 @@ function recommendClaudeCodeSetup(): PluginRecommendation {
       "its automation recommender overlaps what /customize is already " +
       "doing -- tailoring hooks, skills and agents to this project against " +
       "the baseline -- so enabling it would produce a second, competing " +
-      "set of suggestions. Listed so the choice is visible, not silently " +
-      "left out.",
+      "set of suggestions. TypeScript-toolchain gaps are a separate " +
+      "question from Claude Code automation, and are answered instead by " +
+      "the ts-advisor pack's recommending-ts-tooling skill with " +
+      "live-researched, cited recommendations, if that pack is installed. " +
+      "Listed so the choice is visible, not silently left out.",
   };
 }
 
