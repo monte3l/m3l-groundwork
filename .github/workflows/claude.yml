@@ -3,8 +3,8 @@
 
 name: Claude Code
 
-# What this does: lets anyone mention "@claude" in an issue, a PR review, or
-# a review comment to ask Claude Code to make a change or answer a question,
+# What this does: lets an owner, member or collaborator mention "@claude" in
+# an issue, a PR review, or a review comment to ask Claude Code to make a change or answer a question,
 # interactively. It runs whenever one of those events contains "@claude" in
 # its text, and does nothing otherwise.
 #
@@ -19,8 +19,8 @@ name: Claude Code
 # comments stay open to anyone, so the `@claude` text match alone isn't
 # enough to keep an outside commenter from triggering a job that holds
 # `contents: write` and `CLAUDE_CODE_OAUTH_TOKEN` -- the job's `if:` below
-# also requires the triggering actor's `author_association` on this
-# repository to be OWNER, MEMBER or COLLABORATOR.
+# also requires the `author_association` of the comment's, review's or
+# issue's author on this repository to be OWNER, MEMBER or COLLABORATOR.
 on:
   issue_comment:
     types: [created]
@@ -41,6 +41,12 @@ jobs:
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association))
+    # One run per issue/PR at a time. A later @claude mention queues behind
+    # the run in flight without cancelling it; GitHub keeps only the latest
+    # pending run per group, so a burst of mentions can drop the middle ones.
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
