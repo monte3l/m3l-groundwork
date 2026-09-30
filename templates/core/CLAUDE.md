@@ -141,6 +141,7 @@ never swallow an error silently; no top-level side effects; never
 This baseline is frozen at the moment `m3l-groundwork` last emitted it. Run
 `/customize`'s guidance pass — or `.claude/skills/typescript-guidance/` /
 `.claude/skills/harness-guidance/` directly in refresh mode — periodically
-to sweep the toolchain and harness against current upstream guidance. See
+to sweep the toolchain and harness against current upstream guidance; its
+`gaps` mode recommends tooling the project doesn't have yet. See
 `docs/research/typescript-refresh.md` and `docs/research/harness-refresh.md`
 for the living trackers.

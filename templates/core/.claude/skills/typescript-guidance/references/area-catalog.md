@@ -1,14 +1,14 @@
 # Area catalog -- signals to detect, questions to research
 
-For each area: what to look for in Phase 1 (the signal), and what to ask a
-Phase 2 research agent (the question). **This file holds no answers** --
+For each area: what to look for in `gaps` mode's step 1 (the signal), and what to ask a
+step 2 research agent (the question). **This file holds no answers** --
 an answer here would be exactly the kind of baked-in claim that goes stale
-within months. Pick the areas Phase 1's signals make relevant; don't
+within months. Pick the areas step 1's signals make relevant; don't
 research every area unconditionally on every run.
 
 ## tsconfig flags and deprecations
 
-- **Signal**: the resolved tsconfig chain (Phase 1 step 2) is missing a
+- **Signal**: the resolved tsconfig chain (step 1) is missing a
   strict-family flag entirely, or sets no `target`/`lib` at all for the
   project's actual runtime.
 - **Research**: what compiler options does the current TypeScript release
@@ -16,7 +16,7 @@ research every area unconditionally on every run.
   both), for a tsconfig that doesn't set them yet? (Whether an option the
   project already sets has since been deprecated, or an already-set
   `target`/`lib` is now outdated, is drift in existing config --
-  `typescript-guidance`'s question, not this skill's; hand it off rather
+  `research`/`refresh`'s question, not `gaps` mode's; hand it off rather
   than research it here.)
 
 ## module resolution by project kind
@@ -28,8 +28,8 @@ research every area unconditionally on every run.
   app vs. both), for a tsconfig that doesn't set one yet? (An already-set
   `moduleResolution` that doesn't match what the project actually ships --
   a package with an `exports` map on `node16`/`nodenext` that should be on
-  `bundler`, say -- is drift in existing config, `typescript-guidance`'s
-  question, not this skill's.)
+  `bundler`, say -- is drift in existing config, `research`/`refresh`'s
+  question, not `gaps` mode's.)
 
 ## typed linting
 
@@ -40,10 +40,11 @@ research every area unconditionally on every run.
   for a project with no typed linting yet -- and, since a recommendation to
   add it must actually be installable, does the version that would be added
   support the project's current TypeScript version? This is exactly the kind
-  of cross-project compatibility gap a stale skill answer would miss (TS 7.0 /
-  `typescript-eslint` <6.1.0 example). (Whether an _already-pinned_
+  of cross-project compatibility gap a stale skill answer would miss (a new
+  TypeScript major that `typescript-eslint` doesn't support yet, say).
+  (Whether an _already-pinned_
   `typescript-eslint` version is stale or incompatible is drift in existing
-  config -- `typescript-guidance`'s question, not this skill's.)
+  config -- `research`/`refresh`'s question, not `gaps` mode's.)
 
 ## testing
 
@@ -53,8 +54,8 @@ research every area unconditionally on every run.
   config shape, coverage tooling, and any TypeScript-specific caveat
   (type-checking test files, `expectTypeOf`-style assertions)? (A runner that
   already exists but has no coverage gate, or whose config no longer matches
-  its own current docs, is drift in existing config -- `typescript-guidance`'s
-  question via its `testing-language-features` facet, not this skill's.)
+  its own current docs, is drift in existing config -- `research`/`refresh`'s
+  question via its `testing-language-features` facet, not `gaps` mode's.)
 
 ## packaging and export validation
 
@@ -74,7 +75,7 @@ research every area unconditionally on every run.
   a project shaped like this one (workspaces, multiple entry points, a CLI
   `bin`) that has no such tool yet? (An existing `knip.json` that looks stale
   against the project's actual entry points is drift in existing config, not
-  absence -- `knip.json` is one of `typescript-guidance`'s own domain files;
+  absence -- `knip.json` is one of this skill's own domain files;
   hand it off rather than researching a fix here.)
 
 ## pnpm supply-chain settings
@@ -86,9 +87,9 @@ research every area unconditionally on every run.
   actual pnpm major currently document (lifecycle-script allowlisting,
   `minimumReleaseAge`, audit settings), for a project that has none
   configured yet? (Whether an existing setting has since been renamed or
-  removed by a newer pnpm major -- pnpm 11 dropping `onlyBuiltDependencies`
-  as a top-level key, for example -- is drift in something already
-  configured, not absence; hand it to `typescript-guidance` rather than
+  removed by a newer pnpm major -- a lifecycle-script allowlist key moving
+  to a different file, for example -- is drift in something already
+  configured, not absence; hand it to `research`/`refresh` rather than
   research it here, since `pnpm-workspace.yaml` is one of its own domain
   files.)
 
@@ -120,7 +121,7 @@ research every area unconditionally on every run.
 - **Research**: what does `nodejs.org`'s current release schedule recommend
   pinning to for a new project? (A disagreement between multiple existing
   pins, or a pin that's already past its documented end-of-life, is drift in
-  something already configured -- `typescript-guidance`'s question, not this
+  something already configured -- `research`/`refresh`'s question, not this
   skill's.)
 
 ## release automation
@@ -130,5 +131,5 @@ research every area unconditionally on every run.
   automation).
 - **Research**: what does `changesets/changesets`'s current documentation
   recommend for this project's publishing shape (single package vs.
-  workspace)? This overlaps the `publishing` pack's own territory if it's
-  installed -- name that overlap rather than duplicating its adoptNotes.
+  workspace)? If the project already has a release workflow, that is drift
+  in existing config, not a gap -- hand it to `research`/`refresh`.

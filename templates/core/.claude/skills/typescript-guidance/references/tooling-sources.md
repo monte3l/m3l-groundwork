@@ -1,16 +1,15 @@
 # Upstream tooling sources -- the allowlist
 
-The sibling allowlist to `typescript-guidance`'s own
-`references/typescript-sources.md` (reused directly for the TypeScript-owner
-tier -- see this pack's `pack.json` `adoptNotes`). This file covers the rest
-of the TypeScript-adjacent ecosystem tooling `typescript-guidance` doesn't
-own: the package manager, the lint runner's non-TypeScript-specific config,
-the test runner, the formatter, dependency hygiene, and Node's own release
-schedule.
+The sibling allowlist to `typescript-sources.md` in this same directory
+(reused directly for the TypeScript-owner tier, not duplicated). This file
+is `gaps` mode's ecosystem-tooling list and covers the TypeScript-adjacent
+tooling `research` and `refresh` don't sweep: the package manager, the lint
+runner's non-TypeScript-specific config, the test runner, the formatter,
+dependency hygiene, and Node's own release schedule.
 
-**A Phase 2 research brief passes the union of both files' domain lists** when
-an area touches both skills' territory (the tsconfig/typed-linting areas
-always need `typescript-guidance`'s own list too); an area this file alone
+**A `gaps`-mode research brief passes the union of both files' domain lists**
+when an area touches TypeScript itself (the tsconfig/typed-linting areas
+always need `typescript-sources.md`'s list too); an area this file alone
 covers (pnpm settings, Node pinning) needs only this file's list. Each file's
 own GitHub caveat applies only to the GitHub paths it names regardless -- a
 path allowed by `typescript-sources.md`'s caveat is not automatically allowed
@@ -47,22 +46,23 @@ Every domain here is **T1 by default** for its own tool -- owner-normative,
 the same standing `typescript-guidance`'s T1 gives `typescriptlang.org` for
 TypeScript itself. Most of these tools have exactly one canonical doc
 source, unlike TypeScript's ecosystem of adjacent linters/checkers, so most
-citations from this file carry `TIER: T1` in the Phase 2 findings format.
+citations from this file carry `TIER: T1` in `gaps` mode's findings format.
 
 - `pnpm.io` -- pnpm's own CLI, workspace, and `.npmrc`/supply-chain-setting
   reference.
 - `knip.dev` -- unused-dependency/unused-export tooling.
 - `vitest.dev` -- the default test runner this baseline ships. **Tier here
   is T1**, for a different purpose than its T2 listing in
-  `typescript-guidance`'s own `typescript-sources.md`: that file's T2 covers
-  auditing the config of a test runner the interview has already selected;
+  `typescript-sources.md`: that file's T2 covers auditing the config of a
+  test runner the interview has already selected (`research`/`refresh`);
   this file's T1 covers recommending vitest be **added** to a project that
-  has no test runner configured at all yet. Once a runner is selected and
-  configured, further scrutiny of its config is `typescript-guidance`'s T2
-  territory, not this skill's -- the same domain carries two tier labels
-  because the two skills consult it for two different purposes.
+  has no test runner configured at all yet (`gaps`). Once a runner is
+  selected and configured, further scrutiny of its config is
+  `research`/`refresh` territory at T2, not `gaps` mode's -- the same domain
+  carries two tier labels because the modes consult it for two different
+  purposes.
 - `eslint.org` -- ESLint's own core rules and flat-config reference (as
-  opposed to `typescript-eslint.io`, which stays `typescript-guidance`'s
+  opposed to `typescript-eslint.io`, which stays `research`/`refresh`'s
   territory for typed-linting presets specifically).
 - `prettier.io` -- formatting.
 - `docs.npmjs.com` -- npm-the-registry conventions (`package.json` fields,
@@ -103,7 +103,7 @@ Reject any non-allowlisted domain outright and say so in the report, rather
 than substituting a community blog, an individual author's material, or a
 Stack Overflow answer for missing coverage. A facet that turns up no
 qualifying source is itself a reportable coverage gap, not a reason to lower
-the bar -- see `SKILL.md`'s Phase 2, step 4.
+the bar -- see `SKILL.md`'s Gaps mode, step 2.
 
 ## Current-date anchor
 

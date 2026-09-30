@@ -1210,7 +1210,7 @@ describe("the real packs trigger corpus", () => {
     ).toEqual([]);
   });
 
-  it("includes the three documented cross-pack negatives, each with a matching positive proving the right skill wins", () => {
+  it("includes the two documented cross-pack negatives, each with a matching positive proving the right skill wins", () => {
     const negativeEntries = (skill: string, substring: string): Entry[] =>
       corpus.filter(
         (e) =>
@@ -1224,9 +1224,11 @@ describe("the real packs trigger corpus", () => {
           e.query.includes(negative.query),
       );
 
+    // ts-advisor was retired (its recommending-ts-tooling skill merged into
+    // the baseline typescript-guidance skill's own "gaps" mode), so the two
+    // ts-related cross-pack negatives it required no longer apply -- only
+    // these two pairs remain.
     const knownPairs: [skill: string, substring: string][] = [
-      ["recommending-ts-tooling", "tsconfig"],
-      ["typescript-guidance", "tooling"],
       ["working-in-worktrees", "Implement"],
       ["watching-pr-checks", "Why did CI fail"],
     ];

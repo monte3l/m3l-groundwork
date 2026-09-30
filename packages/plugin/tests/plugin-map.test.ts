@@ -327,10 +327,12 @@ describe("recommendPlugins", () => {
       expect(rec?.because).toMatch(/customize/i);
     });
 
-    it("also points TypeScript-toolchain gaps specifically at the ts-advisor pack, alongside the /customize overlap reasoning", () => {
+    it("also points TypeScript-toolchain gaps specifically at the baseline typescript-guidance skill's gaps mode, alongside the /customize overlap reasoning", () => {
       const rec = find(recommendPlugins(BASE_ANSWERS), "claude-code-setup");
       expect(rec?.because).toMatch(/customize/i);
-      expect(rec?.because).toMatch(/ts-advisor/i);
+      expect(rec?.because).toMatch(/typescript-guidance/i);
+      expect(rec?.because).toMatch(/gaps/i);
+      expect(rec?.because).not.toMatch(/ts-advisor|recommending-ts-tooling/i);
     });
   });
 

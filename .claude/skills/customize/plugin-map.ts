@@ -192,8 +192,8 @@ function recommendSkillCreator(
  * produce two competing sets of suggestions, so it is never pre-selected;
  * it is listed with that reason rather than silently omitted, so the user
  * can see why. TypeScript-toolchain gaps are a distinct question from Claude
- * Code automation and are answered instead by the `ts-advisor` pack's
- * `recommending-ts-tooling` skill, when that pack is installed.
+ * Code automation and are answered instead by the baseline
+ * `typescript-guidance` skill's `gaps` mode.
  */
 function recommendClaudeCodeSetup(): PluginRecommendation {
   return {
@@ -205,8 +205,8 @@ function recommendClaudeCodeSetup(): PluginRecommendation {
       "the baseline -- so enabling it would produce a second, competing " +
       "set of suggestions. TypeScript-toolchain gaps are a separate " +
       "question from Claude Code automation, and are answered instead by " +
-      "the ts-advisor pack's recommending-ts-tooling skill with " +
-      "live-researched, cited recommendations, if that pack is installed. " +
+      "the baseline typescript-guidance skill's gaps mode with " +
+      "live-researched, cited recommendations. " +
       "Listed so the choice is visible, not silently left out.",
   };
 }
