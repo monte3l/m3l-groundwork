@@ -36,7 +36,7 @@
   },
   {
     "skill": "creating-prs",
-    "query": "Ship this for review and get it merged.",
+    "query": "This branch is ready, ship it for review.",
     "should_trigger": true
   },
   {
