@@ -4,11 +4,14 @@
 /**
  * The packs acceptance test: bootstrap a throwaway project with
  * `--pack harness-extras` using the built CLI and run its real scripts,
- * including the pack's own gate and its three folded-in statusline scripts.
- * No mocks -- this is what "a pack installs correctly" has to mean,
- * mirroring bootstrap.e2e.test.ts for the baseline. `harness-extras` is one
- * pack now (statusline was folded into it), so this file bootstraps once,
- * installs once, and runs one `pnpm install` + one `pnpm verify`.
+ * including its three folded-in statusline scripts. No mocks -- this is
+ * what "a pack installs correctly" has to mean, mirroring
+ * bootstrap.e2e.test.ts for the baseline. `harness-extras` is one pack now
+ * (statusline was folded into it), so this file bootstraps once, installs
+ * once, and runs one `pnpm install` + one `pnpm verify`. The
+ * type-design-analyzer agent and the file-budget gate were carved out into
+ * their own `quality` pack (see packs-quality.e2e.test.ts) -- this file
+ * asserts harness-extras installs WITHOUT them.
  */
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
@@ -77,11 +80,6 @@ describe("harness-extras pack end-to-end", () => {
       // The pack's own files landed.
       expect(
         existsSync(
-          join(targetDir, ".claude", "agents", "type-design-analyzer.md"),
-        ),
-      ).toBe(true);
-      expect(
-        existsSync(
           join(targetDir, ".claude", "hooks", "write-compact-handoff.mjs"),
         ),
       ).toBe(true);
@@ -95,8 +93,16 @@ describe("harness-extras pack end-to-end", () => {
           join(targetDir, ".claude", "hooks", "guard-readonly-bash.mjs"),
         ),
       ).toBe(true);
+
+      // The type-design-analyzer agent and the file-budget gate moved to
+      // the new quality pack -- harness-extras alone must not ship them.
+      expect(
+        existsSync(
+          join(targetDir, ".claude", "agents", "type-design-analyzer.md"),
+        ),
+      ).toBe(false);
       expect(existsSync(join(targetDir, "bin", "check-file-budget.mjs"))).toBe(
-        true,
+        false,
       );
 
       // The three statusline scripts, folded into this pack, also landed.
@@ -154,22 +160,16 @@ describe("harness-extras pack end-to-end", () => {
         "subagent-statusline.mjs",
       );
 
-      // The pack's gate step landed in the pack-steps file, keyed to the
-      // "build" group.
+      // harness-extras wires no verify step of its own (that gate moved to
+      // the quality pack) -- the baseline's own empty pack-steps file comes
+      // through untouched.
       const packSteps = JSON.parse(
         readFileSync(
           join(targetDir, "bin", "lib", "verify-steps.packs.json"),
           "utf8",
         ),
       ) as { id: string; group: string }[];
-      expect(packSteps).toEqual([
-        {
-          id: "file-budget",
-          group: "build",
-          name: "Check file budget",
-          cmd: ["node", "bin/check-file-budget.mjs"],
-        },
-      ]);
+      expect(packSteps).toEqual([]);
 
       // Actually run the emitted statusline scripts.
       const statusline = join(hooksDir, "statusline.mjs");
@@ -235,9 +235,8 @@ describe("harness-extras pack end-to-end", () => {
         stdio: "inherit",
       });
 
-      // The "build" group runs the baseline's build/exports/node-version
-      // steps AND the pack's file-budget gate, via one --group call --
-      // confirming the group-keyed seam actually wires a pack gate in.
+      // The "build" group runs cleanly with no pack-contributed step --
+      // harness-extras alone wires no gate.
       execFileSync("node", ["bin/verify.mjs", "--group", "build"], {
         cwd: targetDir,
         stdio: "inherit",

@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
   "name": "harness-extras",
-  "description": "Adds Claude Code session ergonomics on top of the baseline: a pair of hooks that carry a work summary across a context-window compaction, a hook that blocks non-read-only Bash commands, an agent that reviews type design, a per-file size ratchet gate over src/ and tests/, and a five-row statusLine (plus a per-subagent row renderer) -- the only documented surface carrying live context-window pressure.",
+  "description": "Adds Claude Code session ergonomics on top of the baseline: a pair of hooks that carry a work summary across a context-window compaction, a hook that blocks non-read-only Bash commands from read-only review spokes, and a five-row statusLine (plus a per-subagent row renderer) -- the only documented surface carrying live context-window pressure.",
   "modes": ["fresh", "adopt"],
   "budget": {
-    "agents": 1,
+    "agents": 0,
     "skills": 0,
     "hooks": 6,
     "workflows": 0,
     "scripts": 0
   },
   "requires": {
-    "paths": ["bin/lib/agent-roster.mjs", "bin/lib/report.mjs"]
+    "paths": ["bin/lib/agent-roster.mjs"]
   },
   "wiring": {
     "settings": {
@@ -64,14 +64,7 @@
       }
     },
     "packageScripts": {},
-    "verifySteps": [
-      {
-        "id": "file-budget",
-        "group": "build",
-        "name": "Check file budget",
-        "cmd": ["node", "bin/check-file-budget.mjs"]
-      }
-    ]
+    "verifySteps": []
   },
-  "adoptNotes": "check-file-budget.mjs's ROOTS default assumes a flat src/+tests/ layout and its ceilings are this baseline's defaults -- in an adopted project, re-point ROOTS at the project's real source layout (or drop the gate) before wiring it. The hooks and the agent have no such dependency and install anywhere a .claude/ directory exists. The verify step assumes a bin/verify.mjs-shaped gate runner; if the project has none, install the other artifacts and report the gate as not installable rather than inventing one. The PreCompact hook writes tmp/compact-handoff-<session_id>.json under the git worktree the session runs in (from the hook payload's cwd, since CLAUDE_PROJECT_DIR does not follow a session into a linked worktree) -- fresh mode's baseline .gitignore already lists tmp/ unconditionally, but an adopted project's own .gitignore was never touched by adopt mode, so add tmp/ there too before this pack's hooks run, or the handoff artifact can end up committed. The statusline scripts read only the stdin payload, .git/HEAD (via node:fs, never a git subprocess) and process.availableMemory()/os.totalmem(), so they install anywhere a .claude/ directory exists -- no dependency on the baseline's file layout. The one real adopt risk is the two top-level settings keys: a project that already defines statusLine or subagentStatusLine collides, and its existing value must be shown and decided on, never overwritten -- if either is already set, skip that key and the three statusline scripts, and install the rest of this pack (the hooks, the agent, and the gate) normally rather than failing the whole install. A .claude/settings.local.json or the user's own ~/.claude/settings.json statusLine also shadows the project one -- check both before concluding the pack is wired. rate_limits.spend_limit and prompt_cache need Claude Code v2.1.251+, and the per-subagent model/contextWindowSize/effort fields need v2.1.205+/v2.1.214+; each renders only when present, so an older Claude Code degrades to fewer segments rather than breaking. The scripts behave the same on macOS and Linux; the memory segment uses process.availableMemory() (Node 22+), and on macOS with an older Node it is hidden rather than shown from os.freemem(), which undercounts there. Below roughly 40 columns the layout drops segments by priority rather than wrapping."
+  "adoptNotes": "The statusline and compaction hooks install anywhere a .claude/ directory exists, but guard-readonly-bash.mjs imports ../../bin/lib/agent-roster.mjs (the baseline's list of writer spokes) -- copy that file alongside it in an adopted project, or skip that one hook. The PreCompact hook writes tmp/compact-handoff-<session_id>.json under the git worktree the session runs in (from the hook payload's cwd, since CLAUDE_PROJECT_DIR does not follow a session into a linked worktree) -- fresh mode's baseline .gitignore already lists tmp/ unconditionally, but an adopted project's own .gitignore was never touched by adopt mode, so add tmp/ there too before this pack's hooks run, or the handoff artifact can end up committed. The statusline scripts read only the stdin payload, .git/HEAD (via node:fs, never a git subprocess) and process.availableMemory()/os.totalmem(), so they install anywhere a .claude/ directory exists -- no dependency on the baseline's file layout. The one real adopt risk is the two top-level settings keys: a project that already defines statusLine or subagentStatusLine collides, and its existing value must be shown and decided on, never overwritten -- if either is already set, skip that key and the three statusline scripts, and install the rest of this pack (the hooks) normally rather than failing the whole install. A .claude/settings.local.json or the user's own ~/.claude/settings.json statusLine also shadows the project one -- check both before concluding the pack is wired. rate_limits.spend_limit and prompt_cache need Claude Code v2.1.251+, and the per-subagent model/contextWindowSize/effort fields need v2.1.205+/v2.1.214+; each renders only when present, so an older Claude Code degrades to fewer segments rather than breaking. The scripts behave the same on macOS and Linux; the memory segment uses process.availableMemory() (Node 22+), and on macOS with an older Node it is hidden rather than shown from os.freemem(), which undercounts there. Below roughly 40 columns the layout drops segments by priority rather than wrapping. The size-ratchet gate and the type-design-analyzer agent that used to ship here are now the separate `quality` pack."
 }

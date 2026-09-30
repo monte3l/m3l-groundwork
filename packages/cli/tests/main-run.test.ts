@@ -116,6 +116,43 @@ describe("main", () => {
           join(packTarget, ".claude", "hooks", "guard-readonly-bash.mjs"),
         ),
       ).toBe(true);
+      // harness-extras alone wires no verify step (the file-budget gate and
+      // its check-file-budget.mjs script moved to the quality pack) -- the
+      // baseline's own empty pack-steps file comes through untouched.
+      expect(existsSync(join(packTarget, "bin", "check-file-budget.mjs"))).toBe(
+        false,
+      );
+      const steps = JSON.parse(
+        readFileSync(
+          join(packTarget, "bin", "lib", "verify-steps.packs.json"),
+          "utf8",
+        ),
+      ) as unknown[];
+      expect(steps).toHaveLength(0);
+    });
+
+    it("installs the quality pack's agent and gate alongside harness-extras when both are requested", () => {
+      const packTarget = join(targetDir, "sub-pack-quality");
+
+      main([
+        packTarget,
+        "--skip-install",
+        "--pack",
+        "harness-extras",
+        "--pack",
+        "quality",
+      ]);
+
+      expect(
+        existsSync(
+          join(packTarget, ".claude", "hooks", "guard-readonly-bash.mjs"),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(packTarget, ".claude", "agents", "type-design-analyzer.md"),
+        ),
+      ).toBe(true);
       expect(existsSync(join(packTarget, "bin", "check-file-budget.mjs"))).toBe(
         true,
       );
@@ -124,8 +161,8 @@ describe("main", () => {
           join(packTarget, "bin", "lib", "verify-steps.packs.json"),
           "utf8",
         ),
-      ) as unknown[];
-      expect(steps).toHaveLength(1);
+      ) as Array<{ id: string }>;
+      expect(steps.map((step) => step.id)).toEqual(["file-budget"]);
     });
 
     it("prints a caps summary when a pack is installed", () => {

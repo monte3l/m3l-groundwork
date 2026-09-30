@@ -897,7 +897,7 @@ describe("observeWiring", () => {
 });
 
 describe("the real harness-extras pack", () => {
-  it("loads cleanly from the real templates/packs directory and declares both the original four artifacts' verify step and the folded-in statusline top-level keys", () => {
+  it("loads cleanly from the real templates/packs directory, no longer wires any verify step after the quality-pack split, and keeps the folded-in statusline top-level keys", () => {
     const names = listPackNames();
     expect(names).toContain("harness-extras");
     const pack = loadPack("harness-extras");
@@ -905,6 +905,15 @@ describe("the real harness-extras pack", () => {
     expect(existsSync(pack.filesDir)).toBe(true);
     // packsRootDir()'s default resolves to the real templates/packs tree.
     expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
+
+    expect(pack.manifest.budget).toEqual({
+      agents: 0,
+      skills: 0,
+      hooks: 6,
+      workflows: 0,
+      scripts: 0,
+    });
+    expect(pack.manifest.requires?.paths).toEqual(["bin/lib/agent-roster.mjs"]);
 
     expect(Object.keys(pack.manifest.wiring.settingsTopLevel ?? {})).toEqual([
       "statusLine",
@@ -917,14 +926,27 @@ describe("the real harness-extras pack", () => {
         "$CLAUDE_PROJECT_DIR/.claude/hooks/",
       );
     }
-    expect(
-      pack.manifest.wiring.verifySteps.some(
-        (step) => step.id === "file-budget",
-      ),
-    ).toBe(true);
+    // The file-budget gate and its bin/lib/report.mjs requirement moved to
+    // the new quality pack -- harness-extras wires no verify step at all.
+    expect(pack.manifest.wiring.verifySteps).toEqual([]);
   });
 
-  it("installs alone: settings.json gains $schema, hooks (all three events) and both statusline top-level keys", () => {
+  it("no longer ships the type-design-analyzer agent or the file-budget gate -- both moved to the quality pack", () => {
+    const pack = loadPack("harness-extras");
+    expect(
+      existsSync(
+        join(pack.filesDir, ".claude", "agents", "type-design-analyzer.md"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(join(pack.filesDir, "bin", "check-file-budget.mjs")),
+    ).toBe(false);
+    expect(
+      existsSync(join(pack.filesDir, "bin", "file-budget-baseline.json")),
+    ).toBe(false);
+  });
+
+  it("installs alone: settings.json gains $schema, hooks (all three events) and both statusline top-level keys, with no agent and no gate wired", () => {
     const targetDir = mkdtempSync(
       join(tmpdir(), "packs-harness-extras-alone-"),
     );
@@ -932,7 +954,6 @@ describe("the real harness-extras pack", () => {
       mkdirSync(join(targetDir, ".claude"), { recursive: true });
       mkdirSync(join(targetDir, "bin", "lib"), { recursive: true });
       writeFileSync(join(targetDir, "bin", "lib", "agent-roster.mjs"), "");
-      writeFileSync(join(targetDir, "bin", "lib", "report.mjs"), "");
       writeFileSync(
         join(targetDir, ".claude", "settings.json"),
         JSON.stringify({ $schema: "s", hooks: {} }),
@@ -952,8 +973,148 @@ describe("the real harness-extras pack", () => {
         "PreToolUse",
         "SessionStart",
       ]);
+      expect(existsSync(join(targetDir, ".claude", "agents"))).toBe(false);
+      expect(
+        existsSync(join(targetDir, "bin", "lib", "verify-steps.packs.json")),
+      ).toBe(false);
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the real quality pack", () => {
+  it("loads cleanly, is fresh+adopt capable, requires bin/lib/report.mjs, and wires exactly the file-budget verify step in the build group", () => {
+    expect(listPackNames()).toContain("quality");
+    const pack = loadPack("quality");
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(pack.manifest.requires?.paths).toEqual(["bin/lib/report.mjs"]);
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
+    expect(pack.manifest.wiring.packageScripts).toEqual({});
+    const steps = pack.manifest.wiring.verifySteps;
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toEqual({
+      id: "file-budget",
+      group: "build",
+      name: "Check file budget",
+      cmd: ["node", "bin/check-file-budget.mjs"],
+    });
+    expect(existsSync(pack.filesDir)).toBe(true);
+    expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
+  });
+
+  it("declares a budget matching its own files/ tree -- the same counting helper caps.test.ts's generic 'every templates/packs/*' check uses", () => {
+    const pack = loadPack("quality");
+    const actual = countPackBudget(
+      pack.filesDir,
+      pack.manifest.wiring.packageScripts,
+    );
+    expect(pack.manifest.budget).toEqual(actual);
+    expect(pack.manifest.budget).toEqual({
+      agents: 1,
+      skills: 0,
+      hooks: 0,
+      workflows: 0,
+      scripts: 0,
+    });
+  });
+
+  it("ships the type-design-analyzer agent, the file-budget gate script and its baseline JSON, moved verbatim from harness-extras", () => {
+    const pack = loadPack("quality");
+    for (const relPath of [
+      join(".claude", "agents", "type-design-analyzer.md"),
+      join("bin", "check-file-budget.mjs"),
+      join("bin", "file-budget-baseline.json"),
+    ]) {
+      expect(existsSync(join(pack.filesDir, relPath))).toBe(true);
+    }
+  });
+
+  it("throws when bin/lib/report.mjs is missing from the target", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-quality-missing-"));
+    try {
+      expect(() => installPack(loadPack("quality"), targetDir, {})).toThrow(
+        /requires "bin\/lib\/report\.mjs"/,
+      );
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+
+  it("installs alone: the agent and gate script land on disk, and the file-budget step merges into bin/lib/verify-steps.packs.json", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-quality-alone-"));
+    try {
+      mkdirSync(join(targetDir, "bin", "lib"), { recursive: true });
+      writeFileSync(join(targetDir, "bin", "lib", "report.mjs"), "");
+
+      installPack(loadPack("quality"), targetDir, {});
+
+      expect(
+        existsSync(
+          join(targetDir, ".claude", "agents", "type-design-analyzer.md"),
+        ),
+      ).toBe(true);
+      expect(existsSync(join(targetDir, "bin", "check-file-budget.mjs"))).toBe(
+        true,
+      );
+      expect(
+        existsSync(join(targetDir, "bin", "file-budget-baseline.json")),
+      ).toBe(true);
+
+      const stepsPath = join(
+        targetDir,
+        "bin",
+        "lib",
+        "verify-steps.packs.json",
+      );
+      expect(existsSync(stepsPath)).toBe(true);
+      const steps = JSON.parse(readFileSync(stepsPath, "utf8")) as Array<{
+        id: string;
+      }>;
+      expect(steps.map((step) => step.id)).toEqual(["file-budget"]);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+
+  it("adopt mode stages pack.json and the files/ tree unmodified under .groundwork/packs/quality/", () => {
+    const groundworkDir = mkdtempSync(join(tmpdir(), "packs-quality-stage-"));
+    try {
+      const pack = loadPack("quality");
+      const written = stagePackFiles(pack, groundworkDir);
+
+      expect(written).toContain("pack.json");
+      expect(
+        existsSync(join(groundworkDir, "packs", "quality", "pack.json")),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            groundworkDir,
+            "packs",
+            "quality",
+            "files",
+            ".claude",
+            "agents",
+            "type-design-analyzer.md",
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            groundworkDir,
+            "packs",
+            "quality",
+            "files",
+            "bin",
+            "check-file-budget.mjs",
+          ),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(groundworkDir, { recursive: true, force: true });
     }
   });
 });
@@ -1264,9 +1425,8 @@ describe("the real worktrees pack", () => {
     try {
       mkdirSync(join(targetDir, ".claude"), { recursive: true });
       mkdirSync(join(targetDir, "bin", "lib"), { recursive: true });
-      // harness-extras's own requires.paths dependencies.
+      // harness-extras's own requires.paths dependency.
       writeFileSync(join(targetDir, "bin", "lib", "agent-roster.mjs"), "");
-      writeFileSync(join(targetDir, "bin", "lib", "report.mjs"), "");
       // worktrees's own requires.paths dependency.
       writeFileSync(join(targetDir, "bin", "lib", "protected-paths.mjs"), "");
       writeFileSync(

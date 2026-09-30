@@ -144,8 +144,8 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
 
 templates/packs/        Optional add-on bundles installed on top of the
                          baseline. `harness-extras/`, `github/`,
-                         `publishing/`, `supply-chain/`, `worktrees/`, and
-                         `ts-advisor/` ship
+                         `publishing/`, `quality/`, `supply-chain/`,
+                         `worktrees/`, and `ts-advisor/` ship
                          today; see its own README.md for the wiring
                          contract and "Known gaps" below for the deferred
                          candidates.
@@ -613,19 +613,24 @@ set for one file.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships six packs, each covering one theme rather than
+- `templates/packs/` ships seven packs, each covering one theme rather than
   one theme per artifact. `harness-extras` is Claude Code session
-  ergonomics: a type-design analyzer agent, the compaction-handoff hook
-  pair, `guard-readonly-bash`, a `check-file-budget` gate (the four
-  artifacts the original baseline build cut purely to fit a cap, not
-  because they failed the generalization test), plus a five-row statusLine
-  and a `subagentStatusLine` renderer (recovered from the retired
+  ergonomics: the compaction-handoff hook pair, `guard-readonly-bash`, and a
+  five-row statusLine and a `subagentStatusLine` renderer (recovered from the retired
   predecessor's transcripts and stripped of its project-specific segments,
   originally its own `statusline` pack, folded in here because both halves
   are language- and harness-level rather than domain-level). It's the only
   pack that uses `wiring.settingsTopLevel`, and in adopt mode a project that
   already defines `statusLine`/`subagentStatusLine` skips just those keys
   and the three statusline scripts rather than failing the whole install.
+  `quality` holds the other two of the four artifacts the original baseline
+  build cut purely to fit a cap, not because they failed the generalization
+  test: a `type-design-analyzer` review agent and a `check-file-budget`
+  per-file size ratchet (a `build`-group verify step). It was split out of
+  `harness-extras` because those two are code-quality aids rather than
+  session ergonomics. The agent is not dispatched by name from the
+  baseline's hub-and-spoke instructions (a pack cannot edit `CLAUDE.md`), so
+  it is used on request or after a project adds it to its own review step.
   `github` (renamed from `claude-action`) is GitHub-hosted collaboration:
   Anthropic's official `anthropics/claude-code-action` in mention-mode, a
   second Action that posts an automated Claude review comment on every PR,

@@ -6,15 +6,11 @@
 // set of interview answers, it must deterministically recommend the same two
 // packs (harness-extras, github) across every project kind, and every
 // recommendation must carry non-empty "because" evidence and a non-empty
-// name. harness-extras now folds in the former statusline pack, so its
-// evidence must speak to both halves (the four original artifacts and the
-// five-row statusLine/context-window-pressure segment) -- not just restate
-// the whole sentence, but name a substring from each half so a future edit
-// that silently drops one half's evidence is caught. Without this test, a
-// change to pack-map.ts could silently stop recommending a pack for some
-// project kind, or return a recommendation with no justification shown to
-// the user, or make the mapping non-deterministic across identical answers --
-// none of which any other test in this repo would catch.
+// name. Without this test, a change to pack-map.ts could silently stop
+// recommending a pack for some project kind, or return a recommendation with
+// no justification shown to the user, or make the mapping non-deterministic
+// across identical answers -- none of which any other test in this repo
+// would catch.
 //
 // `supply-chain` (gitleaks secret scanning + OpenSSF Scorecard) was carved
 // out of `publishing` into its own pack, recommended for every project kind
@@ -22,6 +18,14 @@
 // apply just as much to a frontend or service repo as to a published
 // library or CLI. `publishing`'s own evidence must no longer mention
 // gitleaks/secret-scanning/Scorecard now that they live in a separate pack.
+//
+// `quality` was carved out of `harness-extras` into its own pack: the
+// type-design-analyzer agent and the per-file-size (file-budget) ratchet
+// gate. Both are language-level, not harness-ergonomics-level, so they get
+// their own pack recommended for every project kind; harness-extras's own
+// evidence must no longer mention either now that they live separately --
+// only the compaction-handoff hooks, the read-only Bash guard and the
+// statusLine remain.
 import { describe, expect, it } from "vitest";
 import { recommendPacks } from "../src/pack-map.js";
 import type { InterviewAnswers } from "../src/kind-facet-map.js";
@@ -41,7 +45,7 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly six recommendations: harness-extras, github, publishing, worktrees, ts-advisor and supply-chain", () => {
+  it("returns exactly seven recommendations: harness-extras, github, publishing, worktrees, ts-advisor, supply-chain and quality", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
     expect(names).toEqual([
       "harness-extras",
@@ -50,6 +54,7 @@ describe("recommendPacks", () => {
       "worktrees",
       "ts-advisor",
       "supply-chain",
+      "quality",
     ]);
   });
 
@@ -64,7 +69,7 @@ describe("recommendPacks", () => {
     }
   });
 
-  it("recommends harness-extras with evidence naming a substring from both the four original artifacts and the folded-in statusline segment, for every project kind", () => {
+  it("recommends harness-extras with evidence naming the compaction-handoff hooks, the read-only Bash guard and the folded-in statusline segment, and no longer mentions the type-design agent or file-budget gate now that they live in the separate quality pack, for every project kind", () => {
     for (const kind of ["library", "cli", "frontend", "service"] as const) {
       const recommendations = recommendPacks({ ...BASE_ANSWERS, kind });
       const harnessExtras = recommendations.find(
@@ -72,18 +77,19 @@ describe("recommendPacks", () => {
       );
       expect(harnessExtras?.recommended).toBe(true);
       expect(harnessExtras?.because.length).toBeGreaterThan(0);
-      // A substring distinguishing the four original artifacts (a type-design
-      // review agent, compaction-handoff hooks, a read-only Bash guard, a
-      // file-budget gate) -- not the whole sentence.
-      expect(harnessExtras?.because).toMatch(/type.design/i);
+      // Substrings distinguishing the artifacts that remain in this pack:
+      // the compaction-handoff hooks and the read-only Bash guard.
       expect(harnessExtras?.because).toMatch(/compaction/i);
       expect(harnessExtras?.because).toMatch(/read-only Bash/i);
-      expect(harnessExtras?.because).toMatch(/file-budget/i);
       // A substring distinguishing the folded-in statusline segment: live
       // context-window pressure, rendered across the five documented rows
       // (session, model, context, quota, work).
       expect(harnessExtras?.because).toMatch(/context.window/i);
       expect(harnessExtras?.because).toMatch(/session|model|quota|work/i);
+      // The type-design review agent and the file-budget gate moved to the
+      // separate `quality` pack -- this pack's own evidence must no longer
+      // claim either.
+      expect(harnessExtras?.because).not.toMatch(/file-budget|type.design/i);
     }
   });
 
@@ -187,6 +193,22 @@ describe("recommendPacks", () => {
       // evidence above (harness ergonomics, GitHub operations, releases,
       // worktree isolation).
       expect(tsAdvisor?.because).toMatch(/recommending-ts-tooling/i);
+    }
+  });
+
+  it("recommends quality unconditionally, for every project kind, with evidence naming the per-file size ratchet and the type-design review agent", () => {
+    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+      const quality = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "quality",
+      );
+      expect(quality).toBeDefined();
+      expect(quality?.recommended).toBe(true);
+      expect(quality?.because.length).toBeGreaterThan(0);
+      // A substring distinguishing the per-file size ratchet (the
+      // file-budget gate carved out of harness-extras).
+      expect(quality?.because).toMatch(/file-budget|size/i);
+      // A substring distinguishing the type-design review agent.
+      expect(quality?.because).toMatch(/type.design/i);
     }
   });
 });

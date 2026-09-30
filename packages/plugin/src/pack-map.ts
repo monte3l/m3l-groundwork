@@ -19,10 +19,11 @@ export interface PackRecommendation {
 }
 
 /**
- * `harness-extras`'s four original artifacts (a type-design-analyzer agent,
- * the compaction-handoff hook pair, a read-only Bash guard, a file-budget
- * gate) are language- and harness-level, not domain-level -- they apply to
- * any TypeScript project regardless of what it's building. Its folded-in
+ * `harness-extras`'s remaining artifacts (the compaction-handoff hook pair
+ * and a read-only Bash guard) are harness-level, not domain-level -- they
+ * apply to any TypeScript project regardless of what it's building. The
+ * type-design-analyzer agent and the file-budget gate it once also carried
+ * now live in the separate `quality` pack. Its folded-in
  * statusLine scripts read only the stdin payload, `.git/HEAD` (via
  * `node:fs`, never a `git` subprocess) and `os.freemem()`/`os.totalmem()`,
  * and `statusLine` is the only documented surface carrying live
@@ -34,9 +35,9 @@ function recommendHarnessExtras(): PackRecommendation {
     name: "harness-extras",
     recommended: true,
     because:
-      "its four artifacts (a type-design review agent, compaction-handoff " +
-      "hooks, a read-only Bash guard, a file-budget gate) are language- " +
-      "and harness-level, not tied to any particular project kind; its " +
+      "its compaction-handoff hooks (which carry work across a context " +
+      "compaction) and read-only Bash guard are harness-level, not tied " +
+      "to any particular project kind; its " +
       "statusLine is the only surface that exposes live context-window " +
       "pressure -- no hook event receives token data -- and reads only the " +
       "stdin payload plus local git and memory state. It does occupy five " +
@@ -172,10 +173,29 @@ function recommendSupplyChain(): PackRecommendation {
 }
 
 /**
+ * `quality` is the half carved out of `harness-extras`: a per-file size
+ * ratchet (`check-file-budget`) over `src/` and `tests/`, and the
+ * type-design-analyzer agent reviewing exported symbols' type design. Both
+ * are language-level -- they apply to any TypeScript project whatever it is
+ * building -- so it is recommended for every project kind.
+ */
+function recommendQuality(): PackRecommendation {
+  return {
+    name: "quality",
+    recommended: true,
+    because:
+      "its per-file size ratchet (check-file-budget) stops src/ and tests/ " +
+      "files growing unchecked and its type-design-analyzer agent reviews " +
+      "the type design of exported symbols -- both are language-level, not " +
+      "tied to any project kind.",
+  };
+}
+
+/**
  * Every pack's recommendation for the given interview answers. Only
  * `publishing` varies by `answers.kind` today; `harness-extras`, `github`,
- * `ts-advisor` and `supply-chain` are recommended for every kind, and
- * `worktrees` is opt-in for every kind.
+ * `ts-advisor`, `supply-chain` and `quality` are recommended for every
+ * kind, and `worktrees` is opt-in for every kind.
  */
 export function recommendPacks(
   answers: InterviewAnswers,
@@ -187,5 +207,6 @@ export function recommendPacks(
     recommendWorktrees(),
     recommendTsAdvisor(),
     recommendSupplyChain(),
+    recommendQuality(),
   ];
 }
