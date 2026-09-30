@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "name": "quality",
+  "description": "Two language-level review aids for a TypeScript project: a per-file size ratchet gate over src/ and tests/ (check-file-budget.mjs plus its committed baseline, wired as a build-group verify step) and a type-design-analyzer review agent that rates the type design of changed exports on four dimensions. No hooks, no settings, no scripts.",
+  "modes": ["fresh", "adopt"],
+  "budget": {
+    "agents": 1,
+    "skills": 0,
+    "hooks": 0,
+    "workflows": 0,
+    "scripts": 0
+  },
+  "requires": {
+    "paths": ["bin/lib/report.mjs"]
+  },
+  "wiring": {
+    "settings": {},
+    "packageScripts": {},
+    "verifySteps": [
+      {
+        "id": "file-budget",
+        "group": "build",
+        "name": "Check file budget",
+        "cmd": ["node", "bin/check-file-budget.mjs"]
+      }
+    ]
+  },
+  "adoptNotes": "check-file-budget.mjs's ROOTS default assumes a flat src/+tests/ layout and its ceilings are this baseline's defaults -- in an adopted project, re-point ROOTS at the project's real source layout (or drop the gate) before wiring it. check-file-budget.mjs imports ./lib/report.mjs, a baseline file that an adopted project will not have -- copy bin/lib/report.mjs alongside the gate, or treat the gate as not installable. The verify step assumes a bin/verify.mjs-shaped gate runner; if the project has none, install the agent and report the gate as not installable rather than inventing one. The type-design-analyzer agent has no such dependency and installs anywhere a .claude/agents/ directory exists; it is a read-only review spoke (model claude-opus-5 at xhigh effort, more expensive than the baseline's sonnet reviewers), and nothing in the baseline's hub-and-spoke instructions dispatches it by name -- ask for it after changing exported types, or add it to the project's own CLAUDE.md review step."
+}
