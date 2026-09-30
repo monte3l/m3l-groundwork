@@ -218,10 +218,10 @@ confirmed in Step 0.4:
   `recommendPacks(answers)` from `pack-map.ts` (alongside this file, same
   copy mechanism as `kind-facet-map.ts`) with the now-confirmed
   `InterviewAnswers` and compare its verdict against Step 0.4's decision.
-  `harness-extras`, `github`, `worktrees`, and `ts-advisor` never disagree
-  (none of the four's recommendation varies by kind or answer --
-  `worktrees` is always `recommended: false`, since it changes the
-  day-to-day workflow rather than adding a nicety, and the other three are
+  `harness-extras`, `github`, `supply-chain`, `worktrees`, and `ts-advisor`
+  never disagree (none of the five's recommendation varies by kind or
+  answer -- `worktrees` is always `recommended: false`, since it changes the
+  day-to-day workflow rather than adding a nicety, and the other four are
   always `recommended: true`), but `publishing`'s does (recommended for
   `library`/`cli`, not for `frontend`/`service`) — if the comparison surfaces a real
   conflict there or for any future kind-scoped pack, raise it rather than

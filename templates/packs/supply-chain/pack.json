@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "supply-chain",
+  "description": "Secret scanning and an OpenSSF Scorecard run for any project hosted on GitHub, published or not: gitleaks.yml (gitleaks/gitleaks-action on push, pull request, weekly and manual dispatch) with a .gitleaks.toml, and scorecard.yml (ossf/scorecard-action, weekly, results published as code-scanning alerts). Pure file drop: no hooks, no settings, no scripts, no verify step. Read-only workflows, not required checks by default.",
+  "modes": ["fresh", "adopt"],
+  "budget": {
+    "agents": 0,
+    "skills": 0,
+    "hooks": 0,
+    "workflows": 2,
+    "scripts": 0
+  },
+  "wiring": {
+    "settings": {},
+    "packageScripts": {},
+    "verifySteps": []
+  },
+  "adoptNotes": "An adopted project that already has its own .github/workflows/gitleaks.yml or scorecard.yml surfaces as an ordinary file conflict -- keep the existing one if it already works, since this pack's version would just replace a configured setup with its generic defaults. gitleaks.yml needs a free GITLEAKS_LICENSE repo secret for an organization-owned repository (gitleaks-action's own requirement); scorecard.yml assumes a public repository (`publish_results: true` needs one) -- set it `false` for a private repo. Both are read-only and not required checks by default; add either to branch protection once it has a clean run. The SPDX/REUSE license-header gate is not part of this pack: it lives in the fresh-only `publishing` pack, because it fails an established project's `pnpm verify` until a one-time backfill touches every file. The two workflows ship without an SPDX header on purpose (a header would carry a project-name token that stays literal in an adopt-mode install); a project that also installs `publishing` gets the headers from that pack's `check-license-headers.mjs --fix` backfill."
+}

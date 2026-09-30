@@ -77,9 +77,10 @@ function recommendGithub(): PackRecommendation {
 /**
  * `publishing` is the one kind-scoped pack: a release pipeline (a changesets
  * version PR, then a staged, provenance-attested npm publish via trusted
- * publishing) plus the OpenSSF supply-chain posture that goes with shipping
- * to a registry (gitleaks secret scanning, Scorecard, SPDX/REUSE license
- * headers). A `library` or `cli` typically publishes an npm package; a
+ * publishing) plus SPDX/REUSE license headers. Secret scanning and OpenSSF
+ * Scorecard are not part of it -- they are the separate `supply-chain` pack,
+ * since they apply to any repo, published or not. A `library` or `cli`
+ * typically publishes an npm package; a
  * `frontend` or `service` is typically deployed instead, so it is not
  * pre-selected there -- but it stays on offer. It is fresh-mode only and
  * needs one-time npm and GitHub setup the pack cannot perform itself.
@@ -92,10 +93,10 @@ function recommendPublishing(answers: InterviewAnswers): PackRecommendation {
     because: recommended
       ? "a library or CLI typically ships an npm package, so this pack's " +
         "release pipeline applies: a changesets version PR, then a staged, " +
-        "provenance-attested npm publish via trusted publishing -- plus the " +
-        "OpenSSF supply-chain posture that goes with publishing (gitleaks " +
-        "secret scanning, Scorecard, SPDX/REUSE license headers). It is " +
-        "fresh-mode only and needs one-time npm and GitHub setup (the " +
+        "provenance-attested npm publish via trusted publishing -- plus " +
+        "SPDX/REUSE license headers. The repository-hygiene scans that " +
+        "apply to any project, published or not, are the separate " +
+        "supply-chain pack. It is fresh-mode only and needs one-time npm and GitHub setup (the " +
         "trusted publisher, the release credentials) the pack cannot do " +
         "itself."
       : "a frontend or service is typically deployed rather than published " +
@@ -152,10 +153,29 @@ function recommendTsAdvisor(): PackRecommendation {
 }
 
 /**
+ * `supply-chain` is the half carved out of `publishing`: gitleaks secret
+ * scanning and an OpenSSF Scorecard run. Neither depends on shipping to a
+ * registry -- a deployed frontend or service leaks a secret or drifts on
+ * Scorecard's checks just as easily as a published library -- so it is
+ * recommended for every project kind. Both are CI workflows only, so it
+ * installs into an already-established project without touching its code.
+ */
+function recommendSupplyChain(): PackRecommendation {
+  return {
+    name: "supply-chain",
+    recommended: true,
+    because:
+      "secret scanning (gitleaks) and an OpenSSF Scorecard run are useful " +
+      "to any project on GitHub, published or not, and install into an " +
+      "already-established project without touching its code.",
+  };
+}
+
+/**
  * Every pack's recommendation for the given interview answers. Only
- * `publishing` varies by `answers.kind` today; `harness-extras`, `github`
- * and `ts-advisor` are recommended for every kind, and `worktrees` is
- * opt-in for every kind.
+ * `publishing` varies by `answers.kind` today; `harness-extras`, `github`,
+ * `ts-advisor` and `supply-chain` are recommended for every kind, and
+ * `worktrees` is opt-in for every kind.
  */
 export function recommendPacks(
   answers: InterviewAnswers,
@@ -166,5 +186,6 @@ export function recommendPacks(
     recommendPublishing(answers),
     recommendWorktrees(),
     recommendTsAdvisor(),
+    recommendSupplyChain(),
   ];
 }

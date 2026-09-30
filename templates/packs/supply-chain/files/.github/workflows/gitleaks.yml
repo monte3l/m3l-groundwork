@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: Copyright the __PROJECT_NAME__ contributors
-# SPDX-License-Identifier: NOASSERTION
-
 name: Gitleaks
 
 # What this does: scans for secrets (API keys, tokens, private keys) using

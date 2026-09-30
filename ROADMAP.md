@@ -24,10 +24,11 @@ stable `1.0.0` is the immediate goal, once the promotion checklist in
   real, planned work -- see [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
 - ~~**A `publishing` pack**~~ -- shipped: a release workflow
   (`release.yml`, changesets version-PR / staged, provenance-attested npm
-  publish), `check-publish-version.mjs`, `check-dts-deps.mjs`, plus the
-  OpenSSF supply-chain half this repo itself carries -- `gitleaks.yml`,
-  `scorecard.yml`, `check-license-headers.mjs` (generalized with a
-  `__PROJECT_NAME__` token) and a `REUSE.toml` template. Fresh-mode only:
+  publish), `check-publish-version.mjs`, `check-dts-deps.mjs`,
+  `check-license-headers.mjs` (generalized with a `__PROJECT_NAME__` token)
+  and a `REUSE.toml` template. The secret-scanning and Scorecard half this
+  repo itself carries (`gitleaks.yml`, `scorecard.yml`) ships as the separate,
+  adopt-capable `supply-chain` pack. Fresh-mode only:
   the release flow encodes decisions (registry access, npm trusted-publisher
   setup, a GitHub App for the version PR) too project-specific for an
   automated adopt-mode install -- see its `adoptNotes`.

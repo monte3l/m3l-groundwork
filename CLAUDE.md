@@ -144,7 +144,8 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
 
 templates/packs/        Optional add-on bundles installed on top of the
                          baseline. `harness-extras/`, `github/`,
-                         `publishing/`, `worktrees/`, and `ts-advisor/` ship
+                         `publishing/`, `supply-chain/`, `worktrees/`, and
+                         `ts-advisor/` ship
                          today; see its own README.md for the wiring
                          contract and "Known gaps" below for the deferred
                          candidates.
@@ -612,7 +613,7 @@ set for one file.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships five packs, each covering one theme rather than
+- `templates/packs/` ships six packs, each covering one theme rather than
   one theme per artifact. `harness-extras` is Claude Code session
   ergonomics: a type-design analyzer agent, the compaction-handoff hook
   pair, `guard-readonly-bash`, a `check-file-budget` gate (the four
@@ -636,13 +637,13 @@ set for one file.
   `watching-pr-checks` (check a PR's CI status, hand off to a project's own
   `/triaging-ci` on a real failure). Both workflows need an auth secret the
   pack cannot create -- see its `adoptNotes`. `publishing` is a release
-  pipeline plus its OpenSSF supply-chain posture, adapted from this repo's
-  own working implementation (see "Releases"): `release.yml` (changesets
+  pipeline, adapted from this repo's own working implementation (see
+  "Releases"): `release.yml` (changesets
   version-PR / staged, provenance-attested npm publish via trusted
   publishing OIDC), `check-publish-version.mjs` (no-ops on `private: true`
   or an unreachable registry), `check-dts-deps.mjs` (a published `.d.ts`
-  file must not import a package that's only a devDependency), `gitleaks.yml`,
-  `scorecard.yml`, `check-license-headers.mjs` (generalized from this
+  file must not import a package that's only a devDependency),
+  `check-license-headers.mjs` (generalized from this
   repo's own copy with a `__PROJECT_NAME__` token in place of a hardcoded
   copyright holder, and with the `templates/**` brand-neutrality exemption
   dropped -- an emitted project has no such tree of its own) and a
@@ -652,7 +653,14 @@ set for one file.
   -- see its `adoptNotes`. It cannot wire `@changesets/cli` itself either,
   since the wiring contract only extends `package.json`'s `scripts`, never
   its `dependencies`/`devDependencies` -- its shipped `.changeset/README.md`
-  says so. `worktrees` enforces that all src/tests development happens
+  says so. `supply-chain` is the OpenSSF supply-chain half, split out of
+  `publishing` because it is useful to any GitHub project, published or not:
+  `gitleaks.yml` (secret scanning, with a `.gitleaks.toml`) and
+  `scorecard.yml`, two read-only workflows and nothing else -- adopt-capable
+  and recommended for every project kind. The SPDX license-header gate stays
+  in `publishing`: it fails an established project's `pnpm verify` until a
+  one-time backfill touches every file, so it cannot be an adopt-mode
+  install. `worktrees` enforces that all src/tests development happens
   inside an isolated git worktree, on any branch, for any caller
   (`guard-worktree-only.mjs`, stricter than the baseline's own
   `guard-branch-isolation.mjs`/`guard-hub-src-writes.mjs`, which only block
