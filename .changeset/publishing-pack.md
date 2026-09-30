@@ -2,11 +2,10 @@
 "@monte3l/groundwork": patch
 ---
 
-Adds a `publishing` pack: a release pipeline plus its OpenSSF supply-chain posture, for a project that ships an npm package.
+Adds a `publishing` pack: a release pipeline for a project that ships an npm package.
 
 - `.github/workflows/release.yml`, generalized from this repo's own workflow: changesets version-PR / staged, provenance-attested npm publish via trusted publishing OIDC.
 - `check-publish-version.mjs` and `check-dts-deps.mjs`: two new `build`-group verify steps, both no-oping cleanly on a `private: true` package (the baseline's own default).
-- `.github/workflows/gitleaks.yml` (secret scanning) and `scorecard.yml` (OpenSSF Scorecard).
 - `check-license-headers.mjs` (generalized with a `__PROJECT_NAME__` token in place of a hardcoded copyright holder) and a `REUSE.toml` template, as a new `lint`-group verify step.
 - `.changeset/config.json` + `README.md`, and the `changeset`/`version:packages` package scripts.
 

@@ -23,6 +23,7 @@ import {
 } from "../src/packs.js";
 import type { PackManifest } from "../src/packs.js";
 import { walkBounded } from "../src/survey/fs-walk.js";
+import { countPackBudget } from "../src/caps.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const realPacksRoot = join(here, "..", "..", "..", "templates", "packs");
@@ -982,6 +983,9 @@ describe("the real publishing pack", () => {
       "version:packages",
     ]);
     expect(pack.manifest.budget.scripts).toBe(2);
+    // The supply-chain half (gitleaks/scorecard) has been carved out into
+    // its own pack -- publishing keeps only release.yml, one CI workflow.
+    expect(pack.manifest.budget.workflows).toBe(1);
 
     const steps = pack.manifest.wiring.verifySteps;
     expect(steps.map((step) => step.id).sort()).toEqual([
@@ -993,6 +997,17 @@ describe("the real publishing pack", () => {
     expect(byId.get("dts-deps")?.group).toBe("build");
 
     expect(existsSync(pack.filesDir)).toBe(true);
+  });
+
+  it("no longer ships the supply-chain half -- gitleaks.yml, scorecard.yml and .gitleaks.toml moved to the supply-chain pack", () => {
+    const pack = loadPack("publishing");
+    expect(
+      existsSync(join(pack.filesDir, ".github", "workflows", "gitleaks.yml")),
+    ).toBe(false);
+    expect(
+      existsSync(join(pack.filesDir, ".github", "workflows", "scorecard.yml")),
+    ).toBe(false);
+    expect(existsSync(join(pack.filesDir, ".gitleaks.toml"))).toBe(false);
   });
 
   it("installs alone: package.json gains both scripts, verify-steps.packs.json gains both steps", () => {
@@ -1028,6 +1043,144 @@ describe("the real publishing pack", () => {
       ]);
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the real supply-chain pack", () => {
+  it("loads cleanly, is fresh+adopt capable, declares an empty wiring surface and a 0/0/0/2/0 budget matching its own files/ tree", () => {
+    expect(listPackNames()).toContain("supply-chain");
+    const pack = loadPack("supply-chain");
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(pack.manifest.requires).toBeUndefined();
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
+    expect(pack.manifest.wiring.packageScripts).toEqual({});
+    expect(pack.manifest.wiring.verifySteps).toEqual([]);
+    expect(pack.manifest.budget).toEqual({
+      agents: 0,
+      skills: 0,
+      hooks: 0,
+      workflows: 2,
+      scripts: 0,
+    });
+    expect(existsSync(pack.filesDir)).toBe(true);
+    expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
+
+    // The declared budget must match what the pack's own files/ tree
+    // actually contains -- the same counting helper
+    // packages/cli/tests/caps.test.ts's generic "every templates/packs/*"
+    // check uses.
+    const actual = countPackBudget(
+      pack.filesDir,
+      pack.manifest.wiring.packageScripts,
+    );
+    expect(pack.manifest.budget).toEqual(actual);
+  });
+
+  it("ships both workflows plus .gitleaks.toml, and neither workflow carries a __PROJECT_NAME__ token or an SPDX header (moved verbatim from publishing except the leading header lines, which would stay literal in adopt mode)", () => {
+    const pack = loadPack("supply-chain");
+    const gitleaksPath = join(
+      pack.filesDir,
+      ".github",
+      "workflows",
+      "gitleaks.yml",
+    );
+    const scorecardPath = join(
+      pack.filesDir,
+      ".github",
+      "workflows",
+      "scorecard.yml",
+    );
+    const gitleaksTomlPath = join(pack.filesDir, ".gitleaks.toml");
+
+    for (const path of [gitleaksPath, scorecardPath, gitleaksTomlPath]) {
+      expect(existsSync(path)).toBe(true);
+    }
+
+    for (const path of [gitleaksPath, scorecardPath]) {
+      const content = readFileSync(path, "utf8");
+      expect(content).not.toContain("__PROJECT_NAME__");
+      expect(content).not.toMatch(/^# SPDX-FileCopyrightText:/mu);
+      expect(content).not.toMatch(/^# SPDX-License-Identifier:/mu);
+    }
+  });
+
+  it("installs alone: both workflows and .gitleaks.toml land on disk byte-identical to their pack source, and settings.json/verify-steps.packs.json stay untouched -- a pure file drop", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-supply-chain-alone-"));
+    try {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      writeFileSync(
+        join(targetDir, ".claude", "settings.json"),
+        JSON.stringify({ hooks: {} }),
+      );
+
+      const pack = loadPack("supply-chain");
+      installPack(pack, targetDir, {});
+
+      const relPaths = [
+        join(".github", "workflows", "gitleaks.yml"),
+        join(".github", "workflows", "scorecard.yml"),
+        ".gitleaks.toml",
+      ];
+      for (const relPath of relPaths) {
+        const emittedPath = join(targetDir, relPath);
+        expect(existsSync(emittedPath)).toBe(true);
+        expect(readFileSync(emittedPath, "utf8")).toBe(
+          readFileSync(join(pack.filesDir, relPath), "utf8"),
+        );
+      }
+
+      const settings = JSON.parse(
+        readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(settings).toEqual({ hooks: {} });
+      expect(
+        existsSync(join(targetDir, "bin", "lib", "verify-steps.packs.json")),
+      ).toBe(false);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+
+  it("adopt mode stages pack.json and the files/ tree unmodified under .groundwork/packs/supply-chain/", () => {
+    const groundworkDir = mkdtempSync(
+      join(tmpdir(), "packs-supply-chain-stage-"),
+    );
+    try {
+      const pack = loadPack("supply-chain");
+      const written = stagePackFiles(pack, groundworkDir);
+
+      expect(written).toContain("pack.json");
+      expect(
+        existsSync(join(groundworkDir, "packs", "supply-chain", "pack.json")),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            groundworkDir,
+            "packs",
+            "supply-chain",
+            "files",
+            ".github",
+            "workflows",
+            "gitleaks.yml",
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            groundworkDir,
+            "packs",
+            "supply-chain",
+            "files",
+            ".gitleaks.toml",
+          ),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(groundworkDir, { recursive: true, force: true });
     }
   });
 });

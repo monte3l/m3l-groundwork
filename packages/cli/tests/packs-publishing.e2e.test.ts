@@ -4,17 +4,20 @@
 /**
  * The publishing pack's acceptance test: bootstrap a throwaway project with
  * `--pack publishing` using the built CLI and confirm its release-pipeline
- * and supply-chain files land correctly token-substituted (or byte-identical
- * where the source carries no `__PROJECT_NAME__` token), that its two
- * package scripts and two verify steps are wired (check-publish-version.mjs
- * is invoked directly from release.yml's `pack` job instead -- not a wired
- * verify step, see the pack's own adoptNotes), and that the emitted
- * project's own `pnpm verify` -- including the pack's two new gates --
- * passes cleanly on a fresh, `private: true` baseline once the pack's two
- * required one-time setup steps (see `pack.json`'s `adoptNotes`) are carried
- * out first: installing `@changesets/cli` as a devDependency (the wiring
- * contract only extends `package.json`'s scripts, never its dependencies, so
- * knip's unlisted-binaries check fails without it), and running
+ * files land correctly token-substituted (or byte-identical where the
+ * source carries no `__PROJECT_NAME__` token), that its two package scripts
+ * and two verify steps are wired (check-publish-version.mjs is invoked
+ * directly from release.yml's `pack` job instead -- not a wired verify
+ * step, see the pack's own adoptNotes), that the former supply-chain half
+ * (gitleaks.yml, scorecard.yml, .gitleaks.toml -- now the separate
+ * `supply-chain` pack, see packs-supply-chain.e2e.test.ts) is absent from a
+ * publishing-only install, and that the emitted project's own `pnpm
+ * verify` -- including the pack's two new gates -- passes cleanly on a
+ * fresh, `private: true` baseline once the pack's two required one-time
+ * setup steps (see `pack.json`'s `adoptNotes`) are carried out first:
+ * installing `@changesets/cli` as a devDependency (the wiring contract only
+ * extends `package.json`'s scripts, never its dependencies, so knip's
+ * unlisted-binaries check fails without it), and running
  * `bin/check-license-headers.mjs --fix` to backfill the SPDX header this
  * pack's new `license-headers` gate requires on every pre-existing baseline
  * file -- with every file the CLI emitted, including both of that fix step's
@@ -63,7 +66,7 @@ function expectEmittedMatchesSource(targetDir: string, relPath: string): void {
 }
 
 describe("publishing pack end-to-end", () => {
-  it("installs the release pipeline and supply-chain files with __PROJECT_NAME__ substituted, wires both package scripts and both verify steps, invokes check-publish-version.mjs directly from release.yml, and passes the emitted project's own pnpm verify once @changesets/cli is installed and the license-headers backfill has run", () => {
+  it("installs the release pipeline files with __PROJECT_NAME__ substituted, wires both package scripts and both verify steps, invokes check-publish-version.mjs directly from release.yml, omits the supply-chain half, and passes the emitted project's own pnpm verify once @changesets/cli is installed and the license-headers backfill has run", () => {
     const targetDir = mkdtempSync(
       join(tmpdir(), "m3l-groundwork-publishing-e2e-"),
     );
@@ -84,8 +87,6 @@ describe("publishing pack end-to-end", () => {
 
       const filesToCheck = [
         join(".github", "workflows", "release.yml"),
-        join(".github", "workflows", "gitleaks.yml"),
-        join(".github", "workflows", "scorecard.yml"),
         join(".github", "release-tools", "package.json"),
         join(".changeset", "config.json"),
         "REUSE.toml",
@@ -95,6 +96,18 @@ describe("publishing pack end-to-end", () => {
       for (const relPath of filesToCheck) {
         expectEmittedMatchesSource(targetDir, relPath);
       }
+
+      // The supply-chain half moved to its own pack -- a publishing-only
+      // install must not carry gitleaks.yml, scorecard.yml or
+      // .gitleaks.toml. See packs-supply-chain.e2e.test.ts for that pack's
+      // own acceptance test.
+      expect(
+        existsSync(join(targetDir, ".github", "workflows", "gitleaks.yml")),
+      ).toBe(false);
+      expect(
+        existsSync(join(targetDir, ".github", "workflows", "scorecard.yml")),
+      ).toBe(false);
+      expect(existsSync(join(targetDir, ".gitleaks.toml"))).toBe(false);
 
       // check-publish-version.mjs is deliberately not a wired verify step
       // (see the pack's adoptNotes) -- confirm release.yml's `pack` job

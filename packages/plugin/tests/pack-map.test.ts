@@ -15,6 +15,13 @@
 // project kind, or return a recommendation with no justification shown to
 // the user, or make the mapping non-deterministic across identical answers --
 // none of which any other test in this repo would catch.
+//
+// `supply-chain` (gitleaks secret scanning + OpenSSF Scorecard) was carved
+// out of `publishing` into its own pack, recommended for every project kind
+// -- unlike `publishing` (a release pipeline), secret scanning and Scorecard
+// apply just as much to a frontend or service repo as to a published
+// library or CLI. `publishing`'s own evidence must no longer mention
+// gitleaks/secret-scanning/Scorecard now that they live in a separate pack.
 import { describe, expect, it } from "vitest";
 import { recommendPacks } from "../src/pack-map.js";
 import type { InterviewAnswers } from "../src/kind-facet-map.js";
@@ -34,7 +41,7 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly five recommendations: harness-extras, github, publishing, worktrees and ts-advisor", () => {
+  it("returns exactly six recommendations: harness-extras, github, publishing, worktrees, ts-advisor and supply-chain", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
     expect(names).toEqual([
       "harness-extras",
@@ -42,6 +49,7 @@ describe("recommendPacks", () => {
       "publishing",
       "worktrees",
       "ts-advisor",
+      "supply-chain",
     ]);
   });
 
@@ -119,7 +127,7 @@ describe("recommendPacks", () => {
     }
   });
 
-  it("recommends publishing (for a library) with evidence naming the release pipeline and its supply-chain posture", () => {
+  it("recommends publishing (for a library) with evidence naming the release pipeline, and no longer mentions the supply-chain half now that it lives in its own pack", () => {
     const publishing = recommendPacks({
       ...BASE_ANSWERS,
       kind: "library",
@@ -128,10 +136,10 @@ describe("recommendPacks", () => {
     // A substring distinguishing the release half: changesets, trusted
     // publishing, or npm itself.
     expect(publishing?.because).toMatch(/changeset|trusted publish|npm/i);
-    // A substring distinguishing the supply-chain half: secret scanning.
-    expect(publishing?.because).toMatch(/gitleaks|secret/i);
-    // A substring distinguishing the supply-chain half: OpenSSF Scorecard.
-    expect(publishing?.because).toMatch(/scorecard|supply.chain/i);
+    // The supply-chain half (secret scanning, OpenSSF Scorecard) was carved
+    // out into its own `supply-chain` pack -- publishing's own evidence
+    // must no longer claim it.
+    expect(publishing?.because).not.toMatch(/gitleaks|secret|scorecard/i);
   });
 
   it("explains why publishing is not recommended for frontend/service kinds", () => {
@@ -148,6 +156,21 @@ describe("recommendPacks", () => {
     for (const rec of recommendPacks(BASE_ANSWERS)) {
       expect(rec.because.length).toBeGreaterThan(0);
       expect(rec.name.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("recommends supply-chain unconditionally, for every project kind, with evidence naming secret scanning and OpenSSF Scorecard", () => {
+    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+      const supplyChain = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "supply-chain",
+      );
+      expect(supplyChain).toBeDefined();
+      expect(supplyChain?.recommended).toBe(true);
+      expect(supplyChain?.because.length).toBeGreaterThan(0);
+      // A substring distinguishing secret scanning (gitleaks).
+      expect(supplyChain?.because).toMatch(/gitleaks|secret/i);
+      // A substring distinguishing OpenSSF Scorecard.
+      expect(supplyChain?.because).toMatch(/scorecard/i);
     }
   });
 

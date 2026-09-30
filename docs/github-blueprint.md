@@ -36,12 +36,12 @@ each with its own delivery mechanism.
 
 ## The four layers
 
-| Layer                    | What it holds                                                                                                                                             | Delivered by                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| L1 repo files            | Workflows, `dependabot.yml`, `LICENSE`, `CODEOWNERS` if used, `.gitattributes`, `.editorconfig`                                                           | The repo itself. In this project, `templates/core` plus the `github` and `publishing` packs. |
-| L2 organization defaults | `CODE_OF_CONDUCT`, `CONTRIBUTING`, `SECURITY`, `SUPPORT`, `GOVERNANCE`, issue and PR templates, `FUNDING.yml`, `profile/README.md`, `workflow-templates/` | The public [`monte3l/.github`](https://github.com/monte3l/.github) repository                |
-| L3 per-repo settings     | Rulesets, merge settings, Actions permissions, security toggles, environments, labels, immutable releases                                                 | Repository REST API calls, scripted and idempotent                                           |
-| L4 organization policy   | Default repository permission, secret visibility, app installation scope, fork-PR approval, SHA pinning, defaults for new repositories                    | Organization settings, applied by an organization owner                                      |
+| Layer                    | What it holds                                                                                                                                             | Delivered by                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| L1 repo files            | Workflows, `dependabot.yml`, `LICENSE`, `CODEOWNERS` if used, `.gitattributes`, `.editorconfig`                                                           | The repo itself. In this project, `templates/core` plus the `github`, `supply-chain` and `publishing` packs. |
+| L2 organization defaults | `CODE_OF_CONDUCT`, `CONTRIBUTING`, `SECURITY`, `SUPPORT`, `GOVERNANCE`, issue and PR templates, `FUNDING.yml`, `profile/README.md`, `workflow-templates/` | The public [`monte3l/.github`](https://github.com/monte3l/.github) repository                                |
+| L3 per-repo settings     | Rulesets, merge settings, Actions permissions, security toggles, environments, labels, immutable releases                                                 | Repository REST API calls, scripted and idempotent                                                           |
+| L4 organization policy   | Default repository permission, secret visibility, app installation scope, fork-PR approval, SHA pinning, defaults for new repositories                    | Organization settings, applied by an organization owner                                                      |
 
 The lookup rules that shape L2, from GitHub's docs on
 [default community health files](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file):
@@ -122,7 +122,7 @@ Not present, by choice or not yet: `CODEOWNERS` (deliberate, see
 ## Applying the blueprint to a new repository
 
 1. Create the repository from `templates/core` with the CLI, adding
-   `--pack github` and `--pack publishing` as needed.
+   `--pack github`, `--pack supply-chain` and `--pack publishing` as needed.
 2. Confirm the organization policy (L4) is in place. The L2 defaults come
    from [`monte3l/.github`](https://github.com/monte3l/.github), which
    needs no per-repository step.

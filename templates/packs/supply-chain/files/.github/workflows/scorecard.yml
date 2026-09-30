@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: Copyright the __PROJECT_NAME__ contributors
-# SPDX-License-Identifier: NOASSERTION
-
 name: Scorecard
 
 # What this does: runs OpenSSF Scorecard, a tool that scores a repository's
