@@ -660,7 +660,7 @@ set for one file.
   `working-in-worktrees` skill (start/status/sync/finish/fan-out), an
   `ensure-worktree-deps.mjs` `SessionStart` backstop that installs
   dependencies into a freshly created worktree, and a `.worktreeinclude`
-  copying `.env`/`.env.local` into every worktree Claude Code creates. It's
+  copying `.env`/`.env.local`/`.env.*.local` into every worktree Claude Code creates. It's
   the pack this repo's
   own `.claude/hooks/post-edit-verify.mjs` and `finishing-work`/
   `starting-work` worktree-awareness (see `.claude/hooks/post-edit-verify.mjs`'s
