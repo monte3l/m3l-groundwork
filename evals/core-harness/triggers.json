@@ -86,6 +86,11 @@
   },
   {
     "skill": "typescript-guidance",
+    "query": "What TypeScript tooling are we missing in this project? Are there gaps in our toolchain?",
+    "should_trigger": true
+  },
+  {
+    "skill": "typescript-guidance",
     "query": "Write a function that debounces a callback by a given number of milliseconds.",
     "should_trigger": false
   },

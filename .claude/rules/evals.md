@@ -52,10 +52,10 @@ directory that actually exists (a pack with no skills of its own, like
 `harness-extras` or `publishing`, contributes nothing), and `bin/eval.mjs`
 merges that list with `templates/core`'s own skills into one plugin, graded
 against `evals/packs-harness/triggers.json`. Running core and pack skills
-together in one plugin is the point: a query like "what tooling are we
-missing" must fire `recommending-ts-tooling` and stay quiet on
-`typescript-guidance`, and vice versa for "is our tsconfig current" -- a
-cross-negative neither suite could catch wrapped alone.
+together in one plugin is the point: a query like "check whether CI passed
+on my PR" must fire `watching-pr-checks` and stay quiet on `triaging-ci`,
+and vice versa for "why did CI fail" -- a cross-negative neither suite could
+catch wrapped alone.
 `bin/make-harness-plugin.mjs --packs <dir>` writes this suite's wrapper for
 local inspection the same way the bare form does for `harness`.
 
