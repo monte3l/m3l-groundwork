@@ -34,8 +34,8 @@ Hub-only. Never dispatched as a spoke's own tool.
    tracking for a worktree you created yourself -- see the tool's own "on
    first entry from the launch directory, the path must appear in
    `git worktree list`" note).
-4. Copy any of `.env`, `.env.local` that exist in the main checkout into the
-   new worktree. `.worktreeinclude` (this pack ships one) only fires for a
+4. Copy any of `.env`, `.env.local`, `.env.*.local` that exist in the main
+   checkout into the new worktree (the same list as `.worktreeinclude`). `.worktreeinclude` (this pack ships one) only fires for a
    worktree Claude Code itself creates -- since this skill creates the
    directory with plain `git worktree add`, that processing never runs here,
    so the copy is done by hand.
@@ -71,7 +71,12 @@ Step 2/4 exist for the same reason and must never drift apart):
 
 1. Confirm the PR for this branch actually merged (`gh pr view --json
 state,mergedAt`) -- never remove a worktree whose work never landed
-   without asking first.
+   without asking first. Then `git fetch origin` and run
+   `git log feat/<slug> ^origin/main --oneline`: a squash merge never makes
+   the branch's commits ancestors of `main`, so a non-empty result is either
+   the squashed originals (expected) or a commit added after the PR merged
+   that is about to be abandoned -- compare it with the merged PR's commits
+   and ask before going further, exactly as `finishing-work` Step 4 does.
 2. If the session is still inside this worktree, `ExitWorktree(keep)` to
    return to the main checkout.
 3. `git -C .claude/worktrees/<slug> status --porcelain` must be empty --
@@ -96,6 +101,14 @@ that worktree automatically (base ref governed by the `worktree.baseRef`
 setting, default `"fresh"` = the remote default branch). Each unit's result
 becomes its own PR -- a fanned-out worktree is not a place to accumulate one
 combined change across several unrelated units.
+
+`ensure-worktree-deps.mjs` only runs at `SessionStart`, so a worktree created
+this way has **no `node_modules`** when its subagent starts: the first
+`post-edit-verify` run would stop with a "no node_modules" error. Put the
+install in every fan-out brief as its first step (`pnpm install
+--frozen-lockfile --prefer-offline` inside that worktree) -- and dispatch a
+writer spoke for it, since a read-only spoke cannot run it when the
+`harness-extras` pack's `guard-readonly-bash` is installed.
 
 ## Policy
 

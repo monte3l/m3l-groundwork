@@ -263,7 +263,23 @@ jobs:
           fi
           name="$(node -p "require('./package.json').name")"
           version="$(node -p "require('./package.json').version")"
-          gh release upload "${name}@${version}" \
+          # changesets names the tag `v<version>` for a single-package
+          # repository (its "root" tool, which is what this baseline is: no
+          # `packages:` in pnpm-workspace.yaml) and `<name>@<version>` once
+          # the repository becomes a workspace. Upload to whichever one
+          # actually has a Release rather than guessing.
+          tag=""
+          for candidate in "v${version}" "${name}@${version}"; do
+            if gh release view "$candidate" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              tag="$candidate"
+              break
+            fi
+          done
+          if [ -z "$tag" ]; then
+            echo "cannot attach the tarball: no GitHub Release found for v${version} or ${name}@${version} -- failing this best-effort step" >&2
+            exit 1
+          fi
+          gh release upload "$tag" \
             "$tarball" --clobber --repo "${{ github.repository }}"
       # Staging succeeds unattended; going live needs a maintainer's 2FA
       # (`npm stage approve <id>`, on the CLI or npmjs.com -- never

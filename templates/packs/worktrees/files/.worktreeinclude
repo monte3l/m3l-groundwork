@@ -8,3 +8,4 @@
 # its own step for why.
 .env
 .env.local
+.env.*.local
