@@ -14,9 +14,31 @@
  * `SessionEnd` has no guaranteed abnormal-termination signal, so the fix is
  * on this read side, not a new write-side hook.
  *
+ * Rooted the same way the write hook is: the git toplevel of the payload's
+ * `cwd` (`resolveRoot` + `currentWorktree`), never a bare
+ * `CLAUDE_PROJECT_DIR`, which stays pinned to the session's original checkout
+ * inside a linked worktree. The artifact is session-keyed
+ * (`tmp/compact-handoff-<session_id>.json`): `findHandoffPath` reads this
+ * session's own file first, and only on `resume`/`startup` falls back to the
+ * newest other handoff (keyed or legacy unkeyed) for orphan recovery -- never
+ * on `compact`, where another session's file belongs to a live session. Only
+ * the file actually read is deleted.
+ *
+ * Orphan recovery honours an age window on OTHER sessions' files (by mtime;
+ * the session's own file has no age limit): younger than
+ * `ORPHAN_MIN_AGE_MS` (10 min) is skipped, since it may belong to a live
+ * session about to compact and reinject it itself; older than
+ * `STALE_THRESHOLD_MS` (24h) is skipped and pruned; between the two, the
+ * newest wins. Every candidate, own file included, must parse as a JSON
+ * object -- an empty/corrupt one is deleted and skipped, and one entry that
+ * vanishes or cannot be stat'd mid-scan is skipped rather than aborting the
+ * scan. Only a missing/unreadable `tmp/` itself means "nothing to recover".
+ *
  * A `resume`/`startup` read has no one-compaction freshness guarantee the
  * way a `compact` read does (it may be reading a handoff several sessions
- * old), so `formatHandoff` flags anything older than 24h as likely stale.
+ * old), so `formatHandoff` flags anything older than 24h as likely stale,
+ * and says "git status unavailable at capture time" when the write side
+ * recorded `uncommittedFiles: null` (git failed) rather than `[]` (clean).
  *
  * Advisory-only: always exits 0. A missing or unreadable artifact (first
  * compaction ever, or the write hook failed) means nothing to inject --
@@ -24,14 +46,31 @@
  * line every time the artifact is legitimately absent.
  */
 import process from "node:process";
-import { readFileSync, existsSync, unlinkSync, realpathSync } from "node:fs";
+import {
+  readFileSync,
+  existsSync,
+  unlinkSync,
+  realpathSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { HANDOFF_REL_PATH } from "./write-compact-handoff.mjs";
+import {
+  HANDOFF_GLOB_PREFIX,
+  currentWorktree,
+  handoffRelPath,
+  resolveRoot,
+} from "./write-compact-handoff.mjs";
 
-const root = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+/** Age past which a handoff is flagged stale, and another session's is pruned. */
+export const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
-const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+/**
+ * Minimum mtime age before another session's handoff is eligible for orphan
+ * recovery -- a younger one may belong to a live session about to reinject it.
+ */
+export const ORPHAN_MIN_AGE_MS = 10 * 60 * 1000;
 
 /**
  * True when `handoff.capturedAt` parses to a timestamp more than 24h before
@@ -82,7 +121,11 @@ export function formatHandoff(handoff, nowMs = Date.now()) {
   const uncommitted = Array.isArray(handoff.uncommittedFiles)
     ? handoff.uncommittedFiles
     : [];
-  if (uncommitted.length > 0) {
+  if (handoff.uncommittedFiles === null) {
+    lines.push(
+      "  • Uncommitted: unknown -- git status unavailable at capture time",
+    );
+  } else if (uncommitted.length > 0) {
     const shown = uncommitted.slice(0, 10);
     const more = uncommitted.length - shown.length;
     lines.push(
@@ -136,20 +179,108 @@ export function shouldReinject(input) {
 
 /**
  * @param {string} handoffPath absolute path to the handoff artifact
- * @returns {Record<string, any> | null} parsed payload, or null if absent
- *   or unreadable/malformed
+ * @returns {Record<string, any> | null} parsed payload, or null if absent,
+ *   unreadable, malformed, or not a JSON object
  */
 export function readHandoff(handoffPath) {
   if (!existsSync(handoffPath)) return null;
   try {
-    return JSON.parse(readFileSync(handoffPath, "utf8"));
+    const parsed = JSON.parse(readFileSync(handoffPath, "utf8"));
+    return typeof parsed === "object" && parsed !== null ? parsed : null;
   } catch {
     return null;
   }
 }
 
-// Deliberately inlined in every hook rather than shared: this pack's hook
-// budget is exactly its three hooks, so a helper module would cost a slot.
+/** `SessionStart` sources allowed to pick up another session's handoff. */
+const ORPHAN_RECOVERY_SOURCES = new Set(["resume", "startup"]);
+
+const HANDOFF_FILE = new RegExp(`^${HANDOFF_GLOB_PREFIX}.*\\.json$`);
+
+/**
+ * Best-effort delete of a handoff candidate that must not be read again.
+ *
+ * @param {string} path
+ */
+function prune(path) {
+  try {
+    unlinkSync(path);
+  } catch {
+    // Already gone or undeletable -- either way it is skipped, not read.
+  }
+}
+
+/**
+ * True when `path` holds a parseable handoff; an unparseable/empty one is
+ * pruned so it can never shadow a valid candidate on a later scan.
+ *
+ * @param {string} path
+ * @returns {boolean}
+ */
+function isValidCandidate(path) {
+  if (readHandoff(path) !== null) return true;
+  prune(path);
+  return false;
+}
+
+/**
+ * Locate the handoff this session should re-inject.
+ *
+ * @param {string} root git toplevel the handoff lives under
+ * @param {unknown} sessionId the payload's `session_id`
+ * @param {string} source the payload's `source`
+ * @param {number} [nowMs] injectable for testing; defaults to `Date.now()`
+ * @returns {string | null} this session's own file when present and valid
+ *   (any age); else, for `resume`/`startup` only, the newest-by-mtime valid
+ *   other handoff in `tmp/` (keyed or legacy unkeyed) aged between
+ *   `ORPHAN_MIN_AGE_MS` and `STALE_THRESHOLD_MS`; else null. Corrupt
+ *   candidates and stale other-session files are pruned along the way.
+ */
+export function findHandoffPath(root, sessionId, source, nowMs = Date.now()) {
+  const own = join(root, handoffRelPath(sessionId));
+  if (existsSync(own) && isValidCandidate(own)) return own;
+  if (!ORPHAN_RECOVERY_SOURCES.has(source)) return null;
+
+  const tmpDir = join(root, "tmp");
+  let entries;
+  try {
+    entries = readdirSync(tmpDir, { withFileTypes: true });
+  } catch {
+    // Missing/unreadable tmp/ -- nothing to recover.
+    return null;
+  }
+
+  /** @type {Array<{ path: string, mtimeMs: number }>} */
+  const eligible = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !HANDOFF_FILE.test(entry.name)) continue;
+    const candidate = join(tmpDir, entry.name);
+    if (candidate === own) continue;
+    let mtimeMs;
+    try {
+      mtimeMs = statSync(candidate).mtimeMs;
+    } catch {
+      // Vanished or unstat-able mid-scan -- skip this entry, keep scanning.
+      continue;
+    }
+    const ageMs = nowMs - mtimeMs;
+    if (ageMs < ORPHAN_MIN_AGE_MS) continue;
+    if (ageMs > STALE_THRESHOLD_MS) {
+      prune(candidate);
+      continue;
+    }
+    eligible.push({ path: candidate, mtimeMs });
+  }
+
+  eligible.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  for (const { path } of eligible) {
+    if (isValidCandidate(path)) return path;
+  }
+  return null;
+}
+
+// Deliberately inlined in every hook rather than shared, so each hook stays
+// one self-contained file.
 // `import.meta.url` is symlink-resolved but `process.argv[1]` is not, so
 // comparing them directly is false under any symlinked path and the body would
 // never run -- exit 0.
@@ -174,7 +305,9 @@ if (isEntryPoint()) {
 
   if (!shouldReinject(input)) process.exit(0);
 
-  const handoffPath = join(root, HANDOFF_REL_PATH);
+  const root = currentWorktree(resolveRoot(input, process.env, process.cwd()));
+  const handoffPath = findHandoffPath(root, input.session_id, input.source);
+  if (handoffPath === null) process.exit(0);
   const handoff = readHandoff(handoffPath);
   if (handoff === null) process.exit(0);
 
@@ -187,7 +320,8 @@ if (isEntryPoint()) {
   process.stdout.write(JSON.stringify(output));
 
   // One-shot: a stale handoff re-injected after a SECOND compaction would
-  // describe state from before the FIRST, no longer current. Consumed once.
+  // describe state from before the FIRST, no longer current. Consumed once --
+  // and only the file actually read, never another session's.
   try {
     unlinkSync(handoffPath);
   } catch {
