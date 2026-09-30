@@ -69,8 +69,8 @@ on it.
   a PreToolUse hook then exits 0, which means _allow_, and a verify gate goes
   green having checked nothing. `.pathname` is percent-encoded while
   `process.argv[1]` is a decoded path, so it also never matches on a path with
-  spaces or non-ASCII characters. Inline the helper; a shared module would cost
-  a hook slot against the baseline's cap.
+  spaces or non-ASCII characters. Inline the helper: every hook carries its own copy of this guard block,
+  so each one stays an independent entrypoint.
 - The package's `exports` map is the public contract — flag any change to it
   as a semver event and check the Conventional Commit matches.
 - TSDoc on exported symbols.

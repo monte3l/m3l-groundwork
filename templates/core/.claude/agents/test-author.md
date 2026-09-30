@@ -180,9 +180,11 @@ expect(() =>
   so the hub can dispatch `code-implementer` precisely. This keeps the suite
   green and self-resolves visibly: once the real fix lands, `test.fails`
   reports an XPASS, the signal to flip it to a normal `test`.
-- Do not use real filesystem mutations in tests (`mkdtempSync`, `mkdirSync`,
-  `writeFileSync`, `rmSync`, etc.); mock the filesystem instead
-  (`vi.spyOn(fs, method)` or `vi.mock('node:fs')`).
+- Mock the filesystem by default (`vi.spyOn(fs, method)` or
+  `vi.mock('node:fs')`). The one exception, matching `tests.md`: when the
+  unit under test's contract IS real filesystem behavior (a walker, a
+  parser reading files), use a per-test `mkdtemp` sandbox torn down in the
+  same test -- never a fixed path, and never a mutation outside it.
 - **The mock target must track the implementation's I/O primitive.** If the
   implementation moves from one primitive to another, your tests must
   re-mock the **new** one — the old mock silently stops intercepting
