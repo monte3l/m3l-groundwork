@@ -75,8 +75,8 @@ research every area unconditionally on every run.
   a project shaped like this one (workspaces, multiple entry points, a CLI
   `bin`) that has no such tool yet? (An existing `knip.json` that looks stale
   against the project's actual entry points is drift in existing config, not
-  absence -- `knip.json` is one of this skill's own domain files;
-  hand it off rather than researching a fix here.)
+  absence -- `knip.json` is a `research`/`refresh` domain file; switch mode
+  rather than researching a fix here.)
 
 ## pnpm supply-chain settings
 
@@ -121,8 +121,8 @@ research every area unconditionally on every run.
 - **Research**: what does `nodejs.org`'s current release schedule recommend
   pinning to for a new project? (A disagreement between multiple existing
   pins, or a pin that's already past its documented end-of-life, is drift in
-  something already configured -- `research`/`refresh`'s question, not this
-  skill's.)
+  something already configured -- `research`/`refresh`'s question, not
+  `gaps` mode's.)
 
 ## release automation
 

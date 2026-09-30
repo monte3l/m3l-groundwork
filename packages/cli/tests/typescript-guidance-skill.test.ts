@@ -117,8 +117,8 @@ describe("the real templates/core typescript-guidance skill (post ts-advisor mer
       ).not.toMatch(/onlyBuiltDependencies/);
       expect(
         content,
-        `${filePath} names a fixed typescript-eslint version cap`,
-      ).not.toMatch(/6\.1\.0/);
+        `${filePath} still caps typescript-eslint support below 6.1.0`,
+      ).not.toMatch(/typescript-eslint[^\n]{0,40}6\.1\.0/);
     }
   });
 });

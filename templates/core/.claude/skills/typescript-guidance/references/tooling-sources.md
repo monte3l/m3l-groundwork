@@ -46,7 +46,8 @@ Every domain here is **T1 by default** for its own tool -- owner-normative,
 the same standing `typescript-guidance`'s T1 gives `typescriptlang.org` for
 TypeScript itself. Most of these tools have exactly one canonical doc
 source, unlike TypeScript's ecosystem of adjacent linters/checkers, so most
-citations from this file carry `TIER: T1` in `gaps` mode's findings format.
+citations from this file carry `TIER: T1` in the findings format `research` mode defines (which `gaps`
+mode reuses).
 
 - `pnpm.io` -- pnpm's own CLI, workspace, and `.npmrc`/supply-chain-setting
   reference.
