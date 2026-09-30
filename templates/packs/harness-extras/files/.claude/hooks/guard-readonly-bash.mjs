@@ -36,11 +36,19 @@
  * Known, accepted gaps in the prefix-verb/nested-shell handling (deliberate,
  * per the tradeoff above -- not oversights): a prefix verb's OWN value-taking
  * flag (`sudo -u root rm x`, `env -C /tmp rm x`, `xargs -n 1 rm`) resolves the
- * flag's value as the verb, missing the real command; `bash -c`/`sh -c`'s
- * nested-command regex requires a standalone `-c` (misses combined short
- * flags like `-lc`) and only inspects up to the closing quote (misses
- * `bash -c '...' extra-arg`); other shells (`zsh`, `dash`) and `eval` are not
- * recognized as nested-shell prefixes at all; `find`'s `-exec` check only
+ * flag's value as the verb, missing the real command. A nested shell's `-c`
+ * command string (standalone `-c` or a short-option cluster like `-lc`) is
+ * unwrapped and classified recursively wherever the verb resolves to a shell
+ * -- behind `sudo`/`env`/`xargs`/`command`, leading `VAR=value` assignments,
+ * or `npx`/`pnpm exec`/`pnpm dlx`/`npm exec` (whose own shell-mode flags,
+ * `-c`/`--call`/`--shell-mode`, are unwrapped the same way) -- but only for
+ * the shells `bash sh zsh dash ksh`; `eval`, `busybox sh` and a shell reached
+ * through an unrecognized wrapper (`time`, `nice`, `nohup`, `timeout`,
+ * `xargs -I{}`, ...) are not unwrapped unless listed. Every word is unquoted
+ * the way the shell would before it is compared (`"rm"`, `r\m` and `git
+ * "commit"` match as `rm`/`git commit`); a verb or subcommand word, or a
+ * nested command string, that uses `$'...'` ANSI-C quoting or whose quote
+ * never closes blocks rather than being decoded. `find`'s `-exec` check only
  * inspects the immediate next token, missing `-execdir`/`-ok` and a chained
  * `-exec sh -c '...'`. Interpreters are not inspected either: a file write
  * from inside `node -e`, `python -c`, `perl -e`, `ruby -e` or a script they
@@ -48,7 +56,10 @@
  * `git -c key=value`/`--config-env` is checked against GIT_EXEC_CONFIG_KEY, a
  * DENYLIST of the known command-executing config keys (pagers, editors,
  * aliases, credential helpers, textconv, ...) -- a command-running key git
- * adds later, or one not on that list, passes. Leading `VAR=value`
+ * adds later, or one not on that list, passes; `include.path`/
+ * `includeIf.<cond>.path` and the `GIT_CONFIG*` file-swapping variables block,
+ * but a config FILE the user already controls (the repo's `.git/config`,
+ * `~/.gitconfig`) can still set an exec key and is never read. Leading `VAR=value`
  * assignments ahead of `git` are likewise checked against GIT_EXEC_ENV, a
  * DENYLIST of git's own command-executing environment variables; the
  * equivalent variables of other tools (`PAGER`, `EDITOR`, `LESSOPEN`, ...)
@@ -144,19 +155,20 @@ function chainOperatorLength(command, i) {
 }
 
 /**
- * Segment a shell command on its `&&`/`||`/`|`/`;`/newline chain operators,
- * ignoring any that sit inside a quoted string (`grep -E "a|b"`, `bash -c
- * 'x; y'`). Quotes pair the way a POSIX shell pairs them -- the same rules the
- * redirect scan in classifyBashCommand uses: a backslash outside single quotes
- * escapes the next character (so `\"` opens nothing and `"\""` stays open), a
- * backslash inside single quotes is literal, and `$'...'` honors `\'`. An
- * unbalanced quote falls back to splitting on every operator regardless of
- * quoting (fail closed: an unterminated quote must not hide a real chain).
+ * Split `command` at every boundary `boundaryAt(command, i)` reports (the
+ * boundary's length, 0 for none) that does not sit inside a quoted string.
+ * Quotes pair the way a POSIX shell pairs them -- the same rules the redirect
+ * scan in classifyBashCommand uses: a backslash outside single quotes escapes
+ * the next character (so `\"` opens nothing and `"\""` stays open), a
+ * backslash inside single quotes is literal, and `$'...'` honors `\'`.
+ * Returns undefined when a quote never closes, so each caller can pick its own
+ * fail-closed fallback.
  *
  * @param {string} command
- * @returns {string[]}
+ * @param {(command: string, i: number) => number} boundaryAt
+ * @returns {string[] | undefined}
  */
-function segments(command) {
+function splitUnquoted(command, boundaryAt) {
   /** @type {string[]} */
   const parts = [];
   let start = 0;
@@ -176,7 +188,7 @@ function segments(command) {
       quote = "$'";
       i++;
     } else {
-      const length = chainOperatorLength(command, i);
+      const length = boundaryAt(command, i);
       if (length > 0) {
         parts.push(command.slice(start, i));
         i += length - 1;
@@ -184,11 +196,105 @@ function segments(command) {
       }
     }
   }
-  if (quote !== undefined) {
-    return command.split(/&&|\|\||(?<!>)\||;|\n/).map((s) => s.trim());
-  }
+  if (quote !== undefined) return undefined;
   parts.push(command.slice(start));
+  return parts;
+}
+
+/**
+ * Segment a shell command on its `&&`/`||`/`|`/`;`/newline chain operators,
+ * ignoring any that sit inside a quoted string (`grep -E "a|b"`, `bash -c
+ * 'x; y'`) -- see splitUnquoted. An unbalanced quote falls back to splitting
+ * on every operator regardless of quoting (fail closed: an unterminated quote
+ * must not hide a real chain).
+ *
+ * @param {string} command
+ * @returns {string[]}
+ */
+function segments(command) {
+  const parts =
+    splitUnquoted(command, chainOperatorLength) ??
+    command.split(/&&|\|\||(?<!>)\||;|\n/);
   return parts.map((s) => s.trim());
+}
+
+/**
+ * Split one segment into its shell words on unquoted whitespace, keeping each
+ * quoted span (quotes included) inside a single token, so `bash -c 'rm -rf
+ * src'`'s payload is one token with its original whitespace intact. An
+ * unbalanced quote falls back to a plain whitespace split.
+ *
+ * @param {string} segment
+ * @returns {string[]}
+ */
+function words(segment) {
+  const parts =
+    splitUnquoted(segment, (s, i) => (/\s/.test(s[i]) ? 1 : 0)) ??
+    segment.split(/\s+/);
+  return parts.filter(Boolean);
+}
+
+/**
+ * The value a shell gives one word (see `words`), with its quoting removed:
+ * single quotes are literal, double quotes honor a backslash only before `$`,
+ * a backtick, `"`, `\` or a newline, and an unquoted backslash escapes the
+ * next character. Undefined when a quote never closes, or when the word uses
+ * `$'...'` ANSI-C quoting, whose escapes (`\n`, `\x3e`, ...) can produce chain
+ * operators and redirects this guard does not decode -- the caller fails
+ * closed on undefined.
+ *
+ * @param {string} word
+ * @returns {string | undefined}
+ */
+function shellWordValue(word) {
+  if (word.includes("$'")) return undefined;
+  let out = "";
+  for (let i = 0; i < word.length; i++) {
+    const c = word[i];
+    if (c === "'") {
+      const end = word.indexOf("'", i + 1);
+      if (end === -1) return undefined;
+      out += word.slice(i + 1, end);
+      i = end;
+    } else if (c === '"') {
+      let j = i + 1;
+      for (; j < word.length && word[j] !== '"'; j++) {
+        if (word[j] === "\\" && j + 1 < word.length) {
+          if ('$`"\\\n'.includes(word[j + 1])) j++;
+        }
+        out += word[j];
+      }
+      if (j >= word.length) return undefined;
+      i = j;
+    } else if (c === "\\") {
+      i++;
+      out += word[i] ?? "";
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
+/**
+ * One shell word: `raw` is its source text (quotes included), `value` what the
+ * shell makes of it (shellWordValue) -- undefined when it cannot be read.
+ * Every verb/subcommand/flag comparison uses `value` (or `raw` when there is
+ * none), so `"rm" x`, `r\m x` and `git "commit"` match exactly as bash runs
+ * them; `raw` is kept for the things quoting itself decides: whether a word is
+ * a `VAR=value` assignment, and a nested `-c` payload, which is re-parsed.
+ *
+ * @typedef {{ raw: string, value: string | undefined }} Word
+ */
+
+/** @param {string} raw @returns {Word} */
+function toWord(raw) {
+  return { raw, value: shellWordValue(raw) };
+}
+
+/** The text a word is matched by: its unquoted value, else its raw text. */
+function wordText(word) {
+  return word.value ?? word.raw;
 }
 
 /** Strip a leading path (e.g. `/usr/bin/rm` -> `rm`) for verb comparison. */
@@ -233,20 +339,26 @@ function assignmentEnd(tokens, i) {
  * stripped assignment are returned too, since an environment variable can
  * itself make the real command run something (`GIT_PAGER=sh git log`).
  *
- * @param {string[]} tokens
- * @returns {{ tokens: string[], assignments: string[] }}
+ * An assignment is recognized from the RAW word, as the shell does (a quoted
+ * `"FOO=1"` is a command name, not an assignment); prefix verbs and their
+ * flags are matched by their unquoted text.
+ *
+ * @param {Word[]} words
+ * @returns {{ words: Word[], assignments: string[] }}
  */
-function stripPrefixVerbs(tokens) {
+function stripPrefixVerbs(words) {
   /** @type {string[]} */
   const assignments = [];
+  const raws = words.map((w) => w.raw);
+  const texts = words.map(wordText);
   let i = 0;
   const skipAssignments = (allowFlags) => {
-    while (i < tokens.length) {
-      const name = ASSIGNMENT.exec(tokens[i])?.[1];
+    while (i < words.length) {
+      const name = ASSIGNMENT.exec(raws[i])?.[1];
       if (name !== undefined) {
         assignments.push(name);
-        i = assignmentEnd(tokens, i);
-      } else if (allowFlags && tokens[i].startsWith("-")) {
+        i = assignmentEnd(raws, i);
+      } else if (allowFlags && texts[i].startsWith("-")) {
         i++;
       } else {
         return;
@@ -254,21 +366,21 @@ function stripPrefixVerbs(tokens) {
     }
   };
   skipAssignments(false);
-  while (i < tokens.length && PREFIX_VERBS.has(baseName(tokens[i]))) {
+  while (i < words.length && PREFIX_VERBS.has(baseName(texts[i]))) {
     // `command -v`/`-V` looks a name up (prints its path/description) and
     // does not run it -- unlike every other use of `command` (and unlike
     // `sudo`/`env`/`xargs`), the following token is never executed, so it
     // must not be peeled off as the "real" verb.
     if (
-      baseName(tokens[i]) === "command" &&
-      (tokens[i + 1] === "-v" || tokens[i + 1] === "-V")
+      baseName(texts[i]) === "command" &&
+      (texts[i + 1] === "-v" || texts[i + 1] === "-V")
     ) {
       break;
     }
     i++;
     skipAssignments(true);
   }
-  return { tokens: tokens.slice(i), assignments };
+  return { words: words.slice(i), assignments };
 }
 
 // Global/wrapper flags -- per verb -- that consume the FOLLOWING token as
@@ -329,15 +441,24 @@ function firstPositionalIndex(tokens, start, valueFlags) {
  * and any global flags (per FLAGS_WITH_VALUE) that appear before the
  * subcommand. `subIndex` is the subcommand's index in `tokens` (-1 when there
  * is none), so a caller can read its arguments as `tokens.slice(subIndex + 1)`.
- * `assignments` names every stripped environment assignment.
+ * `assignments` names every stripped environment assignment. `tokens` holds
+ * each remaining word's matching text (wordText), index-aligned with `words`.
  *
- * @param {string[]} rawTokens
- * @returns {{ verb: string, sub: string | undefined, subIndex: number, tokens: string[], assignments: string[] }}
+ * @param {Word[]} rawWords
+ * @returns {{ verb: string, sub: string | undefined, subIndex: number, words: Word[], tokens: string[], assignments: string[] }}
  */
-function parseTokens(rawTokens) {
-  const { tokens, assignments } = stripPrefixVerbs(rawTokens);
+function parseTokens(rawWords) {
+  const { words, assignments } = stripPrefixVerbs(rawWords);
+  const tokens = words.map(wordText);
   if (tokens.length === 0) {
-    return { verb: "", sub: undefined, subIndex: -1, tokens: [], assignments };
+    return {
+      verb: "",
+      sub: undefined,
+      subIndex: -1,
+      words,
+      tokens,
+      assignments,
+    };
   }
 
   const verb = baseName(tokens[0]);
@@ -347,7 +468,7 @@ function parseTokens(rawTokens) {
     FLAGS_WITH_VALUE[verb] ?? new Set(),
   );
   const sub = subIndex === -1 ? undefined : tokens[subIndex];
-  return { verb, sub, subIndex, tokens, assignments };
+  return { verb, sub, subIndex, words, tokens, assignments };
 }
 
 // Mutating subcommands per top-level verb (e.g. "git" -> "commit"). A verb
@@ -546,6 +667,9 @@ const GIT_EXEC_CONFIG_KEY = new RegExp(
     String.raw`man\..+\.cmd`,
     String.raw`sequence\.editor`,
     String.raw`gpg\.(?:.+\.)?program`,
+    // Not an exec key itself, but pulls in an arbitrary config file that can
+    // set any of the keys above.
+    String.raw`include(?:if\..+)?\.path`,
   ].join("|")})$`,
   "i",
 );
@@ -576,10 +700,11 @@ function gitExecConfigKey(globalTokens) {
 // driver, pager, editor, ssh transport, askpass/proxy helper) or inject a
 // config override the way `-c` does (GIT_CONFIG_PARAMETERS, the
 // GIT_CONFIG_COUNT/KEY_n/VALUE_n triple), or point git at another program
-// directory or hook template. Any value blocks -- the variable itself is the
-// exec surface.
+// directory or hook template, or swap in another config file wholesale
+// (GIT_CONFIG, GIT_CONFIG_GLOBAL/SYSTEM, GIT_CONFIG_NOSYSTEM), which can set
+// any exec key. Any value blocks -- the variable itself is the exec surface.
 const GIT_EXEC_ENV =
-  /^GIT_(?:EXTERNAL_DIFF|PAGER|EDITOR|SEQUENCE_EDITOR|SSH|SSH_COMMAND|ASKPASS|PROXY_COMMAND|CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_\w+|CONFIG_VALUE_\w+|EXEC_PATH|TEMPLATE_DIR)$/;
+  /^GIT_(?:EXTERNAL_DIFF|PAGER|EDITOR|SEQUENCE_EDITOR|SSH|SSH_COMMAND|ASKPASS|PROXY_COMMAND|CONFIG|CONFIG_GLOBAL|CONFIG_SYSTEM|CONFIG_NOSYSTEM|CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_\w+|CONFIG_VALUE_\w+|EXEC_PATH|TEMPLATE_DIR)$/;
 
 const GIT_CONFIG_READ = new Set([
   "--get",
@@ -607,8 +732,13 @@ const READ_ONLY_GIT_FORMS = {
   branch: isReadOnlyGitBranch,
   worktree: (args) => args[0] === "list",
   stash: (args) => args[0] === "list" || args[0] === "show",
+  // The legacy read flags (`--get`, `--list`, ...) or git >= 2.46's `get`/
+  // `list` subcommands; its `set`/`unset`/`edit`/... subcommands and the
+  // legacy `git config <name> <value>` write form still block.
   config: (args) =>
-    args.some((a) => GIT_CONFIG_READ.has(a)) &&
+    (args[0] === "get" ||
+      args[0] === "list" ||
+      args.some((a) => GIT_CONFIG_READ.has(a))) &&
     !args.some((a) => GIT_CONFIG_WRITE.has(a)),
   tag: isReadOnlyGitTag,
 };
@@ -679,6 +809,82 @@ const MUTATING_VERBS = new Set([
 // `/bin/bash`), capturing the quoted argument's inner content.
 const SHELL_DASH_C =
   /^\s*(?:\S*\/)?(?:bash|sh)\s+(?:-\S+\s+)*-c\s+(['"])([\s\S]*)\1\s*$/;
+
+// Shells whose `-c <command>` is unwrapped wherever a verb resolves to one --
+// behind a prefix verb, an env assignment or a tool wrapper -- and the shell
+// options that consume the following token as their value.
+const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh"]);
+const SHELL_VALUE_OPTIONS = new Set([
+  "-o",
+  "+o",
+  "-O",
+  "+O",
+  "--rcfile",
+  "--init-file",
+]);
+
+// A tool wrapper's own flags that run their value(s) as a shell command
+// (`npx -c '<cmd>'`, `npm exec --call '<cmd>'`, `pnpm exec --shell-mode
+// <cmd>`), keyed by wrapper verb.
+const NPX_SHELL_FLAGS = new Set(["-c", "--call"]);
+const WRAPPER_SHELL_FLAGS = {
+  npx: NPX_SHELL_FLAGS,
+  pnpx: NPX_SHELL_FLAGS,
+  npm: NPX_SHELL_FLAGS,
+  pnpm: new Set(["-c", "--shell-mode"]),
+};
+
+/**
+ * For a shell invocation (`tokens[0]` is the shell), the index of the command
+ * string its `-c` option runs -- `-c` alone or inside a short-option cluster
+ * (`-lc`, `-ec`) -- which is the first operand after the options. -1 when no
+ * `-c` is given (a script or an interactive shell); `tokens.length` when `-c`
+ * is given but no operand follows.
+ *
+ * @param {string[]} tokens
+ * @returns {number}
+ */
+function shellCommandIndex(tokens) {
+  let dashC = false;
+  for (let j = 1; j < tokens.length; j++) {
+    const t = tokens[j];
+    if (t === "--" || t === "-") return dashC ? j + 1 : -1;
+    if (SHELL_VALUE_OPTIONS.has(t)) {
+      j++; // skip the option's value
+    } else if (/^[-+]/.test(t)) {
+      if (/^-[A-Za-z]*c[A-Za-z]*$/.test(t)) dashC = true;
+    } else {
+      return dashC ? j : -1;
+    }
+  }
+  return dashC ? tokens.length : -1;
+}
+
+/**
+ * Classify a nested shell command given as shell words (see `words`), which a
+ * shell or wrapper `via` runs: each word's unquoted value is joined and the
+ * result classified recursively with classifyBashCommand. Fails closed --
+ * blocks -- when there is no word or one cannot be read.
+ *
+ * @param {string} via e.g. `bash -c`, `npx -c`
+ * @param {Word[]} payloadWords
+ * @returns {{ blocked: true, reason: string } | undefined}
+ */
+function classifyNestedCommand(via, payloadWords) {
+  const values = payloadWords.map((w) => w.value);
+  if (values.length === 0 || values.includes(undefined)) {
+    return {
+      blocked: true,
+      reason: `runs a nested shell command via ${via} whose command string could not be read`,
+    };
+  }
+  const nested = classifyBashCommand(values.join(" "));
+  if (!nested.blocked) return undefined;
+  return {
+    blocked: true,
+    reason: `runs a nested shell command via ${via} that ${nested.reason}`,
+  };
+}
 
 /**
  * Classify a shell command as blocked (mutating) or allowed for a read-only
@@ -755,7 +961,7 @@ export function classifyBashCommand(command) {
       }
     }
 
-    const verdict = classifyTokens(segment.split(/\s+/).filter(Boolean));
+    const verdict = classifyTokens(words(segment).map(toWord));
     if (verdict !== undefined) return verdict;
   }
 
@@ -786,17 +992,45 @@ function wrappedToolStart(verb, sub, subIndex) {
  * redirect scan, which needs the raw segment text). A tool wrapper (see
  * wrappedToolStart) recurses on `<tool> ...`, so a wrapped fixer is caught the
  * same as a bare one; `inherited` carries the environment assignments stripped
- * ahead of the wrapper, which the wrapped tool still sees.
+ * ahead of the wrapper, which the wrapped tool still sees. A verb word (or,
+ * for a verb with MUTATING_SUBCOMMANDS, a subcommand word) that cannot be
+ * unquoted -- `$'...'` ANSI-C quoting or a quote that never closes -- blocks,
+ * since the command it names is unknown.
  *
- * @param {string[]} rawTokens
+ * @param {Word[]} rawWords
  * @param {readonly string[]} [inherited]
  * @returns {{ blocked: true, reason: string } | undefined}
  */
-function classifyTokens(rawTokens, inherited = []) {
-  const parsed = parseTokens(rawTokens);
-  const { verb, sub, subIndex, tokens } = parsed;
+function classifyTokens(rawWords, inherited = []) {
+  const parsed = parseTokens(rawWords);
+  const { verb, sub, subIndex, words, tokens } = parsed;
   const assignments = [...inherited, ...parsed.assignments];
+  if (tokens.length === 0) return undefined;
+  const unreadable =
+    words[0].value === undefined
+      ? words[0]
+      : subIndex !== -1 &&
+          MUTATING_SUBCOMMANDS[verb] !== undefined &&
+          words[subIndex].value === undefined
+        ? words[subIndex]
+        : undefined;
+  if (unreadable !== undefined) {
+    return {
+      blocked: true,
+      reason: `runs a command word (${unreadable.raw}) whose quoting could not be read`,
+    };
+  }
   if (verb.length === 0) return undefined;
+
+  if (SHELLS.has(verb)) {
+    const commandIndex = shellCommandIndex(tokens);
+    if (commandIndex !== -1) {
+      return classifyNestedCommand(
+        `${verb} -c`,
+        words.slice(commandIndex, commandIndex + 1),
+      );
+    }
+  }
 
   if (MUTATING_VERBS.has(verb)) {
     return { blocked: true, reason: `runs "${verb}", a mutating command` };
@@ -840,7 +1074,8 @@ function classifyTokens(rawTokens, inherited = []) {
 
   // A wrapper that runs another tool -- judge `<tool> ...` itself, its
   // version pin stripped. Its own flags, a `--` separator included, are
-  // skipped to reach the tool.
+  // skipped to reach the tool, except a shell-mode flag (WRAPPER_SHELL_FLAGS),
+  // whose value is a shell command rather than a tool name.
   const wrapperEnd = wrappedToolStart(verb, sub, subIndex);
   if (wrapperEnd !== -1) {
     const toolIndex = firstPositionalIndex(
@@ -848,14 +1083,38 @@ function classifyTokens(rawTokens, inherited = []) {
       wrapperEnd,
       FLAGS_WITH_VALUE.npx,
     );
+    const flagsEnd = toolIndex === -1 ? tokens.length : toolIndex;
+    for (let k = wrapperEnd; k < flagsEnd; k++) {
+      const t = tokens[k];
+      if (WRAPPER_SHELL_FLAGS[verb].has(t)) {
+        return classifyNestedCommand(`${verb} ${t}`, words.slice(k + 1));
+      }
+      if (t.startsWith("--call=") && WRAPPER_SHELL_FLAGS[verb].has("--call")) {
+        const inline = t.slice("--call=".length);
+        return classifyNestedCommand(`${verb} --call`, [
+          {
+            raw: inline,
+            value: words[k].value === undefined ? undefined : inline,
+          },
+          ...words.slice(k + 1),
+        ]);
+      }
+    }
     if (toolIndex === -1) return undefined;
+    const tool = unpinnedToolName(tokens[toolIndex]);
     return classifyTokens(
-      [unpinnedToolName(tokens[toolIndex]), ...tokens.slice(toolIndex + 1)],
+      [
+        {
+          raw: tool,
+          value: words[toolIndex].value === undefined ? undefined : tool,
+        },
+        ...words.slice(toolIndex + 1),
+      ],
       assignments,
     );
   }
   if (verb === "pnpm" && (sub === "eslint" || sub === "prettier")) {
-    return classifyTokens(tokens.slice(subIndex), assignments);
+    return classifyTokens(words.slice(subIndex), assignments);
   }
 
   if (verb === "git") {

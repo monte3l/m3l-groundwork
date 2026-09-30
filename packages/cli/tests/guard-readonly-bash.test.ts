@@ -812,3 +812,306 @@ describe("classifyBashCommand -- a pipe inside a quoted pattern is not a segment
     expect(guard.classifyBashCommand(command).blocked).toBe(true);
   });
 });
+
+// PR #83 review findings (round 3, second bot review): a nested `bash -c`/
+// `sh -c` is never unwrapped once it sits behind a wrapper (`pnpm exec`), a
+// prefix verb (`env`/`sudo`/`xargs`/`command`), a leading env assignment, or
+// is spelled with a combined short flag (`-lc`) or an unrecognized shell
+// (`zsh`/`dash`); `npx`/`npm exec`/`pnpm exec`/`pnpm dlx`'s own shell-mode
+// flags (`-c`, `--call`, `--shell-mode`) hand their payload to a shell rather
+// than treating it as a tool name to recurse into, so the payload is judged
+// (if at all) as a garbled, quote-mangled "tool name" instead of as the shell
+// command it actually is; more git config-indirection surfaces
+// (`-c include.path=`/`-c includeIf...path=`, the `GIT_CONFIG*` family of env
+// vars) are missing from both denylists; and git's modern `config get`/
+// `config list`/`config set`/`config unset` subcommand spellings (git
+// >=2.46) are not recognized by the read-only exemption at all, which only
+// checks for the legacy `--get`/`--list` flag forms -- so a read-only modern
+// invocation is currently blocked as a false positive. Verified against the
+// pushed hook: every "MUST BLOCK" case below currently classifies as
+// allowed, and every "currently a false positive" case below currently
+// classifies as blocked.
+
+describe("classifyBashCommand -- a nested shell must be unwrapped behind a wrapper, prefix verb, or altered spelling", () => {
+  it.each([
+    [
+      'pnpm exec bash -c "rm -rf src"',
+      "a nested bash -c hidden behind the pnpm exec wrapper",
+    ],
+    ["env bash -c 'rm x'", "a nested bash -c hidden behind the env prefix"],
+    ["sudo sh -c 'rm x'", "a nested sh -c hidden behind the sudo prefix"],
+    ["xargs sh -c 'rm x'", "a nested sh -c hidden behind the xargs prefix"],
+    [
+      "command bash -c 'rm x'",
+      "a nested bash -c hidden behind the command prefix",
+    ],
+    [
+      "FOO=1 bash -c 'rm x'",
+      "a nested bash -c hidden behind a leading env assignment",
+    ],
+    ["npx bash -c 'rm x'", "a nested bash -c hidden behind the npx wrapper"],
+    [
+      "bash -lc 'rm x'",
+      "a combined short flag (-lc) is not recognized as bash's -c",
+    ],
+    [
+      "sh -c 'ls; rm x'",
+      "a chain operator inside the nested payload must still surface the mutating half",
+    ],
+    ["zsh -c 'rm x'", "zsh is not recognized as a nested-shell prefix at all"],
+    [
+      "dash -c 'rm x'",
+      "dash is not recognized as a nested-shell prefix at all",
+    ],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    [
+      'pnpm exec bash -c "ls src"',
+      "a read-only nested payload behind the pnpm exec wrapper",
+    ],
+    [
+      "env sh -c 'git log --oneline'",
+      "a read-only nested payload behind the env prefix",
+    ],
+    ["bash -c 'echo hi'", "a bare, read-only bash -c payload"],
+    ["sudo sh -c 'cat file'", "a read-only nested payload behind sudo"],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- npx/npm/pnpm wrapper shell-mode flags hand their payload to a shell", () => {
+  it.each([
+    [
+      'npx -c "rm -rf src"',
+      "npx's own -c flag runs its payload as a shell command",
+    ],
+    [
+      "npm exec -c 'rm x'",
+      "npm exec's own -c flag runs its payload as a shell command",
+    ],
+    [
+      "npm exec --call 'rm x'",
+      "npm exec's own --call flag runs its payload as a shell command",
+    ],
+    [
+      "pnpm dlx -c 'rm x'",
+      "pnpm dlx's own -c flag runs its payload as a shell command",
+    ],
+    [
+      "pnpm exec -c 'rm x'",
+      "pnpm exec's own -c flag runs its payload as a shell command",
+    ],
+    [
+      "pnpm exec --shell-mode 'rm x'",
+      "pnpm exec's own --shell-mode flag runs its payload as a shell command",
+    ],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ['npx -c "ls"', "npx -c with a read-only payload"],
+    [
+      "pnpm exec -c 'git status'",
+      "pnpm exec -c with a payload classified as a shell command; the read-only payload stays allowed",
+    ],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- more git config-indirection surfaces must block", () => {
+  it.each([
+    [
+      "git -c include.path=/tmp/x log",
+      "-c include.path pulls in an arbitrary config file, which can itself set core.pager/alias.*",
+    ],
+    [
+      "git -c includeIf.gitdir:/a/.path=/tmp/x log",
+      "-c includeIf...path is the same indirection, conditioned on the gitdir",
+    ],
+    [
+      "GIT_CONFIG_GLOBAL=/tmp/x git log",
+      "GIT_CONFIG_GLOBAL points git's global config at an arbitrary file",
+    ],
+    [
+      "GIT_CONFIG_SYSTEM=/tmp/x git log",
+      "GIT_CONFIG_SYSTEM points git's system config at an arbitrary file",
+    ],
+    [
+      "GIT_CONFIG=/tmp/x git log",
+      "GIT_CONFIG points git's config at an arbitrary file",
+    ],
+    [
+      "GIT_CONFIG_NOSYSTEM=0 GIT_CONFIG_SYSTEM=/x git log",
+      "GIT_CONFIG_SYSTEM still indirects even alongside an unrelated assignment",
+    ],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ["GIT_DIR=.git git log", "GIT_DIR only points at a repo location"],
+    ["git -c color.ui=never log", "a harmless -c override"],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- git's modern 'config get'/'config list' subcommand spellings are read-only", () => {
+  // The read-only exemption for `git config` only recognizes the legacy
+  // `--get`/`--get-all`/`--list`/`-l` FLAG forms. Git >=2.46 also accepts
+  // `get`/`set`/`list`/`unset`/`edit` as explicit SUBCOMMANDS
+  // (`git config get user.name`), which the exemption's GIT_CONFIG_READ set
+  // never matches -- so a read-only modern invocation currently falls
+  // through to the generic "config is a mutating subcommand" block.
+  it.each([
+    [
+      "git config get user.name",
+      "the modern 'config get' subcommand reads a single value (currently a false positive)",
+    ],
+    [
+      "git config list",
+      "the modern 'config list' subcommand reads everything (currently a false positive)",
+    ],
+    [
+      "git config list --show-origin",
+      "'config list' with a read-only display flag (currently a false positive)",
+    ],
+    [
+      "git config get --all user.name",
+      "'config get --all' reads every value for a key (currently a false positive)",
+    ],
+  ])("allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+
+  it.each([
+    ["git config set user.name x", "the modern 'config set' subcommand writes"],
+    [
+      "git config unset user.name",
+      "the modern 'config unset' subcommand writes",
+    ],
+    ["git config edit", "the modern 'config edit' subcommand opens an editor"],
+    [
+      "git config rename-section a b",
+      "the modern 'config rename-section' subcommand writes",
+    ],
+    [
+      "git config remove-section a",
+      "the modern 'config remove-section' subcommand writes",
+    ],
+    ["git config user.name x", "the legacy 'config <key> <value>' write form"],
+  ])("still blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+});
+
+// PR #83 review findings (round 4): a quoted or escaped command word is never
+// unquoted before verb/subcommand matching. `baseName` (and therefore every
+// verb/subcommand comparison in `classifyTokens`) compares the RAW token text,
+// so `"rm" x`, `'rm' -rf x`, `rm"" x`, `r"m" x` and `r\m x` -- every one of
+// which bash actually runs as a plain `rm` invocation once its own quoting is
+// resolved -- compare a quoted/escaped string against the literal "rm" and
+// never match, silently letting the mutating command through. The same gap
+// hides a quoted git/pnpm subcommand (`git "commit" -m x`, `git 'branch'
+// foo`, `git "push"`, `pnpm "install"`), a quoted verb itself (`"git" commit
+// -m x`), a quoted real command behind a prefix verb (`sudo "rm" x`, `env
+// 'rm' x`), a quoted shell name so a nested `-c` payload is never unwrapped at
+// all (`"bash" -c 'rm x'`, `'sh' -c "rm x"`), a quoted verb INSIDE an
+// already-unwrapped nested payload (`bash -c '"rm" x'`, `bash -c "'rm' x"`), a
+// quoted tool name behind npx/pnpm exec (`npx "prettier" --write .`, `pnpm
+// exec 'eslint' --fix`), a quoted fixer verb run directly (`"prettier"
+// --write .`), a quoted git config key, and a quoted `sed -i` flag. Two
+// further cases fail CLOSED rather than open, per this hook's own established
+// pattern of blocking rather than guessing when a word cannot be read (see
+// `classifyNestedCommand`'s "whose command string could not be read"): a verb
+// using `$'...'` ANSI-C quoting and a verb with an unterminated quote can
+// neither be statically unquoted, so they must block rather than silently
+// compare as a literal mismatch and pass. Verified against the pushed hook:
+// every "MUST BLOCK" case below currently classifies as allowed.
+describe("classifyBashCommand -- quoted/escaped verb words must be unquoted before matching", () => {
+  it.each([
+    ['"rm" x', "a double-quoted verb"],
+    ["'rm' -rf x", "a single-quoted verb"],
+    [
+      'rm"" x',
+      "a verb followed by an empty double-quoted span, still literally rm once unquoted",
+    ],
+    ['r"m" x', "a verb split across an unquoted and a quoted span"],
+    [
+      String.raw`r\m x`,
+      "a verb with a backslash-escaped character, still literally rm once unescaped",
+    ],
+    ['git "commit" -m x', "a quoted git subcommand"],
+    ["git 'branch' foo", "a single-quoted git subcommand"],
+    ['git "push"', "a quoted git subcommand with no further arguments"],
+    ['pnpm "install"', "a quoted pnpm subcommand"],
+    ['"git" commit -m x', "a quoted git verb itself"],
+    ['sudo "rm" x', "a quoted real command hidden behind the sudo prefix"],
+    ["env 'rm' x", "a quoted real command hidden behind the env prefix"],
+    [
+      `"bash" -c 'rm x'`,
+      "a quoted shell name -- its nested -c payload must still be unwrapped",
+    ],
+    [
+      `'sh' -c "rm x"`,
+      "a single-quoted shell name -- its nested -c payload must still be unwrapped",
+    ],
+    [
+      `bash -c '"rm" x'`,
+      "a quoted verb inside an already-unwrapped nested -c payload",
+    ],
+    [
+      `bash -c "'rm' x"`,
+      "a single-quoted verb inside an already-unwrapped nested -c payload",
+    ],
+    ['npx "prettier" --write .', "a quoted tool name behind npx"],
+    ["pnpm exec 'eslint' --fix", "a quoted tool name behind pnpm exec"],
+    ['"prettier" --write .', "a quoted fixer verb run directly"],
+    ['git config "user.name" x', "a quoted git config key"],
+    ['sed "-i" s/a/b/ f', "a quoted sed -i flag"],
+    [
+      "$'rm' x",
+      "an ANSI-C-quoted verb that cannot be statically unquoted -- fails closed",
+    ],
+    [
+      '"rm x',
+      "an unterminated-quote verb that cannot be statically unquoted -- fails closed",
+    ],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ['"git" log --oneline', "a quoted read-only git verb"],
+    ["'git' status", "a single-quoted read-only git verb"],
+    ['git "log" --oneline', "a quoted read-only git subcommand"],
+    ['git diff "a b.ts"', "a quoted argument, not the verb or subcommand"],
+    ['cat "a b.txt"', "a quoted argument to a non-mutating verb"],
+    ["ls -la 'dir with spaces'", "a quoted argument with embedded spaces"],
+    ['grep -rn "foo bar" src', "a quoted search pattern"],
+    ['echo "rm x"', "quoted text is an argument to echo, not a command to run"],
+    [
+      "echo 'git commit'",
+      "quoted text is an argument to echo, not a git invocation",
+    ],
+    ['git log --format="%h %s"', "a quoted --format value"],
+    [
+      'FOO="a b" pnpm test',
+      "a quoted env-assignment value ahead of a non-mutating verb",
+    ],
+    ["bash script.sh", "an unquoted script operand, not a -c payload"],
+    [`"bash" -c 'ls'`, "a quoted shell name whose nested payload is read-only"],
+    [
+      `bash -c '"ls" src'`,
+      "a quoted verb inside a nested payload that is read-only",
+    ],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
