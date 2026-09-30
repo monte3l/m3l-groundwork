@@ -43,8 +43,14 @@
  * or `npx`/`pnpm exec`/`pnpm dlx`/`npm exec` (whose own shell-mode flags,
  * `-c`/`--call`/`--shell-mode`, are unwrapped the same way) -- but only for
  * the shells `bash sh zsh dash ksh`; `eval`, `busybox sh` and a shell reached
- * through an unrecognized wrapper (`time`, `nice`, `nohup`, `timeout`,
- * `xargs -I{}`, ...) are not unwrapped unless listed. Every word is unquoted
+ * through an unrecognized wrapper (`nice`, `nohup`, `timeout`, `xargs -I{}`,
+ * ...) are not unwrapped unless listed -- `time` is the one such wrapper
+ * stripped, alongside the leading reserved words `if then else elif do while
+ * until ! {` and a glued `(`/`{`. Beyond that strip, shell grammar is not
+ * modelled: a `case ... esac` body (`pat) rm x ;;` resolves `pat)` as the
+ * verb), a function definition or call (`f() { rm x; }; f`) and an alias run
+ * whatever they wrap unseen. A wrapper's "tool" word that holds whitespace
+ * once unquoted (`npx "rm -rf src"`) is judged as a command string. Every word is unquoted
  * the way the shell would before it is compared (`"rm"`, `r\m` and `git
  * "commit"` match as `rm`/`git commit`); a verb or subcommand word, or a
  * nested command string, that uses `$'...'` ANSI-C quoting or whose quote
@@ -68,7 +74,7 @@
  * for a redirect inside a double-quoted `"$(...)"`/backtick span; a bare
  * `$(...)`/backtick substitution outside double quotes, `<(...)` process
  * substitution and here-strings are not recursively classified, so
- * `echo $(rm x)` passes. Chain operators (`&&`, `||`, `|`, `;`, newline)
+ * `echo $(rm x)` passes. Chain operators (`&&`, `||`, `|`, `&`, `;`, newline)
  * inside a quoted string do not split the command; a `bash -c '...'` payload
  * therefore stays one segment and is re-split, with the same quote-aware
  * rules, when it is classified recursively. The exec-config-key list stays a
@@ -137,10 +143,13 @@ export function readOnlyAgentNames(agentsDir) {
 }
 
 /**
- * The length of the chain operator (`&&`, `||`, `|`, `;`, newline) starting at
- * `command[i]`, or 0 when there is none. A `|` immediately preceded by `>` is
- * the clobber-redirect operator (`>|`), not a pipe -- splitting it would chop
- * `echo x >| file` into "echo x >" and "file", hiding the redirect.
+ * The length of the chain operator (`&&`, `||`, `|`, `&`, `;`, newline)
+ * starting at `command[i]`, or 0 when there is none. A `|` immediately
+ * preceded by `>` is the clobber-redirect operator (`>|`), not a pipe --
+ * splitting it would chop `echo x >| file` into "echo x >" and "file", hiding
+ * the redirect. Likewise a lone `&` is the background operator (which runs
+ * the next command too) except where it belongs to a redirect: fd duplication
+ * (`2>&1`, `>&2`, `<&3`) or the `&>`/`&>>` both-streams redirect.
  *
  * @param {string} command
  * @param {number} i
@@ -151,6 +160,10 @@ function chainOperatorLength(command, i) {
   const next = command[i + 1];
   if ((c === "&" && next === "&") || (c === "|" && next === "|")) return 2;
   if (c === "|") return command[i - 1] === ">" ? 0 : 1;
+  if (c === "&") {
+    const prev = command[i - 1];
+    return prev === ">" || prev === "<" || next === ">" ? 0 : 1;
+  }
   return c === ";" || c === "\n" ? 1 : 0;
 }
 
@@ -202,7 +215,7 @@ function splitUnquoted(command, boundaryAt) {
 }
 
 /**
- * Segment a shell command on its `&&`/`||`/`|`/`;`/newline chain operators,
+ * Segment a shell command on its `&&`/`||`/`|`/`&`/`;`/newline chain operators,
  * ignoring any that sit inside a quoted string (`grep -E "a|b"`, `bash -c
  * 'x; y'`) -- see splitUnquoted. An unbalanced quote falls back to splitting
  * on every operator regardless of quoting (fail closed: an unterminated quote
@@ -214,7 +227,7 @@ function splitUnquoted(command, boundaryAt) {
 function segments(command) {
   const parts =
     splitUnquoted(command, chainOperatorLength) ??
-    command.split(/&&|\|\||(?<!>)\||;|\n/);
+    command.split(/&&|\|\||(?<!>)\||(?<![<>])&(?!>)|;|\n/);
   return parts.map((s) => s.trim());
 }
 
@@ -332,55 +345,132 @@ function assignmentEnd(tokens, i) {
   return Math.min(j + 1, tokens.length);
 }
 
+// Shell reserved words (and `time`, a keyword in bash/zsh) that can sit in
+// front of the command a segment actually runs -- `do rm x`, `then rm x`,
+// `! rm x`, `{ rm x`, `time rm x`. `segments` already splits on `;`/newline,
+// so each of these is the first word of the segment holding its command.
+const LEADING_RESERVED_WORDS = new Set([
+  "if",
+  "then",
+  "else",
+  "elif",
+  "do",
+  "while",
+  "until",
+  "!",
+  "{",
+  "time",
+]);
+
+// Reserved words opening a segment that names no command at all: the `for
+// NAME in WORDS` / `select NAME in WORDS` / `case WORD in` header. The body
+// that follows (`do ...`, `pattern) ...`) is its own segment.
+const HEADER_RESERVED_WORDS = new Set(["for", "select", "case"]);
+
 /**
- * Drops a chain of leading `VAR=value` assignments and prefix verbs (with
- * their own flags/assignments) so the REAL command a prefix verb runs is
- * what `parseTokens` resolves the verb/subcommand from. The names of every
- * stripped assignment are returned too, since an environment variable can
- * itself make the real command run something (`GIT_PAGER=sh git log`).
+ * Drops a chain of leading shell reserved words/grouping tokens
+ * (LEADING_RESERVED_WORDS, a `(`/`{` glued to the first word, `time`'s own
+ * flags), `VAR=value` assignments and prefix verbs (with their own
+ * flags/assignments) so the REAL command is what `parseTokens` resolves the
+ * verb/subcommand from. A `for`/`select`/`case` header runs nothing and
+ * resolves to no words. The names of every stripped assignment are returned
+ * too, since an environment variable can itself make the real command run
+ * something (`GIT_PAGER=sh git log`).
  *
  * An assignment is recognized from the RAW word, as the shell does (a quoted
- * `"FOO=1"` is a command name, not an assignment); prefix verbs and their
- * flags are matched by their unquoted text.
+ * `"FOO=1"` is a command name, not an assignment); reserved words, prefix
+ * verbs and their flags are matched by their unquoted text.
  *
- * @param {Word[]} words
+ * @param {Word[]} input
  * @returns {{ words: Word[], assignments: string[] }}
  */
-function stripPrefixVerbs(words) {
+function stripPrefixVerbs(input) {
   /** @type {string[]} */
   const assignments = [];
-  const raws = words.map((w) => w.raw);
-  const texts = words.map(wordText);
+  const words = [...input];
+  const raw = (k) => words[k].raw;
+  const text = (k) => wordText(words[k]);
   let i = 0;
   const skipAssignments = (allowFlags) => {
     while (i < words.length) {
-      const name = ASSIGNMENT.exec(raws[i])?.[1];
+      const name = ASSIGNMENT.exec(raw(i))?.[1];
       if (name !== undefined) {
         assignments.push(name);
-        i = assignmentEnd(raws, i);
-      } else if (allowFlags && texts[i].startsWith("-")) {
+        i = assignmentEnd(
+          words.map((w) => w.raw),
+          i,
+        );
+      } else if (allowFlags && text(i).startsWith("-")) {
         i++;
       } else {
         return;
       }
     }
   };
-  skipAssignments(false);
-  while (i < words.length && PREFIX_VERBS.has(baseName(texts[i]))) {
-    // `command -v`/`-V` looks a name up (prints its path/description) and
-    // does not run it -- unlike every other use of `command` (and unlike
-    // `sudo`/`env`/`xargs`), the following token is never executed, so it
-    // must not be peeled off as the "real" verb.
-    if (
-      baseName(texts[i]) === "command" &&
-      (texts[i + 1] === "-v" || texts[i + 1] === "-V")
-    ) {
-      break;
+  const skipReserved = () => {
+    while (i < words.length) {
+      const glued = /^[({]+/.exec(raw(i))?.[0];
+      if (glued !== undefined) {
+        const rest = raw(i).slice(glued.length);
+        if (rest === "") i++;
+        else words[i] = toWord(rest);
+      } else if (LEADING_RESERVED_WORDS.has(text(i))) {
+        const isTime = text(i) === "time";
+        i++;
+        if (isTime) while (i < words.length && text(i).startsWith("-")) i++;
+      } else {
+        return;
+      }
     }
-    i++;
-    skipAssignments(true);
+  };
+  for (;;) {
+    const start = i;
+    skipReserved();
+    if (i < words.length && HEADER_RESERVED_WORDS.has(text(i))) {
+      return { words: [], assignments };
+    }
+    skipAssignments(false);
+    if (i < words.length && PREFIX_VERBS.has(baseName(text(i)))) {
+      // `command -v`/`-V` looks a name up (prints its path/description) and
+      // does not run it -- unlike every other use of `command` (and unlike
+      // `sudo`/`env`/`xargs`), the following token is never executed, so it
+      // must not be peeled off as the "real" verb.
+      const next = i + 1 < words.length ? text(i + 1) : undefined;
+      if (baseName(text(i)) === "command" && (next === "-v" || next === "-V")) {
+        break;
+      }
+      i++;
+      skipAssignments(true);
+    }
+    if (i === start) break;
   }
   return { words: words.slice(i), assignments };
+}
+
+/**
+ * Drop a subshell's closing `)` glued to a segment's last word (`(git
+ * commit)` -> `git commit`), so it cannot defeat a verb/subcommand match. Only
+ * surplus `)` are dropped -- a balanced `$(date)` is left intact -- and a word
+ * that is nothing but `)` disappears.
+ *
+ * @param {Word[]} list
+ * @returns {Word[]}
+ */
+function stripClosingParens(list) {
+  const last = list.at(-1);
+  if (last === undefined) return list;
+  let end = last.raw;
+  const opens = (end.match(/\(/g) ?? []).length;
+  while (
+    end.endsWith(")") &&
+    !end.endsWith("\\)") &&
+    (end.match(/\)/g) ?? []).length > opens
+  ) {
+    end = end.slice(0, -1);
+  }
+  if (end === last.raw) return list;
+  const head = list.slice(0, -1);
+  return end === "" ? head : [...head, toWord(end)];
 }
 
 // Global/wrapper flags -- per verb -- that consume the FOLLOWING token as
@@ -403,7 +493,7 @@ const FLAGS_WITH_VALUE = {
     "--super-prefix",
     "--list-cmds",
   ]),
-  pnpm: new Set(["-C", "--dir", "--filter", "--filter-prod"]),
+  pnpm: new Set(["-C", "--dir", "-F", "--filter", "--filter-prod"]),
   npm: new Set(["-C", "--prefix"]),
   // `npx -p pkg tool` / `pnpm dlx --package pkg tool`: the package to fetch,
   // not the tool that runs.
@@ -575,10 +665,11 @@ const GIT_BRANCH_READ_FLAGS = new Map(
 );
 
 // `git tag`'s counterpart of GIT_BRANCH_READ_FLAGS. `-n` also accepts attached
-// digits (`-n3`), normalized to `-n` before lookup by isReadOnlyGitTag.
+// digits (`-n3`), normalized to `-n` before lookup by isReadOnlyGitTag; it
+// implies list mode, so a following positional is a pattern.
 const GIT_TAG_READ_FLAGS = new Map(
   /** @type {[string, ReadFlagSpec][]} */ ([
-    ["-n", { value: "none" }],
+    ["-n", { value: "none", pattern: true }],
     ["-i", { value: "none" }],
     ["--ignore-case", { value: "none" }],
     ["--omit-empty", { value: "none" }],
@@ -918,8 +1009,8 @@ export function classifyBashCommand(command) {
 
     // Write-redirection to a real file (not a discard target). No digit
     // lookbehind: `1>file`/`2>file` are ordinary fd-prefixed writes, not fd
-    // duplication -- `2>&1` is excluded below because its target starts
-    // with `&`, which the target class already rejects. Global flag: a
+    // duplication -- `2>&1` is excluded below as a `>&` operator whose target
+    // is a digit string (see the `>&word` note). Global flag: a
     // segment can carry more than one redirect (`cmd > /dev/null > real`),
     // and a decoy discard target must not short-circuit the scan past a
     // real one that follows it.
@@ -943,17 +1034,22 @@ export function classifyBashCommand(command) {
     const scan = segment.includes("$'")
       ? segment
       : segment.replace(
-          /(>{1,2}\|?\s*)?(?<!\\)(?:'[^']*'|"(?:\\[\s\S]|[^\\"])*")/g,
+          /(>{1,2}[|&]?\s*)?(?<!\\)(?:'[^']*'|"(?:\\[\s\S]|[^\\"])*")/g,
           (match, redirectOp) =>
             redirectOp !== undefined ||
             (match[0] === '"' && /\$\(|`/.test(match))
               ? match
               : `${match[0]}${match[0]}`,
         );
-    for (const redirect of scan.matchAll(/(>{1,2}\|?)\s*([^\s&|;]+)/g)) {
-      if (
-        !/^(\/dev\/null|nul)$/i.test(redirect[2].replace(/^["']|["']$/g, ""))
-      ) {
+    //
+    // `>&word` is fd duplication only when `word` is a digit string or `-`
+    // (`>&2`, `2>&1`, `>&-`); any other word is a FILE both stdout and stderr
+    // are written to (`>&out.txt`, `>& out.txt`), so that form is matched as
+    // its own operator and its target examined like any other.
+    for (const redirect of scan.matchAll(/(>&|>{1,2}\|?)\s*([^\s&|;]+)/g)) {
+      const target = redirect[2].replace(/^["']|["']$/g, "");
+      if (redirect[1] === ">&" && /^(?:\d+|-)$/.test(target)) continue;
+      if (!/^(\/dev\/null|nul)$/i.test(target)) {
         return {
           blocked: true,
           reason: `writes to "${redirect[2]}" via shell redirection ("${redirect[0]}")`,
@@ -961,7 +1057,9 @@ export function classifyBashCommand(command) {
       }
     }
 
-    const verdict = classifyTokens(words(segment).map(toWord));
+    const verdict = classifyTokens(
+      stripClosingParens(words(segment).map(toWord)),
+    );
     if (verdict !== undefined) return verdict;
   }
 
@@ -985,6 +1083,35 @@ function wrappedToolStart(verb, sub, subIndex) {
   }
   if (verb === "npm" && (sub === "exec" || sub === "x")) return subIndex + 1;
   return -1;
+}
+
+// `npm exec`'s own value flags on top of npm's global ones: the workspace to
+// run in and the package to fetch, neither of them the tool that runs.
+const NPM_EXEC_FLAGS_WITH_VALUE = new Set([
+  ...FLAGS_WITH_VALUE.npm,
+  "-w",
+  "--workspace",
+  "-p",
+  "--package",
+]);
+
+/**
+ * The value-taking flags of a tool wrapper (see wrappedToolStart), keyed by
+ * its own verb -- `pnpm exec --filter x <tool>` must skip `x` by pnpm's
+ * table, which npx's does not know.
+ *
+ * @param {string} verb
+ * @returns {Set<string>}
+ */
+function wrapperValueFlags(verb) {
+  switch (verb) {
+    case "pnpm":
+      return FLAGS_WITH_VALUE.pnpm;
+    case "npm":
+      return NPM_EXEC_FLAGS_WITH_VALUE;
+    default:
+      return FLAGS_WITH_VALUE.npx;
+  }
 }
 
 /**
@@ -1075,19 +1202,22 @@ function classifyTokens(rawWords, inherited = []) {
   // A wrapper that runs another tool -- judge `<tool> ...` itself, its
   // version pin stripped. Its own flags, a `--` separator included, are
   // skipped to reach the tool, except a shell-mode flag (WRAPPER_SHELL_FLAGS),
-  // whose value is a shell command rather than a tool name.
+  // whose value is a shell command rather than a tool name. pnpm's shell-mode
+  // flag is a boolean switch, not a value flag, so its command is the words
+  // from the tool position on -- any `--filter x` between them is pnpm's own.
   const wrapperEnd = wrappedToolStart(verb, sub, subIndex);
   if (wrapperEnd !== -1) {
     const toolIndex = firstPositionalIndex(
       tokens,
       wrapperEnd,
-      FLAGS_WITH_VALUE.npx,
+      wrapperValueFlags(verb),
     );
     const flagsEnd = toolIndex === -1 ? tokens.length : toolIndex;
     for (let k = wrapperEnd; k < flagsEnd; k++) {
       const t = tokens[k];
       if (WRAPPER_SHELL_FLAGS[verb].has(t)) {
-        return classifyNestedCommand(`${verb} ${t}`, words.slice(k + 1));
+        const payloadStart = verb === "pnpm" ? flagsEnd : k + 1;
+        return classifyNestedCommand(`${verb} ${t}`, words.slice(payloadStart));
       }
       if (t.startsWith("--call=") && WRAPPER_SHELL_FLAGS[verb].has("--call")) {
         const inline = t.slice("--call=".length);
@@ -1100,7 +1230,25 @@ function classifyTokens(rawWords, inherited = []) {
         ]);
       }
     }
+    // pnpm also accepts its shell-mode flag BEFORE the subcommand (`pnpm -c
+    // exec '<cmd>'`, `pnpm -r --shell-mode exec ...`): the words from the
+    // tool position on are then the shell command.
+    const preFlag =
+      verb === "pnpm"
+        ? tokens.slice(1, subIndex).find((t) => WRAPPER_SHELL_FLAGS.pnpm.has(t))
+        : undefined;
+    if (preFlag !== undefined) {
+      return classifyNestedCommand(
+        `pnpm ${preFlag} ${sub}`,
+        toolIndex === -1 ? [] : words.slice(toolIndex),
+      );
+    }
     if (toolIndex === -1) return undefined;
+    // Fail closed: a "tool" word holding whitespace once unquoted (`npx "rm
+    // -rf src"`) is no package name -- judge it as the command string it is.
+    if (/\s/.test(words[toolIndex].value ?? "")) {
+      return classifyNestedCommand(verb, words.slice(toolIndex));
+    }
     const tool = unpinnedToolName(tokens[toolIndex]);
     return classifyTokens(
       [

@@ -80,7 +80,7 @@ interface WriteHandoffModule {
   lastCommitInfo: (cwd?: string) => { sha: string; signature: string } | null;
   uncommittedFiles: (cwd?: string) => string[] | null;
   findScratchJournals: (repoRoot: string) => string[];
-  buildHandoff: (cwd?: string) => Record<string, unknown>;
+  buildHandoff: (cwd?: string, worktree?: string) => Record<string, unknown>;
   handoffRelPath: (sessionId: unknown) => string;
   resolveRoot: (input: unknown, env: HandoffEnv, fallbackCwd: string) => string;
   writeHandoff: (
@@ -328,10 +328,20 @@ describe("writeHandoff", () => {
     expect(existsSync(join(mainRepo, "tmp"))).toBe(false);
   });
 
-  it("still writes under the resolved root, never throwing, when cwd is not a git repo at all", () => {
+  // PR #83 review (round 3, third bot review): the handoff exists to record
+  // GIT state (branch, last commit, uncommitted files) for the next session
+  // to reconstruct from -- outside a git repository entirely there is no
+  // such state to record, and writing anyway litters whatever directory the
+  // session happened to start in (which, for a non-repo `cwd`, could be
+  // `$HOME` itself) with a stray `tmp/compact-handoff-*.json`. The correct
+  // contract is a no-op: return null and create nothing at all, the same
+  // "advisory, never litters" shape `writeHandoff` already gives a removed
+  // worktree. Verified against the pushed hook: it currently DOES write a
+  // file here (this replaces the prior test, which pinned that behavior).
+  it("returns null and creates nothing when cwd is not inside a git repository at all", () => {
     const plain = mkdtempSync(join(tmpdir(), "compact-handoff-nonrepo-"));
     dirs.push(plain);
-    let written: string | null = null;
+    let written: string | null | undefined;
     expect(() => {
       written = writeMod.writeHandoff(
         { cwd: plain, session_id: "s" },
@@ -339,13 +349,8 @@ describe("writeHandoff", () => {
         plain,
       );
     }).not.toThrow();
-    expect(written).toBe(join(plain, "tmp", "compact-handoff-s.json"));
-    expect(existsSync(written ?? "")).toBe(true);
-    const payload = JSON.parse(readFileSync(written ?? "", "utf8")) as {
-      uncommittedFiles: unknown;
-    };
-    // git status genuinely failed here (not a repo) -- honest null, not [].
-    expect(payload.uncommittedFiles).toBeNull();
+    expect(written).toBeNull();
+    expect(existsSync(join(plain, "tmp"))).toBe(false);
   });
 
   it("returns null without throwing when the tmp/ target cannot be created", () => {
@@ -480,15 +485,80 @@ describe("uncommittedFiles", () => {
   });
 });
 
+// PR #83 review (round 3, third bot review) asked whether `buildHandoff`
+// re-resolves the worktree when `writeHandoff` has already computed it as
+// `toplevel`, rather than accepting the precomputed value. `buildHandoff`'s
+// second parameter (`worktree = currentWorktree(cwd)`) and `currentWorktree`'s
+// own second parameter (`toplevel = runGit(["rev-parse", "--show-toplevel"],
+// cwd)`) are both ordinary JS default parameters -- passing an explicit
+// second argument skips the default entirely, so the precomputed-toplevel
+// path IS directly observable through the public API without mocking
+// anything: pass a real, independently-verified toplevel and check it comes
+// back verbatim as `worktree` (and, as the strongest proof, pass a bogus one
+// and see IT come back verbatim too, which no re-resolution from `cwd` could
+// produce).
 describe("buildHandoff", () => {
+  let dirs: string[];
+
+  beforeEach(() => {
+    dirs = [];
+  });
+
+  afterEach(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  });
+
   it("stores null for uncommittedFiles when git status fails (non-repo cwd)", () => {
     const plain = mkdtempSync(join(tmpdir(), "compact-handoff-buildnonrepo-"));
-    try {
-      const handoff = writeMod.buildHandoff(plain);
-      expect(handoff["uncommittedFiles"]).toBeNull();
-    } finally {
-      rmSync(plain, { recursive: true, force: true });
-    }
+    dirs.push(plain);
+    const handoff = writeMod.buildHandoff(plain);
+    expect(handoff["uncommittedFiles"]).toBeNull();
+  });
+
+  it("accepts a precomputed toplevel for a worktree subdirectory: worktree is exactly that toplevel, and branch still reflects cwd", () => {
+    const mainRepo = mkdtempSync(join(tmpdir(), "compact-handoff-build-main-"));
+    dirs.push(mainRepo);
+    git(mainRepo, "init", "-b", "main");
+    git(mainRepo, "commit", "--allow-empty", "-m", "init");
+    const wtParent = mkdtempSync(join(tmpdir(), "compact-handoff-build-wt-"));
+    dirs.push(wtParent);
+    const worktreeDir = join(wtParent, "wt");
+    git(mainRepo, "worktree", "add", "-b", "feature/build", worktreeDir);
+    // A subdirectory, not the worktree root itself -- proves the precomputed
+    // toplevel is used as-is rather than re-derived from this deeper `cwd`.
+    const sub = join(worktreeDir, "sub");
+    mkdirSync(sub, { recursive: true });
+
+    const handoff = writeMod.buildHandoff(sub, worktreeDir);
+    expect(handoff["worktree"]).toBe(worktreeDir);
+    expect(handoff["branch"]).toBe("feature/build");
+  });
+
+  it("resolves the toplevel itself when no second argument is given (default behaviour unchanged)", () => {
+    const repo = mkdtempSync(join(tmpdir(), "compact-handoff-build-default-"));
+    dirs.push(repo);
+    git(repo, "init", "-b", "main");
+    git(repo, "commit", "--allow-empty", "-m", "init");
+
+    const handoff = writeMod.buildHandoff(repo);
+    expect(handoff["worktree"]).toBe(repo);
+    expect(handoff["branch"]).toBe("main");
+  });
+
+  it("reflects a bogus precomputed toplevel verbatim in worktree, proving it is not re-resolved from cwd", () => {
+    const repo = mkdtempSync(join(tmpdir(), "compact-handoff-build-bogus-"));
+    dirs.push(repo);
+    git(repo, "init", "-b", "main");
+    git(repo, "commit", "--allow-empty", "-m", "init");
+
+    const handoff = writeMod.buildHandoff(
+      repo,
+      "/definitely/not/a/real/toplevel",
+    );
+    expect(handoff["worktree"]).toBe("/definitely/not/a/real/toplevel");
+    // Only `worktree` is threaded through verbatim -- `branch` still comes
+    // from the real `cwd` (the actual repo), not from the bogus toplevel.
+    expect(handoff["branch"]).toBe("main");
   });
 });
 

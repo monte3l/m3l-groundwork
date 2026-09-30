@@ -1115,3 +1115,227 @@ describe("classifyBashCommand -- quoted/escaped verb words must be unquoted befo
     expect(guard.classifyBashCommand(command).blocked).toBe(false);
   });
 });
+
+// PR #83 review findings (round 5, third bot review): a shell reserved word
+// or grouping construct (`for`/`if`/`while`/`{ ... }`/`(...)`/`!`/`time`)
+// sitting immediately before the real command becomes the "verb"
+// `classifyTokens` inspects, so the mutating command hidden after it (`do
+// rm -rf src`, `then rm x`) is never reached; a lone `&` background
+// operator is not recognized as a chain operator at all, so two commands
+// separated only by `&` are read as a single segment whose first word is
+// the harmless one; `>&word` (writing both stdout AND stderr to a file,
+// when `word` is not an fd digit or `-`) is not recognized as a
+// file-writing redirect at all; pnpm's own shell-mode flags (`-c`/
+// `--shell-mode`) spelled BEFORE `exec` (rather than after it) are not
+// unwrapped, and a wrapped tool name containing whitespace after unquoting
+// (`npx "rm -rf src"`) is read as a literal (if unusual) package name
+// rather than recognized as a command string masquerading as one; and `git
+// tag -n`/`-n<digits>` is not on GIT_TAG_READ_FLAGS' pattern-taking list,
+// so a read-only listing invocation is wrongly blocked. Verified against
+// the pushed hook: every "MUST BLOCK"/"MUST BE ALLOWED" case below
+// currently classifies the opposite way.
+
+describe("classifyBashCommand -- a shell reserved word/grouping construct before the real command must not hide it", () => {
+  it.each([
+    ["for f in x; do rm -rf src; done", "a for-loop body running rm"],
+    [
+      "for f in a b; do git commit -m x; done",
+      "a for-loop body running git commit",
+    ],
+    ["if rm x; then echo ok; fi", "an if-condition running rm"],
+    ["while true; do rm x; done", "a while-loop body running rm"],
+    ["{ rm -rf src; }", "a brace group running rm"],
+    ["(rm -rf src)", "a subshell running rm"],
+    ["( cd src && rm x )", "a subshell chaining into rm"],
+    ["! rm x", "a negated rm"],
+    ["time rm x", "rm timed via the time builtin/keyword"],
+    [
+      "if true; then rm x; else echo; fi",
+      "rm in an if's then-branch alongside an else clause",
+    ],
+    ["echo a && { rm x; }", "a brace group hiding rm behind a chain operator"],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ["for f in a b; do echo $f; done", "a for-loop body that only echoes"],
+    [
+      "if git diff --quiet; then echo clean; fi",
+      "an if-condition running a read-only git command",
+    ],
+    ["(git log --oneline)", "a subshell running a read-only git command"],
+    ["{ git status; }", "a brace group running a read-only git command"],
+    ["! git diff --quiet", "a negated read-only git command"],
+    ["time git log", "a read-only git command timed via the time keyword"],
+    ['while read l; do echo "$l"; done', "a while-loop body that only echoes"],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- a lone '&' background operator separates commands", () => {
+  it.each([
+    ["true & rm -rf src", "a backgrounded command followed by rm"],
+    ["sleep 1 & rm x", "a backgrounded sleep followed by rm"],
+    ["echo a &rm x", "a lone & with no surrounding space before rm"],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ["echo a 2>&1", "fd duplication, not a background operator"],
+    [
+      "echo a &> /dev/null",
+      "the &> redirect operator to the discard target, not a background operator",
+    ],
+    [
+      "git log 2>&1 | head",
+      "fd duplication followed by a real pipe into a read-only command",
+    ],
+    ['echo "a & b"', "a literal & inside a quoted argument"],
+    ["echo a && echo b", "the && chain operator, not a lone &"],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+
+  it("still blocks echo a &> out.txt (the &> redirect operator writing to a real file)", () => {
+    expect(guard.classifyBashCommand("echo a &> out.txt").blocked).toBe(true);
+  });
+});
+
+describe("classifyBashCommand -- '>&word' writes stdout+stderr to a file when word is not a fd digit or '-'", () => {
+  it.each([
+    ["echo x >&out.txt", "no space between >& and the file target"],
+    ["echo x >& out.txt", "a space between >& and the file target"],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ["echo x >&2", "fd duplication to stderr, no space"],
+    ["echo x 2>&1", "fd duplication to stdout"],
+    ["echo x >&-", "closing a file descriptor"],
+    ["echo x >& /dev/null", "&> to the discard target, with a space"],
+    ["echo x >&/dev/null", "&> to the discard target, no space"],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- pnpm's shell-mode flag spelled BEFORE 'exec' must still be inspected", () => {
+  it.each([
+    ["pnpm -c exec 'rm -rf src'", "the short -c flag before exec"],
+    ["pnpm --shell-mode exec 'rm x'", "the long --shell-mode flag before exec"],
+    [
+      "pnpm -r -c exec 'rm x'",
+      "the -c flag alongside an unrelated -r flag before exec",
+    ],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ["pnpm -c exec 'git status'", "a read-only payload behind pnpm -c exec"],
+    [
+      "pnpm -r exec vitest run",
+      "an unrelated -r flag before exec, no shell-mode flag at all",
+    ],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+
+  it("blocks a wrapped 'tool' word containing whitespace after unquoting -- that is a command string, not a package name", () => {
+    expect(guard.classifyBashCommand('npx "rm -rf src"').blocked).toBe(true);
+  });
+
+  it("still allows npx vitest run", () => {
+    expect(guard.classifyBashCommand("npx vitest run").blocked).toBe(false);
+  });
+});
+
+// PR #83 follow-up: the wrapped-tool lookup that fires after `pnpm exec`/
+// `pnpm dlx` resolves value-taking flags against FLAGS_WITH_VALUE.npx
+// unconditionally (`firstPositionalIndex(tokens, wrapperEnd,
+// FLAGS_WITH_VALUE.npx)`), regardless of which wrapper verb is actually in
+// play. npx's own flags (`-p`/`--package`) have nothing to do with pnpm's
+// (`--filter`/`-F`, `--filter-prod`, `--dir`/`-C`), so `pnpm exec --filter x
+// <tool>` never skips `--filter`'s VALUE ("x") the way it needs to -- that
+// value is mistaken for the wrapped tool name instead, and the real tool
+// (a fixer, or a nested shell payload behind pnpm's own shell-mode flag) is
+// never reached. Verified against the pushed hook: every "MUST BLOCK" case
+// below (except the pnpm -c/exec ordering case, which the scan already gets
+// right by coincidence) currently classifies as allowed.
+describe("classifyBashCommand -- pnpm's own value-taking flags after exec/dlx must be judged with pnpm's flag table, not npx's", () => {
+  it.each([
+    [
+      "pnpm -c exec --filter x 'rm y'",
+      "pnpm's own shell-mode flag before exec, with --filter's value swallowing the real nested rm payload",
+    ],
+    [
+      "pnpm exec --filter x -c 'rm y'",
+      "pnpm's own shell-mode flag placed AFTER --filter's value is never reached because the tool-lookup scan (bounded by npx's flag table) stops too early",
+    ],
+    [
+      "pnpm exec -c --filter x 'rm y'",
+      "pnpm's own shell-mode flag placed before --filter folds --filter's own flag+value into the nested payload text, hiding the real rm command inside an unrecognized '--filter x rm y' string",
+    ],
+    [
+      "pnpm --filter x exec -c 'rm y'",
+      "--filter as a global flag before exec, with a nested rm nested behind exec's own -c flag",
+    ],
+    [
+      "pnpm exec --filter x prettier --write .",
+      "--filter's value ('x') is mistaken for the wrapped tool name, so the real prettier --write is never judged",
+    ],
+    [
+      "pnpm exec -F x eslint --fix",
+      "the short -F alias for --filter is not recognized on any flag table, so its value ('x') is mistaken for the wrapped tool name and the real eslint --fix is never judged",
+    ],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    [
+      "pnpm exec --filter x vitest run",
+      "--filter's value correctly skipped, vitest is not a fixer-capable tool",
+    ],
+    [
+      "pnpm -c exec --filter x 'git status'",
+      "a read-only nested payload behind pnpm -c exec, alongside --filter",
+    ],
+    [
+      "pnpm exec -F x prettier --check .",
+      "the short -F alias correctly skipped, prettier --check is not a write flag",
+    ],
+    [
+      "pnpm --filter x exec tsc --noEmit",
+      "--filter as a global flag before exec correctly skipped, tsc is not a fixer-capable tool",
+    ],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- 'git tag -n'/'-n<digits>' is a read-only listing form (implies list mode)", () => {
+  it.each([
+    ["git tag -n v2", "-n alone, with a pattern positional"],
+    [
+      "git tag -n3 'v*'",
+      "-n with an attached digit count, with a pattern positional",
+    ],
+  ])("allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+
+  it.each([
+    [
+      "git tag -n3 -a v1",
+      "-n alongside -a (annotate), which is create mode despite -n",
+    ],
+    ["git tag v2", "a bare positional with no listing flag at all"],
+  ])("still blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+});

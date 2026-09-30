@@ -48,8 +48,10 @@
  * and is then `renameSync`d over the final name, so a reader never sees a
  * half-written file and a crash mid-write leaves only a `.partial` sibling
  * (which the reinject side's `compact-handoff*.json` scan never matches).
- * If the resolved directory itself no longer exists (a removed worktree),
- * nothing is created -- only `tmp/` inside an existing directory may be.
+ * If the resolved directory itself no longer exists (a removed worktree), or
+ * is not inside a git repository at all (there is no git state to hand off,
+ * and a non-repo `cwd` may be `$HOME` itself), nothing is created -- only
+ * `tmp/` inside an existing git worktree may be.
  *
  * Advisory-only: always exits 0. A write failure (e.g. `tmp/` unwritable)
  * never fails the turn -- losing a handoff on this one compaction is a hint
@@ -151,10 +153,15 @@ export function currentBranch(cwd = process.cwd()) {
  * `--show-toplevel` is used only when that lexical walk disagrees with git.
  *
  * @param {string} [cwd]
+ * @param {string | null} [toplevel] `git rev-parse --show-toplevel` for
+ *   `cwd`, when the caller already ran it (null: not a repo); run here when
+ *   omitted
  * @returns {string}
  */
-export function currentWorktree(cwd = process.cwd()) {
-  const toplevel = runGit(["rev-parse", "--show-toplevel"], cwd);
+export function currentWorktree(
+  cwd = process.cwd(),
+  toplevel = runGit(["rev-parse", "--show-toplevel"], cwd),
+) {
   if (toplevel === null || toplevel === "") return cwd;
   const cdup = runGit(["rev-parse", "--show-cdup"], cwd);
   if (cdup !== null) {
@@ -223,10 +230,15 @@ export function findScratchJournals(repoRoot) {
  * Build the full handoff payload from live git/fs state.
  *
  * @param {string} [cwd]
+ * @param {string} [worktree] the worktree toplevel containing `cwd`, when the
+ *   caller already resolved it (`writeHandoff` does) -- resolved here via
+ *   currentWorktree when omitted
  * @returns {Record<string, unknown>}
  */
-export function buildHandoff(cwd = process.cwd()) {
-  const worktree = currentWorktree(cwd);
+export function buildHandoff(
+  cwd = process.cwd(),
+  worktree = currentWorktree(cwd),
+) {
   return {
     capturedAt: new Date().toISOString(),
     branch: currentBranch(cwd),
@@ -258,7 +270,11 @@ function reportNotWritten(reason) {
 /**
  * Write this session's handoff under the git toplevel of `resolveRoot(...)`,
  * atomically (`<handoff>.<pid>.partial` then `renameSync` over the final
- * name). Creates nothing when the resolved directory does not exist.
+ * name). Creates nothing when the resolved directory does not exist or is
+ * not inside a git repository -- there is no git state to hand off there,
+ * and writing anyway would litter an arbitrary directory (even `$HOME`).
+ * `git rev-parse --show-toplevel` runs once per write; its answer is threaded
+ * through to currentWorktree/buildHandoff.
  *
  * @param {unknown} input the parsed `PreCompact` hook payload
  * @param {Record<string, string | undefined>} env
@@ -269,16 +285,21 @@ function reportNotWritten(reason) {
 export function writeHandoff(input, env, fallbackCwd) {
   let partialPath = null;
   try {
-    const toplevel = currentWorktree(resolveRoot(input, env, fallbackCwd));
-    if (!existsSync(toplevel)) {
+    const root = resolveRoot(input, env, fallbackCwd);
+    if (!existsSync(root)) {
       return reportNotWritten("target directory does not exist");
     }
+    const gitToplevel = runGit(["rev-parse", "--show-toplevel"], root);
+    if (gitToplevel === null || gitToplevel === "") {
+      return reportNotWritten("not a git repository");
+    }
+    const toplevel = currentWorktree(root, gitToplevel);
     const sessionId =
       typeof input === "object" && input !== null
         ? /** @type {{ session_id?: unknown }} */ (input).session_id
         : undefined;
     const handoff = {
-      ...buildHandoff(toplevel),
+      ...buildHandoff(toplevel, toplevel),
       sessionId: typeof sessionId === "string" ? sessionId : null,
     };
     const handoffPath = join(toplevel, handoffRelPath(sessionId));
