@@ -31,7 +31,7 @@ reviewer who wasn't in the room.
 ```bash
 git diff --staged          # the files about to be committed
 git diff                   # unstaged context (reference only)
-git log main...HEAD --oneline  # commits already on this branch
+git log main..HEAD --oneline  # commits already on this branch
 ```
 
 Read all three outputs before drafting anything. The staged diff is the
@@ -62,7 +62,7 @@ Rules enforced by commitlint:
 
 - **Imperative present tense** — "implement", "add", "fix", not "implemented"
 - **All lowercase** after `type:` — never `Feat:` or `feat: Add`
-- **≤ 70 characters** (hard limit — commitlint will reject longer subjects)
+- **≤ 70 characters** (this skill's own target; commitlint's `config-conventional` only rejects headers over 100)
 - **No trailing period**
 - **Be specific** — name the module, file, class, or exported symbol
 

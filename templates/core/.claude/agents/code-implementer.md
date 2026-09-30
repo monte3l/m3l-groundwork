@@ -111,8 +111,8 @@ id first, then query for the specific behavior in question — don't fetch
 broad documentation you won't use.
 
 **Precedence: installed types are the pinned truth and win on conflict.**
-This project pins exact dependency versions, while context7 returns docs for
-whatever version it has indexed — a disagreement between the two is expected
+The installed dependency version (see `pnpm-lock.yaml`) is what runs, while
+context7 returns docs for whatever version it has indexed — a disagreement between the two is expected
 and is not evidence the types are wrong. Never widen or reinterpret a type
 based on context7 output alone; use it to understand behavior the types are
 silent on, not to override them.

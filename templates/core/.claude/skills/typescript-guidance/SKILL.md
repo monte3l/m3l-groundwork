@@ -116,8 +116,7 @@ low priority still gets swept; it just gets less dedicated attention per run.
 
    Each brief carries: the facet row, Step 2's delta, the tracker's prior
    claims for that facet, the allowlist + GitHub caveat + date anchor, the
-   exact filename to write (`<run-dir>/<facet-id>.md`), and this verdict
-   format per claim:
+   facet id, and this verdict format per claim:
 
    ```
    CLAIM: <the tracker's prior claim, or "NEW" if none existed>
@@ -126,10 +125,13 @@ low priority still gets swept; it just gets less dedicated attention per run.
    REPO-IMPACT: <which emitted file(s) this affects, or "none">
    ```
 
-   Return value: **write the full file, return only a compact digest**
-   (counts per verdict + every non-"none" REPO-IMPACT line + the file path).
+   Return value: **the full verdict list inline, inside the ~8,000-character
+   cap** -- `Explore` holds no write tool, so it cannot write a file. Put
+   every non-"none" REPO-IMPACT claim first so a truncation drops only
+   the no-impact ones. The hub saves each returned report to
+   `<run-dir>/<facet-id>.md` itself; that is what step 4 reads.
 
-4. **Aggregate.** Read every scratchpad file in full. Four buckets:
+4. **Aggregate.** Read every saved facet report in full. Four buckets:
    confirmed drift with repo impact (verify each against the cited file
    itself before trusting it — an agent can misread a page), guidance
    changes with no impact, dead/moved URLs, coverage gaps.

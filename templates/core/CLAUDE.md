@@ -29,7 +29,7 @@ Run any task with `pnpm <script>`.
 | `pnpm knip`                    | Unused-dependency / unused-export hygiene; a `verify` step. `knip.json` ignores `@commitlint/config-conventional` and `@commitlint/types`, which are loaded by a string and a JSDoc type knip cannot see |
 | `pnpm check:exports`           | publint + are-the-types-wrong against a packed tarball                                                                                                                                                   |
 | `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                          |
-| `pnpm verify`                  | Every gate above, in the same order CI runs them                                                                                                                                                         |
+| `pnpm verify`                  | Every gate above plus the `harness`/`toolchain` graders, in `verify-steps.mjs` order; CI runs them as five parallel group lanes                                                                          |
 | `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                          |
 
 Run `pnpm verify` before considering any task done — it reproduces CI
@@ -128,7 +128,9 @@ fix the config it points at.
 **Enforced at write time by hooks:** `any` implied by CommonJS constructs
 (`require`, `module.exports`, `__dirname`, `__filename`), a missing `.js`
 extension on a relative import, a hand-edit to `dist/` or `coverage/`, a
-write to `src/`/`tests/` while on `main`, a real secret written to disk.
+write to `src/`/`tests/` while on `main`, a real secret written to disk,
+an unsigned `git push` when `commit.gpgsign` is on, and a `run_in_background`
+Bash call stacked with a shell-level detach construct.
 
 **No automated guard — need conscious care:** no `any` in the public API;
 never swallow an error silently; no top-level side effects; never

@@ -70,14 +70,15 @@ the first failure, typically the last 50–100 lines before the run aborted.
 
 ### 3 — Map to the pipeline step
 
-`.github/workflows/ci.yml`'s lanes each run `node bin/verify.mjs --step <id>`
-against a step id from `bin/lib/verify-steps.mjs` — that file's `cmd` field
-IS the local reproduction command, so mapping a failing CI step to its local
-command is always: find the `## <step name>` line the log shows, match it to
-the step's `name` in `bin/lib/verify-steps.mjs`, and reproduce with that
-step's `cmd` array joined as a shell command (or just `node bin/verify.mjs
---step <id>` directly). The step name usually appears verbatim in the log
-lines (e.g. `Run pnpm lint` or `##[error]...`).
+`.github/workflows/ci.yml`'s lanes each run `node bin/verify.mjs --group <name>`
+(`format`, `lint`, `typecheck`, `build`, `test`); a group runs every step
+in it from `bin/lib/verify-steps.mjs`, and that file's `cmd` field IS the
+local reproduction command. Find the `▶ <step name> (<id>)` line the log
+prints just before the failure, then reproduce with `node bin/verify.mjs
+--step <id>` (or the step's `cmd` array joined as a shell command). If no
+`▶` line is visible, match the failing job's name to its group and run
+`node bin/verify.mjs --group <name>`. `--step` is for local debugging only
+and never appears in a workflow file.
 
 ### 4 — Report the diagnosis
 
