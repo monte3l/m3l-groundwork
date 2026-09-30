@@ -611,3 +611,204 @@ describe("readOnlyAgentNames -- frontmatter parsing gaps", () => {
     expect(names.has('"some-agent"')).toBe(false);
   });
 });
+
+// PR #83 review findings (5): the fixer-write check, the `git tag` list-mode
+// check, `--fix-dry-run`, the git exec-config-key denylist, and a `|` inside a
+// quoted pattern each have a gap the automated reviewer found and the hook's
+// own author confirmed against real git/the hook's own source. These describe
+// blocks pin the CORRECT contract, not what `classifyBashCommand` does today
+// -- some assertions below are expected to fail until the hook is fixed.
+
+describe("classifyBashCommand -- version-pinned wrapped tools must not evade the fixer check", () => {
+  // `fixerWriteFlag` compares the resolved verb to the literal strings
+  // "prettier"/"eslint". A version-pinned invocation (`prettier@3`,
+  // `eslint@latest`) resolves to a verb that never equals either literal, so
+  // the write-flag check silently never fires -- the mutating command runs
+  // right through the guard.
+  it.each([
+    ["npx prettier@3 --write .", "a pinned major version on prettier"],
+    ["pnpm dlx prettier@latest --write .", "the 'latest' dist-tag on prettier"],
+    ["npx eslint@9 --fix src", "a pinned major version on eslint"],
+    [
+      "npm exec -- prettier@3.3.0 -w src",
+      "a full pinned version through npm exec --",
+    ],
+    ["pnpm exec eslint@9 --fix", "a pinned version through pnpm exec"],
+    ["pnpx prettier@3 --write .", "a pinned version through the pnpx binary"],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ["npx prettier@3 --check .", "a pinned version with only a read-only flag"],
+    ["pnpm dlx eslint@9 .", "a pinned version with no fixer flag at all"],
+    [
+      "npx @scope/tool@1 --check",
+      "a scoped, version-pinned package name with no fixer flag",
+    ],
+    ["npx vitest@4 run", "a pinned version on a non-fixer tool"],
+    [
+      "npx @scope/tool@1 --write",
+      "a scoped, version-pinned UNKNOWN tool must not be mangled into matching prettier/eslint -- only the two known fixers are judged",
+    ],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- git tag: a value-taking flag must not let its consumed value be mistaken for -l", () => {
+  // `git tag`'s read-only form today checks `args.includes("-l")` literally,
+  // ignoring that a value-taking flag (`--format`, `--sort`) consumes the
+  // NEXT token as its own value -- so `--format -l v2` is real git's create
+  // mode (verified: it actually created tag "v2"), yet the guard sees a
+  // literal "-l" token and calls it read-only. The correct contract treats
+  // `git tag` as allowlist-style, the same as `git branch`: every flag must
+  // be a known read-only flag, a value-taking flag consumes its separated
+  // value token, and a bare positional is only legitimate when a
+  // pattern-taking flag (-l/--list, --contains, --no-contains, --points-at,
+  // --merged, --no-merged) is also present.
+  it.each([
+    [
+      "git tag --format -l v2",
+      "--format consumes '-l' as its value, leaving 'v2' as a real create-mode positional (verified against real git: this creates tag v2)",
+    ],
+    [
+      "git tag --sort -l v1",
+      "--sort consumes '-l' as its value, leaving 'v1' as a stray positional with no list-mode flag present (a fatal usage error in real git, but not one this guard can assume is safe)",
+    ],
+    [
+      "git tag --format '%(refname)' v3",
+      "a positional tag name with no list-mode flag present at all",
+    ],
+  ])("blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+
+  it.each([
+    ["git tag", "no arguments at all"],
+    ["git tag -l", "the short list flag alone"],
+    ["git tag -l 'v*'", "the short list flag with a pattern"],
+    ["git tag --list 'v*'", "the long list flag with a pattern"],
+    [
+      "git tag --sort=-v:refname -l",
+      "an inline '=value' sort flag alongside -l",
+    ],
+    [
+      "git tag --sort=-v:refname",
+      "an inline '=value' sort flag with no positional at all",
+    ],
+    [
+      "git tag --format='%(refname)' -l",
+      "an inline '=value' format flag alongside -l",
+    ],
+    [
+      "git tag --contains abc123",
+      "a read-only pattern-taking listing flag (currently a false positive)",
+    ],
+    [
+      "git tag --points-at HEAD",
+      "a read-only pattern-taking listing flag (currently a false positive)",
+    ],
+    [
+      "git tag --merged main",
+      "a read-only pattern-taking listing flag (currently a false positive)",
+    ],
+    [
+      "git tag --no-merged main",
+      "a read-only pattern-taking listing flag (currently a false positive)",
+    ],
+    [
+      "git tag -l --sort -creatordate",
+      "--sort's separated value looks flag-shaped but is legitimately consumed as a value, not a stray positional",
+    ],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- eslint --fix-dry-run does not write files", () => {
+  // `fixerWriteFlag` matches any token starting with "--fix-", which also
+  // matches `--fix-dry-run` (a report-only flag that never writes) and
+  // `--fix-type` used WITHOUT `--fix` (a no-op on its own, since --fix-type
+  // only narrows which rules --fix is allowed to touch).
+  it.each([
+    ["eslint --fix-dry-run .", "--fix-dry-run only reports, it never writes"],
+    [
+      "pnpm exec eslint --fix-dry-run src",
+      "--fix-dry-run run through pnpm exec still never writes",
+    ],
+    [
+      "eslint --fix-type layout .",
+      "--fix-type alone (no --fix present) is a no-op",
+    ],
+  ])("allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+
+  it.each([
+    ["eslint --fix .", "the real --fix flag, which does write"],
+    [
+      "eslint --fix-type layout --fix .",
+      "--fix-type alongside an actual --fix must still block",
+    ],
+  ])("still blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+});
+
+describe("classifyBashCommand -- more git exec-config keys must block via -c", () => {
+  // GIT_EXEC_CONFIG_KEY's denylist misses several real command-executing
+  // config keys: a diff/merge driver command, a filter's clean/smudge/process
+  // command, a remote's upload-pack/receive-pack override, and a
+  // difftool/mergetool's cmd -- each runs an arbitrary shell command exactly
+  // like the pager/editor/alias keys the guard already recognizes.
+  it.each([
+    "diff.astextplain.command",
+    "filter.lfs.clean",
+    "filter.lfs.smudge",
+    "filter.lfs.process",
+    "merge.foo.driver",
+    "remote.origin.uploadpack",
+    "remote.origin.receivepack",
+    "difftool.x.cmd",
+    "mergetool.x.cmd",
+  ])("blocks git -c %s=x log", (key) => {
+    expect(guard.classifyBashCommand(`git -c ${key}=x log`).blocked).toBe(true);
+  });
+
+  it.each([
+    ["git -c diff.algorithm=patience diff", "diff.algorithm runs nothing"],
+    [
+      "git -c merge.conflictstyle=diff3 log",
+      "merge.conflictstyle runs nothing",
+    ],
+  ])("still allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+});
+
+describe("classifyBashCommand -- a pipe inside a quoted pattern is not a segment separator", () => {
+  // `segments()` splits a command on a bare `|` BEFORE any quote handling
+  // runs, so a `|` that's actually inside a quoted argument (a regex
+  // alternation, not a shell pipe) still splits the command into two
+  // fragments. The tail fragment can then contain a stray `>` left over from
+  // the split (e.g. the `=>` in `"a|=>"`), which the redirect scan
+  // misreads as a real redirect to an empty-string target and blocks.
+  it.each([
+    [
+      'grep -E "a|=>" src',
+      "a '|' inside a double-quoted regex alternation, followed by a literal '=>' whose trailing '>' is mistaken for a redirect once the quoted string is incorrectly split",
+    ],
+    ["rg 'foo|bar' src", "a '|' inside a single-quoted search pattern"],
+  ])("allows %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+
+  it.each([
+    ['echo "a|b" > out', "a quoted '|' followed by a REAL redirect"],
+    ["cat f | tee out", "a real, unquoted pipe into a mutating command"],
+    ["grep x f | rm y", "a real, unquoted pipe into a mutating command"],
+  ])("still blocks %s (%s)", (command) => {
+    expect(guard.classifyBashCommand(command).blocked).toBe(true);
+  });
+});

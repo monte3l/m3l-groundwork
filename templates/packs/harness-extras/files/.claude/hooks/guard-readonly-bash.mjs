@@ -57,13 +57,19 @@
  * for a redirect inside a double-quoted `"$(...)"`/backtick span; a bare
  * `$(...)`/backtick substitution outside double quotes, `<(...)` process
  * substitution and here-strings are not recursively classified, so
- * `echo $(rm x)` passes.
+ * `echo $(rm x)` passes. Chain operators (`&&`, `||`, `|`, `;`, newline)
+ * inside a quoted string do not split the command; a `bash -c '...'` payload
+ * therefore stays one segment and is re-split, with the same quote-aware
+ * rules, when it is classified recursively. The exec-config-key list stays a
+ * denylist even after its extension to drivers, filters and tool commands.
  *
- * `git branch` is the one exception to the denylist design: its flag surface
- * accepts unique-prefix abbreviations (`--unset` for `--unset-upstream`) and
- * bundled/inline values (`-uorigin/main`), which no denylist of spellings can
- * keep up with, so it is judged against GIT_BRANCH_READ_FLAGS, an ALLOWLIST
- * of its read-only flags -- anything else on `git branch` blocks.
+ * `git branch` and `git tag` are the exceptions to the denylist design: their
+ * flag surfaces accept unique-prefix abbreviations (`--unset` for
+ * `--unset-upstream`), bundled/inline values (`-uorigin/main`) and
+ * value-taking flags whose separated value can look like a list flag (`git tag
+ * --format -l v2` creates `v2`), which no denylist of spellings can keep up
+ * with, so each is judged against an ALLOWLIST of its read-only flags
+ * (GIT_BRANCH_READ_FLAGS, GIT_TAG_READ_FLAGS) -- anything else blocks.
  */
 import process from "node:process";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
@@ -120,14 +126,69 @@ export function readOnlyAgentNames(agentsDir) {
 }
 
 /**
- * Segment a shell command on `&&`/`||`/single `|`/`;`/newline chain operators.
- * A `|` immediately preceded by `>` is the clobber-redirect operator (`>|`),
- * not a pipe, so it must not split -- otherwise `echo x >| file` gets
- * chopped into "echo x >" and "file", hiding the redirect from the
- * write-detection regex in classifyBashCommand.
+ * The length of the chain operator (`&&`, `||`, `|`, `;`, newline) starting at
+ * `command[i]`, or 0 when there is none. A `|` immediately preceded by `>` is
+ * the clobber-redirect operator (`>|`), not a pipe -- splitting it would chop
+ * `echo x >| file` into "echo x >" and "file", hiding the redirect.
+ *
+ * @param {string} command
+ * @param {number} i
+ * @returns {number}
+ */
+function chainOperatorLength(command, i) {
+  const c = command[i];
+  const next = command[i + 1];
+  if ((c === "&" && next === "&") || (c === "|" && next === "|")) return 2;
+  if (c === "|") return command[i - 1] === ">" ? 0 : 1;
+  return c === ";" || c === "\n" ? 1 : 0;
+}
+
+/**
+ * Segment a shell command on its `&&`/`||`/`|`/`;`/newline chain operators,
+ * ignoring any that sit inside a quoted string (`grep -E "a|b"`, `bash -c
+ * 'x; y'`). Quotes pair the way a POSIX shell pairs them -- the same rules the
+ * redirect scan in classifyBashCommand uses: a backslash outside single quotes
+ * escapes the next character (so `\"` opens nothing and `"\""` stays open), a
+ * backslash inside single quotes is literal, and `$'...'` honors `\'`. An
+ * unbalanced quote falls back to splitting on every operator regardless of
+ * quoting (fail closed: an unterminated quote must not hide a real chain).
+ *
+ * @param {string} command
+ * @returns {string[]}
  */
 function segments(command) {
-  return command.split(/&&|\|\||(?<!>)\||;|\n/).map((s) => s.trim());
+  /** @type {string[]} */
+  const parts = [];
+  let start = 0;
+  /** @type {"'" | '"' | "$'" | undefined} */
+  let quote;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (quote === "'") {
+      if (c === "'") quote = undefined;
+    } else if (c === "\\") {
+      i++; // escapes the next character (outside single quotes)
+    } else if (quote !== undefined) {
+      if (c === quote.at(-1)) quote = undefined;
+    } else if (c === "'" || c === '"') {
+      quote = c;
+    } else if (c === "$" && command[i + 1] === "'") {
+      quote = "$'";
+      i++;
+    } else {
+      const length = chainOperatorLength(command, i);
+      if (length > 0) {
+        parts.push(command.slice(start, i));
+        i += length - 1;
+        start = i + 1;
+      }
+    }
+  }
+  if (quote !== undefined) {
+    return command.split(/&&|\|\||(?<!>)\||;|\n/).map((s) => s.trim());
+  }
+  parts.push(command.slice(start));
+  return parts.map((s) => s.trim());
 }
 
 /** Strip a leading path (e.g. `/usr/bin/rm` -> `rm`) for verb comparison. */
@@ -351,16 +412,18 @@ const MUTATING_SUBCOMMANDS = {
   ]),
 };
 
-// The ALLOWLIST of `git branch`'s read-only flags (see the module header for
-// why branch alone is allowlisted), keyed by exact flag name. `value` says
-// how the flag takes an argument: "none" (no `=value` form accepted),
-// "optional" (inline `--flag=value` only), or "required" (inline, or else the
-// following token is consumed as its value). `pattern` marks the flags that
-// put `git branch` in list mode, where a positional is a pattern to match
-// rather than a branch name to create -- `-v`/`-a`/`-r` do NOT (`git branch
-// -v newb` creates `newb`).
+/** @typedef {{ value: "none" | "optional" | "required", pattern?: true }} ReadFlagSpec */
+
+// The ALLOWLISTS of `git branch`'s and `git tag`'s read-only flags (see the
+// module header for why these two are allowlisted), keyed by exact flag name.
+// `value` says how the flag takes an argument: "none" (no `=value` form
+// accepted), "optional" (inline `--flag=value` only), or "required" (inline,
+// or else the following token is consumed as its value). `pattern` marks the
+// flags that put the command in list mode, where a positional is a pattern to
+// match rather than a name to create -- `-v`/`-a`/`-r` do NOT (`git branch -v
+// newb` creates `newb`).
 const GIT_BRANCH_READ_FLAGS = new Map(
-  /** @type {[string, { value: "none" | "optional" | "required", pattern?: true }][]} */ ([
+  /** @type {[string, ReadFlagSpec][]} */ ([
     ["--show-current", { value: "none" }],
     ["-a", { value: "none" }],
     ["--all", { value: "none" }],
@@ -390,15 +453,42 @@ const GIT_BRANCH_READ_FLAGS = new Map(
   ]),
 );
 
+// `git tag`'s counterpart of GIT_BRANCH_READ_FLAGS. `-n` also accepts attached
+// digits (`-n3`), normalized to `-n` before lookup by isReadOnlyGitTag.
+const GIT_TAG_READ_FLAGS = new Map(
+  /** @type {[string, ReadFlagSpec][]} */ ([
+    ["-n", { value: "none" }],
+    ["-i", { value: "none" }],
+    ["--ignore-case", { value: "none" }],
+    ["--omit-empty", { value: "none" }],
+    ["--no-color", { value: "none" }],
+    ["--no-column", { value: "none" }],
+    ["--color", { value: "optional" }],
+    ["--column", { value: "optional" }],
+    ["--sort", { value: "required" }],
+    ["--format", { value: "required" }],
+    ["-l", { value: "none", pattern: true }],
+    ["--list", { value: "none", pattern: true }],
+    ["--contains", { value: "optional", pattern: true }],
+    ["--no-contains", { value: "optional", pattern: true }],
+    ["--merged", { value: "optional", pattern: true }],
+    ["--no-merged", { value: "optional", pattern: true }],
+    ["--points-at", { value: "required", pattern: true }],
+  ]),
+);
+
 /**
- * Whether `git branch <args>` is read-only: every flag is on
- * GIT_BRANCH_READ_FLAGS (in a form it accepts), and there is either no
- * positional or a pattern-taking flag that makes positionals patterns.
+ * Whether `<args>` is a read-only invocation per the flag allowlist `table`:
+ * every flag is on it (in a form it accepts), and there is either no
+ * positional or a pattern-taking flag that makes positionals patterns. A
+ * "required"-value flag given without `=` consumes the next token, so that
+ * value can never be mistaken for a flag (`--format -l v2` is create mode).
  *
+ * @param {Map<string, ReadFlagSpec>} table
  * @param {string[]} args
  * @returns {boolean}
  */
-function isReadOnlyGitBranch(args) {
+function isReadOnlyByFlagTable(table, args) {
   let listMode = false;
   let positional = false;
   for (let k = 0; k < args.length; k++) {
@@ -409,7 +499,7 @@ function isReadOnlyGitBranch(args) {
     }
     const eq = arg.indexOf("=");
     const name = eq === -1 ? arg : arg.slice(0, eq);
-    const spec = GIT_BRANCH_READ_FLAGS.get(name);
+    const spec = table.get(name);
     if (spec === undefined) return false; // unknown, abbreviated or bundled
     if (eq !== -1 && spec.value === "none") return false;
     if (spec.pattern === true) listMode = true;
@@ -418,12 +508,47 @@ function isReadOnlyGitBranch(args) {
   return !positional || listMode;
 }
 
+/** `git branch <args>` is read-only, per GIT_BRANCH_READ_FLAGS. */
+function isReadOnlyGitBranch(args) {
+  return isReadOnlyByFlagTable(GIT_BRANCH_READ_FLAGS, args);
+}
+
+/** `git tag <args>` is read-only, per GIT_TAG_READ_FLAGS (`-n3` -> `-n`). */
+function isReadOnlyGitTag(args) {
+  return isReadOnlyByFlagTable(
+    GIT_TAG_READ_FLAGS,
+    args.map((a) => (/^-n\d+$/.test(a) ? "-n" : a)),
+  );
+}
+
 // `git -c <key>=<value>` / `--config-env=<key>=<env>` keys that make git run
 // an arbitrary command (a pager, editor, alias with `!`, credential helper,
-// textconv filter, ...). A DENYLIST of the known ones -- see the module
-// header's accepted gaps. Matched case-insensitively, as git's keys are.
-const GIT_EXEC_CONFIG_KEY =
-  /^(?:.*\.pager|pager\..+|core\.(?:editor|fsmonitor|sshcommand|askpass|hookspath|gitproxy)|alias\..+|credential\.(?:.+\.)?helper|diff\.external|.*\.textconv|sequence\.editor|gpg\.(?:.+\.)?program)$/i;
+// textconv filter, diff/merge driver, clean/smudge filter, upload-pack
+// override, difftool/mergetool/browser/man viewer command, ...). A DENYLIST
+// of the known ones -- see the module header's accepted gaps. Matched
+// case-insensitively, as git's keys are.
+const GIT_EXEC_CONFIG_KEY = new RegExp(
+  `^(?:${[
+    String.raw`.*\.pager`,
+    String.raw`pager\..+`,
+    String.raw`core\.(?:editor|fsmonitor|sshcommand|askpass|hookspath|gitproxy)`,
+    String.raw`alias\..+`,
+    String.raw`credential\.(?:.+\.)?helper`,
+    String.raw`diff\.external`,
+    String.raw`diff\..+\.command`,
+    String.raw`.*\.textconv`,
+    String.raw`filter\..+\.(?:clean|smudge|process)`,
+    String.raw`merge\..+\.driver`,
+    String.raw`remote\..+\.(?:uploadpack|receivepack|proxy|vcs)`,
+    String.raw`(?:diff|merge)tool\..+\.cmd`,
+    String.raw`web\.browser`,
+    String.raw`browser\..+\.cmd`,
+    String.raw`man\..+\.cmd`,
+    String.raw`sequence\.editor`,
+    String.raw`gpg\.(?:.+\.)?program`,
+  ].join("|")})$`,
+  "i",
+);
 
 /**
  * The first `-c`/`--config-env` override among git's global flags (the
@@ -474,24 +599,6 @@ const GIT_CONFIG_WRITE = new Set([
   "--rename-section",
   "--remove-section",
 ]);
-const GIT_TAG_DESTRUCTIVE = new Set([
-  "-d",
-  "--delete",
-  "-a",
-  "-s",
-  "-f",
-  "-m",
-  "-u",
-  "--annotate",
-  "--sign",
-  "--force",
-]);
-
-/** Whether any argument is a positional (not a flag). */
-function hasPositional(args) {
-  return args.some((a) => !a.startsWith("-"));
-}
-
 // Git subcommands in MUTATING_SUBCOMMANDS that also have a purely read-only
 // form, keyed by subcommand: each predicate takes the subcommand's arguments
 // and returns true only for that read-only form. Anything else falls through
@@ -503,14 +610,16 @@ const READ_ONLY_GIT_FORMS = {
   config: (args) =>
     args.some((a) => GIT_CONFIG_READ.has(a)) &&
     !args.some((a) => GIT_CONFIG_WRITE.has(a)),
-  tag: (args) =>
-    !args.some((a) => GIT_TAG_DESTRUCTIVE.has(a)) &&
-    (!hasPositional(args) || args.includes("-l") || args.includes("--list")),
+  tag: isReadOnlyGitTag,
 };
+
+// ESLint's one writing flag: `--fix` (or `--fix=<bool>`). `--fix-dry-run`
+// only reports, and `--fix-type` merely narrows what a `--fix` would touch.
+const ESLINT_FIX = /^--fix(?:=.*)?$/;
 
 /**
  * Whether a formatter/linter invocation writes files: `prettier --write`/`-w`
- * or `eslint --fix`/`--fix-*`. Any other tool returns undefined.
+ * or `eslint --fix`. Any other tool returns undefined.
  *
  * @param {string} verb
  * @param {string[]} tokens
@@ -520,10 +629,23 @@ function fixerWriteFlag(verb, tokens) {
   if (verb === "prettier") {
     return tokens.find((t) => t === "--write" || t === "-w");
   }
-  if (verb === "eslint") {
-    return tokens.find((t) => t === "--fix" || t.startsWith("--fix-"));
-  }
+  if (verb === "eslint") return tokens.find((t) => ESLINT_FIX.test(t));
   return undefined;
+}
+
+// A package spec pinned to a version or dist-tag (`prettier@3`,
+// `@scope/tool@latest`); group 1 is the bare package name, scope kept.
+const PINNED_PACKAGE = /^(@[^/@]+\/[^@]+|[^@]+)@[^/]+$/;
+
+/**
+ * The tool a wrapper runs, with any `@<version>` pin stripped, so a pinned
+ * `prettier@3` is judged as `prettier`. A scoped name keeps its scope.
+ *
+ * @param {string} spec
+ * @returns {string}
+ */
+function unpinnedToolName(spec) {
+  return PINNED_PACKAGE.exec(spec)?.[1] ?? spec;
 }
 
 // Conventional lint/format script names (run via `pnpm <script>`/`pnpm run
@@ -536,7 +658,7 @@ const FIXER_SCRIPTS = new Set([
   "format",
   "lint:fix",
 ]);
-const FIXER_FLAG = /^(?:--fix(?:-.*)?|--write|-w)$/;
+const FIXER_FLAG = /^(?:--fix(?:=.*)?|--write|-w)$/;
 
 // Verbs that mutate the filesystem regardless of subcommand.
 const MUTATING_VERBS = new Set([
@@ -716,8 +838,9 @@ function classifyTokens(rawTokens, inherited = []) {
     };
   }
 
-  // A wrapper that runs another tool -- judge `<tool> ...` itself. Its own
-  // flags, a `--` separator included, are skipped to reach the tool.
+  // A wrapper that runs another tool -- judge `<tool> ...` itself, its
+  // version pin stripped. Its own flags, a `--` separator included, are
+  // skipped to reach the tool.
   const wrapperEnd = wrappedToolStart(verb, sub, subIndex);
   if (wrapperEnd !== -1) {
     const toolIndex = firstPositionalIndex(
@@ -725,9 +848,11 @@ function classifyTokens(rawTokens, inherited = []) {
       wrapperEnd,
       FLAGS_WITH_VALUE.npx,
     );
-    return toolIndex === -1
-      ? undefined
-      : classifyTokens(tokens.slice(toolIndex), assignments);
+    if (toolIndex === -1) return undefined;
+    return classifyTokens(
+      [unpinnedToolName(tokens[toolIndex]), ...tokens.slice(toolIndex + 1)],
+      assignments,
+    );
   }
   if (verb === "pnpm" && (sub === "eslint" || sub === "prettier")) {
     return classifyTokens(tokens.slice(subIndex), assignments);
