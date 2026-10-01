@@ -38,6 +38,23 @@ updates:
     labels:
       - "dependencies"
 
+  # The `publishing` pack ships its own copy of release-tools/ to every
+  # project it is installed into. Dependabot scans that copy as a manifest in
+  # this repo anyway (it raises alerts for it), so it gets the same entry:
+  # a patched npm then arrives as a PR here instead of only as an alert. A
+  # merge touches shipped template files, so it needs a patch changeset for
+  # `@monte3l/groundwork` added to the PR by hand -- the bot cannot add one.
+  - package-ecosystem: "npm"
+    directory: "/templates/packs/publishing/files/.github/release-tools"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 1
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+
   # .github/deploy-tools/ pins the exact wrangler version docs.yml's deploy
   # job installs, the same lockfile-integrity-hash pattern as release-tools
   # above. Its job holds a Cloudflare API token (see docs/cloudflare-docs.md),
