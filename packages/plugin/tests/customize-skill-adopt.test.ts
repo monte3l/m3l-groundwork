@@ -543,8 +543,11 @@ describe("SKILL.md Round 1's approved-packs bullet -- prototype-key check before
     const checkIndex = section.indexOf(
       "Before merging any staged `pack.json.staged` wiring, repeat the prototype-key check from Step 0.4(c)",
     );
+    // Matched without a leading "then" -- the wiring-translation sentence is
+    // now its own shared sentence for both schemas (see the describe block
+    // below), not a clause tacked onto the schema 1-4 bullet with "then".
     const handTranslateIndex = section.indexOf(
-      "then translate `pack.json`'s `wiring` by hand",
+      "translate `pack.json`'s `wiring` by hand",
     );
 
     expect(checkIndex).toBeGreaterThan(-1);
@@ -1006,5 +1009,131 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
     const needle = "No shell tool available.";
     const occurrences = text.split(needle).length - 1;
     expect(occurrences).toBe(1);
+  });
+});
+
+describe("SKILL.md Round 1's approved-packs bullet -- the wiring translation is one shared sentence for both schemas", () => {
+  // Same heading-scoped slice as the other Round 1 approved-packs describe
+  // blocks above.
+  const sectionStart = text.indexOf("The **approved packs**");
+  const sectionEnd = text.indexOf("**Plugins (both modes)");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Round 1 approved-packs section markers ('The **approved packs**' / '**Plugins (both modes)') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  const forEitherSchemaPhrase = "for either schema";
+  const translatePhrase = "translate `pack.json`'s `wiring` by hand";
+  const sharedSentencePhrase = `Then, ${forEitherSchemaPhrase}, ${translatePhrase}`;
+
+  it("contains the shared wiring-translation sentence, starting 'Then, for either schema, translate `pack.json`'s `wiring` by hand', as its own sentence rather than a clause tacked onto one schema's bullet", () => {
+    expect(section).toContain(sharedSentencePhrase);
+  });
+
+  it("places 'for either schema' before the translate phrase", () => {
+    const forEitherIndex = section.indexOf(forEitherSchemaPhrase);
+    const translateIndex = section.indexOf(translatePhrase);
+
+    expect(forEitherIndex).toBeGreaterThan(-1);
+    expect(translateIndex).toBeGreaterThan(-1);
+    expect(forEitherIndex).toBeLessThan(translateIndex);
+  });
+
+  it("names pack.json.staged as the schema 5 source and the unsuffixed pack.json as the schema 1-4 source within 300 chars after 'for either schema'", () => {
+    const idx = section.indexOf(forEitherSchemaPhrase);
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(idx, idx + 300);
+    expect(window).toContain("`pack.json.staged`");
+    expect(window).toContain("schema 1-4");
+  });
+});
+
+describe("SKILL.md Step 0.1 -- no-shell pack Glob widens to cover every pack at once", () => {
+  // Same no-shell-bullet slice as the "no-shell-tool fallback" describe block
+  // above (a module-level `bullet` would leak scope across describe blocks,
+  // so this is recomputed locally per the test-author instructions).
+  const sectionStart = text.indexOf("1. Look for");
+  const sectionEnd = text.indexOf("2. **The deep read.**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.1 section markers ('1. Look for' / '2. **The deep read.**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  const noShellIndex = section.indexOf("No shell tool available.");
+  const emptyFilesIndex = section.indexOf("An empty `files` list");
+  if (
+    noShellIndex === -1 ||
+    emptyFilesIndex === -1 ||
+    emptyFilesIndex <= noShellIndex
+  ) {
+    throw new Error(
+      "No-shell bullet markers ('No shell tool available.' / 'An empty `files` list') were not both found in the Step 0.1 section -- update these markers if the heading text changed",
+    );
+  }
+  const bullet = section.slice(noShellIndex, emptyFilesIndex);
+
+  it("lists each pack's staged files with the widened Glob pattern `.groundwork/packs/**/*.staged`", () => {
+    expect(bullet).toContain("`.groundwork/packs/**/*.staged`");
+  });
+
+  it("drops the old per-pack Glob pattern `.groundwork/packs/*/files/**/*.staged`", () => {
+    expect(bullet).not.toContain("`.groundwork/packs/*/files/**/*.staged`");
+  });
+
+  it("states the extra-file rule as a single contiguous phrase naming any depth under .groundwork/packs/", () => {
+    expect(bullet).toContain(
+      "an extra `*.staged` file at any depth under `.groundwork/packs/` that is neither a listed manifest nor a listed file stops the run",
+    );
+  });
+
+  it("keeps the #111 baseline Glob pattern and its undetermined-result wording unchanged", () => {
+    expect(bullet).toContain(
+      "the `Glob` pattern `.groundwork/baseline/**/*.staged`",
+    );
+    expect(bullet).toContain(
+      "shorter than `stagedBaseline.files.length`, or that looks truncated, is undetermined",
+    );
+  });
+});
+
+describe("SKILL.md Step 0.1 -- the `/`-separator list also names the staged-pack fields", () => {
+  // Same heading-scoped slice as the "Step 0.1 section" describe block above.
+  const sectionStart = text.indexOf("1. Look for");
+  const sectionEnd = text.indexOf("2. **The deep read.**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.1 section markers ('1. Look for' / '2. **The deep read.**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  it("still names the baseline fields within 400 chars of the scoped sentence (unchanged)", () => {
+    const idx = section.indexOf(
+      "These fields use `/` separators on every platform",
+    );
+    expect(idx).toBeGreaterThan(-1);
+
+    const window = section.slice(idx, idx + 400);
+    expect(window).toContain("`conflicts[].relPath`");
+    expect(window).toContain("`packs[].fileConflicts[].relPath`");
+    expect(window).toContain("`stagedBaseline.dir`");
+    expect(window).toContain("`stagedBaseline.files[].path`");
+    expect(window).toContain("`.staged`");
+  });
+
+  it("also names stagedPacks[].dir, stagedPacks[].files[].path and stagedPacks[].files[].staged within 700 chars of the scoped sentence", () => {
+    const idx = section.indexOf(
+      "These fields use `/` separators on every platform",
+    );
+    expect(idx).toBeGreaterThan(-1);
+
+    const window = section.slice(idx, idx + 700);
+    expect(window).toContain("`stagedPacks[].dir`");
+    expect(window).toContain("`stagedPacks[].files[].path`");
+    expect(window).toContain("`stagedPacks[].files[].staged`");
   });
 });

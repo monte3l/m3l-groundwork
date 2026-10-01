@@ -117,7 +117,8 @@ may or may not touch.
      duplicate `path` or a duplicate `staged` among the entries. These fields
      use `/` separators on every platform: `conflicts[].relPath`,
      `packs[].fileConflicts[].relPath`, `stagedBaseline.dir`,
-     `stagedBaseline.files[].path` and its `.staged` name. Other paths in
+     `stagedBaseline.files[].path` and its `.staged` name, `stagedPacks[].dir`,
+     `stagedPacks[].files[].path` and `stagedPacks[].files[].staged`. Other paths in
      the inventory are not normalized: `templateRoot` and `targetDir` are
      absolute native paths, as are the survey's tsconfig chain entries.
    - The `absent` conflicts in `inventory.conflicts` and the paths in
@@ -182,9 +183,9 @@ may or may not touch.
      the pack names in `inventory.packs` and `inventory.stagedPacks` the
      same set, and each pack's `fileConflicts[].relPath` and `files[].path`
      the same set. List each pack's staged files with the `Glob` pattern
-     `.groundwork/packs/*/files/**/*.staged` (the same hidden-path and
-     truncation caveats apply) and compare with that pack's `files`: an
-     extra `*.staged` file not named there stops the run. This is a partial no-shell
+     `.groundwork/packs/**/*.staged` (the same hidden-path and
+     truncation caveats apply) and compare with every listed manifest and
+     file: an extra `*.staged` file at any depth under `.groundwork/packs/` that is neither a listed manifest nor a listed file stops the run. This is a partial no-shell
      substitute for what the hash proves, and it is not tamper-resistance.
      Then spend no further turns on verification and go on to the deep
      read. State this plainly at the top of your first message to the user (the Step 0.4 summary, not a
@@ -431,8 +432,10 @@ confirmed in Step 0.4:
   conflict decision the same way the baseline's own additions are applied).
   For a schema 1-4 inventory, install each file from the unsuffixed
   `.groundwork/packs/<name>/files/<path>` instead (no `.staged` suffix to strip,
-  not hash-verified; token substitution still applies) and read the wiring from
-  the unsuffixed `pack.json`; then translate `pack.json`'s `wiring` by hand
+  not hash-verified; token substitution still applies).
+  Then, for either schema, translate `pack.json`'s `wiring` by hand, reading it
+  from `pack.json.staged` (the bytes Step 0.1 read) for a schema 5 inventory and
+  from the unsuffixed `pack.json` for schema 1-4,
   against what Step 0.2's deep read already found — a `.claude/settings.json`
   hook fragment merges the same way the baseline's own hook entries would;
   `wiring.settingsTopLevel` is a set of top-level keys (e.g. `statusLine`)
