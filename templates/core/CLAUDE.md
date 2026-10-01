@@ -71,6 +71,17 @@ contract:
    Must-fix findings route back to `code-implementer`, and the loop repeats
    until clean.
 
+**The guard also screens `Bash`, but only conservatively.** The same hook
+runs on every `Bash` call and blocks a command that visibly writes into
+`src/` or `tests/` (redirects, `tee`, `sed -i`, `cp`/`mv` into them, a
+`python`/`node` snippet that writes there, and similar) unless the caller is
+`test-author` or `code-implementer`. It cannot catch an indirect write -- an
+interpreter running a script from a project file, an `eval`, a build step --
+so hub-and-spoke remains a convention backed by a guard that raises the bar,
+not a proof. To override it deliberately, run the command yourself with the
+`!` prefix at the Claude Code prompt, or edit the hook's registration in
+`.claude/settings.json`.
+
 **A Claude Code Enterprise/managed deployment sits above this and can
 silently disable it.** Managed settings (a `managed-settings.json` file, an
 MDM policy, or a claude.ai-console-managed remote policy) take precedence
