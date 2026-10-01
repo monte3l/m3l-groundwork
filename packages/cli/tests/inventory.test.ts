@@ -1,7 +1,14 @@
 // SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
 // SPDX-License-Identifier: MIT
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+} from "vitest";
 import {
   mkdtempSync,
   rmSync,
@@ -17,7 +24,8 @@ import {
   writeInventory,
   INVENTORY_SCHEMA_VERSION,
 } from "../src/inventory.js";
-import type { Inventory } from "../src/inventory.js";
+import type { Inventory, StagedBaseline } from "../src/inventory.js";
+import type { StagedBaselineFile } from "../src/baseline-stage.js";
 import type { HarnessGrade } from "../src/harness/types.js";
 import type { ToolchainGrade } from "../src/toolchain/types.js";
 import type { ProjectSurvey } from "../src/survey/survey.js";
@@ -129,7 +137,22 @@ describe("resolveCliVersion", () => {
   });
 });
 
-const EMPTY_STAGED_BASELINE = { dir: ".groundwork/baseline", files: [] };
+const EMPTY_STAGED_BASELINE: StagedBaseline = {
+  dir: ".groundwork/baseline",
+  suffix: ".staged",
+  files: [],
+};
+
+function stagedBaselineFile(
+  overrides: Partial<StagedBaselineFile> = {},
+): StagedBaselineFile {
+  return {
+    path: "eslint.config.js",
+    staged: "eslint.config.js.staged",
+    sha256: "a".repeat(64),
+    ...overrides,
+  };
+}
 
 describe("buildInventory / writeInventory", () => {
   let groundworkDir: string;
@@ -169,10 +192,20 @@ describe("buildInventory / writeInventory", () => {
     expect(inventory.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("carries stagedBaseline through verbatim", () => {
-    const stagedBaseline = {
+  it("carries stagedBaseline through verbatim, including the per-file path/staged/sha256 shape", () => {
+    const stagedBaseline: StagedBaseline = {
       dir: ".groundwork/baseline",
-      files: ["eslint.config.js", "vitest.config.ts"],
+      suffix: ".staged",
+      files: [
+        stagedBaselineFile({
+          path: "eslint.config.js",
+          staged: "eslint.config.js.staged",
+        }),
+        stagedBaselineFile({
+          path: "vitest.config.ts",
+          staged: "vitest.config.ts.staged",
+        }),
+      ],
     };
     const inventory = buildInventory({
       detection: { mode: "adopt", signal: "found package.json" },
@@ -263,5 +296,46 @@ describe("buildInventory / writeInventory", () => {
     expect(existsSync(path)).toBe(true);
     const parsed = JSON.parse(readFileSync(path, "utf8")) as Inventory;
     expect(parsed.schemaVersion).toBe(INVENTORY_SCHEMA_VERSION);
+  });
+
+  it("round-trips a non-empty stagedBaseline (dir/suffix/files) through JSON", () => {
+    const stagedBaseline: StagedBaseline = {
+      dir: ".groundwork/baseline",
+      suffix: ".staged",
+      files: [stagedBaselineFile()],
+    };
+    const inventory = buildInventory({
+      detection: { mode: "adopt", signal: "found package.json" },
+      templateRoot: "/tmp/templates/core",
+      targetDir: "/tmp/project",
+      survey: EMPTY_SURVEY,
+      conflicts: [],
+      packs: [],
+      harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline,
+    });
+
+    const path = writeInventory(inventory, join(groundworkDir, "roundtrip"));
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Inventory;
+
+    expect(parsed.stagedBaseline.dir).toBe(".groundwork/baseline");
+    expect(parsed.stagedBaseline.suffix).toBe(".staged");
+    expect(parsed.stagedBaseline.files).toEqual([stagedBaselineFile()]);
+  });
+});
+
+describe("StagedBaseline / StagedBaselineFile shapes", () => {
+  it("types stagedBaseline as { dir, suffix, files: StagedBaselineFile[] }, each file carrying path/staged/sha256", () => {
+    expectTypeOf<StagedBaseline>().toEqualTypeOf<{
+      dir: string;
+      suffix: string;
+      files: StagedBaselineFile[];
+    }>();
+    expectTypeOf<StagedBaselineFile>().toEqualTypeOf<{
+      path: string;
+      staged: string;
+      sha256: string;
+    }>();
   });
 });

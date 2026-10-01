@@ -135,7 +135,9 @@ dependency -- there isn't one (`packages/cli/package.json`'s
 - **Least common mechanism.** Fresh mode and adopt mode don't share a
   generic "write into the target directory" facility. Adopt mode's only
   writes are `.groundwork/inventory.json`, `.groundwork/adoption-report.md`,
-  and a guarded, additive `/customize` copy -- there is no code path by
+  inert staged copies under `.groundwork/baseline/` and `.groundwork/packs/`
+  (refused if `.groundwork` or a staging directory is a symlink), and a
+  guarded, additive `/customize` copy -- there is no code path by
   which surveying an arbitrary, untrusted project can reach the same
   unrestricted file-writing fresh mode uses, so a defect in one mode's
   write logic can't leak into the other's trust domain.

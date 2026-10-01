@@ -10,7 +10,7 @@
  */
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
-import type { Inventory, PackSurvey } from "./inventory.js";
+import type { Inventory, PackSurvey, StagedBaseline } from "./inventory.js";
 
 /**
  * Estimates the post-merge total against each cap: the baseline's own count
@@ -364,6 +364,15 @@ function renderPacksSection(inventory: Inventory): string {
     .trimEnd();
 }
 
+/** The "; N staged for /customize at …" clause, or nothing when no file was actually staged. */
+function stagedClause(stagedBaseline: StagedBaseline): string {
+  const { dir, suffix, files } = stagedBaseline;
+  if (files.length === 0) {
+    return "";
+  }
+  return `; ${files.length} staged for /customize at ${dir}/ (inert copies, each with a ${suffix} suffix)`;
+}
+
 function renderConflictsSection(inventory: Inventory): string {
   const { conflicts } = inventory;
   const absent = conflicts.filter((c) => c.status === "absent");
@@ -373,7 +382,7 @@ function renderConflictsSection(inventory: Inventory): string {
   const lines = [
     "## What groundwork would change",
     "",
-    `- ${absent.length} file(s) would be added cleanly (no collision); staged for /customize at ${inventory.stagedBaseline.dir}/.`,
+    `- ${absent.length} file(s) would be added cleanly (no collision)${stagedClause(inventory.stagedBaseline)}.`,
     `- ${identical.length} file(s) already match the baseline.`,
     `- ${divergent.length} file(s) conflict and need a decision.`,
   ];
@@ -435,6 +444,12 @@ export function renderReport(inventory: Inventory): string {
       "changing anything. Did this report miss something about your " +
       "project? Say so when `/customize` asks -- that confirmation round " +
       "is the point where it's caught.",
+    "",
+    `The baseline files staged under \`${inventory.stagedBaseline.dir}/\` ` +
+      `are inert copies, never installed: each carries a ` +
+      `\`${inventory.stagedBaseline.suffix}\` suffix so no tool in this ` +
+      "project picks one up, and `/customize` installs one only after you " +
+      "confirm it.",
     "",
     "`.groundwork/` itself was not added to this project's `.gitignore` -- " +
       "that choice is yours. It's disposable (regenerate it any time by " +

@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -774,6 +775,66 @@ describe("stagePackFiles clears stale staged files", () => {
       rmSync(packsRoot, { recursive: true, force: true });
       rmSync(groundworkDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("stagePackFiles symlink guard", () => {
+  let groundworkDir: string;
+  let outsideDir: string;
+
+  beforeEach(() => {
+    groundworkDir = mkdtempSync(join(tmpdir(), "packs-stage-symlink-gw-"));
+    outsideDir = mkdtempSync(join(tmpdir(), "packs-stage-symlink-outside-"));
+  });
+
+  afterEach(() => {
+    rmSync(groundworkDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it("throws before writing or deleting anything when groundworkDir itself is a symlink", () => {
+    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
+    rmSync(groundworkDir, { recursive: true, force: true });
+    symlinkSync(outsideDir, groundworkDir, "dir");
+
+    const pack = loadPack("harness-extras");
+
+    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
+    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+      "do not touch",
+    );
+    expect(existsSync(join(outsideDir, "packs"))).toBe(false);
+  });
+
+  it("throws before writing or deleting anything when <groundworkDir>/packs is a symlink", () => {
+    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
+    symlinkSync(outsideDir, join(groundworkDir, "packs"), "dir");
+
+    const pack = loadPack("harness-extras");
+
+    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
+    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+      "do not touch",
+    );
+    expect(existsSync(join(outsideDir, "harness-extras"))).toBe(false);
+  });
+
+  it("throws before writing or deleting anything when <groundworkDir>/packs/<name> is a symlink", () => {
+    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
+    mkdirSync(join(groundworkDir, "packs"), { recursive: true });
+    const pack = loadPack("harness-extras");
+    symlinkSync(
+      outsideDir,
+      join(groundworkDir, "packs", pack.manifest.name),
+      "dir",
+    );
+
+    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
+    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+      "do not touch",
+    );
+    expect(existsSync(join(outsideDir, "files"))).toBe(false);
+    expect(existsSync(join(outsideDir, "pack.json"))).toBe(false);
   });
 });
 

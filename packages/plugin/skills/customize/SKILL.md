@@ -65,13 +65,13 @@ may or may not touch.
    than none), and tell the user to update the plugin (`/plugin update`) and
    re-run `/customize`. What each version added:
 
-   | `schemaVersion` | Adds                                                                                          | If absent                                            |
-   | --------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-   | 1               | the survey, `conflicts`                                                                       | (the floor)                                          |
-   | 2               | `packs`                                                                                       | no packs to offer; skip the pack question            |
-   | 3               | `harnessGrade`, `harnessConformance`                                                          | skip the harness-grade starting point                |
-   | 4               | `toolchainGrade`, `toolchainConformance`                                                      | skip the toolchain-grade starting point              |
-   | 5               | `stagedBaseline` (`{ dir, files }`): the baseline additions staged at `.groundwork/baseline/` | read additions from `inventory.templateRoot` instead |
+   | `schemaVersion` | Adds                                                                                                                                      | If absent                                                     |
+   | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+   | 1               | the survey, `conflicts`                                                                                                                   | (the floor)                                                   |
+   | 2               | `packs`                                                                                                                                   | no packs to offer; skip the pack question                     |
+   | 3               | `harnessGrade`, `harnessConformance`                                                                                                      | skip the harness-grade starting point                         |
+   | 4               | `toolchainGrade`, `toolchainConformance`                                                                                                  | skip the toolchain-grade starting point                       |
+   | 5               | `stagedBaseline` (`{ dir, suffix, files }`): the baseline additions staged at `.groundwork/baseline/`, each as `{ path, staged, sha256 }` | schema 1-4 only: read additions from `inventory.templateRoot` |
 
 2. **The deep read.** The CLI's survey is an index, not an interpretation —
    it flagged what it found but could not parse (`needsReading: true` on
@@ -224,16 +224,24 @@ Concretely, adopt-mode Round 1 applies exactly three things, all already
 confirmed in Step 0.4:
 
 - The **approved additions** — files `templates/core` would add that the
-  project doesn't have and the user approved adding. Copy them from the
-  CLI's staged, self-contained copy at `.groundwork/baseline/`
-  (`inventory.stagedBaseline.dir`, listing `files`; bytes verbatim, so the
-  `__KEY__` tokens are still unsubstituted and are filled in with the
-  project's real values as you copy, same as staged packs). Fall back to
-  `inventory.templateRoot` **only** when the staged copy is missing (a
-  schema 1-4 inventory, or a `.groundwork/baseline/` someone deleted), and
-  if that path no longer exists either (a pruned `npx` cache, a deleted
-  temp checkout), say so and ask the user to re-run the CLI rather than
-  guessing at the baseline's contents.
+  project doesn't have and the user approved adding. For `schemaVersion` 5
+  or higher, install them from the CLI's staged, self-contained copy under
+  `.groundwork/baseline/` (`inventory.stagedBaseline`). Each listed file is
+  stored inert as `<dir>/<staged>` (its `path` plus a `.staged` suffix, so
+  no project tool or Claude Code discovered it as live source) with its
+  `sha256`. **Check every listed file first, one by one:** it must exist at
+  `<dir>/<staged>` and its SHA-256 must equal the recorded `sha256`. **Any
+  missing file or any mismatch stops the install** (the whole directory
+  being absent counts only when `files` is non-empty; an empty `files` list
+  legitimately creates no directory): tell the user and ask for a re-run of
+  the CLI, and **never fall back to `inventory.templateRoot` for schema 5 or
+  higher**. When every file checks out, copy the bytes to the project at
+  `path` (the suffix stripped, never to the staged name), filling in the
+  `__KEY__` tokens with the project's real values as you copy, same as
+  staged packs. Only a **schema 1-4** inventory has no staged copy and reads
+  additions from `inventory.templateRoot`; if that path no longer exists (a
+  pruned `npx` cache, a deleted temp checkout), say so and ask for a CLI
+  re-run rather than guessing at the baseline's contents.
 - The **approved conflict resolutions** — for each divergent file the user
   decided on, apply that decision (keep theirs / take groundwork's / merge
   the named keys).

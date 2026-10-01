@@ -224,10 +224,19 @@ steps) before considering any task here done.
   `/customize`'s Step 1, with its evidence shown). Anything a collector
   can't parse goes into `ProjectSurvey.undetermined` rather than being
   silently dropped -- a survey that looks complete but isn't is worse than
-  one that admits a gap. Adopt mode writes exactly two files
-  (`.groundwork/inventory.json`, `.groundwork/adoption-report.md`) plus one
+  one that admits a gap. Adopt mode writes two report files
+  (`.groundwork/inventory.json`, `.groundwork/adoption-report.md`), the
+  inert staged copies of the baseline additions and the packs
+  (`.groundwork/baseline/`, `.groundwork/packs/`), plus one
   guarded, purely-additive copy of the `/customize` skill
   (`installCustomizeSkillGuarded` in `plugin.ts`) -- never a project file.
+  Staged baseline files carry a `.staged` suffix so no project tool (vitest,
+  tsc, eslint, Claude Code's skill loader) can discover them as live source;
+  `inventory.stagedBaseline.files` records each one's original `path`, its
+  `staged` name and a `sha256`, and `/customize` strips the suffix on install.
+  `inventory.json` is written last, as the commit marker: it is deleted
+  before staging starts, so a failed run never leaves an old inventory
+  describing a partial stage.
   `adopt.e2e.test.ts` is the test of that guarantee; don't weaken it.
 - **`/customize`'s two guidance skills (`typescript-guidance`,
   `harness-guidance`, both in `templates/core/.claude/skills/`) each have
@@ -735,14 +744,14 @@ set for one file.
   worktree-only development or automates per-worktree dependency
   installation -- that is the `worktrees` pack, tracked as separate,
   not-yet-landed work.
-- **Adopt mode's `inventory.json` records `templateRoot` as an absolute
-  path.** If the CLI ran from a location that no longer exists by the time
-  `/customize` runs (a deleted temp checkout, a different machine), the
-  approved additions can't be read; `/customize`'s Step 0 should report this
-  and ask for a re-run rather than guessing at the baseline's contents. Now that
-  the CLI is published this points into the installed package -- under `npx`,
-  npm's `_npx` cache -- which persists until the cache is cleaned but is not a
-  path the user chose.
+- **Adopt mode's `inventory.json` still records `templateRoot` as an absolute
+  path, but baseline additions no longer depend on it** (schema 5): they are
+  staged at `.groundwork/baseline/` and hash-checked, and `/customize` never
+  falls back to `templateRoot` for a schema 5+ inventory. Only a schema 1-4
+  inventory still reads additions from it, and Step 0 reports a vanished path
+  and asks for a re-run rather than guessing. `report.ts`'s cap estimate reads
+  `templateRoot` inside the CLI run itself, where it still exists. Pack
+  staging hardening beyond the symlink guard is unchanged.
 - **Adopt mode's post-merge cap counts (in `report.ts`) are an estimate, not
   a reconciliation.** It assumes no name overlap between the baseline's
   agents/skills/hooks and the project's own -- good enough to flag "you may

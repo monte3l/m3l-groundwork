@@ -14,11 +14,14 @@
  * the toolchain grade (no `toolchainGrade`/`toolchainConformance`), and
  * `schemaVersion` below 5 predates staged baseline additions (no
  * `stagedBaseline`) -- `/customize` then falls back to reading absent files
- * from `templateRoot`.
+ * from `templateRoot`. From schema 5 on, each staged file is an inert copy
+ * named `<path>` + `stagedBaseline.suffix` (`.staged`) and carries the sha256
+ * of its staged bytes, so `/customize` can verify a copy before installing it.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { StagedBaselineFile } from "./baseline-stage.js";
 import type { CapCounts } from "./caps.js";
 import type { FileConflict } from "./conflicts.js";
 import { summarizeHarnessConformance } from "./harness/conformance.js";
@@ -33,12 +36,26 @@ import type { ToolchainGrade } from "./toolchain/types.js";
 
 export const INVENTORY_SCHEMA_VERSION = 5;
 
-/** Where adopt mode staged the baseline files the project lacks entirely (`baseline-stage.ts`). */
-interface StagedBaseline {
+/**
+ * Where adopt mode staged the baseline files the project lacks entirely
+ * (`baseline-stage.ts`), and how each staged copy is named.
+ *
+ * @example
+ * ```ts
+ * const stagedBaseline: StagedBaseline = {
+ *   dir: ".groundwork/baseline",
+ *   suffix: ".staged",
+ *   files: [{ path: "eslint.config.js", staged: "eslint.config.js.staged", sha256: "…" }],
+ * };
+ * ```
+ */
+export interface StagedBaseline {
   /** The staging directory, relative to the project root (e.g. `.groundwork/baseline`). */
   dir: string;
-  /** The staged files, relative to `dir`. */
-  files: string[];
+  /** The suffix every staged file name carries (`.staged`), so no toolchain glob ever matches one. */
+  suffix: string;
+  /** The staged files: install path, staged name relative to `dir`, and sha256 of the staged bytes. */
+  files: StagedBaselineFile[];
 }
 
 export interface PackSurvey {
@@ -72,7 +89,7 @@ export interface Inventory {
   toolchainGrade: ToolchainGrade;
   /** How far the project's toolchain files have drifted from the baseline's -- information, never a defect. Absent when schemaVersion is below 4. */
   toolchainConformance: ToolchainConformance;
-  /** The "absent" baseline files, copied verbatim for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative. */
+  /** The "absent" baseline files, copied verbatim as inert `<path>.staged` copies for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative. */
   stagedBaseline: StagedBaseline;
 }
 

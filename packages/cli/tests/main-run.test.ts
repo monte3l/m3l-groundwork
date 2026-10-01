@@ -16,10 +16,14 @@ import {
   readFileSync,
   readdirSync,
   existsSync,
+  symlinkSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Inventory } from "../src/inventory.js";
+import type * as InventoryModule from "../src/inventory.js";
+import type * as ReportModule from "../src/report.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
@@ -37,6 +41,34 @@ vi.mock("../src/plugin.js", () => ({
   installCustomizeSkill: installCustomizeSkillMock,
   installCustomizeSkillGuarded: installCustomizeSkillGuardedMock,
 }));
+
+// Records the relative call order of renderReport (whose string result main()
+// writes to adoption-report.md immediately after calling it) and
+// writeInventory (which writes inventory.json itself, last) -- a proxy for
+// the write-order contract (report before inventory) that doesn't require
+// redefining a non-configurable node:fs ESM export.
+const { writeOrderMock } = vi.hoisted(() => ({ writeOrderMock: vi.fn() }));
+
+vi.mock("../src/report.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof ReportModule>();
+  return {
+    ...actual,
+    renderReport: (...args: Parameters<typeof actual.renderReport>) => {
+      writeOrderMock("report");
+      return actual.renderReport(...args);
+    },
+  };
+});
+vi.mock("../src/inventory.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof InventoryModule>();
+  return {
+    ...actual,
+    writeInventory: (...args: Parameters<typeof actual.writeInventory>) => {
+      writeOrderMock("inventory");
+      return actual.writeInventory(...args);
+    },
+  };
+});
 
 const { main, CliUsageError } = await import("../src/main.js");
 
@@ -497,7 +529,7 @@ describe("main", () => {
       expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
     });
 
-    it("stages absent baseline files at .groundwork/baseline/ without touching the project", () => {
+    it("stages absent baseline files at .groundwork/baseline/ as <path>.staged, each with a sha256 matching the staged bytes, without touching the project", () => {
       const projectDir = join(targetDir, "existing-project4");
       mkdirSync(projectDir);
       writeFileSync(
@@ -512,17 +544,94 @@ describe("main", () => {
       ) as Inventory;
 
       expect(inventory.stagedBaseline.dir).toBe(".groundwork/baseline");
+      expect(inventory.stagedBaseline.suffix).toBe(".staged");
       expect(inventory.stagedBaseline.files.length).toBeGreaterThan(0);
+      const paths = inventory.stagedBaseline.files.map((f) => f.path);
       for (const file of inventory.stagedBaseline.files) {
-        expect(
-          existsSync(join(projectDir, ".groundwork", "baseline", file)),
-        ).toBe(true);
+        expect(file.staged).toBe(`${file.path}.staged`);
+        const stagedPath = join(
+          projectDir,
+          ".groundwork",
+          "baseline",
+          file.staged,
+        );
+        expect(existsSync(stagedPath)).toBe(true);
+        expect(file.sha256).toBe(
+          createHash("sha256").update(readFileSync(stagedPath)).digest("hex"),
+        );
       }
       // package.json already exists in the project (a key-level conflict,
       // never "absent") -- it must not be staged, while a real baseline
       // file this fixture never created (eslint.config.js) must be.
-      expect(inventory.stagedBaseline.files).toContain("eslint.config.js");
-      expect(inventory.stagedBaseline.files).not.toContain("package.json");
+      expect(paths).toContain("eslint.config.js");
+      expect(paths).not.toContain("package.json");
+    });
+
+    it("deletes a stale inventory.json/adoption-report.md before staging, and writes the report before inventory.json (both absent, baseline/ untouched) when staging fails", () => {
+      const projectDir = join(targetDir, "existing-project-ordering");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
+      writeFileSync(
+        join(projectDir, ".groundwork", "inventory.json"),
+        "stale inventory\n",
+      );
+      writeFileSync(
+        join(projectDir, ".groundwork", "adoption-report.md"),
+        "stale report\n",
+      );
+
+      const outsideDir = mkdtempSync(
+        join(tmpdir(), "main-run-ordering-outside-"),
+      );
+      writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
+      symlinkSync(
+        outsideDir,
+        join(projectDir, ".groundwork", "baseline"),
+        "dir",
+      );
+
+      try {
+        expect(() => main([projectDir])).toThrow();
+
+        expect(
+          existsSync(join(projectDir, ".groundwork", "inventory.json")),
+        ).toBe(false);
+        expect(
+          existsSync(join(projectDir, ".groundwork", "adoption-report.md")),
+        ).toBe(false);
+        expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+          "do not touch",
+        );
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("writes adoption-report.md, then inventory.json last, on a normal run", () => {
+      const projectDir = join(targetDir, "existing-project-order-normal");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      writeOrderMock.mockClear();
+
+      main([projectDir]);
+
+      // renderReport's result is written to adoption-report.md immediately
+      // after it's called; writeInventory writes inventory.json itself --
+      // the call order below is a direct proxy for the file-write order the
+      // contract requires (report, then inventory.json last).
+      expect(
+        writeOrderMock.mock.calls.map((call: unknown[]) => call[0]),
+      ).toEqual(["report", "inventory"]);
+      expect(
+        existsSync(join(projectDir, ".groundwork", "inventory.json")),
+      ).toBe(true);
     });
 
     // Contract 2: --adopt against a target directory that does not exist

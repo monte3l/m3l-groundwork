@@ -215,14 +215,83 @@ describe("adopt mode end-to-end", () => {
       ).not.toBe("absent");
 
       expect(inventory.stagedBaseline.dir).toBe(".groundwork/baseline");
+      expect(inventory.stagedBaseline.suffix).toBe(".staged");
       expect(inventory.stagedBaseline.files.length).toBeGreaterThan(0);
-      expect(inventory.stagedBaseline.files).toContain("eslint.config.js");
-      expect(inventory.stagedBaseline.files).not.toContain("package.json");
+      const stagedPaths = inventory.stagedBaseline.files.map((f) => f.path);
+      expect(stagedPaths).toContain("eslint.config.js");
+      expect(stagedPaths).not.toContain("package.json");
       for (const file of inventory.stagedBaseline.files) {
-        expect(
-          existsSync(join(projectDir, ".groundwork", "baseline", file)),
-        ).toBe(true);
+        expect(file.staged).toBe(`${file.path}.staged`);
+        const stagedAbsPath = join(
+          projectDir,
+          ".groundwork",
+          "baseline",
+          file.staged,
+        );
+        expect(existsSync(stagedAbsPath)).toBe(true);
+        expect(file.sha256).toBe(
+          createHash("sha256")
+            .update(readFileSync(stagedAbsPath))
+            .digest("hex"),
+        );
       }
+
+      // Neutral naming: every staged file ends ".staged" and none ends in a
+      // bare toolchain-globbed extension (checked on the full staged name,
+      // which is only reachable via the suffix) -- so no toolchain anywhere
+      // (this fixture's own jest config included) ever globs the staged
+      // tree as source/test files.
+      const baselineDir = join(projectDir, ".groundwork", "baseline");
+      const staged: string[] = [];
+      const visit = (dir: string): void => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const absPath = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            visit(absPath);
+            continue;
+          }
+          staged.push(relative(baselineDir, absPath));
+        }
+      };
+      visit(baselineDir);
+      expect(staged.length).toBeGreaterThan(0);
+      for (const name of staged) {
+        expect(name.endsWith(".staged")).toBe(true);
+        expect(name).not.toMatch(/\.(ts|tsx|js|mjs|cjs|json|jsonc|md|ya?ml)$/);
+      }
+      // The fixture's own CLAUDE.md differs from the baseline's (a
+      // "divergent" conflict, never "absent"), so it must NOT be staged --
+      // only a file the fixture genuinely lacks (eslint.config.js) is.
+      expect(staged.find((n) => n === "CLAUDE.md.staged")).toBeUndefined();
+      expect(staged.find((n) => n === "eslint.config.js.staged")).toBeDefined();
+
+      // A test-discovery glob (test files, toolchain configs, harness
+      // frontmatter files, CI workflows) run over the WHOLE project,
+      // including .groundwork/, must never match anything under
+      // .groundwork/baseline/ -- every staged name there carries the
+      // ".staged" suffix, which none of these patterns end in.
+      const discoveryPattern =
+        /(\.test\.ts|vitest\.config\.\w+|tsconfig[^/]*\.json|eslint\.config\.\w+|SKILL\.md|CLAUDE\.md|\.ya?ml)$/;
+      const discoveryMatchesUnderBaseline: string[] = [];
+      const visitProject = (dir: string): void => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (entry.name === "node_modules") continue;
+          const absPath = join(dir, entry.name);
+          const relPath = relative(projectDir, absPath);
+          if (entry.isDirectory()) {
+            visitProject(absPath);
+            continue;
+          }
+          if (
+            relPath.startsWith(join(".groundwork", "baseline") + "/") &&
+            discoveryPattern.test(entry.name)
+          ) {
+            discoveryMatchesUnderBaseline.push(relPath);
+          }
+        }
+      };
+      visitProject(projectDir);
+      expect(discoveryMatchesUnderBaseline).toEqual([]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

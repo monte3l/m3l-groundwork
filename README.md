@@ -107,7 +107,8 @@ the wiring contract.
 | `worktrees`      | Enforces that all src/tests development happens inside an isolated git worktree, on any branch, for any caller: a `working-in-worktrees` skill (start/status/sync/finish/fan-out), a dependency-install backstop hook, a guard stricter than the baseline's own branch/hub guards, and a `.worktreeinclude` copying `.env`/`.env.local`/`.env.*.local` into every worktree Claude Code creates. Changes the day-to-day workflow -- opt-in, not recommended by default. |
 
 In fresh mode `--pack` installs a pack directly. In adopt mode the CLI only
-surveys which packs apply and stages them under `.groundwork/packs/`;
+surveys which packs apply and stages them under `.groundwork/packs/` (and
+the baseline files it would add under `.groundwork/baseline/`);
 `/customize` installs from there after you confirm.
 
 ## Flags
@@ -248,7 +249,11 @@ examples. From 1.0.0, the public API is:
 2. **`.groundwork/inventory.json`** -- a `schemaVersion` bump that
    `/customize` can't read is a breaking change.
 3. **`.groundwork/adoption-report.md`'s section headings.**
-4. **`.groundwork/packs/` staging layout**, and pack names.
+4. **`.groundwork/packs/` and `.groundwork/baseline/` staging layouts**, and
+   pack names. Baseline files are staged as inert copies with a `.staged`
+   suffix appended to each name (so no project tool discovers them), listed
+   with their original path and a `sha256` in `inventory.json`'s
+   `stagedBaseline`.
 5. **The `engines.node` floor** -- narrowing it is breaking; widening it
    isn't.
 6. **`/customize`'s invocation name**, and the promise that it reads every

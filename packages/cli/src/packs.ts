@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { emitTemplate } from "./emit.js";
+import { assertNotSymlink } from "./fs-guard.js";
 import { parseJsonc } from "./jsonc.js";
 import {
   isRecord,
@@ -385,10 +386,18 @@ export function installPack(
  * installs from this self-contained copy rather than from `templateRoot`
  * (an absolute path that may not exist by the time it runs). Token
  * substitution is a no-op here (`{}`): staging a project's real name into
- * pack content is `/customize`'s job, not this offline copy's.
+ * pack content is `/customize`'s job, not this offline copy's. Throws,
+ * before deleting or writing anything, when `groundworkDir`, its `packs/`
+ * or `packs/<name>/` is a symlink.
  */
 export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
-  const destDir = join(groundworkDir, "packs", pack.manifest.name);
+  const packsDir = join(groundworkDir, "packs");
+  const destDir = join(packsDir, pack.manifest.name);
+  // Refuse a symlink anywhere on the staging path before the rmSync below
+  // could follow it outside the project.
+  for (const dir of [groundworkDir, packsDir, destDir]) {
+    assertNotSymlink(dir);
+  }
   // Clear a previous staging first, so a file a newer pack version dropped
   // doesn't linger beside the current payload.
   rmSync(join(destDir, "files"), { recursive: true, force: true });
