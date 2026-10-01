@@ -621,8 +621,7 @@ describe("SKILL.md Step 0.1 -- staged packs verification (schema 5)", () => {
 
   it("requires name to be a single path segment: not empty, not '.' or '..', and free of a slash, backslash or colon", () => {
     expect(section).toContain("single path segment");
-    expect(section).toContain("`..`");
-    expect(section).toContain("empty");
+    expect(section).toContain("not empty, not `.` or `..`");
   });
 
   it("requires manifest.path and manifest.staged to equal the documented literals exactly", () => {
@@ -686,9 +685,10 @@ describe("SKILL.md Step 0.1 -- the single stop list also covers staged packs", (
   });
 
   it("names a missing or non-array stagedPacks as stopping the run for schema 5, in the same stop-list description", () => {
-    expect(section).toContain("`stagedPacks`");
-    expect(section).toContain("not an array");
-    expect(section).toContain("missing");
+    const idx = section.indexOf("so does a `stagedPacks` that is");
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(idx, idx + 80);
+    expect(window).toContain("missing or not an array");
   });
 
   it("extends the fixed user message to mention both staged directories and the re-run command", () => {
@@ -702,9 +702,13 @@ describe("SKILL.md Step 0.1 -- the single stop list also covers staged packs", (
     expect(window).toContain("npx @monte3l/groundwork@rc .");
   });
 
-  it("never falls back to inventory.templateRoot for packs either", () => {
-    expect(section).toContain("Never fall back to");
-    expect(section).toContain("for packs either");
+  it("scopes the never-fall-back-to-templateRoot rule to a schema 5 inventory, packs included, dropping the old unscoped wording", () => {
+    const idx = section.indexOf("Never fall back to");
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(idx, idx + 200);
+    expect(window).toContain("schema 5");
+    expect(window).toContain("packs included");
+    expect(section).not.toContain("for packs either:");
   });
 });
 
@@ -750,5 +754,78 @@ describe("SKILL.md Round 1's approved-packs bullet -- installs from the staged, 
     const window = section.slice(pointerIdx, pointerIdx + 250);
     expect(window).toContain("strip");
     expect(window).toContain("`.staged`");
+  });
+
+  it("mentions __KEY__ token substitution within 400 chars of the manual-install pointer's strip-the-.staged-suffix instruction", () => {
+    const idx = section.indexOf("strip the `.staged` suffix");
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(idx, idx + 400);
+    expect(window).toContain("`__KEY__`");
+  });
+});
+
+describe("SKILL.md Step 0.4(c) Confirm -- schema 1-4 branch reads the unsuffixed pack.json", () => {
+  // Same heading-scoped slice as the other Step 0.4(c) describe block above.
+  const sectionStart = text.indexOf("4. **Confirm.**");
+  const sectionEnd = text.indexOf("5. **Record the confirmed decisions**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.4 Confirm section markers ('4. **Confirm.**' / '5. **Record the confirmed decisions**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  it("still keeps the schema 5 clause checking the staged pack.json.staged", () => {
+    expect(section).toContain(
+      "Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json.staged`",
+    );
+  });
+
+  it("names a schema 1-4 clause naming the unsuffixed pack.json and that it is not hash-verified", () => {
+    expect(section).toContain("schema 1-4");
+    expect(section).toContain("`.groundwork/packs/<name>/pack.json`");
+    expect(section).toContain("not hash-verified");
+  });
+
+  it("says the prototype-key check still applies to the unsuffixed pack.json for a schema 1-4 inventory", () => {
+    const idx = section.indexOf("`.groundwork/packs/<name>/pack.json`");
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(Math.max(0, idx - 250), idx + 250);
+    expect(window).toContain("prototype-key check");
+  });
+});
+
+describe("SKILL.md Round 1's approved-packs bullet -- schema 1-4 branch reads the unsuffixed files", () => {
+  // Same heading-scoped slice as the other Round 1 approved-packs describe
+  // blocks above.
+  const sectionStart = text.indexOf("The **approved packs**");
+  const sectionEnd = text.indexOf("**Plugins (both modes)");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Round 1 approved-packs section markers ('The **approved packs**' / '**Plugins (both modes)') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  it("still keeps the schema 5 clause installing from files/<path>.staged", () => {
+    expect(section).toContain("`.groundwork/packs/<name>/files/<path>.staged`");
+  });
+
+  it("names a schema 1-4 clause naming the unsuffixed files/<path>, with no .staged suffix, where token substitution still applies", () => {
+    expect(section).toContain("schema 1-4");
+    expect(section).toContain("`.groundwork/packs/<name>/files/<path>`");
+    expect(section).toContain("no `.staged` suffix");
+    expect(section).toContain("token substitution still applies");
+  });
+});
+
+describe("SKILL.md Step 0.1 schema table -- row 5's 'If absent' cell covers packs too", () => {
+  it("mentions the unsuffixed copy packs read for a schema 1-4 inventory, within the rows 1-5 table region", () => {
+    const tableStart = text.indexOf("| `schemaVersion` | Adds");
+    const tableEnd = text.indexOf("For a schema 5 inventory only", tableStart);
+    expect(tableStart).toBeGreaterThan(-1);
+    expect(tableEnd).toBeGreaterThan(tableStart);
+    const region = text.slice(tableStart, tableEnd);
+    expect(region).toContain("unsuffixed");
   });
 });
