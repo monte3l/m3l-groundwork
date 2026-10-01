@@ -195,16 +195,16 @@ const dangerousKeyArb = fc.constantFrom(...DANGEROUS_KEYS);
  * Builds an object whose OWN key is literally `key`, via JSON.parse. Object
  * literal syntax (`{ [key]: value }` with a computed key is safe, but the
  * un-computed `{ __proto__: value }` and bracket assignment
- * `obj["__proto__"] = value` both invoke the Annex B exotic setter on
- * Object.prototype instead of creating a data property) -- JSON.parse never
- * does, matching how a real pack fragment reaches these functions after
- * being read off disk.
+ * `obj["__proto__"] = value` both invoke the Annex B exotic setter, which
+ * reassigns the target object's own [[Prototype]] internal slot rather than
+ * creating a data property) -- JSON.parse never does, matching how a real
+ * pack fragment reaches these functions after being read off disk.
  */
 function buildOwnKeyRecord<T>(key: string, value: T): Record<string, T> {
   return JSON.parse(`{"${key}":${JSON.stringify(value)}}`) as Record<string, T>;
 }
 
-describe("prototype-pollution guard (CWE-1321)", () => {
+describe("prototype-key guard (CWE-1321)", () => {
   afterEach(() => {
     // See merge-json.test.ts's identical afterEach: `not.toHaveProperty`
     // can't prove own-key absence, so an unconditional cleanup is required
@@ -212,7 +212,14 @@ describe("prototype-pollution guard (CWE-1321)", () => {
     Reflect.deleteProperty(Object.prototype, "polluted");
   });
 
-  it("mergeSettingsTopLevel throws naming the key for any dangerous fragment key, and never pollutes Object.prototype", () => {
+  // Pre-fix, the exotic `__proto__` setter reassigns only the spread-copied
+  // local object's OWN prototype (and JSON.stringify silently drops the key
+  // rather than serializing it) -- global Object.prototype was never
+  // reachable this way. The `Object.hasOwn(Object.prototype, "polluted")`
+  // checks below are therefore only a regression tripwire, not the proof of
+  // the fix; the real guarantee each property asserts is `toThrow(key)`.
+
+  it("mergeSettingsTopLevel throws naming the key for any dangerous fragment key", () => {
     fc.assert(
       fc.property(dangerousKeyArb, jsonPrimitiveArb, (key, value) => {
         const fragment = buildOwnKeyRecord(key, value);
@@ -223,7 +230,7 @@ describe("prototype-pollution guard (CWE-1321)", () => {
     );
   });
 
-  it("mergeSettingsHooks throws naming the key for any dangerous fragment event key, and never pollutes Object.prototype", () => {
+  it("mergeSettingsHooks throws naming the key for any dangerous fragment event key", () => {
     fc.assert(
       fc.property(dangerousKeyArb, (key) => {
         const fragment = buildOwnKeyRecord(key, [
@@ -236,7 +243,7 @@ describe("prototype-pollution guard (CWE-1321)", () => {
     );
   });
 
-  it("mergePackageScripts throws naming the key for any dangerous addition name, and never pollutes Object.prototype", () => {
+  it("mergePackageScripts throws naming the key for any dangerous addition name", () => {
     fc.assert(
       fc.property(dangerousKeyArb, fc.string(), (key, cmd) => {
         const additions = buildOwnKeyRecord(key, cmd);

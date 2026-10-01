@@ -11,8 +11,13 @@
  * otherwise preserve) and idempotent (merging the same fragment twice
  * produces the same result as merging it once). Every key taken from a
  * caller fragment is checked against `__proto__`/`constructor`/`prototype`
- * before it is read or written (CWE-1321), and such a key is rejected with a
- * thrown error rather than merged.
+ * before it is read or written, and such a key is rejected with a thrown error
+ * rather than merged. The hazard this closes is local, not global: assigning
+ * `obj["__proto__"] = v` on the spread-copied plain objects these merges build
+ * swaps _that object's own_ prototype instead of creating an own key, so
+ * `JSON.stringify` later drops the key without a word. It never reached the
+ * shared `Object.prototype`; CWE-1321 is cited only because that is how the
+ * weakness is catalogued.
  */
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -58,14 +63,22 @@ const PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Throws when `key` (taken from a caller fragment) is one of the names that
- * can reach or replace an object's prototype (CWE-1321). `context` names the
- * merge in the error message.
+ * Throws when `key` (taken from a caller fragment) is one of the
+ * prototype-sensitive names in `PROTOTYPE_KEYS`. `context` names the merge in
+ * the error message.
+ *
+ * Only `__proto__` is actually exploitable here: on a plain object,
+ * `obj["__proto__"] = v` invokes the inherited setter, swapping that one
+ * object's prototype rather than storing an own key, so the value is silently
+ * dropped by `JSON.stringify` (the shape CWE-1321 catalogues, though nothing
+ * global is polluted). `constructor` and `prototype` assign as ordinary own
+ * keys on a plain object; they are rejected anyway as cheap defence in depth,
+ * since no shipped pack uses either name.
  */
 function assertSafeKey(key: string, context: string): void {
   if (PROTOTYPE_KEYS.has(key)) {
     throw new Error(
-      `${context} merge: refusing prototype-polluting key "${key}"`,
+      `${context} merge: refusing prototype-sensitive key "${key}"`,
     );
   }
 }
@@ -92,7 +105,9 @@ export type SettingsHooksFragment = Record<string, SettingsHookEntry[]>;
  * `command` string) are appended. A command that matches on `command` but
  * differs in its other fields (`if`, `timeout`) is a hard collision, never
  * a silent overwrite. An event name of `__proto__`, `constructor` or
- * `prototype` throws before anything is read or written.
+ * `prototype` throws: the check runs per key inside the loop, before that
+ * key is read or written, and nothing escapes the failed merge -- `existing`
+ * is never mutated and no partial result is returned.
  */
 export function mergeSettingsHooks(
   existing: unknown,
@@ -164,8 +179,10 @@ export type SettingsTopLevelFragment = Record<string, unknown>;
  * present with an identical value is a no-op; one present with a different
  * value is a hard collision, never a silent overwrite -- an adopted project's
  * own `statusLine` is the user's to replace deliberately. A fragment key of
- * `__proto__`, `constructor` or `prototype` throws before anything is read or
- * written.
+ * `__proto__`, `constructor` or `prototype` throws: the check runs per key
+ * inside the loop, before that key is read or written, and nothing escapes the
+ * failed merge -- `existing` is never mutated and no partial result is
+ * returned.
  */
 export function mergeSettingsTopLevel(
   existing: unknown,
@@ -214,7 +231,9 @@ export interface MergePackageScriptsResult {
  * collision is returned for the caller to report, consistent with adopt
  * mode's "report, then the user decides per conflict" policy. An addition
  * named `__proto__`, `constructor` or `prototype` is not a collision: it
- * throws before anything is read or written.
+ * throws. The check runs per key inside the loop, before that key is read or
+ * written, and nothing escapes the failed merge -- `existing` is never mutated
+ * and no partial result is returned.
  */
 export function mergePackageScripts(
   existing: Record<string, string> | undefined,

@@ -307,7 +307,7 @@ describe("mergeSettingsTopLevel", () => {
   it("does not mistake an inherited property name for an existing key", () => {
     // `constructor` is excluded here: it is now one of the three keys the
     // merge guard rejects outright (CWE-1321, see the dedicated
-    // "prototype-pollution guard" describe block below). `toString` is an
+    // "prototype-key guard" describe block below). `toString` is an
     // inherited Object.prototype member that stays an ordinary, acceptable
     // fragment key, so it is still the right fixture for this test's actual
     // claim: Object.hasOwn, not inherited-property presence, decides
@@ -350,17 +350,18 @@ describe("mergeSettingsTopLevel", () => {
   });
 });
 
-describe("prototype-pollution guard (CWE-1321)", () => {
+describe("prototype-key guard (CWE-1321)", () => {
   const DANGEROUS_KEYS = ["__proto__", "constructor", "prototype"] as const;
 
   /**
    * Builds an object whose OWN key is literally `key`, via JSON.parse rather
    * than object-literal syntax. `{ __proto__: value }` and
-   * `obj["__proto__"] = value` both invoke the Annex B exotic setter on
-   * Object.prototype instead of creating a data property -- JSON.parse
-   * (like the real pack-fragment files this module reads) does not, so this
-   * is the only way to reproduce an attacker-controlled fragment that
-   * actually carries a dangerous key as an own, enumerable property.
+   * `obj["__proto__"] = value` both invoke the Annex B exotic setter, which
+   * reassigns the target object's own [[Prototype]] internal slot rather
+   * than creating a data property -- JSON.parse (like the real
+   * pack-fragment files this module reads) does not, so this is the only
+   * way to reproduce an attacker-controlled fragment that actually carries
+   * a dangerous key as an own, enumerable property.
    */
   function buildOwnKeyFragment<T>(key: string, value: T): Record<string, T> {
     return JSON.parse(`{"${key}":${JSON.stringify(value)}}`) as Record<
@@ -378,6 +379,16 @@ describe("prototype-pollution guard (CWE-1321)", () => {
     Reflect.deleteProperty(Object.prototype, "polluted");
   });
 
+  // Pre-fix, `settings[key] = value` on the spread-copied `settings` object
+  // (never on `obj["__proto__"]` -- that reassigns the merge's OWN local
+  // copy's [[Prototype]] slot via the Annex B exotic setter, not global
+  // Object.prototype) silently swapped that object's prototype, and
+  // JSON.stringify drops a `__proto__` accessor rather than serializing it
+  // as a key. It never reached global Object.prototype, so the
+  // `Object.hasOwn(Object.prototype, "polluted")`/`({}).polluted` lines
+  // below are only a regression tripwire, not the proof of the fix -- the
+  // real guarantee each case asserts is `toThrow(key)`: the guard throws
+  // before `assertSafeKey`'s caller ever reads or writes the dangerous key.
   it.each(DANGEROUS_KEYS)(
     "mergeSettingsTopLevel rejects a %s fragment key instead of writing it",
     (key) => {
