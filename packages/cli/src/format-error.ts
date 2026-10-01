@@ -13,6 +13,9 @@ const UNPRINTABLE = "[unprintable value]";
 /** Rendered in place of an object already printed elsewhere in the output (not an ancestor, so not a cycle). */
 const SEE_ABOVE = "(see above)";
 
+/** Rendered as the top line in place of a blank message when there is no `Error` name to show instead. */
+const EMPTY_MESSAGE = "(empty message)";
+
 /**
  * Most links followed along any one branch -- printed and suppressed links
  * alike -- before that branch ends with a `...` line.
@@ -224,14 +227,107 @@ function pushVisits(
   }
 }
 
+/** Code points that end a line: LF, VT, FF, CR (a CR immediately followed by LF is one break), NEL, LS, PS. */
+const LINE_BREAKS: ReadonlySet<number> = new Set([
+  0x0a, 0x0b, 0x0c, 0x0d, 0x85, 0x2028, 0x2029,
+]);
+
+/** `text` split on every {@link LINE_BREAKS} member, `\r\n` counting as one break; empty lines are kept. */
+function splitLines(text: string): string[] {
+  const lines: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (!LINE_BREAKS.has(code)) {
+      continue;
+    }
+    lines.push(text.slice(start, i));
+    if (code === 0x0d && text.charCodeAt(i + 1) === 0x0a) {
+      i++;
+    }
+    start = i + 1;
+  }
+  lines.push(text.slice(start));
+  return lines;
+}
+
 /**
- * `message` as lines (split on `\n` or `\r\n`, trailing empty lines dropped),
- * the first prefixed with `head`, every further line indented one level past
+ * Whether code unit `code` is escaped: a C0 control other than TAB
+ * (U+0000-U+001F except U+0009), DEL (U+007F), or a C1 control other than
+ * NEL (U+0080-U+009F except U+0085). Every one of these is a single UTF-16
+ * code unit, so a surrogate half never matches.
+ */
+function isEscapedControl(code: number): boolean {
+  return (
+    (code <= 0x1f && code !== 0x09) ||
+    code === 0x7f ||
+    (code >= 0x80 && code <= 0x9f && code !== 0x85)
+  );
+}
+
+/** `line` with every {@link isEscapedControl} code unit replaced by the literal `\xNN` (lowercase hex). */
+function escapeLine(line: string): string {
+  let out = "";
+  let start = 0;
+  for (let i = 0; i < line.length; i++) {
+    const code = line.charCodeAt(i);
+    if (isEscapedControl(code)) {
+      out += `${line.slice(start, i)}\\x${code.toString(16).padStart(2, "0")}`;
+      start = i + 1;
+    }
+  }
+  return out + line.slice(start);
+}
+
+/**
+ * Makes `text` safe to write to a terminal: every line break it contains
+ * (`\r\n`, `\n`, a lone `\r`, `\v`, `\f`, U+0085, U+2028, U+2029) becomes a
+ * plain `\n`, and every other C0 control except TAB (U+0000-U+001F except
+ * U+0009), DEL (U+007F) and every C1 control except NEL (U+0080-U+009F
+ * except U+0085) is replaced by the literal text `\xNN`, lowercase two-digit
+ * hex -- so an ESC renders as `\x1b` and cannot start an escape sequence.
+ * TAB and every other character pass through unchanged.
+ *
+ * @example
+ * ```ts
+ * import { escapeControls } from "./format-error.js";
+ *
+ * escapeControls("bad\u001b[2J\rline two"); // "bad\\x1b[2J\nline two"
+ * ```
+ */
+export function escapeControls(text: string): string {
+  return splitLines(text).map(escapeLine).join("\n");
+}
+
+/** Whether `message` would render as nothing but blank lines. */
+function isBlank(message: string): boolean {
+  return splitLines(message).every((line) => line.trim() === "");
+}
+
+/** What the top line shows in place of a blank message: an `Error`'s non-blank `name` (read once, safely), otherwise `(empty message)`. */
+function blankLabel(node: Inspected): string {
+  if (node.kind === "aggregate" || node.kind === "error") {
+    try {
+      const name: unknown = node.value.name;
+      if (typeof name === "string" && !isBlank(name)) {
+        return name;
+      }
+    } catch {
+      // Same rationale as inspect(): never let the report itself throw.
+    }
+  }
+  return EMPTY_MESSAGE;
+}
+
+/**
+ * `message` as lines (split on every line break {@link escapeControls}
+ * recognizes, trailing empty lines dropped, each line control-escaped), the
+ * first prefixed with `head`, every further line indented one level past
  * `depth` and marked `| ` -- a bare `|` when the line is empty -- so no
  * continuation line can ever equal a real `caused by:` line.
  */
 function messageLines(message: string, depth: number, head: string): string[] {
-  const [first = "", ...rest] = message.split(/\r?\n/);
+  const [first = "", ...rest] = splitLines(message).map(escapeLine);
   while (rest.length > 0 && rest[rest.length - 1] === "") {
     rest.pop();
   }
@@ -255,9 +351,18 @@ function causedByLines(message: string, depth: number): string[] {
  * `caused by: <message>` line per chained cause, indented two more spaces
  * per depth; any further line of a cause's message is indented two spaces
  * past its own `caused by:` line. Every such continuation line is marked
- * `| ` after its indent (an empty one prints a bare `|`), so no message line
- * can pass for a real `caused by:` line. Messages split on `\n` or `\r\n`;
- * trailing empty lines are dropped. An `AggregateError`'s `errors` are each listed as a
+ * `| ` after its indent (an empty one prints a bare `|`), so no continuation
+ * line can pass for a real `caused by:` line; the top message's first line
+ * is printed unmarked (but control-escaped, below). Messages split on
+ * `\r\n`, `\n`, a lone `\r`, `\v`, `\f`, U+0085, U+2028 or U+2029; trailing
+ * empty lines are dropped. Every line of every message -- the top message's
+ * first line, any cause at any depth, a non-`Error`'s `String(value)` -- is
+ * then control-escaped exactly as {@link escapeControls} describes (every C0
+ * control but TAB, DEL, every C1 control but NEL become `\xNN`), so no
+ * message can emit a terminal escape sequence. A top message that is empty
+ * or whitespace-only renders as the `Error`'s `name` instead (when that is
+ * a readable, non-blank string), otherwise as `(empty message)`, so the
+ * first line is never blank. An `AggregateError`'s `errors` are each listed as a
  * `caused by:` line at the next depth (after its own `cause`, if any); an
  * `errors` property that is not an array is ignored. At most 32 `errors`
  * members are printed per parent; the rest collapse into one
@@ -296,7 +401,12 @@ function causedByLines(message: string, depth: number): string[] {
 export function formatErrorChain(error: unknown): string {
   const top = inspect(error);
   const topMessage = messageOf(top);
-  const lines: string[] = messageLines(topMessage, 0, "");
+  // Display only: suppression below still compares against the real message.
+  const lines: string[] = messageLines(
+    isBlank(topMessage) ? blankLabel(top) : topMessage,
+    0,
+    "",
+  );
   const seen = new Set<object>();
   if (isObjectLike(error)) {
     seen.add(error);

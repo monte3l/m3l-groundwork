@@ -84,8 +84,11 @@ export interface Inventory {
   cliVersion: string;
   generatedAt: string;
   modeSignal: string;
+  /** The template tree's absolute path, in the platform's native form (not normalized). */
   templateRoot: string;
+  /** The adopted project's absolute path, in the platform's native form (not normalized). */
   targetDir: string;
+  /** The project survey; its paths are native, not normalized. */
   survey: ProjectSurvey;
   /** Baseline-vs-project file collisions; every `relPath` uses `/` on every platform (normalized by `buildInventory`). */
   conflicts: FileConflict[];
@@ -99,7 +102,7 @@ export interface Inventory {
   toolchainGrade: ToolchainGrade;
   /** How far the project's toolchain files have drifted from the baseline's -- information, never a defect. Absent when schemaVersion is below 4. */
   toolchainConformance: ToolchainConformance;
-  /** The "absent" baseline files, copied verbatim as inert `<path>.staged` copies for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative. */
+  /** The "absent" baseline files, copied verbatim as inert `<path>.staged` copies for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative, and `dir` and every `files[].path`/`files[].staged` use `/` on every platform. */
   stagedBaseline: StagedBaseline;
 }
 
@@ -155,11 +158,15 @@ function toPosixConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
 /**
  * Builds the inventory object. Does not write anything -- see `writeInventory`.
  *
- * Every serialized path uses `/` on every platform: each `conflicts[].relPath`
- * and each `packs[].fileConflicts[].relPath` is normalized once with
- * {@link toPosixPath} -- the same derivation `stagedBaseline.files[].path`
- * uses, so the two agree -- and the harness/toolchain conformance summaries
- * are computed from those normalized paths. The caller's `conflicts` and
+ * Exactly these paths use `/` on every platform: each `conflicts[].relPath`
+ * and each `packs[].fileConflicts[].relPath`, normalized here once with
+ * {@link toPosixPath}, plus `stagedBaseline.dir` (built by the caller as a
+ * `/`-joined literal) and each `stagedBaseline.files[].path`/`.staged`
+ * (already normalized by `stageBaselineAdditions` with the same
+ * {@link toPosixPath}, so the conflict and staged paths agree). The harness/toolchain conformance
+ * summaries are computed from the normalized conflict paths. Every other
+ * path -- `templateRoot`, `targetDir`, and every path inside `survey` -- is
+ * passed through in the platform's native form. The caller's `conflicts` and
  * `packs` are never mutated; new objects are returned.
  *
  * @example

@@ -6,12 +6,12 @@
  * defence: whatever was thrown, and whatever fails while reporting it, the
  * process ends with an exit code set and never with an uncaught throw.
  */
-import { formatErrorChain } from "./format-error.js";
+import { escapeControls, formatErrorChain } from "./format-error.js";
 
 /** Printed when neither the formatted chain nor the raw stack could be printed on the raw channel. */
 const LAST_RESORT = "[unprintable error]";
 
-/** `error.stack` when readable, otherwise `String(error)` -- the fallback text when printing the formatted chain failed. */
+/** `error.stack` when readable, otherwise `String(error)`, control-escaped by {@link escapeControls} -- the fallback text when printing the formatted chain failed. */
 function rawText(error: unknown): string {
   // Read `stack` once, and only off an object; a throwing getter or Proxy
   // trap propagates to the caller's own fallback.
@@ -19,7 +19,7 @@ function rawText(error: unknown): string {
     typeof error === "object" && error !== null && "stack" in error
       ? error.stack
       : undefined;
-  return String(stack ?? error);
+  return escapeControls(String(stack ?? error));
 }
 
 /**
@@ -31,7 +31,8 @@ function rawText(error: unknown): string {
  * one that paints colour), so `print` is called exactly once: `io.printRaw`
  * prints the same `formatErrorChain(error)`, so the cause chain survives a
  * failing `print`; if that throws, `io.printRaw` prints
- * `String(error.stack ?? error)`; if that throws, `io.printRaw` prints
+ * `String(error.stack ?? error)`, control-escaped the same way the chain is
+ * (`escapeControls` in `./format-error.ts`); if that throws, `io.printRaw` prints
  * `[unprintable error]`; if even that throws, gives up silently, the exit
  * code already set. Never
  * throws. A `setExitCode` that throws is swallowed and not retried -- the

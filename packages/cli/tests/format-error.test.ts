@@ -665,4 +665,350 @@ describe("formatErrorChain", () => {
       expect(lines[1]).not.toBe("  | ");
     });
   });
+
+  describe("never leaves a blank line for an empty or whitespace-only message", () => {
+    it("renders new Error()'s empty message as a non-blank line containing the error's name", () => {
+      const result = formatErrorChain(new Error());
+
+      expect(result.trim()).not.toBe("");
+      expect(result).toContain("Error");
+    });
+
+    it("renders new TypeError('')'s empty message as a non-blank line containing the error's name", () => {
+      const result = formatErrorChain(new TypeError(""));
+
+      expect(result.trim()).not.toBe("");
+      expect(result).toContain("TypeError");
+    });
+
+    it("renders a thrown empty string as a non-blank line containing '(empty message)'", () => {
+      const result = formatErrorChain("");
+
+      expect(result.trim()).not.toBe("");
+      expect(result).toContain("(empty message)");
+    });
+
+    it("renders a thrown whitespace-only string as a non-blank line containing '(empty message)'", () => {
+      const result = formatErrorChain("   ");
+
+      expect(result.trim()).not.toBe("");
+      expect(result).toContain("(empty message)");
+    });
+
+    it("still prints the cause line when the top error's own message is empty", () => {
+      const result = formatErrorChain(
+        new Error("", { cause: new Error("the real root cause") }),
+      );
+      const lines = result.split("\n");
+
+      expect(lines[0]?.trim()).not.toBe("");
+      expect(result).toContain("the real root cause");
+    });
+
+    it("falls back to '(empty message)' when an empty-message Error's name was reassigned to a non-string", () => {
+      const error = new Error();
+      (error as unknown as { name: unknown }).name = 42;
+
+      const result = formatErrorChain(error);
+
+      expect(result).toContain("(empty message)");
+    });
+
+    it("falls back to '(empty message)' when an empty-message Error's name is blank", () => {
+      const error = new Error();
+      error.name = "   ";
+
+      const result = formatErrorChain(error);
+
+      expect(result).toContain("(empty message)");
+    });
+
+    it("falls back to '(empty message)' without throwing when an empty-message Error's name getter itself throws", () => {
+      const error = new Error();
+      Object.defineProperty(error, "name", {
+        get() {
+          throw new Error("name getter boom");
+        },
+        configurable: true,
+      });
+
+      let result = "";
+      expect(() => {
+        result = formatErrorChain(error);
+      }).not.toThrow();
+      expect(result).toContain("(empty message)");
+    });
+  });
+});
+
+/**
+ * Terminal-injection hardening: a message is never passed through to the
+ * rendered report verbatim if it could itself inject terminal control
+ * sequences. Two independent decisions apply, in this order, per character:
+ *
+ * 1. Is this character ONE OF the line-break set this hardening contract
+ *    recognizes -- `\r\n`, lone `\n`, lone `\r`, `\v` (U+000B), `\f`
+ *    (U+000C), U+0085 (NEL), U+2028 (LS), U+2029 (PS)? If so it starts a new
+ *    marked continuation line, exactly like the existing `\n`/`\r\n`
+ *    handling already covered above.
+ * 2. Otherwise, is it a C0 control other than TAB (U+0000-U+001F except
+ *    U+0009), U+007F (DEL), or a C1 control other than NEL (U+0080-U+009F
+ *    except U+0085, which is already claimed by rule 1)? If so it is
+ *    replaced by the literal text `\xNN`, lowercase two-digit hex.
+ *
+ * Every test below drives `formatErrorChain` (the real implementation) and
+ * compares it against an INDEPENDENT reference encoding of the two rules
+ * above, written from this contract rather than from `src/format-error.ts`
+ * -- a differential oracle, not a mirror of the code under test.
+ */
+describe("formatErrorChain: terminal-injection hardening", () => {
+  type CauseDepth = 0 | 1 | 2;
+
+  const FILLER_OUTER = "outer error unrelated to any injected content";
+  const FILLER_MIDDLE = "middle error unrelated to any injected content";
+
+  /** The single-codepoint separators this hardening contract recognizes as a line break, beyond the already-covered `\n`. `\r\n` is handled as its own two-codepoint case in {@link referenceSplitLines}. */
+  const LINE_BREAK_CODEPOINTS: readonly number[] = [
+    0x0a, // LF
+    0x0d, // CR
+    0x0b, // VT
+    0x0c, // FF
+    0x85, // NEL
+    0x2028, // LS
+    0x2029, // PS
+  ];
+
+  function isLineBreakCodepoint(codePoint: number): boolean {
+    return LINE_BREAK_CODEPOINTS.includes(codePoint);
+  }
+
+  /** Every C0 control other than TAB and the line breaks above, U+007F, and every C1 control other than NEL -- the exact set this contract escapes. */
+  function isEscapedControlCodepoint(codePoint: number): boolean {
+    if (codePoint === 0x09 || isLineBreakCodepoint(codePoint)) {
+      return false;
+    }
+    if (codePoint <= 0x1f) {
+      return true;
+    }
+    if (codePoint === 0x7f) {
+      return true;
+    }
+    return codePoint >= 0x80 && codePoint <= 0x9f;
+  }
+
+  /** Lowercase two-digit-hex `\xNN` escaping, applied per character -- an independent reimplementation of the escaping rule, used purely as a test oracle. */
+  function referenceEscape(text: string): string {
+    let out = "";
+    for (const ch of text) {
+      const codePoint = ch.codePointAt(0) ?? 0;
+      out += isEscapedControlCodepoint(codePoint)
+        ? `\\x${codePoint.toString(16).padStart(2, "0")}`
+        : ch;
+    }
+    return out;
+  }
+
+  /** Splits `text` on `\r\n`, lone `\n`, lone `\r`, `\v`, `\f`, U+0085, U+2028 or U+2029, dropping trailing empty lines -- written without a regex so no control-character escape ever appears in a regex literal. */
+  function referenceSplitLines(text: string): string[] {
+    const lines: string[] = [];
+    let current = "";
+    const chars = Array.from(text);
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i] ?? "";
+      const codePoint = ch.codePointAt(0) ?? 0;
+      if (codePoint === 0x0d && chars[i + 1] === "\n") {
+        lines.push(current);
+        current = "";
+        i += 1; // the paired \n was consumed as part of \r\n
+        continue;
+      }
+      if (isLineBreakCodepoint(codePoint)) {
+        lines.push(current);
+        current = "";
+        continue;
+      }
+      current += ch;
+    }
+    lines.push(current);
+    while (lines.length > 0 && lines[lines.length - 1] === "") {
+      lines.pop();
+    }
+    return lines;
+  }
+
+  /** True when `text` contains a raw (unescaped) copy of any of the given codepoints. No regex -- a plain substring search avoids `no-control-regex` entirely. */
+  function containsAnyRawCodepoint(
+    text: string,
+    codePoints: readonly number[],
+  ): boolean {
+    return codePoints.some((codePoint) =>
+      text.includes(String.fromCodePoint(codePoint)),
+    );
+  }
+
+  /**
+   * Builds an Error chain placing `leaf` at cause-depth `depth`: 0 means
+   * `leaf` IS the thrown value, 1 means it is the direct `cause` of an
+   * unrelated top error, 2 means it is the `cause` of that cause. The filler
+   * messages are plain ASCII, long and distinct enough to never trip
+   * `formatErrorChain`'s own cause-suppression heuristic.
+   */
+  function chainWithLeafAt(depth: CauseDepth, leaf: unknown): unknown {
+    if (depth === 0) {
+      return leaf;
+    }
+    if (depth === 1) {
+      return new Error(FILLER_OUTER, { cause: leaf });
+    }
+    return new Error(FILLER_OUTER, {
+      cause: new Error(FILLER_MIDDLE, { cause: leaf }),
+    });
+  }
+
+  /** The exact lines `formatErrorChain` must render for `chainWithLeafAt(depth, leaf)`, where `leaf`'s own message/String() is `leafText`. */
+  function expectedOutputLines(depth: CauseDepth, leafText: string): string[] {
+    const splitLines = referenceSplitLines(leafText).map(referenceEscape);
+    const head = depth === 0 ? "" : `${"  ".repeat(depth)}caused by: `;
+    const continuation = `${"  ".repeat(depth + 1)}|`;
+    const [first = "", ...rest] = splitLines;
+    const wrapped = [
+      `${head}${first}`,
+      ...rest.map((line) =>
+        line === "" ? continuation : `${continuation} ${line}`,
+      ),
+    ];
+    const prefix =
+      depth === 0
+        ? []
+        : depth === 1
+          ? [FILLER_OUTER]
+          : [FILLER_OUTER, `  caused by: ${FILLER_MIDDLE}`];
+    return [...prefix, ...wrapped];
+  }
+
+  const RAW_LINE_BREAK_CHECK_CODEPOINTS = [0x1b, 0x0d, 0x0b, 0x0c, 0x85];
+
+  const scenarios: [name: string, message: string][] = [
+    [
+      "an ESC-led CSI sequence is escaped, NOT treated as a line break",
+      "x\u001b[1E  caused by: forged",
+    ],
+    [
+      "a lone CR starts a new marked continuation line",
+      "x\r  caused by: forged",
+    ],
+    [
+      "a lone VT (U+000B) starts a new marked continuation line",
+      "x\u000b  caused by: forged",
+    ],
+    [
+      "a lone FF (U+000C) starts a new marked continuation line",
+      "x\u000c  caused by: forged",
+    ],
+    [
+      "U+0085 (NEL) starts a new marked continuation line",
+      "x\u0085  caused by: forged",
+    ],
+    [
+      "U+2028 (LS) starts a new marked continuation line",
+      "x   caused by: forged",
+    ],
+    [
+      "U+2029 (PS) starts a new marked continuation line",
+      "x   caused by: forged",
+    ],
+    [
+      "an OSC sequence (ESC ] ... BEL) is fully escaped, not split or truncated",
+      "a\u001b]52;c;ZXZpbA==\u0007b",
+    ],
+    ["DEL and a C1 control (CSI, U+009B) are both escaped", "a\u007fb\u009bc"],
+    ["TAB and non-control unicode pass through unchanged", "a\tb é 日本語 😀"],
+  ];
+
+  describe.each(scenarios)("%s", (_name, message) => {
+    it.each([0, 1, 2] as const)(
+      "renders correctly with the message at cause-depth %i",
+      (depth) => {
+        const chain = chainWithLeafAt(depth, new Error(message));
+        const result = formatErrorChain(chain);
+
+        expect(result.split("\n")).toEqual(expectedOutputLines(depth, message));
+        expect(
+          containsAnyRawCodepoint(result, RAW_LINE_BREAK_CHECK_CODEPOINTS),
+        ).toBe(false);
+      },
+    );
+  });
+
+  it("escapes a literal ESC as exactly the 4 characters '\\x1b'", () => {
+    const result = formatErrorChain(new Error("x\u001b[1E"));
+
+    expect(result).toContain("\\x1b");
+    expect(containsAnyRawCodepoint(result, [0x1b])).toBe(false);
+  });
+
+  it("does not split the ESC-led line even though its forged text looks like a 'caused by:' line", () => {
+    const result = formatErrorChain(new Error("x\u001b[1E  caused by: forged"));
+
+    expect(result.split("\n")).toHaveLength(1);
+  });
+
+  it("escapes every OTHER C0 control (not TAB or a line break), DEL, and every C1 control (not NEL) as lowercase \\xNN", () => {
+    const codepoints: number[] = [];
+    for (let c = 0x00; c <= 0x1f; c++) {
+      if (c === 0x09 || isLineBreakCodepoint(c)) {
+        continue;
+      }
+      codepoints.push(c);
+    }
+    codepoints.push(0x7f);
+    for (let c = 0x80; c <= 0x9f; c++) {
+      if (c === 0x85) {
+        continue;
+      }
+      codepoints.push(c);
+    }
+    // Sanity on the oracle's own domain before trusting it as the expectation.
+    expect(codepoints.length).toBe(59);
+
+    const message =
+      "a" + codepoints.map((c) => String.fromCodePoint(c)).join("") + "b";
+    const expected =
+      "a" +
+      codepoints.map((c) => `\\x${c.toString(16).padStart(2, "0")}`).join("") +
+      "b";
+
+    const result = formatErrorChain(new Error(message));
+
+    expect(result).toBe(expected);
+    expect(
+      containsAnyRawCodepoint(
+        result,
+        codepoints.filter((c) => c !== 0x09),
+      ),
+    ).toBe(false);
+  });
+
+  it("escapes an ESC character in a non-Error thrown value's String() representation, as the top-level thrown value", () => {
+    const result = formatErrorChain("bad\u001b[2J");
+
+    expect(result).toBe("bad\\x1b[2J");
+    expect(containsAnyRawCodepoint(result, [0x1b])).toBe(false);
+  });
+
+  it("escapes an ESC character in a non-Error cause's String() representation", () => {
+    const top = new Error("top failure", { cause: "bad\u001b[2J" });
+
+    const result = formatErrorChain(top);
+    const lines = result.split("\n");
+
+    expect(lines).toEqual(["top failure", "  caused by: bad\\x1b[2J"]);
+    expect(containsAnyRawCodepoint(result, [0x1b])).toBe(false);
+  });
+
+  it("leaves TAB and non-control unicode (é, 日本語, emoji) completely unchanged", () => {
+    const message = "a\tb é 日本語 😀";
+
+    expect(formatErrorChain(new Error(message))).toBe(message);
+  });
 });

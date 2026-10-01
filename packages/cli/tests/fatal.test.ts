@@ -297,6 +297,82 @@ describe("handleFatal", () => {
     ]);
   });
 
+  it("passes a non-blank report to io.print for an Error with an empty message", () => {
+    const { io, prints } = makeIo();
+
+    handleFatal(new Error(), io, () => false);
+
+    expect(prints).toHaveLength(1);
+    expect(prints[0]?.trim()).not.toBe("");
+  });
+
+  it("escapes a raw ESC character found in error.stack before it reaches the raw-stack printRaw fallback", () => {
+    const error = new Error("boom with stack");
+    error.stack =
+      "Error: boom with stack\n    at somewhere\u001b[31m (colorized)\u001b[0m";
+    let printCallCount = 0;
+    const rawAttempts: string[] = [];
+    const io: FatalIo = {
+      setExitCode: () => {
+        // not under test here
+      },
+      print: () => {
+        printCallCount += 1;
+        throw new Error("primary print boom");
+      },
+      printRaw: (text) => {
+        rawAttempts.push(text);
+        if (rawAttempts.length === 1) {
+          throw new Error("first printRaw boom");
+        }
+      },
+    };
+
+    expect(() => {
+      handleFatal(error, io, () => false);
+    }).not.toThrow();
+
+    expect(printCallCount).toBe(1);
+    expect(rawAttempts).toHaveLength(2);
+    const fallbackText = rawAttempts[1] ?? "";
+    expect(fallbackText).toContain("\\x1b");
+    expect(fallbackText.includes("\u001b")).toBe(false);
+  });
+
+  it("escapes a raw ESC character found in String(error) (no stack) before it reaches the raw-stack printRaw fallback", () => {
+    const error = new Error(
+      "boom with \u001b[31mcolor\u001b[0m in the message",
+    );
+    delete error.stack;
+    let printCallCount = 0;
+    const rawAttempts: string[] = [];
+    const io: FatalIo = {
+      setExitCode: () => {
+        // not under test here
+      },
+      print: () => {
+        printCallCount += 1;
+        throw new Error("primary print boom");
+      },
+      printRaw: (text) => {
+        rawAttempts.push(text);
+        if (rawAttempts.length === 1) {
+          throw new Error("first printRaw boom");
+        }
+      },
+    };
+
+    expect(() => {
+      handleFatal(error, io, () => false);
+    }).not.toThrow();
+
+    expect(printCallCount).toBe(1);
+    expect(rawAttempts).toHaveLength(2);
+    const fallbackText = rawAttempts[1] ?? "";
+    expect(fallbackText).toContain("\\x1b");
+    expect(fallbackText.includes("\u001b")).toBe(false);
+  });
+
   it("never throws even when print and printRaw both always throw, and the exit code was still set beforehand", () => {
     let exitCode: number | undefined;
     const io: FatalIo = {
