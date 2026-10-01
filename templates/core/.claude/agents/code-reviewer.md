@@ -3,8 +3,8 @@ name: code-reviewer
 description: Read-only reviewer for this project's source changes. Applies the four-part quality checklist and SOLID checks to a diff. Use after writing or changing source code, before commit.
 tools: Read, Grep, Glob, Bash
 disallowedTools: Agent
-model: claude-sonnet-5
-effort: high
+model: claude-opus-5-5
+effort: medium
 maxTurns: 40
 color: blue
 ---
