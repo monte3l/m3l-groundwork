@@ -128,6 +128,11 @@ function baseInventory(
     harnessConformance: NO_CONFORMANCE,
     toolchainGrade: CLEAN_TOOLCHAIN_GRADE,
     toolchainConformance: NO_CONFORMANCE,
+    stagedBaseline: {
+      dir: ".groundwork/baseline",
+      suffix: ".staged",
+      files: [],
+    },
     ...overrides,
   };
 }
@@ -206,6 +211,32 @@ describe("renderReport", () => {
     expect(report).toContain("## Could not be determined");
     expect(report).toContain("## Next step");
     expect(report).toContain("/customize");
+  });
+
+  function stagedFile(path: string) {
+    return { path, staged: `${path}.staged`, sha256: "a".repeat(64) };
+  }
+
+  it("warns in the closing paragraph that .groundwork/baseline/'s inert .staged copies may trip a strict license-header check, and suggests a .gitignore line", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          suffix: ".staged",
+          files: [stagedFile("eslint.config.js")],
+        },
+      }),
+    );
+
+    expect(report).toContain(".groundwork/baseline/");
+    expect(report).toContain(".staged");
+    expect(report).toContain("inert copies");
+    expect(report).toContain("commit or ignore");
+    expect(report).toContain(".gitignore");
+    // A concrete gitignore-line suggestion, not just the word "gitignore".
+    expect(report).toMatch(/`\.groundwork\/baseline\/`.*gitignore/is);
+    // The license-header / "every tracked file" caveat.
+    expect(report).toMatch(/license-header|every tracked file/);
   });
 
   it("reports no harness found when .claude/ is absent", () => {
@@ -452,6 +483,116 @@ describe("renderReport", () => {
   it("reports no conflicts when the conflict list has nothing divergent", () => {
     const report = renderReport(baseInventory(templateRoot, { conflicts: [] }));
     expect(report).toContain("No conflicts found.");
+  });
+
+  it("tells the reader where absent files are staged for /customize, counting stagedBaseline.files.length -- not absent.length", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        conflicts: [
+          { relPath: "README.md", status: "absent", keyDiffs: undefined },
+          {
+            relPath: "eslint.config.js",
+            status: "absent",
+            keyDiffs: undefined,
+          },
+          {
+            relPath: "docs/architecture.md",
+            status: "absent",
+            keyDiffs: undefined,
+          },
+          { relPath: "package.json", status: "identical", keyDiffs: [] },
+        ],
+        // Only 3 of the 3 absent conflicts actually staged (this fixture
+        // intentionally keeps the counts equal in SHAPE but distinguishes
+        // them by SOURCE: the printed number must read from
+        // stagedBaseline.files.length, never conflicts.filter(absent).length
+        // -- see the next test for the case where they diverge).
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          suffix: ".staged",
+          files: [
+            stagedFile("README.md"),
+            stagedFile("eslint.config.js"),
+            stagedFile("docs/architecture.md"),
+          ],
+        },
+      }),
+    );
+    expect(report).toContain(
+      "- 3 file(s) would be added cleanly (no collision); 3 staged for " +
+        "/customize at .groundwork/baseline/ (inert copies, each with a " +
+        ".staged suffix).",
+    );
+  });
+
+  it("prints the staged count from files.length, which can legitimately diverge from the absent count (an unmatched template path is a staging failure elsewhere, not reflected here)", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        conflicts: [
+          { relPath: "README.md", status: "absent", keyDiffs: undefined },
+          {
+            relPath: "eslint.config.js",
+            status: "absent",
+            keyDiffs: undefined,
+          },
+        ],
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          suffix: ".staged",
+          files: [stagedFile("README.md")],
+        },
+      }),
+    );
+    expect(report).toContain(
+      "- 2 file(s) would be added cleanly (no collision); 1 staged for " +
+        "/customize at .groundwork/baseline/ (inert copies, each with a " +
+        ".staged suffix).",
+    );
+  });
+
+  it("omits the staged clause entirely when nothing was staged, even though files are absent", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        conflicts: [
+          { relPath: "README.md", status: "absent", keyDiffs: undefined },
+          {
+            relPath: "eslint.config.js",
+            status: "absent",
+            keyDiffs: undefined,
+          },
+        ],
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          suffix: ".staged",
+          files: [],
+        },
+      }),
+    );
+    expect(report).toContain(
+      "- 2 file(s) would be added cleanly (no collision).",
+    );
+    expect(report).not.toContain("staged for /customize");
+  });
+
+  it("mentions the staged copies are inert in the closing next-steps paragraph", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          suffix: ".staged",
+          files: [stagedFile("eslint.config.js")],
+        },
+      }),
+    );
+    expect(report).toContain("inert copies");
+  });
+
+  it("omits the closing staged-files paragraph entirely when stagedBaseline.files is empty (nothing to decide about)", () => {
+    // Default baseInventory's stagedBaseline.files is [] -- nothing was
+    // staged, so there is no .staged copy to commit or .gitignore.
+    const report = renderReport(baseInventory(templateRoot));
+    expect(report).not.toContain("Decide whether to commit or ignore");
+    expect(report).not.toContain("may flag them");
   });
 
   it("never leaves the could-not-determine section empty when undetermined entries exist", () => {

@@ -11,11 +11,25 @@
  * rather than crash on one -- `schemaVersion: 1` predates packs (no `packs`
  * field), `schemaVersion` below 3 predates the harness grade (no
  * `harnessGrade`/`harnessConformance`), and `schemaVersion` below 4 predates
- * the toolchain grade (no `toolchainGrade`/`toolchainConformance`).
+ * the toolchain grade (no `toolchainGrade`/`toolchainConformance`), and
+ * `schemaVersion` below 5 predates staged baseline additions (no
+ * `stagedBaseline`) -- `/customize` then falls back to reading absent files
+ * from `templateRoot`. From schema 5 on, each staged file is an inert copy
+ * named `<path>` + `stagedBaseline.suffix` (`.staged`) and carries the sha256
+ * of its staged bytes, so `/customize` can verify a copy before installing it.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { toPosixPath } from "./baseline-stage.js";
+import type { StagedBaselineFile } from "./baseline-stage.js";
 import type { CapCounts } from "./caps.js";
 import type { FileConflict } from "./conflicts.js";
 import { summarizeHarnessConformance } from "./harness/conformance.js";
@@ -28,7 +42,29 @@ import { summarizeToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainGrade } from "./toolchain/types.js";
 
-export const INVENTORY_SCHEMA_VERSION = 4;
+export const INVENTORY_SCHEMA_VERSION = 5;
+
+/**
+ * Where adopt mode staged the baseline files the project lacks entirely
+ * (`baseline-stage.ts`), and how each staged copy is named.
+ *
+ * @example
+ * ```ts
+ * const stagedBaseline: StagedBaseline = {
+ *   dir: ".groundwork/baseline",
+ *   suffix: ".staged",
+ *   files: [{ path: "eslint.config.js", staged: "eslint.config.js.staged", sha256: "…" }],
+ * };
+ * ```
+ */
+export interface StagedBaseline {
+  /** The staging directory, relative to the project root (e.g. `.groundwork/baseline`). */
+  dir: string;
+  /** The suffix every staged file name carries (`.staged`), so no toolchain glob ever matches one. */
+  suffix: string;
+  /** The staged files: install path, staged name relative to `dir`, and sha256 of the staged bytes. */
+  files: StagedBaselineFile[];
+}
 
 export interface PackSurvey {
   name: string;
@@ -48,10 +84,15 @@ export interface Inventory {
   cliVersion: string;
   generatedAt: string;
   modeSignal: string;
+  /** The template tree's absolute path, in the platform's native form (not normalized). */
   templateRoot: string;
+  /** The adopted project's absolute path, in the platform's native form (not normalized). */
   targetDir: string;
+  /** The project survey; its paths are native, not normalized. */
   survey: ProjectSurvey;
+  /** Baseline-vs-project file collisions; every `relPath` uses `/` on every platform (normalized by `buildInventory`). */
   conflicts: FileConflict[];
+  /** Per-pack surveys; every `fileConflicts[].relPath` uses `/` on every platform, like `conflicts`. */
   packs: PackSurvey[];
   /** Wiring integrity and rubric quality of the project's existing harness. Absent when schemaVersion is below 3. */
   harnessGrade: HarnessGrade;
@@ -61,6 +102,8 @@ export interface Inventory {
   toolchainGrade: ToolchainGrade;
   /** How far the project's toolchain files have drifted from the baseline's -- information, never a defect. Absent when schemaVersion is below 4. */
   toolchainConformance: ToolchainConformance;
+  /** The "absent" baseline files, copied verbatim as inert `<path>.staged` copies for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative, and `dir` and every `files[].path`/`files[].staged` use `/` on every platform. */
+  stagedBaseline: StagedBaseline;
 }
 
 /** Resolves this CLI package's own `package.json`, relative to this module's runtime location. */
@@ -100,10 +143,45 @@ export interface BuildInventoryParams {
   packs: PackSurvey[];
   harnessGrade: HarnessGrade;
   toolchainGrade: ToolchainGrade;
+  stagedBaseline: StagedBaseline;
 }
 
-/** Builds the inventory object. Does not write anything -- see `writeInventory`. */
+/**
+ * Returns new `FileConflict` objects whose `relPath` uses `/`, leaving the
+ * caller's array and objects untouched (main.ts keeps the native form for
+ * real file operations).
+ */
+function toPosixConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
+  return conflicts.map((c) => ({ ...c, relPath: toPosixPath(c.relPath) }));
+}
+
+/**
+ * Builds the inventory object. Does not write anything -- see `writeInventory`.
+ *
+ * Exactly these paths use `/` on every platform: each `conflicts[].relPath`
+ * and each `packs[].fileConflicts[].relPath`, normalized here once with
+ * {@link toPosixPath}, plus `stagedBaseline.dir` (built by the caller as a
+ * `/`-joined literal) and each `stagedBaseline.files[].path`/`.staged`
+ * (already normalized by `stageBaselineAdditions` with the same
+ * {@link toPosixPath}, so the conflict and staged paths agree). The harness/toolchain conformance
+ * summaries are computed from the normalized conflict paths. Every other
+ * path -- `templateRoot`, `targetDir`, and every path inside `survey` -- is
+ * passed through in the platform's native form. The caller's `conflicts` and
+ * `packs` are never mutated; new objects are returned.
+ *
+ * @example
+ * ```ts
+ * const inventory = buildInventory({ detection, templateRoot, targetDir, survey,
+ *   conflicts, packs, harnessGrade, toolchainGrade, stagedBaseline });
+ * inventory.conflicts[0]?.relPath; // "src/index.ts", even on Windows
+ * ```
+ */
 export function buildInventory(params: BuildInventoryParams): Inventory {
+  const conflicts = toPosixConflicts(params.conflicts);
+  const packs = params.packs.map((pack): PackSurvey => ({
+    ...pack,
+    fileConflicts: toPosixConflicts(pack.fileConflicts),
+  }));
   return {
     schemaVersion: INVENTORY_SCHEMA_VERSION,
     cliVersion: resolveCliVersion(),
@@ -112,22 +190,63 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
     templateRoot: params.templateRoot,
     targetDir: params.targetDir,
     survey: params.survey,
-    conflicts: params.conflicts,
-    packs: params.packs,
+    conflicts,
+    packs,
     harnessGrade: params.harnessGrade,
-    harnessConformance: summarizeHarnessConformance(params.conflicts),
+    harnessConformance: summarizeHarnessConformance(conflicts),
     toolchainGrade: params.toolchainGrade,
-    toolchainConformance: summarizeToolchainConformance(params.conflicts),
+    toolchainConformance: summarizeToolchainConformance(conflicts),
+    stagedBaseline: params.stagedBaseline,
   };
 }
 
-/** Writes `inventory.json` into `groundworkDir`, creating it if needed. */
+/**
+ * Writes `inventory.json` into `groundworkDir`, creating it if needed.
+ *
+ * The write is atomic: the JSON goes to `inventory.json.tmp` first and is
+ * renamed over `inventory.json` only once complete, so a reader never sees a
+ * half-written file. On failure the temp file is removed (best effort: a
+ * failed removal only warns, naming the temp file), any existing
+ * `inventory.json` is left untouched, and an `Error` is thrown, with the
+ * original failure as its `cause`, saying `.groundwork/` is incomplete and
+ * the CLI should be re-run.
+ *
+ * @example
+ * ```ts
+ * const path = writeInventory(inventory, ".groundwork");
+ * // path: ".groundwork/inventory.json"
+ * ```
+ */
 export function writeInventory(
   inventory: Inventory,
   groundworkDir: string,
 ): string {
   mkdirSync(groundworkDir, { recursive: true });
   const path = join(groundworkDir, "inventory.json");
-  writeFileSync(path, `${JSON.stringify(inventory, null, 2)}\n`);
+  const tmpPath = `${path}.tmp`;
+  try {
+    // Remove whatever already sits at the temp path (a crashed run's
+    // leftover, or a symlink planted there), then create it exclusively:
+    // "wx" fails rather than following a symlink raced in between.
+    rmSync(tmpPath, { force: true });
+    writeFileSync(tmpPath, `${JSON.stringify(inventory, null, 2)}\n`, {
+      flag: "wx",
+    });
+    renameSync(tmpPath, path);
+  } catch (cause) {
+    try {
+      rmSync(tmpPath, { force: true });
+    } catch (cleanupError) {
+      // Best effort: the write failure below is the error worth reporting,
+      // so a failed cleanup only warns, naming the leftover file.
+      console.warn(
+        `warning: could not remove the temporary file ${tmpPath} -- delete it by hand (${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)})`,
+      );
+    }
+    throw new Error(
+      `writing ${path} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+      { cause },
+    );
+  }
   return path;
 }

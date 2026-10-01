@@ -16,7 +16,13 @@
  * `templates/packs/` into the report and defers installation to
  * `/customize`; see `runAdopt`.
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import assert from "node:assert/strict";
 import { join, relative, resolve, basename } from "node:path";
 import process from "node:process";
@@ -33,6 +39,13 @@ import { gradeHarness } from "./harness/grade.js";
 import { detectMode, resolveMode } from "./mode.js";
 import { surveyProject } from "./survey/survey.js";
 import { planConflicts } from "./conflicts.js";
+import {
+  STAGED_BASELINE_DIR,
+  STAGED_SUFFIX,
+  stageBaselineAdditions,
+  stagedNameFor,
+} from "./baseline-stage.js";
+import { assertNotSymlink } from "./fs-guard.js";
 import {
   buildInventory,
   resolveCliVersion,
@@ -551,7 +564,14 @@ export function assertAdoptWriteScope(
  * `/customize` skill (see `installCustomizeSkillGuarded`), so the report
  * can point straight at a working next step. Every pack under
  * `templates/packs/` is surveyed (`main` rejects `--pack` in this mode, see
- * `assertAdoptUsage`) and staged, unapplied, at `.groundwork/packs/<name>/`.
+ * `assertAdoptUsage`) and staged, unapplied, at `.groundwork/packs/<name>/`;
+ * absent baseline files are staged as inert `<path>.staged` copies at
+ * `.groundwork/baseline/`. A stale `inventory.json`/`adoption-report.md`/
+ * `adoption-decisions.json` is deleted before any staging or install; then packs and the baseline are
+ * staged, the `/customize` skill is installed, `adoption-report.md` is
+ * written, and `inventory.json` is written last (atomically, via a temp file
+ * and rename). Only console output follows it, so `inventory.json`'s
+ * presence means every step of the run completed.
  */
 function runAdopt(options: CliOptions, detection: ModeDetection): void {
   console.log(`adopt mode: ${detection.signal}`);
@@ -562,6 +582,25 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   const conflicts = planConflicts(templateRoot, options.targetDir, tokens);
 
   const groundworkDir = join(options.targetDir, ".groundwork");
+  const stagedBaselineDir = `.groundwork/${STAGED_BASELINE_DIR}`;
+  const inventoryPath = join(groundworkDir, "inventory.json");
+  const reportPath = join(groundworkDir, "adoption-report.md");
+  const decisionsPath = join(groundworkDir, "adoption-decisions.json");
+  assertAdoptWriteScope(options.targetDir, [
+    inventoryPath,
+    reportPath,
+    decisionsPath,
+  ]);
+
+  // A previous run's inventory/report -- and the decisions /customize
+  // recorded against them -- must not survive a run that fails part-way:
+  // /customize would read them as describing the new staging. All three go
+  // before anything is staged; inventory/report are rewritten only at the
+  // end, and the decisions file only by /customize.
+  assertNotSymlink(groundworkDir);
+  rmSync(inventoryPath, { force: true });
+  rmSync(reportPath, { force: true });
+  rmSync(decisionsPath, { force: true });
 
   const packs: PackSurvey[] = listPackNames().map((name) => {
     const pack = loadPack(name);
@@ -589,6 +628,20 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     };
   });
 
+  // Scope-checked as planned, before any of them is written.
+  assertAdoptWriteScope(
+    options.targetDir,
+    conflicts
+      .filter((c) => c.status === "absent")
+      .map((c) => join(stagedBaselineDir, stagedNameFor(c.relPath))),
+  );
+  const stagedBaselineFiles = stageBaselineAdditions(
+    templateRoot,
+    conflicts,
+    groundworkDir,
+    tokens,
+  );
+
   const inventory = buildInventory({
     detection,
     templateRoot,
@@ -598,24 +651,38 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     packs,
     harnessGrade: gradeHarness(options.targetDir),
     toolchainGrade: gradeToolchain(options.targetDir),
+    stagedBaseline: {
+      dir: stagedBaselineDir,
+      suffix: STAGED_SUFFIX,
+      files: stagedBaselineFiles,
+    },
   });
 
-  const inventoryPath = writeInventory(inventory, groundworkDir);
+  // The /customize skill install is the last step that can fail before the
+  // two .groundwork/ files, so it runs (and is scope-checked) first.
+  const pluginResult = installCustomizeSkillGuarded(options.targetDir);
+  assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
 
-  const reportPath = join(groundworkDir, "adoption-report.md");
-  assertAdoptWriteScope(options.targetDir, [inventoryPath, reportPath]);
-  writeFileSync(reportPath, renderReport(inventory));
+  // The report next, inventory.json last (written atomically): nothing that
+  // can fail follows it, so its presence means the whole run completed.
+  mkdirSync(groundworkDir, { recursive: true });
+  // "wx": the path was removed above, so anything there now (a symlink
+  // raced in mid-run) makes the write fail instead of being followed.
+  writeFileSync(reportPath, renderReport(inventory), { flag: "wx" });
+  writeInventory(inventory, groundworkDir);
 
   console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);
   console.log(`wrote ${relative(options.targetDir, reportPath)}`);
+  if (stagedBaselineFiles.length > 0) {
+    console.log(
+      `staged ${stagedBaselineFiles.length} baseline file(s) at ${stagedBaselineDir}/ for /customize`,
+    );
+  }
   if (packs.length > 0) {
     console.log(
       `staged ${packs.length} pack(s) at .groundwork/packs/ for /customize`,
     );
   }
-
-  const pluginResult = installCustomizeSkillGuarded(options.targetDir);
-  assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
   if (pluginResult.location === "already-present") {
     console.log("the /customize skill was already up to date");
   } else {

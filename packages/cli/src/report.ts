@@ -10,7 +10,7 @@
  */
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
-import type { Inventory, PackSurvey } from "./inventory.js";
+import type { Inventory, PackSurvey, StagedBaseline } from "./inventory.js";
 
 /**
  * Estimates the post-merge total against each cap: the baseline's own count
@@ -364,6 +364,15 @@ function renderPacksSection(inventory: Inventory): string {
     .trimEnd();
 }
 
+/** The "; N staged for /customize at …" clause, or nothing when no file was actually staged. */
+function stagedClause(stagedBaseline: StagedBaseline): string {
+  const { dir, suffix, files } = stagedBaseline;
+  if (files.length === 0) {
+    return "";
+  }
+  return `; ${files.length} staged for /customize at ${dir}/ (inert copies, each with a ${suffix} suffix)`;
+}
+
 function renderConflictsSection(inventory: Inventory): string {
   const { conflicts } = inventory;
   const absent = conflicts.filter((c) => c.status === "absent");
@@ -373,7 +382,7 @@ function renderConflictsSection(inventory: Inventory): string {
   const lines = [
     "## What groundwork would change",
     "",
-    `- ${absent.length} file(s) would be added cleanly (no collision).`,
+    `- ${absent.length} file(s) would be added cleanly (no collision)${stagedClause(inventory.stagedBaseline)}.`,
     `- ${identical.length} file(s) already match the baseline.`,
     `- ${divergent.length} file(s) conflict and need a decision.`,
   ];
@@ -397,6 +406,25 @@ function renderUndeterminedSection(inventory: Inventory): string {
     }
   }
   return lines.join("\n");
+}
+
+/** The closing paragraph (plus its trailing blank line) about the inert staged copies, or nothing when no file was staged. */
+function renderStagedFilesNote(stagedBaseline: StagedBaseline): string[] {
+  const { dir, suffix, files } = stagedBaseline;
+  if (files.length === 0) {
+    return [];
+  }
+  return [
+    `The baseline files staged under \`${dir}/\` are inert copies, never ` +
+      `installed: each carries a \`${suffix}\` suffix so no tool in this ` +
+      "project picks one up, and `/customize` installs one only after you " +
+      `confirm it. Decide whether to commit or ignore those \`${suffix}\` ` +
+      "files before your next commit: they are verbatim template copies, so " +
+      "a strict license-header check, or any gate that runs over every " +
+      "tracked file, may flag them. To keep them out of git, add a " +
+      `\`${dir}/\` line to \`.gitignore\`.`,
+    "",
+  ];
 }
 
 /** Renders the full adoption report as Markdown. */
@@ -436,6 +464,7 @@ export function renderReport(inventory: Inventory): string {
       "project? Say so when `/customize` asks -- that confirmation round " +
       "is the point where it's caught.",
     "",
+    ...renderStagedFilesNote(inventory.stagedBaseline),
     "`.groundwork/` itself was not added to this project's `.gitignore` -- " +
       "that choice is yours. It's disposable (regenerate it any time by " +
       "re-running the CLI), so most projects gitignore it; some prefer to " +

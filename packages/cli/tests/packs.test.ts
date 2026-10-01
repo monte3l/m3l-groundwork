@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -774,6 +775,148 @@ describe("stagePackFiles clears stale staged files", () => {
       rmSync(packsRoot, { recursive: true, force: true });
       rmSync(groundworkDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("stagePackFiles replaces a symlinked pack.json", () => {
+  it("removes a pre-existing pack.json symlink and writes a regular file, leaving the symlink's outside target untouched", () => {
+    const packsRoot = mkdtempSync(join(tmpdir(), "packs-stage-symjson-root-"));
+    const groundworkDir = mkdtempSync(
+      join(tmpdir(), "packs-stage-symjson-gw-"),
+    );
+    const outsideDir = mkdtempSync(
+      join(tmpdir(), "packs-stage-symjson-outside-"),
+    );
+    try {
+      writeManifest(packsRoot, "stage-symjson");
+      const pack = loadPack("stage-symjson", packsRoot);
+
+      const destDir = join(groundworkDir, "packs", "stage-symjson");
+      mkdirSync(destDir, { recursive: true });
+      const outsideFile = join(outsideDir, "outside-pack.json");
+      writeFileSync(outsideFile, "do not touch\n");
+      symlinkSync(outsideFile, join(destDir, "pack.json"));
+
+      const written = stagePackFiles(pack, groundworkDir);
+
+      expect(written).toContain("pack.json");
+      const packJsonPath = join(destDir, "pack.json");
+      // The outside file is untouched -- removed (not followed/overwritten)
+      // before a regular file was written in its place.
+      expect(readFileSync(outsideFile, "utf8")).toBe("do not touch\n");
+      const written2 = JSON.parse(readFileSync(packJsonPath, "utf8")) as {
+        name: string;
+      };
+      expect(written2.name).toBe("stage-symjson");
+    } finally {
+      rmSync(packsRoot, { recursive: true, force: true });
+      rmSync(groundworkDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("stagePackFiles -- non-guard failure wraps with cause", () => {
+  it('throws a wrapped Error naming the pack and destination dir -- "staging pack ... failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI" -- when a pack source file is an unreadable dangling symlink', () => {
+    const packsRoot = mkdtempSync(
+      join(tmpdir(), "packs-stage-unreadable-root-"),
+    );
+    const groundworkDir = mkdtempSync(
+      join(tmpdir(), "packs-stage-unreadable-gw-"),
+    );
+    try {
+      writeManifest(packsRoot, "unreadable-src");
+      const filesDir = join(packsRoot, "unreadable-src", "files");
+      // A dangling symlink inside the pack's own files/ tree: readdirSync
+      // lists it as a (non-directory) entry, but emitTemplate's
+      // readFileSync fails to resolve it -- a genuine, non-guard I/O
+      // failure, distinct from the symlink-GUARD errors below (which fire
+      // on groundworkDir/packs/destDir itself, before any copy is ever
+      // attempted, and whose own wording/shape must stay unchanged).
+      symlinkSync(
+        join(packsRoot, "does-not-exist.txt"),
+        join(filesDir, "dangling.txt"),
+      );
+
+      const pack = loadPack("unreadable-src", packsRoot);
+      const destDir = join(groundworkDir, "packs", "unreadable-src");
+
+      let thrown: unknown;
+      try {
+        stagePackFiles(pack, groundworkDir);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toBe(
+        `staging pack "unreadable-src" into ${destDir} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+      );
+      expect((thrown as Error).cause).toBeDefined();
+    } finally {
+      rmSync(packsRoot, { recursive: true, force: true });
+      rmSync(groundworkDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("stagePackFiles symlink guard", () => {
+  let groundworkDir: string;
+  let outsideDir: string;
+
+  beforeEach(() => {
+    groundworkDir = mkdtempSync(join(tmpdir(), "packs-stage-symlink-gw-"));
+    outsideDir = mkdtempSync(join(tmpdir(), "packs-stage-symlink-outside-"));
+  });
+
+  afterEach(() => {
+    rmSync(groundworkDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it("throws before writing or deleting anything when groundworkDir itself is a symlink", () => {
+    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
+    rmSync(groundworkDir, { recursive: true, force: true });
+    symlinkSync(outsideDir, groundworkDir, "dir");
+
+    const pack = loadPack("harness-extras");
+
+    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
+    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+      "do not touch",
+    );
+    expect(existsSync(join(outsideDir, "packs"))).toBe(false);
+  });
+
+  it("throws before writing or deleting anything when <groundworkDir>/packs is a symlink", () => {
+    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
+    symlinkSync(outsideDir, join(groundworkDir, "packs"), "dir");
+
+    const pack = loadPack("harness-extras");
+
+    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
+    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+      "do not touch",
+    );
+    expect(existsSync(join(outsideDir, "harness-extras"))).toBe(false);
+  });
+
+  it("throws before writing or deleting anything when <groundworkDir>/packs/<name> is a symlink", () => {
+    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
+    mkdirSync(join(groundworkDir, "packs"), { recursive: true });
+    const pack = loadPack("harness-extras");
+    symlinkSync(
+      outsideDir,
+      join(groundworkDir, "packs", pack.manifest.name),
+      "dir",
+    );
+
+    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
+    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+      "do not touch",
+    );
+    expect(existsSync(join(outsideDir, "files"))).toBe(false);
+    expect(existsSync(join(outsideDir, "pack.json"))).toBe(false);
   });
 });
 
