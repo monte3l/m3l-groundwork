@@ -136,7 +136,7 @@ may or may not touch.
      them) rather than reading the file a second time.
    - **No shell tool available.** If a Bash or other command-running tool is
      available, compute the hash as above. If you cannot run a command, do
-     not work around it: write no scratch script, while verifying, make no
+     not work around it: write no scratch script; while verifying, make no
      `Write` or `Edit` outside `.groundwork/` (Round 1's confirmed installs are
      not part of verification), dispatch no subagent to look for a shell, and
      search for a command tool at most once. Skip only the SHA-256
@@ -149,7 +149,7 @@ may or may not touch.
      compare with `stagedBaseline.files`. A `Glob` can skip hidden paths
      (most staged files are dot-paths), honour an ignore file or truncate a
      long list, so a result shorter than `stagedBaseline.files.length`, or
-     looks truncated, is undetermined: report it in the Step 0.4 summary
+     that looks truncated, is undetermined: report it in the Step 0.4 summary
      and continue, since every listed entry's existence is already checked
      one by one; only an extra `*.staged` file, one whose path is not in
      `stagedBaseline.files`, stops the run. This is a partial no-shell

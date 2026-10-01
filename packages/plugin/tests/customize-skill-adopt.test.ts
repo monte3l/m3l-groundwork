@@ -622,16 +622,16 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
     expect(section).toContain("(`Read`, `Glob`, `Grep`)");
   });
 
-  it("says to spend no further turns on verification once the tool search comes up empty", () => {
+  it("says to spend no further turns on verification before moving to the deep read", () => {
     expect(section).toContain("spend no further turns on verification");
   });
 
-  it("replaces the structural entry-count check with a Glob-pattern *.staged check that treats a short or truncated result as undetermined rather than a stop, scoped to the no-shell bullet", () => {
+  it("describes the Glob-pattern *.staged check that treats a short or truncated result as undetermined rather than a stop, scoped to the no-shell bullet", () => {
     expect(bullet).toContain(
       "the `Glob` pattern `.groundwork/baseline/**/*.staged`",
     );
     expect(bullet).toContain(
-      "shorter than `stagedBaseline.files.length`, or looks truncated, is undetermined",
+      "shorter than `stagedBaseline.files.length`, or that looks truncated, is undetermined",
     );
     expect(bullet).toContain("report it in the Step 0.4 summary and continue");
     expect(bullet).toContain(
