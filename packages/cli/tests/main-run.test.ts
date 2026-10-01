@@ -127,6 +127,21 @@ describe("main", () => {
         },
       );
 
+      it("names the available packs when an unknown pack is requested", () => {
+        const target = join(targetDir, "never-written-unknown");
+
+        let thrown: unknown;
+        try {
+          main([target, "--pack", "no-such-pack"]);
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).message).toMatch(/available:/);
+        expect((thrown as Error).message).toMatch(/harness-extras/);
+      });
+
       it("leaves an existing empty target empty when a later --pack is bad", () => {
         const target = join(targetDir, "empty-existing");
         mkdirSync(target);
@@ -359,14 +374,6 @@ describe("main", () => {
         ),
       ).toBe(true);
       logSpy.mockRestore();
-    });
-
-    it("throws naming the available packs when an unknown pack is requested", () => {
-      const packTarget = join(targetDir, "sub-pack-unknown");
-
-      expect(() =>
-        main([packTarget, "--skip-install", "--pack", "does-not-exist"]),
-      ).toThrow(/unknown pack "does-not-exist"/);
     });
   });
 
