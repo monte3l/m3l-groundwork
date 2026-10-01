@@ -18,7 +18,14 @@
  * named `<path>` + `stagedBaseline.suffix` (`.staged`) and carries the sha256
  * of its staged bytes, so `/customize` can verify a copy before installing it.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StagedBaselineFile } from "./baseline-stage.js";
@@ -153,13 +160,40 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
   };
 }
 
-/** Writes `inventory.json` into `groundworkDir`, creating it if needed. */
+/**
+ * Writes `inventory.json` into `groundworkDir`, creating it if needed.
+ *
+ * The write is atomic: the JSON goes to `inventory.json.tmp` first and is
+ * renamed over `inventory.json` only once complete, so a reader never sees a
+ * half-written file. On failure the temp file is removed (best effort) and
+ * any existing `inventory.json` is left untouched.
+ *
+ * @example
+ * ```ts
+ * const path = writeInventory(inventory, ".groundwork");
+ * // path: ".groundwork/inventory.json"
+ * ```
+ */
 export function writeInventory(
   inventory: Inventory,
   groundworkDir: string,
 ): string {
   mkdirSync(groundworkDir, { recursive: true });
   const path = join(groundworkDir, "inventory.json");
-  writeFileSync(path, `${JSON.stringify(inventory, null, 2)}\n`);
+  const tmpPath = `${path}.tmp`;
+  try {
+    writeFileSync(tmpPath, `${JSON.stringify(inventory, null, 2)}\n`);
+    renameSync(tmpPath, path);
+  } catch (cause) {
+    try {
+      rmSync(tmpPath, { force: true });
+    } catch {
+      // Best effort: the write failure below is the error worth reporting.
+    }
+    throw new Error(
+      `writing ${path} failed; any previous inventory.json is unchanged`,
+      { cause },
+    );
+  }
   return path;
 }

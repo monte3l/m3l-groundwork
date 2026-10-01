@@ -449,7 +449,12 @@ export function renderReport(inventory: Inventory): string {
       `are inert copies, never installed: each carries a ` +
       `\`${inventory.stagedBaseline.suffix}\` suffix so no tool in this ` +
       "project picks one up, and `/customize` installs one only after you " +
-      "confirm it.",
+      "confirm it. Decide whether to commit or ignore those " +
+      `\`${inventory.stagedBaseline.suffix}\` files before your next ` +
+      "commit: they are verbatim template copies, so a strict " +
+      "license-header check, or any gate that runs over every tracked file, " +
+      "may flag them. To keep them out of git, add a " +
+      `\`${inventory.stagedBaseline.dir}/\` line to \`.gitignore\`.`,
     "",
     "`.groundwork/` itself was not added to this project's `.gitignore` -- " +
       "that choice is yours. It's disposable (regenerate it any time by " +

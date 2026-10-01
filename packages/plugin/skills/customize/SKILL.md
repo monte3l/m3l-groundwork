@@ -53,9 +53,18 @@ may or may not touch.
 
 ## Step 0 — Reconcile (adopt mode only)
 
-1. Look for `.groundwork/inventory.json`. **Absent → this is a fresh
-   bootstrap; skip straight to Step 1.** Everything below this step applies
-   only when it exists.
+1. Look for `.groundwork/inventory.json`.
+   - **Absent, and no `.groundwork/` directory either → this is a fresh
+     bootstrap; skip straight to Step 1.** Everything below this step applies
+     only when an inventory exists.
+   - **Absent, but `.groundwork/` exists → a previous CLI adopt run did not
+     complete** (the CLI deletes the old inventory before it stages anything
+     and writes the new one last, so no inventory beside a `.groundwork/`
+     directory means the run died part-way). **Stop. Never fall through to
+     the fresh flow** -- that would run fresh-mode tailoring on an
+     established project. Tell the user: "`.groundwork/` is incomplete: a
+     previous adopt run did not finish. Re-run `npx @monte3l/groundwork@rc .`
+     and then run `/customize` again." Change nothing.
 
    **Check `inventory.schemaVersion` before reading anything else.** This
    skill understands schema versions **1 through 5** (the highest it knows is
@@ -72,6 +81,38 @@ may or may not touch.
    | 3               | `harnessGrade`, `harnessConformance`                                                                                                      | skip the harness-grade starting point                         |
    | 4               | `toolchainGrade`, `toolchainConformance`                                                                                                  | skip the toolchain-grade starting point                       |
    | 5               | `stagedBaseline` (`{ dir, suffix, files }`): the baseline additions staged at `.groundwork/baseline/`, each as `{ path, staged, sha256 }` | schema 1-4 only: read additions from `inventory.templateRoot` |
+
+   **Verify the staged baseline (schema 5 or higher) now, before anything is
+   offered to the user.** The inventory lives in the project tree and is
+   untrusted input, so check it before trusting any entry:
+
+   - For every entry of `inventory.stagedBaseline.files`, require
+     `staged === path + inventory.stagedBaseline.suffix`, and require `path`
+     to be relative, free of any `..` segment, and not absolute. All paths
+     in the inventory use `/` separators on every platform.
+   - Read each staged file at `<stagedBaseline.dir>/<staged>` **once**.
+     It must exist, and the SHA-256 of its **raw bytes** (no end-of-line
+     normalization, no decoding) must equal the entry's `sha256`. Compute it
+     with, for example:
+     `node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' <file>`
+     Keep those same bytes for the install in Round 1 (substitute tokens into
+     them) rather than reading the file a second time.
+   - An empty `files` list is legitimate (nothing was missing from the
+     project) and creates no `.groundwork/baseline/` directory; that alone is
+     not a failure.
+   - **Any invalid entry, missing file or hash mismatch means stop -- all of
+     Round 1, including conflicts and packs -- and change nothing.** Tell the
+     user: "The staged baseline in `.groundwork/baseline/` is incomplete or
+     does not match `.groundwork/inventory.json` (<the first entry that
+     failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run
+     `/customize` again." **Never fall back to `inventory.templateRoot` for
+     schema 5 or higher.**
+   - What a passing check proves: the staging is complete and matches the
+     inventory. It does **not** prove the files are untampered -- anyone who
+     can edit the staged files can edit the inventory's hashes too.
+
+   An inventory with `schemaVersion` below 5 has no staged copy; its
+   approved additions are read from `inventory.templateRoot` (see Round 1).
 
 2. **The deep read.** The CLI's survey is an index, not an interpretation —
    it flagged what it found but could not parse (`needsReading: true` on
@@ -225,18 +266,9 @@ confirmed in Step 0.4:
 
 - The **approved additions** — files `templates/core` would add that the
   project doesn't have and the user approved adding. For `schemaVersion` 5
-  or higher, install them from the CLI's staged, self-contained copy under
-  `.groundwork/baseline/` (`inventory.stagedBaseline`). Each listed file is
-  stored inert as `<dir>/<staged>` (its `path` plus a `.staged` suffix, so
-  no project tool or Claude Code discovered it as live source) with its
-  `sha256`. **Check every listed file first, one by one:** it must exist at
-  `<dir>/<staged>` and its SHA-256 must equal the recorded `sha256`. **Any
-  missing file or any mismatch stops the install** (the whole directory
-  being absent counts only when `files` is non-empty; an empty `files` list
-  legitimately creates no directory): tell the user and ask for a re-run of
-  the CLI, and **never fall back to `inventory.templateRoot` for schema 5 or
-  higher**. When every file checks out, copy the bytes to the project at
-  `path` (the suffix stripped, never to the staged name), filling in the
+  or higher, install them from the staged copy Step 0.1 already verified,
+  using the bytes you read then: write them to the project at `path` (the
+  `.staged` suffix stripped, never to the staged name), filling in the
   `__KEY__` tokens with the project's real values as you copy, same as
   staged packs. Only a **schema 1-4** inventory has no staged copy and reads
   additions from `inventory.templateRoot`; if that path no longer exists (a

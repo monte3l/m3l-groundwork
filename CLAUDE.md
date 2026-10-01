@@ -11,8 +11,9 @@ CLI with two modes, auto-detected from the target directory (`mode.ts`).
 toolchain into an empty directory, correct for any TypeScript project.
 **Adopt mode** points at an already-established project instead: it surveys
 it read-only (`src/survey/`), diffs the baseline against what's actually
-there (`conflicts.ts`), and writes only a report (`.groundwork/`) -- it never
-touches a project file. **Phase B** (`packages/plugin`) is adaptive: a
+there (`conflicts.ts`), and writes only under `.groundwork/` (a report, the inventory, and inert
+staged copies of the baseline additions and packs) plus one guarded copy of
+the `/customize` skill -- it never touches a project file. **Phase B** (`packages/plugin`) is adaptive: a
 `/customize` skill that, for a fresh bootstrap, interviews the user and
 tailors the baseline; for an adopted project, first reconciles the CLI's
 survey against the real repo and confirms what to change (its own Step 0).
@@ -51,7 +52,9 @@ tooling `tsconfig.json` (src + tests, no emit) and a build-only
 packages/cli/          Phase A: the offline bootstrapper CLI
   src/                   main.ts, mode.ts, tokens.ts, emit.ts, git.ts, plugin.ts,
                           conflicts.ts, inventory.ts, report.ts, jsonc.ts,
-                          caps.ts, packs.ts, merge-json.ts, palette.ts, term.ts,
+                          baseline-stage.ts (stages absent baseline files as
+                          inert .staged copies), fs-guard.ts (the shared
+                          symlink refusal), caps.ts, packs.ts, merge-json.ts, palette.ts, term.ts,
                           assets.ts (the one place that locates templates/ and
                           the plugin payload)
   src/harness/            the harness grader: frontmatter.ts, rules.ts, grade.ts,
@@ -234,9 +237,13 @@ steps) before considering any task here done.
   tsc, eslint, Claude Code's skill loader) can discover them as live source;
   `inventory.stagedBaseline.files` records each one's original `path`, its
   `staged` name and a `sha256`, and `/customize` strips the suffix on install.
-  `inventory.json` is written last, as the commit marker: it is deleted
-  before staging starts, so a failed run never leaves an old inventory
-  describing a partial stage.
+  `inventory.json` is the commit marker: any old one is deleted before
+  staging starts, and it is written atomically (temp file, then rename) after
+  the staging, the `/customize` skill copy and the report, so its presence
+  means the run completed. A `.groundwork/` directory with no inventory
+  therefore means an interrupted run, which `/customize` refuses to treat as
+  a fresh bootstrap. The per-file `sha256` proves the staging is complete
+  and matches the inventory, not that it is untampered.
   `adopt.e2e.test.ts` is the test of that guarantee; don't weaken it.
 - **`/customize`'s two guidance skills (`typescript-guidance`,
   `harness-guidance`, both in `templates/core/.claude/skills/`) each have
@@ -750,8 +757,11 @@ set for one file.
   falls back to `templateRoot` for a schema 5+ inventory. Only a schema 1-4
   inventory still reads additions from it, and Step 0 reports a vanished path
   and asks for a re-run rather than guessing. `report.ts`'s cap estimate reads
-  `templateRoot` inside the CLI run itself, where it still exists. Pack
-  staging hardening beyond the symlink guard is unchanged.
+  `templateRoot` inside the CLI run itself, where it still exists. **Staged
+  pack files keep their real extensions and are not inert** (unlike
+  `baseline/`), and pack staging is not atomic; atomic, `.staged`-suffixed
+  pack staging is planned before 1.0. Pack staging today only refuses a
+  symlinked staging directory or `pack.json`.
 - **Adopt mode's post-merge cap counts (in `report.ts`) are an estimate, not
   a reconciliation.** It assumes no name overlap between the baseline's
   agents/skills/hooks and the project's own -- good enough to flag "you may

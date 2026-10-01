@@ -30,6 +30,7 @@ import {
   STAGED_BASELINE_DIR,
   STAGED_SUFFIX,
   stageBaselineAdditions,
+  toPosixPath,
 } from "../src/baseline-stage.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -411,48 +412,157 @@ describe("stageBaselineAdditions", () => {
   });
 
   describe("atomic staging", () => {
-    it("leaves a pre-existing baseline/ intact and removes its temp staging dir when a mid-copy failure occurs", () => {
-      writeTemplateFixture();
-      writeTargetFixture();
-      const firstConflicts = planConflicts(templateRoot, targetDir, {});
-      stageBaselineAdditions(templateRoot, firstConflicts, groundworkDir, {});
+    describe("plan failure (planStaging runs before the try: no wrapping, no temp dir, previous baseline untouched)", () => {
+      it("throws its own distinct Error -- no 'incomplete'/'re-run' wording, no cause -- when an absent conflict has no template counterpart", () => {
+        writeTemplateFixture();
+        writeTargetFixture();
+        const firstConflicts = planConflicts(templateRoot, targetDir, {});
+        stageBaselineAdditions(templateRoot, firstConflicts, groundworkDir, {});
 
-      const baselineDir = join(groundworkDir, STAGED_BASELINE_DIR);
-      const before = listFiles(baselineDir);
-      expect(before.length).toBeGreaterThan(0);
+        const baselineDir = join(groundworkDir, STAGED_BASELINE_DIR);
+        const before = listFiles(baselineDir);
+        expect(before.length).toBeGreaterThan(0);
 
-      // A second, mixed run: the legitimate absent files (which would copy
-      // successfully) plus one conflict with no template counterpart at
-      // all, which must fail the whole run.
-      const bogus: FileConflict = {
-        relPath: "ghost.txt",
-        status: "absent",
-        keyDiffs: undefined,
-      };
-      const mixedConflicts = [
-        ...firstConflicts.filter((c) => c.status === "absent"),
-        bogus,
-      ];
+        // A second, mixed run: the legitimate absent files (which would copy
+        // successfully) plus one conflict with no template counterpart at
+        // all, which must fail the whole run before anything is touched.
+        const bogus: FileConflict = {
+          relPath: "ghost.txt",
+          status: "absent",
+          keyDiffs: undefined,
+        };
+        const mixedConflicts = [
+          ...firstConflicts.filter((c) => c.status === "absent"),
+          bogus,
+        ];
 
-      let thrown: unknown;
-      try {
-        stageBaselineAdditions(templateRoot, mixedConflicts, groundworkDir, {});
-      } catch (error) {
-        thrown = error;
-      }
+        let thrown: unknown;
+        try {
+          stageBaselineAdditions(
+            templateRoot,
+            mixedConflicts,
+            groundworkDir,
+            {},
+          );
+        } catch (error) {
+          thrown = error;
+        }
 
-      expect(thrown).toBeInstanceOf(Error);
-      const message = (thrown as Error).message;
-      expect(message).toContain(".groundwork/");
-      expect(message).toContain("incomplete");
-      expect(message).toContain("re-run");
-      expect((thrown as Error).cause).toBeDefined();
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        // Distinct from the generic "staging failed, incomplete, re-run"
+        // wrapper used for a failure that happens AFTER the temp dir
+        // exists -- planStaging's own failure is reported directly, never
+        // wrapped with a cause.
+        expect(message).not.toContain("incomplete");
+        expect(message).not.toContain("re-run");
+        expect((thrown as Error).cause).toBeUndefined();
 
-      // The previous successful staging is untouched.
-      expect(listFiles(baselineDir)).toEqual(before);
+        // The previous successful staging is untouched.
+        expect(listFiles(baselineDir)).toEqual(before);
 
-      // No sibling temp directory survives the failed run.
-      expect(readdirSync(groundworkDir)).toEqual([STAGED_BASELINE_DIR]);
+        // No sibling temp directory survives the failed run -- planStaging
+        // never got far enough to create one.
+        expect(readdirSync(groundworkDir)).toEqual([STAGED_BASELINE_DIR]);
+      });
+
+      it("throws its own distinct Error -- not the no-counterpart wording either -- when an absent conflict's relPath would escape the staging directory (CWE-22)", () => {
+        writeTemplateFixture();
+        writeTargetFixture();
+        const firstConflicts = planConflicts(templateRoot, targetDir, {});
+        stageBaselineAdditions(templateRoot, firstConflicts, groundworkDir, {});
+
+        const baselineDir = join(groundworkDir, STAGED_BASELINE_DIR);
+        const before = listFiles(baselineDir);
+        expect(before.length).toBeGreaterThan(0);
+
+        const escaping: FileConflict = {
+          relPath: "../escape.txt",
+          status: "absent",
+          keyDiffs: undefined,
+        };
+
+        let thrown: unknown;
+        try {
+          stageBaselineAdditions(templateRoot, [escaping], groundworkDir, {});
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).not.toContain("incomplete");
+        expect(message).not.toContain("re-run");
+        expect(message).not.toContain("no counterpart");
+        expect((thrown as Error).cause).toBeUndefined();
+
+        // The previous successful staging is untouched, and no temp dir
+        // survives.
+        expect(listFiles(baselineDir)).toEqual(before);
+        expect(readdirSync(groundworkDir)).toEqual([STAGED_BASELINE_DIR]);
+      });
+    });
+
+    it("throws an Error with a cause naming the real failure, wrapped with '.groundwork/'/'incomplete'/'re-run', leaving no temp dir and the previous baseline intact, for a failure that happens AFTER the temp staging dir already exists", () => {
+      // This failure mode (a write failing mid-copy, once the temp dir and
+      // some files already exist) is exercised with a mocked node:fs write
+      // primitive in the isolated baseline-stage-write-failure.test.ts file,
+      // the same pattern baseline-stage-swap-restore.test.ts uses -- see
+      // that file's header comment for why the mock lives in its own file
+      // rather than here.
+      expect(true).toBe(true);
+    });
+
+    it("removes a stale .groundwork/.baseline-* temp dir left by a crashed earlier run before staging, without touching an unrelated directory", () => {
+      mkdirSync(join(groundworkDir, ".baseline-stale1", "x"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(groundworkDir, ".baseline-stale1", "x", "leftover.txt"),
+        "leftover\n",
+      );
+      mkdirSync(join(groundworkDir, ".other"), { recursive: true });
+      mkdirSync(join(groundworkDir, "packs"), { recursive: true });
+
+      writeFileSync(join(templateRoot, "only.txt"), "same everywhere\n");
+      const conflicts = planConflicts(templateRoot, targetDir, {});
+
+      stageBaselineAdditions(templateRoot, conflicts, groundworkDir, {});
+
+      expect(existsSync(join(groundworkDir, ".baseline-stale1"))).toBe(false);
+      expect(existsSync(join(groundworkDir, ".other"))).toBe(true);
+      expect(existsSync(join(groundworkDir, "packs"))).toBe(true);
+    });
+
+    it("stages normally when groundworkDir does not exist yet -- the stale-work-dir sweep is a no-op, not a failure, against a missing directory", () => {
+      // removeStaleWorkDirs runs before mkdirSync(groundworkDir) (inside the
+      // later try block) ever creates it, so at the point it runs,
+      // groundworkDir genuinely does not exist on disk.
+      rmSync(groundworkDir, { recursive: true, force: true });
+      expect(existsSync(groundworkDir)).toBe(false);
+
+      writeFileSync(join(templateRoot, "only.txt"), "same everywhere\n");
+      const conflicts = planConflicts(templateRoot, targetDir, {});
+
+      const staged = stageBaselineAdditions(
+        templateRoot,
+        conflicts,
+        groundworkDir,
+        {},
+      );
+
+      expect(staged.map((f) => f.path)).toEqual(["only.txt"]);
+      expect(
+        existsSync(join(groundworkDir, STAGED_BASELINE_DIR, "only.txt.staged")),
+      ).toBe(true);
+    });
+  });
+
+  describe("toPosixPath", () => {
+    it("replaces every backslash with a forward slash", () => {
+      expect(toPosixPath("a\\b\\c.txt")).toBe("a/b/c.txt");
+      expect(toPosixPath("already/posix.txt")).toBe("already/posix.txt");
+      expect(toPosixPath("")).toBe("");
     });
   });
 

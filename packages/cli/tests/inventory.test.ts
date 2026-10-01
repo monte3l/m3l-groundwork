@@ -325,6 +325,45 @@ describe("buildInventory / writeInventory", () => {
   });
 });
 
+describe("writeInventory writes atomically", () => {
+  let groundworkDir: string;
+
+  beforeEach(() => {
+    groundworkDir = mkdtempSync(join(tmpdir(), "inventory-atomic-"));
+  });
+
+  afterEach(() => {
+    rmSync(groundworkDir, { recursive: true, force: true });
+  });
+
+  it("leaves no inventory.json.tmp behind and the final inventory.json parses, after a normal write", () => {
+    const inventory = buildInventory({
+      detection: { mode: "adopt", signal: "found package.json" },
+      templateRoot: "/tmp/templates/core",
+      targetDir: "/tmp/project",
+      survey: EMPTY_SURVEY,
+      conflicts: [],
+      packs: [],
+      harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline: EMPTY_STAGED_BASELINE,
+    });
+
+    const path = writeInventory(inventory, groundworkDir);
+
+    expect(existsSync(`${path}.tmp`)).toBe(false);
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Inventory;
+    expect(parsed.schemaVersion).toBe(INVENTORY_SCHEMA_VERSION);
+  });
+
+  // The rename-failure case (the existing inventory.json must stay
+  // untouched and no partial file survive) is covered in the isolated
+  // packages/cli/tests/inventory-write-failure.test.ts, which mocks
+  // node:fs's renameSync via vi.mock + vi.hoisted (vi.spyOn can't override
+  // a named export of the real ESM node:fs module -- see that file's header
+  // comment).
+});
+
 describe("StagedBaseline / StagedBaselineFile shapes", () => {
   it("types stagedBaseline as { dir, suffix, files: StagedBaselineFile[] }, each file carrying path/staged/sha256", () => {
     expectTypeOf<StagedBaseline>().toEqualTypeOf<{

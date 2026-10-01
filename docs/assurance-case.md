@@ -208,7 +208,13 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   rather than fixed here -- adopt mode already never overwrites an existing
   project file (see "Fail-safe defaults" above), so the practical impact is
   a write escaping to a symlink target the project owner themselves created,
-  not an attacker-controlled one.
+  not an attacker-controlled one. The staging writers add an `lstat`
+  refusal on `.groundwork` and the staging directories (`fs-guard.ts`), but
+  there is a time-of-check-to-time-of-use gap between that `lstat` and the
+  later write: a local attacker able to swap a directory for a symlink in
+  that window is outside the threat model this tool accepts, which assumes
+  the project directory is not concurrently modified by a hostile local
+  process.
 - **`merge-json.ts`'s three merge functions write via plain `record[key] = value`**
   with no rejection of the literal key `__proto__` -- a narrow,
   CWE-1321-shaped gap found during the 2026-09 security review (see

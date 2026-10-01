@@ -778,6 +778,44 @@ describe("stagePackFiles clears stale staged files", () => {
   });
 });
 
+describe("stagePackFiles replaces a symlinked pack.json", () => {
+  it("removes a pre-existing pack.json symlink and writes a regular file, leaving the symlink's outside target untouched", () => {
+    const packsRoot = mkdtempSync(join(tmpdir(), "packs-stage-symjson-root-"));
+    const groundworkDir = mkdtempSync(
+      join(tmpdir(), "packs-stage-symjson-gw-"),
+    );
+    const outsideDir = mkdtempSync(
+      join(tmpdir(), "packs-stage-symjson-outside-"),
+    );
+    try {
+      writeManifest(packsRoot, "stage-symjson");
+      const pack = loadPack("stage-symjson", packsRoot);
+
+      const destDir = join(groundworkDir, "packs", "stage-symjson");
+      mkdirSync(destDir, { recursive: true });
+      const outsideFile = join(outsideDir, "outside-pack.json");
+      writeFileSync(outsideFile, "do not touch\n");
+      symlinkSync(outsideFile, join(destDir, "pack.json"));
+
+      const written = stagePackFiles(pack, groundworkDir);
+
+      expect(written).toContain("pack.json");
+      const packJsonPath = join(destDir, "pack.json");
+      // The outside file is untouched -- removed (not followed/overwritten)
+      // before a regular file was written in its place.
+      expect(readFileSync(outsideFile, "utf8")).toBe("do not touch\n");
+      const written2 = JSON.parse(readFileSync(packJsonPath, "utf8")) as {
+        name: string;
+      };
+      expect(written2.name).toBe("stage-symjson");
+    } finally {
+      rmSync(packsRoot, { recursive: true, force: true });
+      rmSync(groundworkDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("stagePackFiles symlink guard", () => {
   let groundworkDir: string;
   let outsideDir: string;

@@ -567,8 +567,11 @@ export function assertAdoptWriteScope(
  * `assertAdoptUsage`) and staged, unapplied, at `.groundwork/packs/<name>/`;
  * absent baseline files are staged as inert `<path>.staged` copies at
  * `.groundwork/baseline/`. A stale `inventory.json`/`adoption-report.md` is
- * deleted before any staging and `inventory.json` is written last, so its
- * presence means the whole run completed.
+ * deleted before any staging or install; then packs and the baseline are
+ * staged, the `/customize` skill is installed, `adoption-report.md` is
+ * written, and `inventory.json` is written last (atomically, via a temp file
+ * and rename). Only console output follows it, so `inventory.json`'s
+ * presence means every step of the run completed.
  */
 function runAdopt(options: CliOptions, detection: ModeDetection): void {
   console.log(`adopt mode: ${detection.signal}`);
@@ -647,8 +650,13 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     },
   });
 
-  // The report first, inventory.json last: inventory.json's presence is
-  // what tells /customize the whole run completed.
+  // The /customize skill install is the last step that can fail before the
+  // two .groundwork/ files, so it runs (and is scope-checked) first.
+  const pluginResult = installCustomizeSkillGuarded(options.targetDir);
+  assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
+
+  // The report next, inventory.json last (written atomically): nothing that
+  // can fail follows it, so its presence means the whole run completed.
   mkdirSync(groundworkDir, { recursive: true });
   writeFileSync(reportPath, renderReport(inventory));
   writeInventory(inventory, groundworkDir);
@@ -665,9 +673,6 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       `staged ${packs.length} pack(s) at .groundwork/packs/ for /customize`,
     );
   }
-
-  const pluginResult = installCustomizeSkillGuarded(options.targetDir);
-  assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
   if (pluginResult.location === "already-present") {
     console.log("the /customize skill was already up to date");
   } else {

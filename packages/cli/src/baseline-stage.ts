@@ -107,15 +107,69 @@ function collectTemplateFiles(
   }
 }
 
-/** Pairs every absent conflict with its template source; an absent path with no template counterpart is a caller bug, never skipped. */
+/**
+ * Normalizes a native relative path to forward slashes, so a path recorded
+ * in `inventory.json` reads the same whichever OS ran the CLI.
+ *
+ * @example
+ * ```ts
+ * toPosixPath("src\\index.ts"); // "src/index.ts"
+ * ```
+ */
+export function toPosixPath(p: string): string {
+  return p.replaceAll("\\", "/");
+}
+
+/** `rmSync` options for a staging directory: recursive, tolerant of absence, and retried on a transient EBUSY/EPERM. */
+const RM_DIR_OPTIONS = { recursive: true, force: true, maxRetries: 3 } as const;
+
+/** Prefix of every temporary staging work directory under `groundworkDir`. */
+const WORK_DIR_PREFIX = `.${STAGED_BASELINE_DIR}-`;
+
+/** Removes `path` recursively; a failure only warns, naming the path, so it can never shadow the outcome it is cleaning up after. */
+function removeBestEffort(path: string): void {
+  try {
+    rmSync(path, RM_DIR_OPTIONS);
+  } catch (error) {
+    console.warn(
+      `warning: could not remove the temporary staging directory ${path} -- delete it by hand (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
+}
+
+/** Removes every `.baseline-*` work directory a crashed earlier run left under `groundworkDir`; nothing else there is touched. */
+function removeStaleWorkDirs(groundworkDir: string): void {
+  if (!existsSync(groundworkDir)) {
+    return;
+  }
+  for (const name of readdirSync(groundworkDir)) {
+    if (name.startsWith(WORK_DIR_PREFIX)) {
+      removeBestEffort(join(groundworkDir, name));
+    }
+  }
+}
+
+/**
+ * Pairs every absent conflict with its template source. Two caller bugs are
+ * refused, each with its own error and never skipped: a `relPath` whose
+ * staged name would land outside `destDir` (CWE-22, docs/assurance-case.md),
+ * and an absent path with no template counterpart.
+ */
 function planStaging(
   templateRoot: string,
   absent: readonly FileConflict[],
   tokens: TokenTable,
+  destDir: string,
 ): { path: string; sourcePath: string }[] {
   const templateFiles = new Map<string, string>();
   collectTemplateFiles(templateRoot, templateRoot, tokens, templateFiles);
   return absent.map(({ relPath }) => {
+    const destPath = join(destDir, stagedNameFor(relPath));
+    if (!isPathContained(destPath, destDir)) {
+      throw new Error(
+        `stageBaselineAdditions: staged path ${resolve(destPath)} for ${relPath} escapes ${resolve(destDir)}`,
+      );
+    }
     const sourcePath = templateFiles.get(relPath);
     if (sourcePath === undefined) {
       throw new Error(
@@ -126,7 +180,15 @@ function planStaging(
   });
 }
 
-/** Moves `newDir` into place at `destDir`, parking any previous `destDir` at `parkedDir` and restoring it if the final rename fails. */
+/** The swap's final rename and the restore of the parked previous baseline both failed: the parked copy is the only one left. */
+class ParkedBaselineError extends AggregateError {}
+
+/**
+ * Moves `newDir` into place at `destDir`, parking any previous `destDir` at
+ * `parkedDir` first. If the final rename fails the parked copy is renamed
+ * back; if that restore fails too, throws a {@link ParkedBaselineError}
+ * carrying both errors and naming `parkedDir`.
+ */
 function swapInto(newDir: string, destDir: string, parkedDir: string): void {
   const hadPrevious = existsSync(destDir);
   if (hadPrevious) {
@@ -135,12 +197,16 @@ function swapInto(newDir: string, destDir: string, parkedDir: string): void {
   try {
     renameSync(newDir, destDir);
   } catch (error) {
-    if (hadPrevious) {
-      try {
-        renameSync(parkedDir, destDir);
-      } catch {
-        // Best effort: the rename failure below is the error worth reporting.
-      }
+    if (!hadPrevious) {
+      throw error;
+    }
+    try {
+      renameSync(parkedDir, destDir);
+    } catch (restoreError) {
+      throw new ParkedBaselineError(
+        [error, restoreError],
+        `moving the new baseline into ${destDir} failed and restoring the previous one failed too; the previous baseline was parked at ${parkedDir} -- move it back by hand if you need it, or re-run the CLI to regenerate it`,
+      );
     }
     throw error;
   }
@@ -152,18 +218,38 @@ function swapInto(newDir: string, destDir: string, parkedDir: string): void {
  * token substitution into content, which is `/customize`'s job at install
  * time. `tokens` is used only to match a tokenized template path
  * (`__PROJECT_NAME__.txt`) to the substituted `relPath` the conflict plan
- * reports; every absent conflict must match a template file, or the call
- * throws.
+ * reports. Recorded `path`/`staged` values use forward slashes
+ * ({@link toPosixPath}).
  *
- * Staging is atomic: files are written into a temporary sibling directory
- * inside `groundworkDir` and swapped into place only after every copy
- * succeeded, so a failure leaves any previous `baseline/` intact. A previous
- * staging is replaced wholesale (no stale file lingers); when nothing is
- * absent, any previous staging is removed and nothing is created.
+ * What is guaranteed:
+ * - Before anything is deleted or written, `groundworkDir` and
+ *   `<groundworkDir>/baseline` are checked not to be symlinks.
+ * - Any `.baseline-*` work directory a crashed earlier run left in
+ *   `groundworkDir` is removed (best effort; a failure only warns).
+ * - When nothing is absent, any previous staging is removed and nothing is
+ *   created.
+ * - The plan is validated before any staging work: an absent conflict with
+ *   no template counterpart, or whose staged name would escape the staging
+ *   directory, throws its own `Error` with the previous `baseline/`
+ *   untouched and no temporary directory created.
+ * - Files are then written into a temporary `.baseline-*` sibling directory
+ *   and swapped into place only after every copy succeeded, so a copy
+ *   failure leaves any previous `baseline/` intact. A previous staging is
+ *   replaced wholesale (no stale file lingers).
+ * - If the final swap rename fails, the previous `baseline/` is renamed back
+ *   into place. Only if that restore also fails is `baseline/` left absent:
+ *   the previous staging then survives, parked inside the temporary
+ *   directory, which is deliberately not removed (a later run's stale-dir
+ *   sweep does remove it, regenerating the staging from scratch).
+ * - The temporary directory is otherwise always removed; a failure to remove
+ *   it only warns, naming its path.
  *
  * @throws `Error` before any delete or write when `groundworkDir` or
- * `<groundworkDir>/baseline` is a symlink; otherwise an `Error` (with
- * `cause`) saying `.groundwork/` is incomplete and the CLI should be re-run.
+ * `<groundworkDir>/baseline` is a symlink; `Error` (no `cause`) for an
+ * invalid plan, as above; `AggregateError` of the swap and restore failures,
+ * naming where the previous baseline is parked, when both renames fail;
+ * otherwise an `Error` with `cause`, including the cause's message, saying
+ * `.groundwork/` is incomplete and the CLI should be re-run.
  *
  * @example
  * ```ts
@@ -182,25 +268,33 @@ export function stageBaselineAdditions(
   const destDir = join(groundworkDir, STAGED_BASELINE_DIR);
   assertNotSymlink(groundworkDir);
   assertNotSymlink(destDir);
+  removeStaleWorkDirs(groundworkDir);
 
   const absent = conflicts.filter((c) => c.status === "absent");
   if (absent.length === 0) {
-    rmSync(destDir, { recursive: true, force: true });
+    rmSync(destDir, RM_DIR_OPTIONS);
     return [];
   }
 
+  // Outside the try: a plan error is a caller bug with its own message, not
+  // an "incomplete, re-run" staging failure, and nothing exists to clean up.
+  const plan = planStaging(templateRoot, absent, tokens, destDir);
+
   let workDir: string | undefined;
+  // Set only when the previous baseline is parked inside workDir and could
+  // not be restored: workDir then holds its only copy and must survive.
+  let keepWorkDir = false;
   try {
-    const plan = planStaging(templateRoot, absent, tokens);
     mkdirSync(groundworkDir, { recursive: true });
-    workDir = mkdtempSync(join(groundworkDir, `.${STAGED_BASELINE_DIR}-`));
+    workDir = mkdtempSync(join(groundworkDir, WORK_DIR_PREFIX));
     const newDir = join(workDir, STAGED_BASELINE_DIR);
 
     const staged = plan.map(({ path, sourcePath }): StagedBaselineFile => {
       const stagedName = stagedNameFor(path);
       const destPath = join(newDir, stagedName);
-      // CWE-22 invariant (docs/assurance-case.md), same as emitTemplate: a
-      // staged write must never land outside the staging directory.
+      // CWE-22 invariant (docs/assurance-case.md), same as emitTemplate:
+      // planStaging already refused an escaping path; this re-asserts it
+      // against the directory actually written to.
       assert.ok(
         isPathContained(destPath, newDir),
         `stageBaselineAdditions: staged path ${resolve(destPath)} escapes ${resolve(newDir)}`,
@@ -209,23 +303,28 @@ export function stageBaselineAdditions(
       mkdirSync(dirname(destPath), { recursive: true });
       writeFileSync(destPath, bytes, { flag: "wx" });
       const sha256 = createHash("sha256").update(bytes).digest("hex");
-      return { path, staged: stagedName, sha256 };
+      return {
+        path: toPosixPath(path),
+        staged: toPosixPath(stagedName),
+        sha256,
+      };
     });
 
     swapInto(newDir, destDir, join(workDir, "previous"));
     return staged;
   } catch (cause) {
+    if (cause instanceof ParkedBaselineError) {
+      keepWorkDir = true;
+      throw cause;
+    }
+    const reason = cause instanceof Error ? cause.message : String(cause);
     throw new Error(
-      `staging the baseline into ${destDir} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+      `staging the baseline into ${destDir} failed (${reason}), so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
       { cause },
     );
   } finally {
-    if (workDir !== undefined) {
-      try {
-        rmSync(workDir, { recursive: true, force: true });
-      } catch {
-        // Best effort: a leftover temp dir must not shadow the staging outcome.
-      }
+    if (workDir !== undefined && !keepWorkDir) {
+      removeBestEffort(workDir);
     }
   }
 }

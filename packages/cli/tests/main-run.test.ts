@@ -634,6 +634,29 @@ describe("main", () => {
       ).toBe(true);
     });
 
+    it("runs installCustomizeSkillGuarded BEFORE writing inventory.json/adoption-report.md -- neither file exists when it throws", () => {
+      const projectDir = join(targetDir, "existing-project-skill-order");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      installCustomizeSkillGuardedMock.mockImplementationOnce(() => {
+        throw new Error("simulated guarded skill install failure");
+      });
+
+      expect(() => main([projectDir])).toThrow(
+        /simulated guarded skill install failure/,
+      );
+
+      expect(
+        existsSync(join(projectDir, ".groundwork", "inventory.json")),
+      ).toBe(false);
+      expect(
+        existsSync(join(projectDir, ".groundwork", "adoption-report.md")),
+      ).toBe(false);
+    });
+
     // Contract 2: --adopt against a target directory that does not exist
     // yet is a clean usage error, not an uncaught filesystem exception --
     // resolveMode checks existence before forcing adopt, so a missing

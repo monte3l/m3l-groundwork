@@ -388,7 +388,8 @@ export function installPack(
  * substitution is a no-op here (`{}`): staging a project's real name into
  * pack content is `/customize`'s job, not this offline copy's. Throws,
  * before deleting or writing anything, when `groundworkDir`, its `packs/`
- * or `packs/<name>/` is a symlink.
+ * or `packs/<name>/` is a symlink. A `pack.json` that is itself a symlink is
+ * removed (its target untouched) and replaced by a regular file.
  */
 export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
   const packsDir = join(groundworkDir, "packs");
@@ -406,7 +407,15 @@ export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
     join(destDir, "files"),
     {},
   );
-  writeJson(join(destDir, "pack.json"), pack.manifest);
+  // A pre-existing pack.json may be a symlink planted to redirect this
+  // write outside the project: rmSync removes the link itself (never its
+  // target), and the exclusive "wx" flag refuses anything re-created there
+  // in between.
+  const packJsonPath = join(destDir, "pack.json");
+  rmSync(packJsonPath, { force: true });
+  writeFileSync(packJsonPath, JSON.stringify(pack.manifest, null, 2) + "\n", {
+    flag: "wx",
+  });
   return [...filesWritten.map((f) => join("files", f)), "pack.json"];
 }
 
