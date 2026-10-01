@@ -6,6 +6,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     pool: "forks",
+    // Strips inherited GIT_* variables (exported by git into hook processes,
+    // e.g. pre-push) so tests that spawn git act on their own fixtures, not
+    // the pushing repo. See the file's own header comment.
+    setupFiles: ["./packages/cli/tests/setup-git-env.ts"],
     include: ["**/tests/**/*.test.ts", "**/*.test.ts"],
     exclude: [
       "**/dist/**",
