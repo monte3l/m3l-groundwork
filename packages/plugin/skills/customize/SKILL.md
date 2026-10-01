@@ -85,7 +85,8 @@ may or may not touch.
    not touch it, and re-running the CLI alone does not either: the CLI
    never overwrites a copy that differs, it writes a fresh one to
    `.groundwork/customize/`, which Claude Code does not load. So delete
-   that directory first and then re-run `npx @monte3l/groundwork@rc .`. A
+   that directory first (this discards any local edits the project made to
+   its copy) and then re-run `npx @monte3l/groundwork@rc .`. A
    copy in `.groundwork/customize/` is refreshed by re-running the CLI. What
    each version added:
 
@@ -113,8 +114,12 @@ may or may not touch.
      of any `..` segment, and not absolute. Reject the entry if `path` is
      `""` or `"."`. Reject it too if `path` contains a `\` or a `:` (a
      Windows `..\..` or `C:foo` would slip past the other checks). Reject a
-     duplicate `path` or a duplicate `staged` among the entries. All paths in
-     the inventory use `/` separators on every platform.
+     duplicate `path` or a duplicate `staged` among the entries. These fields
+     use `/` separators on every platform: `conflicts[].relPath`,
+     `packs[].fileConflicts[].relPath`, `stagedBaseline.dir`,
+     `stagedBaseline.files[].path` and its `.staged` name. Other paths in
+     the inventory are not normalized: `templateRoot` and `targetDir` are
+     absolute native paths, as are the survey's tsconfig chain entries.
    - The `absent` conflicts in `inventory.conflicts` and the paths in
      `stagedBaseline.files` must name the same set of files. If they
      disagree (an `absent` conflict with no staged entry, or a staged entry

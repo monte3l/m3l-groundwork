@@ -265,6 +265,42 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
   });
 });
 
+describe("SKILL.md Step 0.1 -- native vs relative/POSIX path fields", () => {
+  // Same heading-scoped slice as the "Step 0.1 section" describe block above
+  // (a module-level `section` would leak the first describe's scope, so this
+  // is recomputed locally per the test-author instructions).
+  const sectionStart = text.indexOf("1. Look for");
+  const sectionEnd = text.indexOf("2. **The deep read.**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.1 section markers ('1. Look for' / '2. **The deep read.**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  it("no longer makes the blanket claim that every path in the inventory uses `/` separators", () => {
+    expect(section).not.toContain("All paths in the inventory use");
+  });
+
+  it("scopes the `/`-separator claim to the specific relative-path fields it actually holds, naming each within 400 chars of the scoped sentence", () => {
+    const idx = section.indexOf(
+      "These fields use `/` separators on every platform",
+    );
+    expect(idx).toBeGreaterThan(-1);
+
+    const window = section.slice(idx, idx + 400);
+    expect(window).toContain("`conflicts[].relPath`");
+    expect(window).toContain("`packs[].fileConflicts[].relPath`");
+    expect(window).toContain("`stagedBaseline.dir`");
+    expect(window).toContain("`stagedBaseline.files[].path`");
+    expect(window).toContain("`.staged`");
+  });
+
+  it("says templateRoot and targetDir are native paths, not `/`-separated", () => {
+    expect(section).toContain("`templateRoot` and `targetDir`");
+  });
+});
+
 describe("SKILL.md Round 1's approved-additions bullet", () => {
   it("still carries a short pointer back at Step 0.1 for the staged-copy install", () => {
     const additionsStart = text.indexOf("The **approved additions**");
@@ -410,5 +446,10 @@ describe("SKILL.md Step 0.1 -- corrected local-copy advice for a schemaVersion h
   it("drops the incorrect claim that re-running the CLI refreshes the plugin's local copy", () => {
     const window = text.slice(higherThan5Index, higherThan5Index + 1100);
     expect(window).not.toContain("so the CLI refreshes its local copy");
+  });
+
+  it("warns that deleting `.claude/skills/customize/` discards any local edits", () => {
+    const window = text.slice(higherThan5Index, higherThan5Index + 1100);
+    expect(window).toContain("discards any local edits");
   });
 });
