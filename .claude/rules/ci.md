@@ -87,7 +87,7 @@ paths:
   it cannot satisfy or bypass `main`'s required checks or its 0-approval
   rule either way.
 - `claude-pr-review.yml` pins `claude_args: --model claude-opus-5-5
---fallback-model claude-sonnet-5` (there is no `model:`/`fallback_model:`
+--fallback-model claude-sonnet-5-5` (there is no `model:`/`fallback_model:`
   input -- both are deprecated action inputs, per claude-code-action's own
   docs/usage.md, in favor of configuring both through `claude_args`);
   `claude.yml` is left on the action's default. Two reasons for pinning at
@@ -102,9 +102,11 @@ paths:
   never on an auth, billing, rate-limit, or policy failure -- a real,
   currently-unfixed gap (anthropics/claude-code-action#594, redirected to
   and auto-closed `not_planned` as anthropics/claude-code#8413) -- but it's
-  worth having for the failure mode it does cover, and Sonnet 5 is a
-  separate model pool from Opus so it isn't overloaded by the same demand
-  spike.
+  worth having for the failure mode it does cover. Sonnet 5.5 is the
+  current Sonnet tier; per Anthropic's Opus 5.5 migration guide, a
+  conversation moved from Opus 5.5 to any model other than Fable 5.1 or
+  Mythos 5.1 runs without Opus 5.5's thinking blocks, which is acceptable
+  for an overload-only fallback.
 - `claude_args` also carries an explicit `--allowedTools` naming
   `mcp__github_inline_comment__create_inline_comment` and `gh pr comment`/
   `diff`/`view` -- load-bearing, not decorative: the action's automation
