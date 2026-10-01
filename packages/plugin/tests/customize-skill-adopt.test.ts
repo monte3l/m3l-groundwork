@@ -576,6 +576,18 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
   const keepBytesIndex = section.indexOf("Keep those same bytes");
   const noShellIndex = section.indexOf("No shell tool available.");
   const emptyFilesIndex = section.indexOf("An empty `files` list");
+  if (
+    noShellIndex === -1 ||
+    emptyFilesIndex === -1 ||
+    emptyFilesIndex <= noShellIndex
+  ) {
+    throw new Error(
+      "No-shell bullet markers ('No shell tool available.' / 'An empty `files` list') were not both found in the Step 0.1 section -- update these markers if the heading text changed",
+    );
+  }
+  // The no-shell bullet proper: from its own heading through to (but not
+  // including) the next bullet, "An empty `files` list".
+  const bullet = section.slice(noShellIndex, emptyFilesIndex);
 
   it("adds a 'No shell tool available.' bullet after the node -e / 'Keep those same bytes' bullet and before the 'An empty files list' bullet", () => {
     expect(keepBytesIndex).toBeGreaterThan(-1);
@@ -614,36 +626,72 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
     expect(section).toContain("spend no further turns on verification");
   });
 
+  it("replaces the structural entry-count check with a *.staged file count against stagedBaseline.files.length, scoped to the no-shell bullet", () => {
+    expect(bullet).toContain(
+      "the number of `*.staged` files under `.groundwork/baseline/` (use `Glob`) equals `stagedBaseline.files.length`",
+    );
+    expect(bullet).toContain("catches a missing or extra staged file");
+  });
+
   it("tells the user the SHA-256 check was skipped, what a passing check would have proven, and which structural checks were verified instead, at the top of the Step 0.4 summary with continue-or-stop asked in the same confirmation", () => {
-    expect(section).toContain(
+    expect(bullet).toContain("your first message to the user");
+    expect(bullet).toContain("the Step 0.4 summary");
+    expect(bullet).toContain("continue or stop");
+    expect(bullet).toContain(
       "the SHA-256 check was skipped because no command could be run",
     );
-    expect(section).toContain(
+    expect(bullet).toContain(
       "is complete and matches the inventory, not that the files are untampered",
     );
-    expect(section).toContain("which structural checks you did verify instead");
-    expect(section).toContain("your first message to the user");
-    expect(section).toContain("the Step 0.4 summary");
-    expect(section).toContain("continue or stop");
+    expect(bullet).toContain("which structural checks you did verify instead");
+  });
 
-    const noticeIndex = section.indexOf("your first message to the user");
-    expect(noticeIndex).toBeGreaterThan(-1);
-    const window = section.slice(noticeIndex, noticeIndex + 700);
-    expect(window).toContain("the Step 0.4 summary");
-    expect(window).toContain("continue or stop");
-    expect(window).toContain(
-      "the SHA-256 check was skipped because no command could be run",
+  it("names what a passing check cannot prove as 'not tamper-resistance', scoped to the no-shell bullet", () => {
+    expect(bullet).toContain("not tamper-resistance");
+  });
+
+  it("drops the old 'entry count matches' and 'the one file this step may write' phrasing from the Step 0.1 section", () => {
+    expect(section).not.toContain("the entry count matches");
+    expect(section).not.toContain("the one file this step may write");
+  });
+
+  it("says to record the skip in the adoption report when the findings are written back in Step 0.3", () => {
+    expect(bullet).toContain(
+      "record the skip in `.groundwork/adoption-report.md` when you write the findings back in Step 0.3",
     );
   });
 
-  it("says to record the skip in the adoption report", () => {
-    expect(section).toContain(
-      "record the skip in `.groundwork/adoption-report.md`",
+  it("still stops on a structural failure, including a count mismatch, even when the hash check itself is skipped", () => {
+    expect(bullet).toContain(
+      "A structural failure, including a count mismatch, still stops",
     );
   });
 
-  it("still stops on a structural failure even when the hash check itself is skipped", () => {
-    expect(section).toContain("A structural failure still stops");
+  it("names a staged-file count mismatch against stagedBaseline.files.length in the single stop list (no-shell path)", () => {
+    const stopListStart = section.indexOf(
+      "**For a schema 5 inventory, a `stagedBaseline` that is missing",
+    );
+    const stopListEnd = section.indexOf(
+      "This is the single stop list for the staged baseline.",
+    );
+    expect(stopListStart).toBeGreaterThan(-1);
+    expect(stopListEnd).toBeGreaterThan(stopListStart);
+    const stopList = section.slice(stopListStart, stopListEnd);
+    expect(stopList).toContain(
+      "a `*.staged` file count that differs from `stagedBaseline.files.length`",
+    );
+  });
+
+  it("carries the no-shell skip note into the rewritten adoption report when Step 0.3 writes the findings back", () => {
+    const step03Start = text.indexOf("3. **Write the findings back**");
+    const step03End = text.indexOf("4. **Confirm.**");
+    expect(step03Start).toBeGreaterThan(-1);
+    expect(step03End).toBeGreaterThan(step03Start);
+    const step03 = text.slice(step03Start, step03End);
+    expect(step03).toContain(
+      "If the no-shell bullet in step 1 applied, carry its skip note into the rewritten report",
+    );
+    expect(step03).toContain("this step replaces the report's sections");
   });
 
   it("keeps the with-shell path's node -e one-liner, 'Keep those same bytes', and 'single quoted argument' wording unchanged", () => {

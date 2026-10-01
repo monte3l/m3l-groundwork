@@ -143,26 +143,31 @@ may or may not touch.
      (`Read`, `Glob`, `Grep`): the files exist, `staged === path + ".staged"`,
      the paths are relative with no `..`, `\` or `:`, no duplicates, `dir`
      and `suffix` exact, the `absent` conflicts and `stagedBaseline.files`
-     name the same set, and the entry count matches. Then spend no further
-     turns on verification and go on to the deep read. State this plainly at
+     name the same set, and the number of `*.staged` files under
+     `.groundwork/baseline/` (use `Glob`) equals `stagedBaseline.files.length`.
+     That count check is a partial no-shell substitute for what the hash
+     proves: it catches a missing or extra staged file, but it is not
+     tamper-resistance. Then spend no further turns on verification and go
+     on to the deep read. State this plainly at
      the top of your first message to the user (the Step 0.4 summary, not a
      separate earlier stop), and ask whether to continue or stop in that
      same confirmation: the SHA-256 check was skipped because no command
      could be run; a passing check would only have proven that the staging
      is complete and matches the inventory, not that the files are
      untampered; and which structural checks you did verify instead. Also
-     record the skip in `.groundwork/adoption-report.md`, the one file this
-     step may write. A structural failure still stops, exactly as the stop
-     list below says.
+     record the skip in `.groundwork/adoption-report.md` when you write the
+     findings back in Step 0.3. A structural failure, including a count
+     mismatch, still stops, exactly as the stop list below says.
    - An empty `files` list is legitimate (nothing was missing from the
      project) and creates no `.groundwork/baseline/` directory; that alone is
      not a failure.
    - **For a schema 5 inventory, a `stagedBaseline` that is missing, not an
      object, or whose `files` is not an array also stops the run** (a
      `files: {}` is not an empty list). **Any invalid entry, missing file or hash mismatch (including a
-     wrong `dir` or `suffix`), any duplicate `staged` or `path`, and any `absent`
-     conflicts and `stagedBaseline.files` that do not name the same set
-     means stop -- all of Round 1, including conflicts and packs -- and
+     wrong `dir` or `suffix`), any duplicate `staged` or `path`, any `absent`
+     conflicts and `stagedBaseline.files` that do not name the same set, and
+     (no-shell path) a `*.staged` file count that differs from
+     `stagedBaseline.files.length` means stop -- all of Round 1, including conflicts and packs -- and
      change nothing.** This is the single stop list for the staged baseline.
      Tell the
      user: "The staged baseline in `.groundwork/baseline/` is incomplete or
@@ -216,7 +221,9 @@ may or may not touch.
 3. **Write the findings back** into `.groundwork/adoption-report.md`,
    replacing the CLI's index-level sections ("a `lefthook.yml` exists")
    with semantic ones ("pre-push runs lint and typecheck; tests do not
-   gate").
+   gate"). If the no-shell bullet in step 1 applied, carry its skip note
+   into the rewritten report: this step replaces the report's sections, so
+   a note written earlier would be dropped.
 4. **Confirm.** Give a short summary in chat, then ask **one**
    `AskUserQuestion` covering: (a) _did this miss anything about your
    project?_ — the free-text option is the point of this question, not a
