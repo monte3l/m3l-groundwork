@@ -9,9 +9,21 @@
  * destination directory, so `/customize` works immediately with no further
  * setup step.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { resolveAsset } from "./assets.js";
+import {
+  CLAUDE_DEST_SEGMENTS,
+  CUSTOMIZE_SKILL_FILE_NAMES,
+  GROUNDWORK_DEST_SEGMENTS,
+} from "./customize-paths.js";
+import { assertNotSymlink } from "./fs-guard.js";
 
 /** Resolves the plugin payload for a source checkout (`packages/plugin`) or a published tarball (`plugin/`). */
 function pluginDir(): string {
@@ -26,27 +38,40 @@ export interface InstallPluginResult {
 function customizeSkillPayload(
   sourceDir: string,
 ): readonly (readonly [string, string])[] {
-  const dataSourceDir = join(sourceDir, "src");
-  return [
-    ["SKILL.md", join(sourceDir, "skills", "customize", "SKILL.md")],
-    ["kind-facet-map.ts", join(dataSourceDir, "kind-facet-map.ts")],
-    ["domain-map.ts", join(dataSourceDir, "domain-map.ts")],
-    ["pack-map.ts", join(dataSourceDir, "pack-map.ts")],
-    ["plugin-map.ts", join(dataSourceDir, "plugin-map.ts")],
-  ];
+  return CUSTOMIZE_SKILL_FILE_NAMES.map((name) => [
+    name,
+    name === "SKILL.md"
+      ? join(sourceDir, "skills", "customize", name)
+      : join(sourceDir, "src", name),
+  ]);
 }
 
 /**
  * Copies `skills/customize/SKILL.md` and its backing data
  * (`src/kind-facet-map.ts`, `src/domain-map.ts`, `src/pack-map.ts`,
- * `src/plugin-map.ts`) from `sourceDir` into `destDir`. A missing source
+ * `src/plugin-map.ts`) from `sourceDir` into `<targetDir>/<destSegments>`,
+ * returning the written paths relative to `targetDir`. A missing source
  * file is a broken install, not something to degrade past silently -- it
  * throws.
+ *
+ * Before any `mkdir`/`rm`/write, every directory component from `targetDir`
+ * down to the destination is `lstat`-checked ({@link assertNotSymlink}), so
+ * a symlinked `.claude`/`.groundwork` (or any level below it) is refused
+ * rather than followed out of the project. Each payload file is then
+ * removed and recreated with `"wx"`, so a symlink planted at the file itself
+ * is replaced, never written through. A directory component swapped for a
+ * symlink between the check and the write (a TOCTOU race) is not covered.
  */
 function copyCustomizeSkillFiles(
-  destDir: string,
+  targetDir: string,
+  destSegments: readonly string[],
   sourceDir: string,
 ): InstallPluginResult {
+  let destDir = targetDir;
+  for (const segment of destSegments) {
+    destDir = join(destDir, segment);
+    assertNotSymlink(destDir);
+  }
   mkdirSync(destDir, { recursive: true });
 
   const filesWritten: string[] = [];
@@ -54,8 +79,19 @@ function copyCustomizeSkillFiles(
     if (!existsSync(from)) {
       throw new Error(`the /customize skill's source file is missing: ${from}`);
     }
-    writeFileSync(join(destDir, toName), readFileSync(from, "utf8"));
-    filesWritten.push(toName);
+    const content = readFileSync(from, "utf8");
+    const dest = join(destDir, toName);
+    try {
+      // Remove, then "wx": a symlink at dest is replaced, never followed.
+      rmSync(dest, { force: true });
+      writeFileSync(dest, content, { flag: "wx" });
+    } catch (cause) {
+      throw new Error(
+        `could not write ${dest} while installing the /customize skill -- fix the cause and re-run the CLI`,
+        { cause },
+      );
+    }
+    filesWritten.push(join(...destSegments, toName));
   }
 
   return { filesWritten };
@@ -69,13 +105,7 @@ export function installCustomizeSkill(
   targetDir: string,
   sourceDir: string = pluginDir(),
 ): InstallPluginResult {
-  const destDir = join(targetDir, ".claude", "skills", "customize");
-  const result = copyCustomizeSkillFiles(destDir, sourceDir);
-  return {
-    filesWritten: result.filesWritten.map((name) =>
-      join(".claude", "skills", "customize", name),
-    ),
-  };
+  return copyCustomizeSkillFiles(targetDir, CLAUDE_DEST_SEGMENTS, sourceDir);
 }
 
 type InstallLocation = "claude" | "groundwork" | "already-present";
@@ -120,14 +150,12 @@ export function installCustomizeSkillGuarded(
       return { filesWritten: [], location: "already-present" };
     }
 
-    const destDir = join(targetDir, ".groundwork", "customize");
-    const result = copyCustomizeSkillFiles(destDir, sourceDir);
-    return {
-      filesWritten: result.filesWritten.map((name) =>
-        join(".groundwork", "customize", name),
-      ),
-      location: "groundwork",
-    };
+    const result = copyCustomizeSkillFiles(
+      targetDir,
+      GROUNDWORK_DEST_SEGMENTS,
+      sourceDir,
+    );
+    return { filesWritten: result.filesWritten, location: "groundwork" };
   }
 
   const result = installCustomizeSkill(targetDir, sourceDir);

@@ -232,7 +232,9 @@ steps) before considering any task here done.
   inert staged copies of the baseline additions and the packs
   (`.groundwork/baseline/`, `.groundwork/packs/`), plus one
   guarded, purely-additive copy of the `/customize` skill
-  (`installCustomizeSkillGuarded` in `plugin.ts`) -- never a project file.
+  (`installCustomizeSkillGuarded` in `plugin.ts`, which lstat-guards every
+  directory it writes through and replaces each file remove-then-`wx`;
+  `customize-paths.ts` owns where it writes) -- never a project file.
   Staged baseline files carry a `.staged` suffix so no project tool (vitest,
   tsc, eslint, Claude Code's skill loader) can discover them as live source;
   `inventory.stagedBaseline.files` records each one's original `path`, its

@@ -210,7 +210,10 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   rather than fixed here -- adopt mode already never overwrites an existing
   project file (see "Fail-safe defaults" above), so the practical impact is
   a write escaping to a symlink target the project owner themselves created,
-  not an attacker-controlled one. The staging writers add an `lstat`
+  not an attacker-controlled one. The staging writers and the `/customize`
+  skill copy (`plugin.ts`, which guards `.claude`, `.claude/skills`,
+  `.claude/skills/customize`, `.groundwork` and `.groundwork/customize`, and
+  replaces each payload file remove-then-`wx`) add an `lstat`
   refusal on `.groundwork` and the staging directories (`fs-guard.ts`), but
   there is a time-of-check-to-time-of-use gap between that `lstat` and the
   later write: a local attacker able to swap a directory for a symlink in

@@ -34,6 +34,7 @@ import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
 } from "./plugin.js";
+import { plannedCustomizeSkillPaths } from "./customize-paths.js";
 import { gitInit, runInstall } from "./git.js";
 import { gradeHarness } from "./harness/grade.js";
 import { detectMode, resolveMode } from "./mode.js";
@@ -659,7 +660,10 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   });
 
   // The /customize skill install is the last step that can fail before the
-  // two .groundwork/ files, so it runs (and is scope-checked) first.
+  // two .groundwork/ files, so it runs first: every path either install
+  // location could write is scope-checked as planned, before the write, and
+  // what was actually written is re-checked after.
+  assertAdoptWriteScope(options.targetDir, plannedCustomizeSkillPaths());
   const pluginResult = installCustomizeSkillGuarded(options.targetDir);
   assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
 
