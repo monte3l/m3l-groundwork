@@ -5,5 +5,8 @@
   "description": "Pins the exact wrangler version the docs workflow's deploy job installs, so the pin is verified by a committed lockfile's integrity hash rather than a bare version string in YAML -- same pattern as .github/release-tools/package.json.",
   "dependencies": {
     "wrangler": "4.141.0"
+  },
+  "overrides": {
+    "undici": "7.29.1"
   }
 }
