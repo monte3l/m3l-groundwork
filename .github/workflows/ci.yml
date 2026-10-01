@@ -154,6 +154,31 @@ jobs:
       - run: pnpm build
       - run: pnpm test:e2e
 
+  # The same e2e suites on macOS: the CLI, the emitted projects and the
+  # packed tarball are all path- and shell-sensitive (dotfile restoration,
+  # symlinked temp dirs under /var -> /private/var, BSD userland), and this
+  # project's maintainer works on macOS, so a regression that only bites
+  # there should fail a required check rather than a developer's laptop.
+  # A separate job, never a matrix over `os`, for the same reason the lanes
+  # above are not matrixed. Same invocation as `e2e`, same
+  # `.node-version` pin.
+  e2e-macos:
+    name: End-to-end (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test:e2e
+
   # Proves the toolchain also works on the newest Node release line, not
   # just the pinned one -- a separate job, never a matrix: matrixing the
   # node version is exactly the kind of dynamic invocation that would read
@@ -185,7 +210,7 @@ jobs:
   verify:
     name: verify
     runs-on: ubuntu-latest
-    needs: [format, lint, typecheck, build, test, e2e, node-current]
+    needs: [format, lint, typecheck, build, test, e2e, e2e-macos, node-current]
     if: always()
     timeout-minutes: 5
     steps:
