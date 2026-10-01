@@ -9,7 +9,10 @@
  * YAML or JavaScript. Every merge is append-only (it never rebuilds an
  * object wholesale, which would risk reordering keys Prettier would
  * otherwise preserve) and idempotent (merging the same fragment twice
- * produces the same result as merging it once).
+ * produces the same result as merging it once). Every key taken from a
+ * caller fragment is checked against `__proto__`/`constructor`/`prototype`
+ * before it is read or written (CWE-1321), and such a key is rejected with a
+ * thrown error rather than merged.
  */
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,6 +51,25 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return Object.is(a, b);
 }
 
+const PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+/**
+ * Throws when `key` (taken from a caller fragment) is one of the names that
+ * can reach or replace an object's prototype (CWE-1321). `context` names the
+ * merge in the error message.
+ */
+function assertSafeKey(key: string, context: string): void {
+  if (PROTOTYPE_KEYS.has(key)) {
+    throw new Error(
+      `${context} merge: refusing prototype-polluting key "${key}"`,
+    );
+  }
+}
+
 interface SettingsHookCommand {
   type: string;
   command: string;
@@ -69,7 +91,8 @@ export type SettingsHooksFragment = Record<string, SettingsHookEntry[]>;
  * entry, only `hooks` commands not already present (compared by exact
  * `command` string) are appended. A command that matches on `command` but
  * differs in its other fields (`if`, `timeout`) is a hard collision, never
- * a silent overwrite.
+ * a silent overwrite. An event name of `__proto__`, `constructor` or
+ * `prototype` throws before anything is read or written.
  */
 export function mergeSettingsHooks(
   existing: unknown,
@@ -84,6 +107,7 @@ export function mergeSettingsHooks(
     : {};
 
   for (const [event, entries] of Object.entries(fragment)) {
+    assertSafeKey(event, "settings.json hooks");
     const existingEntries = Array.isArray(hooks[event])
       ? [...hooks[event]]
       : [];
@@ -139,7 +163,9 @@ export type SettingsTopLevelFragment = Record<string, unknown>;
  * silently clobbering it. A key not yet present is appended; one already
  * present with an identical value is a no-op; one present with a different
  * value is a hard collision, never a silent overwrite -- an adopted project's
- * own `statusLine` is the user's to replace deliberately.
+ * own `statusLine` is the user's to replace deliberately. A fragment key of
+ * `__proto__`, `constructor` or `prototype` throws before anything is read or
+ * written.
  */
 export function mergeSettingsTopLevel(
   existing: unknown,
@@ -150,6 +176,7 @@ export function mergeSettingsTopLevel(
     : {};
 
   for (const [key, value] of Object.entries(fragment)) {
+    assertSafeKey(key, "settings.json");
     if (key === "hooks") {
       throw new Error(
         'settings.json merge: "hooks" is owned by mergeSettingsHooks and cannot be set as a top-level key',
@@ -185,7 +212,9 @@ export interface MergePackageScriptsResult {
  * Merges a pack's `package.json` script additions into the existing
  * `scripts` block. Never overwrites a differing existing script -- the
  * collision is returned for the caller to report, consistent with adopt
- * mode's "report, then the user decides per conflict" policy.
+ * mode's "report, then the user decides per conflict" policy. An addition
+ * named `__proto__`, `constructor` or `prototype` is not a collision: it
+ * throws before anything is read or written.
  */
 export function mergePackageScripts(
   existing: Record<string, string> | undefined,
@@ -195,8 +224,9 @@ export function mergePackageScripts(
   const collisions: ScriptCollision[] = [];
 
   for (const [name, cmd] of Object.entries(additions)) {
+    assertSafeKey(name, "package.json scripts");
     // Object.hasOwn, not `scripts[name] !== undefined`: bracket access walks
-    // the prototype chain, so an addition named `toString`/`constructor`
+    // the prototype chain, so an addition named `toString`/`valueOf`
     // would otherwise "collide" with an inherited Object.prototype member.
     const currentValue = Object.hasOwn(scripts, name)
       ? scripts[name]
