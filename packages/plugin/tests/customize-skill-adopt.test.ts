@@ -453,3 +453,109 @@ describe("SKILL.md Step 0.1 -- corrected local-copy advice for a schemaVersion h
     expect(window).toContain("discards any local edits");
   });
 });
+
+describe("SKILL.md Step 0.4(c) Confirm -- prototype-key check before offering a staged pack", () => {
+  // Heading-scoped the same way as the other Step-0 describe blocks above:
+  // from the "4. **Confirm.**" item down to the next numbered item, "5.
+  // **Record the confirmed decisions**".
+  const sectionStart = text.indexOf("4. **Confirm.**");
+  const sectionEnd = text.indexOf("5. **Record the confirmed decisions**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.4 Confirm section markers ('4. **Confirm.**' / '5. **Record the confirmed decisions**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  it("tells the agent to check each staged pack.json for a prototype-sensitive wiring key before offering it", () => {
+    expect(section).toContain(
+      "Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json`",
+    );
+  });
+
+  it("names __proto__, constructor and prototype, and the three wiring fields to check, in document order after the check text", () => {
+    const needles = [
+      "Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json`",
+      "__proto__",
+      "constructor",
+      "prototype",
+      "wiring.settings",
+      "wiring.settingsTopLevel",
+      "wiring.packageScripts",
+      "stop",
+      "delete `.groundwork/`",
+      "re-run the CLI",
+      "Change nothing.",
+    ];
+
+    let previousIndex = -1;
+    for (const needle of needles) {
+      const index = section.indexOf(needle, previousIndex + 1);
+      expect(
+        index,
+        `expected "${needle}" to appear after index ${String(previousIndex)} in the Step 0.4 Confirm section`,
+      ).toBeGreaterThan(previousIndex);
+      previousIndex = index;
+    }
+  });
+
+  it("places the 'Change nothing.' stop sentence after the prototype mention and still inside the Step 0.4 Confirm section", () => {
+    const prototypeIndex = section.indexOf("prototype");
+    const changeNothingIndex = section.indexOf("Change nothing.");
+
+    expect(prototypeIndex).toBeGreaterThan(-1);
+    expect(changeNothingIndex).toBeGreaterThan(-1);
+    expect(changeNothingIndex).toBeGreaterThan(prototypeIndex);
+    // The section slice already ends at "5. **Record the confirmed
+    // decisions**", so finding it inside `section` at all proves it is
+    // before that boundary.
+    expect(changeNothingIndex).toBeLessThan(section.length);
+  });
+});
+
+describe("SKILL.md Round 1's approved-packs bullet -- prototype-key check before the hand merge", () => {
+  // Heading-scoped from "The **approved packs**" (the bullet's own opening)
+  // down to the next major heading, "**Plugins (both modes)".
+  const sectionStart = text.indexOf("The **approved packs**");
+  const sectionEnd = text.indexOf("**Plugins (both modes)");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Round 1 approved-packs section markers ('The **approved packs**' / '**Plugins (both modes)') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  it("tells the agent to repeat the Step 0.4(c) prototype-key check before merging any staged pack.json wiring", () => {
+    expect(section).toContain(
+      "Before merging any staged `pack.json` wiring, repeat the prototype-key check from Step 0.4(c)",
+    );
+  });
+
+  it("puts the repeated prototype-key check before the hand-translation instruction it guards", () => {
+    const checkIndex = section.indexOf(
+      "Before merging any staged `pack.json` wiring, repeat the prototype-key check from Step 0.4(c)",
+    );
+    const handTranslateIndex = section.indexOf(
+      "then translate `pack.json`'s `wiring` by hand",
+    );
+
+    expect(checkIndex).toBeGreaterThan(-1);
+    expect(handTranslateIndex).toBeGreaterThan(-1);
+    expect(checkIndex).toBeLessThan(handTranslateIndex);
+  });
+
+  it("names __proto__, constructor, prototype and 'change nothing' in the repeated check", () => {
+    expect(section).toContain("__proto__");
+    expect(section).toContain("constructor");
+    expect(section).toContain("prototype");
+    expect(section).toContain("change nothing");
+  });
+});
+
+describe("SKILL.md -- the Step 0.4(c) prototype-key check text is not duplicated", () => {
+  it("states 'Before offering any pack, check each staged' exactly once in the whole file", () => {
+    const needle = "Before offering any pack, check each staged";
+    const occurrences = text.split(needle).length - 1;
+    expect(occurrences).toBe(1);
+  });
+});

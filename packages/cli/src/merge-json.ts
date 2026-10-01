@@ -11,8 +11,15 @@
  * otherwise preserve) and idempotent (merging the same fragment twice
  * produces the same result as merging it once). Every key taken from a
  * caller fragment is checked against `__proto__`/`constructor`/`prototype`
- * before it is read or written, and such a key is rejected with a thrown error
- * rather than merged. The hazard this closes is local, not global: assigning
+ * ({@link isPrototypeSensitiveKey}) before it is read or written, and such a
+ * key is rejected with a thrown error rather than merged. For a pack's wiring
+ * this merge-time check is defence in depth: `packs.ts`'s `loadPack` already
+ * refuses the same keys in `wiring.settings`, `wiring.settingsTopLevel` and
+ * `wiring.packageScripts` before fresh mode writes anything and before adopt
+ * mode touches `.groundwork/`. Adopt mode's CLI never calls these merges at
+ * all -- `/customize` applies a staged pack's wiring by hand, so the guard
+ * that covers that path is `loadPack`'s refusal to stage such a pack, not
+ * this module. The hazard this closes is local, not global: assigning
  * `obj["__proto__"] = v` on the spread-copied plain objects these merges build
  * swaps _that object's own_ prototype instead of creating an own key, so
  * `JSON.stringify` later drops the key without a word. It never reached the
@@ -57,10 +64,11 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Key names {@link assertSafeKey} rejects. A three-name denylist is complete
- * here, not an allowlist, because every key comes from a caller fragment
- * merged onto a plain object, where `__proto__` is the only key with special
- * setter behaviour; `constructor` and `prototype` are defence in depth.
+ * Key names {@link isPrototypeSensitiveKey} matches and {@link assertSafeKey}
+ * rejects. A three-name denylist is complete here, not an allowlist, because
+ * every key comes from a caller fragment merged onto a plain object, where
+ * `__proto__` is the only key with special setter behaviour; `constructor`
+ * and `prototype` are defence in depth.
  */
 const PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
   "__proto__",
@@ -69,9 +77,29 @@ const PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * True when `key` is exactly `__proto__`, `constructor` or `prototype` -- the
+ * names every merge in this module refuses to take from a caller fragment.
+ * This is the single source of truth for that list: `packs.ts`'s `loadPack`
+ * calls it to reject such a key in a pack's wiring before either CLI mode
+ * writes anything, and this module's own merges check the same list again at
+ * merge time as defence in depth. The match is exact and case-sensitive.
+ *
+ * @example
+ * ```ts
+ * import { isPrototypeSensitiveKey } from "./merge-json.js";
+ *
+ * isPrototypeSensitiveKey("__proto__"); // true
+ * isPrototypeSensitiveKey("statusLine"); // false
+ * ```
+ */
+export function isPrototypeSensitiveKey(key: string): boolean {
+  return PROTOTYPE_KEYS.has(key);
+}
+
+/**
  * Throws when `key` (taken from a caller fragment) is one of the
- * prototype-sensitive names in `PROTOTYPE_KEYS`. `context` names the merge in
- * the error message.
+ * prototype-sensitive names {@link isPrototypeSensitiveKey} matches. `context`
+ * names the merge in the error message.
  *
  * Only `__proto__` is actually exploitable here: on a plain object,
  * `obj["__proto__"] = v` invokes the inherited setter, swapping that one
@@ -82,7 +110,7 @@ const PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
  * since no shipped pack uses either name.
  */
 function assertSafeKey(key: string, context: string): void {
-  if (PROTOTYPE_KEYS.has(key)) {
+  if (isPrototypeSensitiveKey(key)) {
     throw new Error(
       `${context} merge: refusing prototype-sensitive key "${key}"`,
     );

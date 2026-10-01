@@ -3,6 +3,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  isPrototypeSensitiveKey,
   isRecord,
   mergePackageScripts,
   mergeSettingsHooks,
@@ -18,6 +19,31 @@ describe("isRecord", () => {
     expect(isRecord("x")).toBe(false);
     expect(isRecord(1)).toBe(false);
   });
+});
+
+describe("isPrototypeSensitiveKey", () => {
+  // The single source of truth packs.ts's loadPack (#97) shares with this
+  // module's own private PROTOTYPE_KEYS/assertSafeKey -- a three-name
+  // denylist, not a pattern, so every exact name is enumerated rather than
+  // sampled.
+  it.each(["__proto__", "constructor", "prototype"])(
+    "is true for %s",
+    (key) => {
+      expect(isPrototypeSensitiveKey(key)).toBe(true);
+    },
+  );
+
+  // "hooks" is an ordinary key; "toString" is an inherited-but-harmless
+  // Object.prototype member (see mergeSettingsTopLevel's own regression test
+  // for the same distinction); "" is the empty string; "Constructor" is a
+  // differently-cased near-miss -- none of the four is one of the three
+  // exact denylisted names.
+  it.each(["hooks", "toString", "", "Constructor"])(
+    "is false for %s",
+    (key) => {
+      expect(isPrototypeSensitiveKey(key)).toBe(false);
+    },
+  );
 });
 
 describe("mergeSettingsHooks", () => {

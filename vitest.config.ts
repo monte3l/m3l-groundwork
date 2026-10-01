@@ -6,6 +6,17 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     pool: "forks",
+    // Several unit tests spawn real child processes (git worktrees, a stub
+    // pnpm, hook scripts), each well under a second on an idle machine. But
+    // the pre-push hook runs every verify group in parallel, so the coverage
+    // run shares the CPU with build, typecheck, lint and format; measured on
+    // a 16-core machine at ~1,900 tests, the same three of those tests took
+    // 5.6 to 7.5 s there and tripped vitest's 5 s default every time, with a
+    // load average near 5 before the push began. 30 s keeps real hangs
+    // visible without failing a push on scheduling noise. The end-to-end
+    // config sets its own, longer limits.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     // Strips the inherited repo-local GIT_* variables (GIT_DIR,
     // GIT_INDEX_FILE, GIT_PREFIX and the rest of git's --local-env-vars
     // list, exported by git into hook processes such as pre-push) so tests

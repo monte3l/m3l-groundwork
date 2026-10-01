@@ -3,8 +3,8 @@ name: test-author
 description: Writes Vitest tests for a source export — happy path, failure path, and expectTypeOf type-level tests where the type is the contract. This is the tests-first (RED) spoke of the TDD loop; it writes tests from the documented contract before the implementation exists and confirms they fail for the right reason. Also usable to backfill tests for existing code. It writes tests only — never the implementation, and never reviews implementation quality.
 tools: Read, Grep, Glob, Edit, Write, Bash
 disallowedTools: Agent
-model: claude-sonnet-5
-effort: high
+model: claude-sonnet-5-5
+effort: medium
 permissionMode: acceptEdits
 maxTurns: 40
 color: green
