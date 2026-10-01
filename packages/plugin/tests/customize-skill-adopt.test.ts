@@ -62,8 +62,42 @@ describe("SKILL.md Step 0 -- staged baseline verification contract", () => {
       const bytes = Buffer.from([0x0d, 0x0a, 0xff, 0x41, 0x0d, 0x0a]);
       writeFileSync(fixture, bytes);
 
-      const command = template.replace("<file>", fixture);
-      const output = execFileSync("sh", ["-c", command], { encoding: "utf8" });
+      // The fixture path is passed as a real shell positional argument
+      // ($1), never spliced into the command string via String.replace --
+      // a path containing a space, `$&`, or a quote would otherwise either
+      // be word-split or trigger parameter expansion. See the dedicated
+      // test below for a fixture path that actually exercises this.
+      const command = template.replace("<file>", '"$1"');
+      const output = execFileSync("sh", ["-c", command, "sh", fixture], {
+        encoding: "utf8",
+      });
+
+      const expected = createHash("sha256").update(bytes).digest("hex");
+      expect(output.trim()).toBe(expected);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("hashes a fixture whose directory name contains a space and '$&', proving the path is passed as a shell argument rather than spliced into the command string", () => {
+    const match = /`(node -e [^`]+)`/.exec(raw);
+    const template = match?.[1] ?? "";
+
+    if (process.platform === "win32") {
+      // sh -c is not a POSIX shell on win32 -- nothing further to run there.
+      return;
+    }
+
+    const dir = mkdtempSync(join(tmpdir(), "skill sha256 $& -"));
+    try {
+      const fixture = join(dir, "fixture.bin");
+      const bytes = Buffer.from([0x41, 0x42, 0x43]);
+      writeFileSync(fixture, bytes);
+
+      const command = template.replace("<file>", '"$1"');
+      const output = execFileSync("sh", ["-c", command, "sh", fixture], {
+        encoding: "utf8",
+      });
 
       const expected = createHash("sha256").update(bytes).digest("hex");
       expect(output.trim()).toBe(expected);
@@ -97,7 +131,7 @@ describe("SKILL.md Step 0 -- staged baseline verification contract", () => {
   });
 });
 
-describe("SKILL.md Step 0 -- staged baseline verification details (hub to add)", () => {
+describe("SKILL.md Step 0 -- staged baseline verification details", () => {
   it("requires stagedBaseline.dir and suffix to equal the documented literals exactly", () => {
     expect(text).toContain(
       "stagedBaseline.dir` must equal `.groundwork/baseline` exactly",
@@ -111,32 +145,62 @@ describe("SKILL.md Step 0 -- staged baseline verification details (hub to add)",
     expect(text).toContain("path` contains a `\\` or a `:`");
   });
 
-  it("names the file that was never adopted when verification fails", () => {
+  it("repeats the 'was never adopted' phrase used by the incomplete-run rule's fresh-vs-adopted branch (not a verification-failure message)", () => {
+    // This phrase lives in Step 0's "absent inventory but .groundwork/
+    // exists" branch (see the "incomplete-run rule" describe block above),
+    // not in the staged-baseline verification-failure message -- this test
+    // only pins that the exact wording survives, wherever it lives.
     expect(text).toContain("was never adopted");
   });
+});
 
-  it("flags when stagedBaseline.files disagrees with the inventory's absent conflicts", () => {
-    // Step 3 already uses the word "disagree" for an unrelated pack-recommendation
-    // comparison, so every occurrence is checked, not just the first --
-    // the one this test actually cares about is the one near Step 0.1.
-    const windows: string[] = [];
-    let fromIndex = 0;
-    for (;;) {
-      const disagreeIdx = text.indexOf("disagree", fromIndex);
-      if (disagreeIdx === -1) break;
-      windows.push(
-        text.slice(Math.max(0, disagreeIdx - 200), disagreeIdx + 200),
-      );
-      fromIndex = disagreeIdx + 1;
-    }
-    expect(windows.length).toBeGreaterThan(0);
-    expect(
-      windows.some(
-        (window) =>
-          window.includes("`absent`") &&
-          window.includes("stagedBaseline.files"),
-      ),
-    ).toBe(true);
+describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. **The deep read.**')", () => {
+  const sectionStart = text.indexOf("1. Look for");
+  const sectionEnd = text.indexOf("2. **The deep read.**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.1 section markers ('1. Look for' / '2. **The deep read.**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  it("states the absent/stagedBaseline.files disagreement rule INSIDE Step 0.1, not deferred to Step 3", () => {
+    expect(section).toContain("`absent`");
+    expect(section).toContain("`stagedBaseline.files`");
+    expect(section).toContain("disagree");
+  });
+
+  it("names the literal staged-file path .groundwork/baseline/<staged>", () => {
+    expect(section).toContain(".groundwork/baseline/<staged>");
+  });
+
+  it('rejects a path of "" or "." in the path validation list', () => {
+    const validationStart = section.indexOf(
+      "For every entry of `inventory.stagedBaseline.files`",
+    );
+    const validationEnd = section.indexOf(
+      "Read each staged file at",
+      validationStart,
+    );
+    expect(validationStart).toBeGreaterThan(-1);
+    expect(validationEnd).toBeGreaterThan(validationStart);
+    const validationList = section.slice(validationStart, validationEnd);
+    expect(validationList).toContain('"."');
+    expect(validationList).toContain('""');
+  });
+});
+
+describe("SKILL.md Round 1's approved-additions bullet", () => {
+  it("still carries a short pointer back at Step 0.1 for the staged-copy install", () => {
+    const additionsStart = text.indexOf("The **approved additions**");
+    const additionsEnd = text.indexOf(
+      "The **approved conflict resolutions**",
+      additionsStart,
+    );
+    expect(additionsStart).toBeGreaterThan(-1);
+    expect(additionsEnd).toBeGreaterThan(additionsStart);
+    const bullet = text.slice(additionsStart, additionsEnd);
+    expect(bullet).toContain("Step 0.1");
   });
 });
 

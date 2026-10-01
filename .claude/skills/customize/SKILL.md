@@ -95,11 +95,16 @@ may or may not touch.
      `suffix` would make you "verify" live project files.
    - For every entry of `inventory.stagedBaseline.files`, require
      `staged === path + ".staged"`, and require `path` to be relative, free
-     of any `..` segment, and not absolute. Reject the entry if `path`
-     contains a `\` or a `:` (a Windows `..\..` or `C:foo` would slip past
-     the other checks). All paths in the inventory use `/` separators on
-     every platform.
-   - Read each staged file at `<stagedBaseline.dir>/<staged>` **once**.
+     of any `..` segment, and not absolute. Reject the entry if `path` is
+     `""` or `"."`. Reject it too if `path` contains a `\` or a `:` (a
+     Windows `..\..` or `C:foo` would slip past the other checks). All paths in the inventory
+     use `/` separators on every platform.
+   - The `absent` conflicts in `inventory.conflicts` and the paths in
+     `stagedBaseline.files` must name the same set of files. If they
+     disagree (an `absent` conflict with no staged entry, or a staged entry
+     that is not an `absent` conflict), that is a mismatch: stop, with the
+     same message as a hash mismatch, before anything is offered or approved.
+   - Read each staged file at `.groundwork/baseline/<staged>` **once**.
      It must exist, and the SHA-256 of its **raw bytes** (no end-of-line
      normalization, no decoding) must equal the entry's `sha256`. Compute it
      with, for example, this one-liner (it targets a POSIX shell or Git Bash,
@@ -281,10 +286,8 @@ confirmed in Step 0.4:
 - The **approved additions** — files `templates/core` would add that the
   project doesn't have and the user approved adding. For `schemaVersion` 5
   or higher, install them from the staged copy Step 0.1 already verified,
-  using the bytes you read then. If the inventory's `absent` conflicts and
-  `stagedBaseline.files` disagree (an approved addition with no verified
-  staged entry, or a staged entry that is not an `absent` conflict), that is
-  a mismatch: stop, with the same message as a hash mismatch. Write them to the project at `path` (the
+  using the bytes you read then (Step 0.1 also already checked that the
+  staged files match the `absent` conflicts). Write them to the project at `path` (the
   `.staged` suffix stripped, never to the staged name), filling in the
   `__KEY__` tokens with the project's real values as you copy, same as
   staged packs. Only a **schema 1-4** inventory has no staged copy and reads

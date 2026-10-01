@@ -3,15 +3,15 @@
 
 /**
  * Isolates `stageBaselineAdditions`' empty-plan branch (nothing marked
- * "absent"): removing any previous `baseline/` staging there is currently
- * OUTSIDE the function's try/catch, so a failure propagates as a raw,
- * unwrapped `rmSync` error instead of the standard
- * ".groundwork/ ... incomplete ... re-run" `Error` with `cause` every other
- * staging failure gets (see `baseline-stage-swap-restore.test.ts` and
- * `baseline-stage.test.ts`'s own coverage of that wrapping). `node:fs`'s
- * `rmSync` is mocked (importOriginal-preserving) in this file ONLY, matching
- * the isolation pattern `baseline-stage-cleanup-warn.test.ts` uses for the
- * same export.
+ * "absent"): removing any previous `baseline/` staging there is wrapped in
+ * the same standard ".groundwork/ ... incomplete ... re-run" `Error` with
+ * `cause` every other staging failure gets (see
+ * `baseline-stage-swap-restore.test.ts` and `baseline-stage.test.ts`'s own
+ * coverage of that wrapping) -- this file pins that the empty-plan branch
+ * specifically gets the same treatment, rather than letting a raw,
+ * unwrapped `rmSync` error propagate instead. `node:fs`'s `rmSync` is mocked
+ * (importOriginal-preserving) in this file ONLY, matching the isolation
+ * pattern `baseline-stage-cleanup-warn.test.ts` uses for the same export.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";

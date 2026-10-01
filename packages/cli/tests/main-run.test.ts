@@ -575,14 +575,13 @@ describe("main", () => {
       expect(paths).not.toContain("package.json");
     });
 
-    it("does not follow a pre-existing symlinked adoption-report.md: the outside file stays untouched and the report ends up a regular file", () => {
+    it("throws EEXIST instead of following a symlink raced into place at adoption-report.md mid-run, leaving the outside file byte-identical (the 'wx' flag's guarantee)", () => {
       const projectDir = join(targetDir, "existing-project-report-symlink");
       mkdirSync(projectDir);
       writeFileSync(
         projectDir + "/package.json",
         JSON.stringify({ name: "acme", type: "module" }),
       );
-      mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
 
       const outsideDir = mkdtempSync(
         join(tmpdir(), "main-run-report-symlink-outside-"),
@@ -590,18 +589,28 @@ describe("main", () => {
       const outsidePath = join(outsideDir, "sensitive.txt");
       writeFileSync(outsidePath, "do not touch\n");
       const reportPath = join(projectDir, ".groundwork", "adoption-report.md");
-      symlinkSync(outsidePath, reportPath);
+
+      // Simulates the race the "wx" flag guards against: nothing is stale
+      // at this path when runAdopt starts (it already deleted any stale
+      // report up front), but something plants a symlink here DURING the
+      // run, before the report write itself. installCustomizeSkillGuarded
+      // is the last call before that write (see main.ts), so it's the one
+      // reachable seam a test can use to land a symlink exactly in that
+      // window without reaching into main()'s own internals.
+      installCustomizeSkillGuardedMock.mockImplementationOnce(() => {
+        mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
+        symlinkSync(outsidePath, reportPath);
+        return { filesWritten: [], location: "claude" as const };
+      });
 
       try {
-        main([projectDir]);
+        expect(() => main([projectDir])).toThrow(/EEXIST/);
 
-        // rmSync on a symlink removes the link itself, never the target it
-        // points at -- this test pins that guarantee for adoption-report.md
-        // specifically (see the next test for adoption-decisions.json, a gap
-        // that is NOT yet guarded the same way).
+        // The write never happened: "wx" refuses to open a path that
+        // already exists (symlink or not) rather than following it, so the
+        // outside file is never touched.
         expect(readFileSync(outsidePath, "utf8")).toBe("do not touch\n");
-        expect(lstatSync(reportPath).isSymbolicLink()).toBe(false);
-        expect(existsSync(reportPath)).toBe(true);
+        expect(lstatSync(reportPath).isSymbolicLink()).toBe(true);
       } finally {
         rmSync(outsideDir, { recursive: true, force: true });
       }
