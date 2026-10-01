@@ -153,8 +153,48 @@ may or may not touch.
        set must equal its `files[].path` set.
      - Read the staged manifest at `<dir>/pack.json.staged` and each staged
        file at `<dir>/files/<staged>` once, and apply the SHA-256 check above
-       to the raw bytes of each. Keep those bytes: Round 1's install and the
-       prototype-key check in Step 0.4(c) use them, with no second read.
+       to the raw bytes of each. Keep the bytes Step 0.1 read (hash-checked
+       when a command could run): Round 1's install and the prototype-key
+       check in Step 0.4(c) use them, with no second read.
+   - **No shell tool available.** If a Bash or other command-running tool is
+     available, compute the hash as above. If you cannot run a command, do
+     not work around it: write no scratch script; while verifying, make no
+     `Write` or `Edit` outside `.groundwork/` (Round 1's confirmed installs are
+     not part of verification), dispatch no subagent to look for a shell, and
+     search for a command tool at most once. Skip only the SHA-256
+     comparison. Run every other check in this block with the file tools
+     (`Read`, `Glob`, `Grep`): the files exist, `staged === path + ".staged"`,
+     the paths are relative with no `..`, `\` or `:`, no duplicates, `dir`
+     and `suffix` exact, the `absent` conflicts and `stagedBaseline.files`
+     name the same set, and no extra staged file exists: list the staged
+     files with the `Glob` pattern `.groundwork/baseline/**/*.staged` and
+     compare with `stagedBaseline.files`. A `Glob` can skip hidden paths
+     (most staged files are dot-paths), honour an ignore file or truncate a
+     long list, so a result shorter than `stagedBaseline.files.length`, or
+     that looks truncated, is undetermined: report it in the Step 0.4 summary
+     and continue, since every listed entry's existence is already checked
+     one by one; only an extra `*.staged` file, one whose path is not in
+     `stagedBaseline.files`, stops the run. Run the same structural checks
+     for `inventory.stagedPacks`: each pack's `<dir>/pack.json.staged` and
+     every `<dir>/files/<staged>` exists, `staged === path + ".staged"` with
+     paths that are relative and free of `..`, `\` and `:`, no duplicates,
+     `name`, `dir`, `suffix`, `manifest.path` and `manifest.staged` exact,
+     the pack names in `inventory.packs` and `inventory.stagedPacks` the
+     same set, and each pack's `fileConflicts[].relPath` and `files[].path`
+     the same set. List each pack's staged files with the `Glob` pattern
+     `.groundwork/packs/*/files/**/*.staged` (the same hidden-path and
+     truncation caveats apply) and compare with that pack's `files`: an
+     extra `*.staged` file not named there stops the run. This is a partial no-shell
+     substitute for what the hash proves, and it is not tamper-resistance.
+     Then spend no further turns on verification and go on to the deep
+     read. State this plainly at the top of your first message to the user (the Step 0.4 summary, not a
+     separate earlier stop), and ask whether to continue or stop in that
+     same confirmation: the SHA-256 check was skipped because no command
+     could be run; a passing check would only have proven that the staging
+     is complete and matches the inventory, not that the files are
+     untampered; and which structural checks you did verify instead. Also
+     record the skip in `.groundwork/adoption-report.md` when you write the
+     findings back in Step 0.3. A structural failure, including an extra staged file, still stops, exactly as the stop list below says.
    - An empty `files` list is legitimate (nothing was missing from the
      project) and creates no `.groundwork/baseline/` directory; that alone is
      not a failure.
@@ -165,7 +205,9 @@ may or may not touch.
      `files` is not an array. **Any invalid entry, missing file or hash mismatch (including a
      wrong `dir` or `suffix`), any duplicate `staged` or `path` or pack `name`, any
      `absent` conflicts and `stagedBaseline.files` that do not name the same
-     set, and any pack whose names or file paths disagree with `inventory.packs`
+     set, any pack whose names or file paths disagree with `inventory.packs`, and
+     (no-shell path) an extra `*.staged` file not named in
+     `stagedBaseline.files` or in a pack's `files`
      means stop -- all of Round 1, including conflicts and packs -- and
      change nothing.** This is the single stop list for the staged baseline and the staged packs.
      Tell the user: "The staged baseline in `.groundwork/baseline/` or a staged pack in `.groundwork/packs/` is incomplete or does not match `.groundwork/inventory.json` (<the first entry that failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run `/customize` again." **Never fall back to `inventory.templateRoot` for a schema 5 inventory, packs included:** that fallback exists for a schema 1-4 inventory only, and only for the baseline additions (a schema 1-4 inventory's packs are read from their unsuffixed copy, see Step 0.4(c) and Round 1).
@@ -215,7 +257,9 @@ may or may not touch.
 3. **Write the findings back** into `.groundwork/adoption-report.md`,
    replacing the CLI's index-level sections ("a `lefthook.yml` exists")
    with semantic ones ("pre-push runs lint and typecheck; tests do not
-   gate").
+   gate"). If the no-shell bullet in step 1 applied, carry its skip note
+   into the rewritten report: this step replaces the report's sections, so
+   a note written earlier would be dropped.
 4. **Confirm.** Give a short summary in chat, then ask **one**
    `AskUserQuestion` covering: (a) _did this miss anything about your
    project?_ — the free-text option is the point of this question, not a
@@ -235,7 +279,12 @@ may or may not touch.
    judgment — see Step 3's note on revisiting it once the interview confirms
    the project's kind.
 
-   Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json.staged` (the bytes Step 0.1 already verified, not a fresh read):
+   The same question also carries (d) if the no-shell bullet applied: say the
+   SHA-256 check was skipped, what a passing check would have proven,
+   which checks ran instead and any undetermined result, and
+   ask whether to continue or stop.
+
+   Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json.staged` (the bytes Step 0.1 read, hash-checked when a command could run; not a fresh read):
    if `__proto__`, `constructor` or `prototype` is a key of its `wiring.settings`
    (hook event names), `wiring.settingsTopLevel` or `wiring.packageScripts`
    (script names), stop. The project tree is untrusted, and the CLI refuses such a
@@ -376,8 +425,7 @@ confirmed in Step 0.4:
   `wiring.settingsTopLevel` or `wiring.packageScripts` is `__proto__`,
   `constructor` or `prototype`, stop the same way and change nothing. For an
   adopt-capable pack, install each file from
-  `.groundwork/packs/<name>/files/<path>.staged`, using the verified bytes
-  Step 0.1 read, and write it to the project at `path` (the `.staged` suffix
+  `.groundwork/packs/<name>/files/<path>.staged`, using the bytes Step 0.1 read (hash-checked when a command could run), and write it to the project at `path` (the `.staged` suffix
   stripped, never to the staged name), filling in the `__KEY__` tokens with
   the project's real values as you copy (respecting any approved per-file
   conflict decision the same way the baseline's own additions are applied).

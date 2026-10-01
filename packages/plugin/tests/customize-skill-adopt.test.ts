@@ -473,12 +473,12 @@ describe("SKILL.md Step 0.4(c) Confirm -- prototype-key check before offering a 
     );
   });
 
-  it("says the pack.json.staged bytes checked here are the ones Step 0.1 already verified, not a fresh read", () => {
+  it("says the pack.json.staged bytes checked here are the ones Step 0.1 already read, hash-checked when a command could run, not a fresh read", () => {
     const idx = section.indexOf("`.groundwork/packs/<name>/pack.json.staged`");
     expect(idx).toBeGreaterThan(-1);
     const window = section.slice(idx, idx + 200);
     expect(window).toContain("Step 0.1");
-    expect(window).toContain("verified");
+    expect(window).toContain("hash-checked when a command could run");
   });
 
   it("names __proto__, constructor and prototype, and the three wiring fields to check, in document order after the check text", () => {
@@ -674,6 +674,12 @@ describe("SKILL.md Step 0.1 -- staged packs verification (schema 5)", () => {
     expect(window).toContain("Round 1");
     expect(window).toContain("prototype-key check");
   });
+
+  it("says the bytes kept for the staged packs are the ones Step 0.1 read, hash-checked only when a command could run", () => {
+    expect(section).toContain(
+      "Keep the bytes Step 0.1 read (hash-checked when a command could run)",
+    );
+  });
 });
 
 describe("SKILL.md Step 0.1 -- the single stop list also covers staged packs", () => {
@@ -743,9 +749,18 @@ describe("SKILL.md Round 1's approved-packs bullet -- installs from the staged, 
     expect(section).toContain("never to the staged name");
   });
 
-  it("applies token substitution to the verified bytes as it copies", () => {
+  // Round 1's approved-packs bullet needs the same rewording the Step 0.1
+  // pack bullet and the Step 0.4(c) check already received (a staged pack's
+  // files are hash-checked only when a command-running tool is available,
+  // per the no-shell fallback a few sections up) -- not yet applied here.
+  // This is deliberately RED: the SKILL.md Round 1 wording change hasn't
+  // landed yet.
+  it("applies token substitution to the bytes Step 0.1 read (hash-checked when a command could run) as it copies, not the old 'verified bytes' wording", () => {
     expect(section).toContain("`__KEY__`");
-    expect(section).toContain("verified bytes");
+    expect(section).toContain(
+      "using the bytes Step 0.1 read (hash-checked when a command could run)",
+    );
+    expect(section).not.toContain("using the verified bytes");
   });
 
   it("tells the agent to strip the .staged suffix for the manual-install pointer too (a non-adopt-capable pack, e.g. publishing)", () => {
@@ -827,5 +842,169 @@ describe("SKILL.md Step 0.1 schema table -- row 5's 'If absent' cell covers pack
     expect(tableEnd).toBeGreaterThan(tableStart);
     const region = text.slice(tableStart, tableEnd);
     expect(region).toContain("unsuffixed");
+  });
+});
+
+describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline hash check", () => {
+  // Same heading-scoped slice as the other Step 0.1 describe blocks above (a
+  // module-level `section` would leak scope across describe blocks, so this
+  // is recomputed locally per the test-author instructions).
+  const sectionStart = text.indexOf("1. Look for");
+  const sectionEnd = text.indexOf("2. **The deep read.**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.1 section markers ('1. Look for' / '2. **The deep read.**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  const keepBytesIndex = section.indexOf("Keep those same bytes");
+  const noShellIndex = section.indexOf("No shell tool available.");
+  const emptyFilesIndex = section.indexOf("An empty `files` list");
+  if (
+    noShellIndex === -1 ||
+    emptyFilesIndex === -1 ||
+    emptyFilesIndex <= noShellIndex
+  ) {
+    throw new Error(
+      "No-shell bullet markers ('No shell tool available.' / 'An empty `files` list') were not both found in the Step 0.1 section -- update these markers if the heading text changed",
+    );
+  }
+  // The no-shell bullet proper: from its own heading through to (but not
+  // including) the next bullet, "An empty `files` list".
+  const bullet = section.slice(noShellIndex, emptyFilesIndex);
+
+  it("adds a 'No shell tool available.' bullet after the node -e / 'Keep those same bytes' bullet and before the 'An empty files list' bullet", () => {
+    expect(keepBytesIndex).toBeGreaterThan(-1);
+    expect(emptyFilesIndex).toBeGreaterThan(-1);
+    expect(noShellIndex).toBeGreaterThan(keepBytesIndex);
+    expect(noShellIndex).toBeLessThan(emptyFilesIndex);
+  });
+
+  it("says the with-shell path still applies as documented above when a command-running tool is available", () => {
+    expect(section).toContain(
+      "If a Bash or other command-running tool is available, compute the hash as above.",
+    );
+  });
+
+  it("tells the agent not to work around a missing command-running tool", () => {
+    expect(section).toContain(
+      "If you cannot run a command, do not work around it",
+    );
+  });
+
+  it.each([
+    "write no scratch script",
+    "make no `Write` or `Edit` outside `.groundwork/`",
+    "dispatch no subagent",
+    "search for a command tool at most once",
+  ])("forbids the workaround: %s", (forbidden) => {
+    expect(section).toContain(forbidden);
+  });
+
+  it("limits the skip to the SHA-256 comparison and still requires the structural checks with file tools", () => {
+    expect(section).toContain("Skip only the SHA-256 comparison");
+    expect(section).toContain("(`Read`, `Glob`, `Grep`)");
+  });
+
+  it("says to spend no further turns on verification before moving to the deep read", () => {
+    expect(section).toContain("spend no further turns on verification");
+  });
+
+  it("describes the Glob-pattern *.staged check that treats a short or truncated result as undetermined rather than a stop, scoped to the no-shell bullet", () => {
+    expect(bullet).toContain(
+      "the `Glob` pattern `.groundwork/baseline/**/*.staged`",
+    );
+    expect(bullet).toContain(
+      "shorter than `stagedBaseline.files.length`, or that looks truncated, is undetermined",
+    );
+    expect(bullet).toContain("report it in the Step 0.4 summary and continue");
+    expect(bullet).toContain(
+      "only an extra `*.staged` file, one whose path is not in `stagedBaseline.files`, stops the run",
+    );
+    expect(bullet).toContain("partial no-shell substitute");
+  });
+
+  it("tells the user the SHA-256 check was skipped, what a passing check would have proven, and which structural checks were verified instead, at the top of the Step 0.4 summary with continue-or-stop asked in the same confirmation", () => {
+    expect(bullet).toContain("your first message to the user");
+    expect(bullet).toContain("the Step 0.4 summary");
+    expect(bullet).toContain("continue or stop");
+    expect(bullet).toContain(
+      "the SHA-256 check was skipped because no command could be run",
+    );
+    expect(bullet).toContain(
+      "is complete and matches the inventory, not that the files are untampered",
+    );
+    expect(bullet).toContain("which structural checks you did verify instead");
+  });
+
+  it("names what a passing check cannot prove as 'not tamper-resistance', scoped to the no-shell bullet", () => {
+    expect(bullet).toContain("not tamper-resistance");
+  });
+
+  it("says to record the skip in the adoption report when the findings are written back in Step 0.3", () => {
+    expect(bullet).toContain(
+      "record the skip in `.groundwork/adoption-report.md` when you write the findings back in Step 0.3",
+    );
+  });
+
+  it("still stops on a structural failure, including an extra staged file, even when the hash check itself is skipped", () => {
+    expect(bullet).toContain(
+      "A structural failure, including an extra staged file, still stops",
+    );
+  });
+
+  it("names an extra staged file not in stagedBaseline.files, tags it '(no-shell path)', and extends the same clause to a pack's own files, in the single stop list", () => {
+    const stopListStart = section.indexOf(
+      "**For a schema 5 inventory, a `stagedBaseline` that is missing",
+    );
+    const stopListEnd = section.indexOf(
+      "This is the single stop list for the staged baseline and the staged packs.",
+    );
+    expect(stopListStart).toBeGreaterThan(-1);
+    expect(stopListEnd).toBeGreaterThan(stopListStart);
+    const stopList = section.slice(stopListStart, stopListEnd);
+    expect(stopList).toContain(
+      "an extra `*.staged` file not named in `stagedBaseline.files`",
+    );
+    expect(stopList).toContain("(no-shell path)");
+    expect(stopList).toContain("in a pack's `files`");
+  });
+
+  it("adds a (d) item to Step 0.4's single confirmation asking whether to continue or stop when the no-shell bullet applied", () => {
+    const step04Start = text.indexOf("4. **Confirm.**");
+    const step04End = text.indexOf("5. **Record the confirmed decisions**");
+    expect(step04Start).toBeGreaterThan(-1);
+    expect(step04End).toBeGreaterThan(step04Start);
+    const step04 = text.slice(step04Start, step04End);
+    expect(step04).toContain("(d) if the no-shell bullet applied");
+    expect(step04).toContain(
+      "which checks ran instead and any undetermined result",
+    );
+    expect(step04).toContain("ask whether to continue or stop");
+  });
+
+  it("carries the no-shell skip note into the rewritten adoption report when Step 0.3 writes the findings back", () => {
+    const step03Start = text.indexOf("3. **Write the findings back**");
+    const step03End = text.indexOf("4. **Confirm.**");
+    expect(step03Start).toBeGreaterThan(-1);
+    expect(step03End).toBeGreaterThan(step03Start);
+    const step03 = text.slice(step03Start, step03End);
+    expect(step03).toContain(
+      "If the no-shell bullet in step 1 applied, carry its skip note into the rewritten report",
+    );
+    expect(step03).toContain("this step replaces the report's sections");
+  });
+
+  it("keeps the with-shell path's node -e one-liner, 'Keep those same bytes', and 'single quoted argument' wording unchanged", () => {
+    expect(section).toContain("node -e");
+    expect(section).toContain("Keep those same bytes");
+    expect(section).toContain("single quoted argument");
+  });
+
+  it("states the no-shell clause exactly once in the whole file", () => {
+    const needle = "No shell tool available.";
+    const occurrences = text.split(needle).length - 1;
+    expect(occurrences).toBe(1);
   });
 });
