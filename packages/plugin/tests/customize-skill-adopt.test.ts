@@ -626,11 +626,18 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
     expect(section).toContain("spend no further turns on verification");
   });
 
-  it("replaces the structural entry-count check with a *.staged file count against stagedBaseline.files.length, scoped to the no-shell bullet", () => {
+  it("replaces the structural entry-count check with a Glob-pattern *.staged check that treats a short or truncated result as undetermined rather than a stop, scoped to the no-shell bullet", () => {
     expect(bullet).toContain(
-      "the number of `*.staged` files under `.groundwork/baseline/` (use `Glob`) equals `stagedBaseline.files.length`",
+      "the `Glob` pattern `.groundwork/baseline/**/*.staged`",
     );
-    expect(bullet).toContain("catches a missing or extra staged file");
+    expect(bullet).toContain(
+      "shorter than `stagedBaseline.files.length`, or looks truncated, is undetermined",
+    );
+    expect(bullet).toContain("report it in the Step 0.4 summary and continue");
+    expect(bullet).toContain(
+      "only an extra `*.staged` file, one whose path is not in `stagedBaseline.files`, stops the run",
+    );
+    expect(bullet).toContain("partial no-shell substitute");
   });
 
   it("tells the user the SHA-256 check was skipped, what a passing check would have proven, and which structural checks were verified instead, at the top of the Step 0.4 summary with continue-or-stop asked in the same confirmation", () => {
@@ -650,24 +657,19 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
     expect(bullet).toContain("not tamper-resistance");
   });
 
-  it("drops the old 'entry count matches' and 'the one file this step may write' phrasing from the Step 0.1 section", () => {
-    expect(section).not.toContain("the entry count matches");
-    expect(section).not.toContain("the one file this step may write");
-  });
-
   it("says to record the skip in the adoption report when the findings are written back in Step 0.3", () => {
     expect(bullet).toContain(
       "record the skip in `.groundwork/adoption-report.md` when you write the findings back in Step 0.3",
     );
   });
 
-  it("still stops on a structural failure, including a count mismatch, even when the hash check itself is skipped", () => {
+  it("still stops on a structural failure, including an extra staged file, even when the hash check itself is skipped", () => {
     expect(bullet).toContain(
-      "A structural failure, including a count mismatch, still stops",
+      "A structural failure, including an extra staged file, still stops",
     );
   });
 
-  it("names a staged-file count mismatch against stagedBaseline.files.length in the single stop list (no-shell path)", () => {
+  it("names an extra staged file not in stagedBaseline.files in the single stop list (no-shell path)", () => {
     const stopListStart = section.indexOf(
       "**For a schema 5 inventory, a `stagedBaseline` that is missing",
     );
@@ -678,8 +680,21 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
     expect(stopListEnd).toBeGreaterThan(stopListStart);
     const stopList = section.slice(stopListStart, stopListEnd);
     expect(stopList).toContain(
-      "a `*.staged` file count that differs from `stagedBaseline.files.length`",
+      "an extra `*.staged` file not named in `stagedBaseline.files`",
     );
+  });
+
+  it("adds a (d) item to Step 0.4's single confirmation asking whether to continue or stop when the no-shell bullet applied", () => {
+    const step04Start = text.indexOf("4. **Confirm.**");
+    const step04End = text.indexOf("5. **Record the confirmed decisions**");
+    expect(step04Start).toBeGreaterThan(-1);
+    expect(step04End).toBeGreaterThan(step04Start);
+    const step04 = text.slice(step04Start, step04End);
+    expect(step04).toContain("(d) if the no-shell bullet applied");
+    expect(step04).toContain(
+      "which checks ran instead and any undetermined result",
+    );
+    expect(step04).toContain("ask whether to continue or stop");
   });
 
   it("carries the no-shell skip note into the rewritten adoption report when Step 0.3 writes the findings back", () => {
