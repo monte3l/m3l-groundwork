@@ -197,7 +197,7 @@ jobs:
       # VERSION string, not verify it against anything -- .github/release-
       # tools/package-lock.json pins the exact tarball via its sha512
       # integrity hash instead, and `npm ci` verifies the install against
-      # it. Dependabot's npm ecosystem is scoped to this one directory (see
+      # it. Dependabot has an npm entry for this directory (see
       # dependabot.yml), so bumping the pin is the same reviewed-PR flow as
       # any other pin here, just via a lockfile diff instead of a bare
       # version string.
