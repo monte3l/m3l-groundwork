@@ -220,6 +220,12 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   that window is outside the threat model this tool accepts, which assumes
   the project directory is not concurrently modified by a hostile local
   process.
+- **The adopt survey reads project files through symlinks** (for example
+  `survey-harness.ts` reading a skill's `SKILL.md`), so a symlinked skill or
+  agent file can put its frontmatter `name` and `description` from outside
+  the project into `inventory.json` and the report. The read is read-only and
+  limited to those frontmatter fields. Accepted as a documented limit and not
+  changed here.
 - **`merge-json.ts`'s three merge functions write via plain `record[key] = value`**
   with no rejection of the literal key `__proto__` -- a narrow,
   CWE-1321-shaped gap found during the 2026-09 security review (see

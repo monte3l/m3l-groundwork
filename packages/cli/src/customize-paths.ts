@@ -9,6 +9,29 @@
 import { join } from "node:path";
 
 /**
+ * The skill's entry file: the one payload file that lives under the plugin
+ * source's `skills/customize/` (every other one lives under its `src/`), and
+ * the one whose presence makes Claude Code load the skill -- which is why
+ * {@link CUSTOMIZE_SKILL_WRITE_ORDER} writes it last.
+ *
+ * @example
+ * ```ts
+ * import { CUSTOMIZE_SKILL_ENTRY_FILE } from "./customize-paths.js";
+ *
+ * CUSTOMIZE_SKILL_ENTRY_FILE; // "SKILL.md"
+ * ```
+ */
+export const CUSTOMIZE_SKILL_ENTRY_FILE = "SKILL.md";
+
+/** The backing-data payload files, all sourced from the plugin's `src/`. */
+const CUSTOMIZE_SKILL_DATA_FILE_NAMES = [
+  "kind-facet-map.ts",
+  "domain-map.ts",
+  "pack-map.ts",
+  "plugin-map.ts",
+] as const;
+
+/**
  * Every payload file's name inside an installed copy of the skill.
  *
  * @example
@@ -19,11 +42,26 @@ import { join } from "node:path";
  * ```
  */
 export const CUSTOMIZE_SKILL_FILE_NAMES = [
-  "SKILL.md",
-  "kind-facet-map.ts",
-  "domain-map.ts",
-  "pack-map.ts",
-  "plugin-map.ts",
+  CUSTOMIZE_SKILL_ENTRY_FILE,
+  ...CUSTOMIZE_SKILL_DATA_FILE_NAMES,
+] as const;
+
+/**
+ * The order an install writes the payload in: every backing-data file
+ * first, {@link CUSTOMIZE_SKILL_ENTRY_FILE} last. A run that fails part-way
+ * (and whose rollback cannot remove everything) therefore never leaves a
+ * loadable `SKILL.md` beside missing or stale data files.
+ *
+ * @example
+ * ```ts
+ * import { CUSTOMIZE_SKILL_WRITE_ORDER } from "./customize-paths.js";
+ *
+ * CUSTOMIZE_SKILL_WRITE_ORDER.at(-1); // "SKILL.md"
+ * ```
+ */
+export const CUSTOMIZE_SKILL_WRITE_ORDER = [
+  ...CUSTOMIZE_SKILL_DATA_FILE_NAMES,
+  CUSTOMIZE_SKILL_ENTRY_FILE,
 ] as const;
 
 /**

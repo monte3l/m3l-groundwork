@@ -34,7 +34,11 @@ import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
 } from "./plugin.js";
-import { plannedCustomizeSkillPaths } from "./customize-paths.js";
+import {
+  CLAUDE_DEST_SEGMENTS,
+  GROUNDWORK_DEST_SEGMENTS,
+  plannedCustomizeSkillPaths,
+} from "./customize-paths.js";
 import { gitInit, runInstall } from "./git.js";
 import { gradeHarness } from "./harness/grade.js";
 import { detectMode, resolveMode } from "./mode.js";
@@ -528,7 +532,11 @@ function assertAdoptUsage(options: CliOptions): void {
  * `<targetDir>/.claude/skills/customize/` -- never an existing project file.
  * `paths` may be absolute or relative to `targetDir`. Containment is
  * {@link isPathContained}'s, so a sibling that merely shares a root's name
- * as a prefix (`.groundwork-evil/`) is rejected.
+ * as a prefix (`.groundwork-evil/`) is rejected. Both roots are derived from
+ * `customize-paths.ts`'s segment constants, so they cannot drift from where
+ * the install actually writes. The check is lexical -- it never touches the
+ * filesystem, so it does not detect a symlinked directory component; that
+ * refusal lives in the writers themselves (`fs-guard.ts`).
  *
  * @throws `AssertionError` (from `node:assert/strict`) naming the first path
  * that escapes both allowed roots.
@@ -546,8 +554,8 @@ export function assertAdoptWriteScope(
   paths: readonly string[],
 ): void {
   const allowedRoots = [
-    resolve(targetDir, ".groundwork"),
-    resolve(targetDir, ".claude", "skills", "customize"),
+    resolve(targetDir, GROUNDWORK_DEST_SEGMENTS[0]),
+    resolve(targetDir, ...CLAUDE_DEST_SEGMENTS),
   ];
   for (const path of paths) {
     const resolved = resolve(targetDir, path);
@@ -659,10 +667,16 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     },
   });
 
-  // The /customize skill install is the last step that can fail before the
-  // two .groundwork/ files, so it runs first: every path either install
-  // location could write is scope-checked as planned, before the write, and
-  // what was actually written is re-checked after.
+  // The /customize skill install runs before the two .groundwork/ files (the
+  // report's "wx" write below can still fail after it), so inventory.json's
+  // presence still means the install completed. The scope checks around it
+  // are a lexical-containment guard against drift between
+  // plannedCustomizeSkillPaths() and what the installer reports -- every
+  // path either location could write is checked as planned, before the
+  // write, and what was actually written is re-checked after. They are not
+  // a symlink protection: the installer lstat-checks every directory
+  // component itself (and falls back to .groundwork/customize/ when one
+  // under .claude/ is a symlink -- see fallbackReason below).
   assertAdoptWriteScope(options.targetDir, plannedCustomizeSkillPaths());
   const pluginResult = installCustomizeSkillGuarded(options.targetDir);
   assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
@@ -697,6 +711,9 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     console.log(
       `installed the /customize skill into ${where} (${pluginResult.filesWritten.length} files)`,
     );
+    if (pluginResult.fallbackReason !== undefined) {
+      console.log(`  ${pluginResult.fallbackReason}`);
+    }
   }
 
   console.log(

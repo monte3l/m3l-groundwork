@@ -9,7 +9,7 @@
  * the symlink-refusal pattern in `baseline-stage.test.ts`'s "symlink guard"
  * describe and the remove-then-`wx` pattern in `inventory.test.ts`.
  */
-import { afterEach, beforeEach, describe, expect, it, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import {
   mkdtempSync,
   mkdirSync,
@@ -20,6 +20,7 @@ import {
   existsSync,
   symlinkSync,
   lstatSync,
+  chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -124,21 +125,34 @@ describe("copyCustomizeSkillFiles directory-component symlink guard", () => {
     },
   );
 
+  // [round-two review, item D] installCustomizeSkillGuarded no longer
+  // throws when a .claude path COMPONENT (not a payload file) is a
+  // symlink -- it falls back to .groundwork/customize/ instead, since a
+  // symlinked .claude/skills/customize is exactly the kind of project
+  // state the guarded installer must route around rather than refuse
+  // outright (installCustomizeSkill, the fresh-mode entry point, keeps the
+  // old throwing behaviour -- see the test.each above).
   test.each(claudePathComponents)(
-    "installCustomizeSkillGuarded (absent branch -> .claude destination) refuses when %s is a symlink",
+    "installCustomizeSkillGuarded falls back to .groundwork/customize/ (no throw) when %s is a symlink, leaving the symlink and its target untouched",
     (_label, segments) => {
       const symlinkPath = plantSymlinkAt(segments);
 
-      let thrown: unknown;
-      try {
-        installCustomizeSkillGuarded(targetDir, sourceDir);
-      } catch (error) {
-        thrown = error;
-      }
+      const result = installCustomizeSkillGuarded(targetDir, sourceDir);
 
-      expectSymlinkRefusal(thrown, symlinkPath);
-      expect(readdirSync(outsideDir)).toEqual([]);
+      expect(result.location).toBe("groundwork");
+      expect(typeof result.fallbackReason).toBe("string");
+      expect(result.fallbackReason as string).toContain(symlinkPath);
+      expect(result.filesWritten).toHaveLength(5);
+
+      // The symlink itself, and whatever it points at, are untouched.
       expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+      expect(readdirSync(outsideDir)).toEqual([]);
+
+      // The skill was installed into .groundwork/customize/ instead.
+      const groundworkDir = join(targetDir, ".groundwork", "customize");
+      expect(readFileSync(join(groundworkDir, "SKILL.md"), "utf8")).toContain(
+        "name: customize",
+      );
     },
   );
 
@@ -217,7 +231,13 @@ describe("copyCustomizeSkillFiles payload-file symlink guard (remove-then-wx)", 
     expect(readFileSync(destPath, "utf8")).toContain("name: customize");
   });
 
-  it("replaces a symlinked payload file (installCustomizeSkillGuarded, absent branch -> .claude destination) instead of writing through it", () => {
+  // [round-two review, item B] Presence is now detected by lstat under ANY
+  // payload name, not existsSync(SKILL.md) alone: a symlinked pack-map.ts
+  // with no SKILL.md present is no longer the "absent" branch, so this
+  // must now divert to .groundwork/customize/ and leave the project's
+  // symlink untouched rather than replace it in place (this supersedes the
+  // old "absent branch -> .claude destination" expectation below).
+  it("diverts to .groundwork/customize/ (item B) when a payload file is a symlink and no SKILL.md is present, leaving the symlink and its target untouched", () => {
     mkdirSync(join(targetDir, ".claude", "skills", "customize"), {
       recursive: true,
     });
@@ -234,11 +254,12 @@ describe("copyCustomizeSkillFiles payload-file symlink guard (remove-then-wx)", 
 
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
 
-    expect(result.location).toBe("claude");
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.location).toBe("groundwork");
     expect(readFileSync(outsideFile, "utf8")).toBe("// SENTINEL2\n");
-    expect(lstatSync(destPath).isSymbolicLink()).toBe(false);
-    expect(readFileSync(destPath, "utf8")).toBe("export const z = 3;\n");
+    expect(lstatSync(destPath).isSymbolicLink()).toBe(true);
+    expect(
+      existsSync(join(targetDir, ".groundwork", "customize", "SKILL.md")),
+    ).toBe(true);
   });
 
   it("replaces a symlinked payload file (installCustomizeSkillGuarded, differs branch -> .groundwork destination) instead of writing through it", () => {
@@ -294,17 +315,20 @@ describe("copyCustomizeSkillFiles wraps a remove-then-wx write failure", () => {
     writeFileSync(join(destPath, "blocks-the-rm.txt"), "occupied\n");
   }
 
-  it("installCustomizeSkill (fresh mode) wraps the fs error in a message naming the destination, with the original error as cause", () => {
+  // [round-two review, item A] the wrapper message changed shape: it now
+  // leads with "could not install the /customize skill" (not "could not
+  // write <path>") and names how many of THIS call's own files were rolled
+  // back, since a write failure is now all-or-nothing rather than
+  // per-file. SKILL.md is written last (see plugin-install.test.ts for the
+  // full ordering/rollback contract), so planting the obstacle at SKILL.md
+  // means every one of the other four payload files was written first and
+  // must be rolled back.
+  it("installCustomizeSkill (fresh mode) wraps the fs error in a message naming the destination and the rollback, with the original error as cause", () => {
     mkdirSync(join(targetDir, ".claude", "skills", "customize"), {
       recursive: true,
     });
-    const destPath = join(
-      targetDir,
-      ".claude",
-      "skills",
-      "customize",
-      "SKILL.md",
-    );
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    const destPath = join(destDir, "SKILL.md");
     plantNonEmptyDirectoryAt(destPath);
 
     let thrown: unknown;
@@ -316,44 +340,76 @@ describe("copyCustomizeSkillFiles wraps a remove-then-wx write failure", () => {
 
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
-    expect(message).toContain("could not write");
+    expect(message).toContain("could not install the /customize skill");
     expect(message).toContain(destPath);
-    expect(message).toContain("installing the /customize skill");
+    expect(message).toContain("removed the 4 file(s) already written");
     expect((thrown as Error).cause).toBeInstanceOf(Error);
     // The raw fs error's own message is distinct from the wrapper's -- this
     // is what a missing catch (letting the raw error propagate unwrapped)
-    // would fail: the raw SystemError never mentions "could not write" or
-    // "installing the /customize skill", only the underlying EISDIR fact.
+    // would fail: the raw SystemError never mentions the wrapper's own
+    // phrasing, only the underlying EISDIR fact.
     expect(((thrown as Error).cause as Error).message).not.toContain(
-      "could not write",
+      "could not install the /customize skill",
     );
+    // The four files written before SKILL.md was attempted were rolled back.
+    for (const name of [
+      "kind-facet-map.ts",
+      "domain-map.ts",
+      "pack-map.ts",
+      "plugin-map.ts",
+    ]) {
+      expect(existsSync(join(destDir, name))).toBe(false);
+    }
   });
 
+  // By design (see plugin.ts's `isCustomizeSkillCurrent`/"present" check),
+  // any lstat-visible entry under a payload name now diverts this call into
+  // the "differs"/.groundwork branch rather than the "absent" branch --
+  // planting a non-empty directory AT a payload name (pack-map.ts, as the
+  // old version of this test did) no longer reaches the absent branch's
+  // .claude write at all. To reach the absent branch's own write failure
+  // instead, leave `.claude/skills/customize/` genuinely empty (so the
+  // "present" probe sees nothing and falls through to
+  // `installCustomizeSkill`) and deny write permission on that directory
+  // itself, so the first payload write fails with EACCES.
   it("installCustomizeSkillGuarded (absent branch -> .claude destination) wraps the fs error the same way", () => {
-    mkdirSync(join(targetDir, ".claude", "skills", "customize"), {
-      recursive: true,
-    });
-    const destPath = join(
-      targetDir,
-      ".claude",
-      "skills",
-      "customize",
-      "pack-map.ts",
-    );
-    plantNonEmptyDirectoryAt(destPath);
+    // A root process ignores directory write-permission bits entirely, and
+    // Windows has no POSIX chmod semantics -- neither can produce the EACCES
+    // this test relies on, so skip rather than assert a false positive.
+    if (process.getuid?.() === 0 || process.platform === "win32") {
+      return;
+    }
+
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    mkdirSync(destDir, { recursive: true });
+    // No payload-named entry exists yet: the "present" probe sees nothing,
+    // so installCustomizeSkillGuarded falls through to the absent branch
+    // (installCustomizeSkill -> .claude destination).
+    expect(readdirSync(destDir)).toEqual([]);
+
+    // r-xr-xr-x: readable/listable, but no write permission, so creating a
+    // new directory entry (the first payload write) fails with EACCES.
+    chmodSync(destDir, 0o555);
 
     let thrown: unknown;
     try {
       installCustomizeSkillGuarded(targetDir, sourceDir);
     } catch (error) {
       thrown = error;
+    } finally {
+      // Restore write permission so afterEach's recursive rmSync can clean
+      // up targetDir.
+      chmodSync(destDir, 0o755);
     }
 
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
-    expect(message).toContain("could not write");
-    expect(message).toContain(destPath);
+    expect(message).toContain("could not install the /customize skill");
     expect((thrown as Error).cause).toBeInstanceOf(Error);
+    // The very first payload write (kind-facet-map.ts) is what fails, so no
+    // payload file -- including the four written before it in every other
+    // scenario -- was ever created.
+    expect(readdirSync(destDir)).toEqual([]);
   });
 });
 
@@ -416,21 +472,45 @@ describe("adopt mode (main()) and a symlinked .claude", () => {
     rmSync(outsideDir, { recursive: true, force: true });
   });
 
-  it("refuses to install the /customize skill through a symlinked .claude, leaving the outside directory untouched and writing no .groundwork/inventory.json", () => {
+  // [round-two review, item D] a symlinked .claude no longer aborts the
+  // whole adopt run: installCustomizeSkillGuarded falls back to
+  // .groundwork/customize/ instead, so main() completes and explains why in
+  // its console output.
+  it("falls back to .groundwork/customize/ when .claude is a symlink, completing the run and explaining why in its console output", () => {
     const projectDir = join(workDir, "project");
     mkdirSync(projectDir);
     writeFileSync(
       join(projectDir, "package.json"),
       JSON.stringify({ name: "acme", type: "module" }),
     );
-    symlinkSync(outsideDir, join(projectDir, ".claude"), "dir");
+    const claudeSymlink = join(projectDir, ".claude");
+    symlinkSync(outsideDir, claudeSymlink, "dir");
 
-    expect(() => main([projectDir])).toThrow(/symlink/);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    let thrown: unknown;
+    let output: string;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      // Read the calls BEFORE mockRestore(): mockRestore() also resets the
+      // mock's call history (the same way mockReset() does), so reading
+      // logSpy.mock.calls after it always sees an empty array.
+      output = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
+      logSpy.mockRestore();
+    }
 
+    expect(thrown).toBeUndefined();
     expect(readdirSync(outsideDir)).toEqual([]);
-    expect(lstatSync(join(projectDir, ".claude")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(claudeSymlink).isSymbolicLink()).toBe(true);
+    expect(
+      existsSync(join(projectDir, ".groundwork", "customize", "SKILL.md")),
+    ).toBe(true);
     expect(existsSync(join(projectDir, ".groundwork", "inventory.json"))).toBe(
-      false,
+      true,
     );
+
+    expect(output).toContain(claudeSymlink);
   });
 });
