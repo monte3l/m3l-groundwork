@@ -191,7 +191,9 @@ useful beyond that ships as a pack instead.
 The skill lands at `.claude/skills/customize/` in the target project. Open it
 in Claude Code and run `/customize`. If the project already owns an entry
 there (or `.claude` is a symlink or not a directory), the CLI never touches
-it: it writes the skill to `.groundwork/customize/` instead and says so.
+it: it writes the skill to `.groundwork/customize/` instead and says so. A
+`.claude/skills/customize/` that holds only files with none of the skill's names is
+used as is, and the skill is added beside them.
 Claude Code does not load that copy, so run the plugin's `/customize` or
 replace the project's copy yourself.
 

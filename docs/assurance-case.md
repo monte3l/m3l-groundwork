@@ -223,6 +223,14 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   that window is outside the threat model this tool accepts, which assumes
   the project directory is not concurrently modified by a hostile local
   process.
+- **The skill install is not fully atomic.** A pre-flight refuses a directory
+  sitting at any of the skill's file names before anything is touched, and a
+  failed write removes the files that run created. A failure after the install
+  has begun still cannot restore what it had already replaced in the CLI-owned
+  `.groundwork/customize/` (the previous copy's `SKILL.md` and each file removed
+  ahead of its own rewrite), and an entry that appears after the pre-flight, for
+  example a directory created concurrently, fails the install part-way. The
+  `.claude/skills/customize/` location is never replaced in adopt mode.
 - **The adopt survey reads project files through symlinks** (for example
   `survey-harness.ts` reading a skill's `SKILL.md`), so a symlinked skill or
   agent file can put its frontmatter `name` and `description` from outside
