@@ -684,7 +684,8 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   // write, and what was actually written is re-checked after. They are not
   // a symlink protection: the installer lstat-checks every directory
   // component itself (and falls back to .groundwork/customize/ when one
-  // under .claude/ is a symlink -- see fallbackReason below).
+  // under .claude/ is a symlink or not a directory -- see fallbackReason
+  // below).
   assertAdoptWriteScope(options.targetDir, plannedCustomizeSkillPaths());
   const pluginResult = installCustomizeSkillGuarded(options.targetDir);
   assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
@@ -731,7 +732,15 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       `\n✓ adoption report ready at ${reportPath}`,
     ),
   );
-  console.log("Next: open this project in Claude Code and run /customize.");
+  if (pluginResult.location === "groundwork") {
+    // The fresh copy is staged where Claude Code never loads a skill from,
+    // so the generic next step would be false here.
+    console.log(
+      "Next: the current /customize skill is staged at .groundwork/customize/, but Claude Code does not load skills from there -- run the m3l-groundwork plugin's own /customize, or replace the project-local .claude/skills/customize/ copy with the staged one and then run /customize.",
+    );
+  } else {
+    console.log("Next: open this project in Claude Code and run /customize.");
+  }
 }
 
 /**

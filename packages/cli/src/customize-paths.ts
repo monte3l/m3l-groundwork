@@ -69,7 +69,8 @@ export const CUSTOMIZE_SKILL_WRITE_ORDER = [
 ] as const;
 
 /**
- * The fresh-mode (and adopt-mode, when absent) destination, as path
+ * The fresh-mode destination -- and adopt mode's, when nothing is there yet
+ * or an earlier install was interrupted before its `SKILL.md` -- as path
  * segments relative to the project root.
  *
  * @example
@@ -83,8 +84,12 @@ export const CUSTOMIZE_SKILL_WRITE_ORDER = [
 export const CLAUDE_DEST_SEGMENTS = [".claude", "skills", "customize"] as const;
 
 /**
- * The adopt-mode fallback destination, used when the project already has its
- * own differing skill, as path segments relative to the project root.
+ * The adopt-mode fallback destination, as path segments relative to the
+ * project root. Used whenever {@link CLAUDE_DEST_SEGMENTS} cannot be written
+ * additively: a project-owned entry under any of the skill's payload names
+ * that is not this CLI's current copy (a differing file, a symlink, a
+ * directory, a `SKILL.md` without its data), or a component of
+ * `.claude/skills/customize` that is a symlink or not a directory.
  *
  * @example
  * ```ts

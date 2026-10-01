@@ -125,6 +125,31 @@ describe("copyCustomizeSkillFiles directory-component symlink guard", () => {
     },
   );
 
+  // [item 6] assertNotSymlink's own message already ends in its own
+  // remediation clause ("... -- remove it and re-run the CLI"); installError
+  // (the wrapper every plugin.ts failure is normalized into) appends a
+  // SECOND, near-identical clause ("-- fix the cause and re-run the CLI") to
+  // every wrapped cause's message unconditionally. Chained together, a
+  // symlink refusal's wrapped message ends up saying "re-run the CLI" twice
+  // in a row -- the final message must carry that remediation phrasing only
+  // once.
+  it("[no doubled remediation] a wrapped symlink refusal's message says 're-run the CLI' exactly once, not twice", () => {
+    const symlinkPath = plantSymlinkAt([".claude"]);
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkill(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain(symlinkPath);
+    const occurrences = message.split("re-run the CLI").length - 1;
+    expect(occurrences).toBe(1);
+  });
+
   // [round-two review, item D] installCustomizeSkillGuarded no longer
   // throws when a .claude path COMPONENT (not a payload file) is a
   // symlink -- it falls back to .groundwork/customize/ instead, since a
@@ -410,6 +435,124 @@ describe("copyCustomizeSkillFiles wraps a remove-then-wx write failure", () => {
     // payload file -- including the four written before it in every other
     // scenario -- was ever created.
     expect(readdirSync(destDir)).toEqual([]);
+  });
+});
+
+/**
+ * Item 8(a)/(b): a stale entry already sitting at the CLI-owned
+ * `.groundwork/customize/` destination (reached via `installCustomizeSkillGuarded`'s
+ * "differs" fallback, where the `"cli-owned"` write policy's
+ * `removeStaleSkillEntry` applies) is sometimes itself
+ * a symlink to somewhere outside the project -- a prior run's own output
+ * tampered with, or simply a stale fallback from before this guard existed.
+ * Replacing it must UNLINK that symlink, never follow it and write through
+ * to whatever it points at. And when removing that stale entry fails
+ * outright (no permission), the whole install must fail BEFORE any data
+ * file is rewritten -- the existing (stale but intact) install is left
+ * exactly as it was rather than partially clobbered.
+ */
+describe("a stale .groundwork/customize/ entry that is itself a symlink (item 8)", () => {
+  let sourceDir: string;
+  let targetDir: string;
+  let outsideDir: string;
+  let destDir: string;
+
+  beforeEach(() => {
+    sourceDir = mkdtempSync(join(tmpdir(), "plugin-symlink-stale-source-"));
+    targetDir = mkdtempSync(join(tmpdir(), "plugin-symlink-stale-target-"));
+    outsideDir = mkdtempSync(join(tmpdir(), "plugin-symlink-stale-outside-"));
+    writeSourceFixture(sourceDir);
+    // Forces installCustomizeSkillGuarded's "differs" -> groundwork branch.
+    writeDifferingClaudeSkill(targetDir);
+    destDir = join(targetDir, ".groundwork", "customize");
+    mkdirSync(destDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(sourceDir, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it("[8a] unlinks a symlinked stale SKILL.md rather than following it, leaving its outside target untouched", () => {
+    const outsideFile = join(outsideDir, "sentinel-stale-skill.md");
+    writeFileSync(outsideFile, "SENTINEL - stale, do not touch\n");
+    const staleSkillMd = join(destDir, "SKILL.md");
+    symlinkSync(outsideFile, staleSkillMd);
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    // The symlink was unlinked (replaced by a real file), never followed.
+    expect(lstatSync(staleSkillMd).isSymbolicLink()).toBe(false);
+    expect(readFileSync(staleSkillMd, "utf8")).toContain("name: customize");
+    // The outside target is completely untouched.
+    expect(readFileSync(outsideFile, "utf8")).toBe(
+      "SENTINEL - stale, do not touch\n",
+    );
+  });
+
+  it("[8a] unlinks a symlinked stale data file (domain-map.ts) the same way, leaving its outside target untouched", () => {
+    const outsideFile = join(outsideDir, "sentinel-stale-domain-map.ts");
+    writeFileSync(outsideFile, "// SENTINEL, stale\n");
+    const staleDataFile = join(destDir, "domain-map.ts");
+    symlinkSync(outsideFile, staleDataFile);
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(lstatSync(staleDataFile).isSymbolicLink()).toBe(false);
+    expect(readFileSync(staleDataFile, "utf8")).toBe("export const y = 2;\n");
+    expect(readFileSync(outsideFile, "utf8")).toBe("// SENTINEL, stale\n");
+  });
+
+  it("[8b] throws 'could not remove the stale ...' before any data write when removing the stale SKILL.md fails, leaving the old install intact", () => {
+    // A root process ignores directory write-permission bits entirely, and
+    // Windows has no POSIX chmod semantics -- neither can produce the
+    // permission failure this test relies on.
+    if (process.getuid?.() === 0 || process.platform === "win32") {
+      return;
+    }
+
+    writeFileSync(join(destDir, "SKILL.md"), "OLD SKILL\n");
+    writeFileSync(join(destDir, "kind-facet-map.ts"), "OLD kind-facet\n");
+    writeFileSync(join(destDir, "domain-map.ts"), "OLD domain\n");
+    writeFileSync(join(destDir, "pack-map.ts"), "OLD pack\n");
+    writeFileSync(join(destDir, "plugin-map.ts"), "OLD plugin\n");
+
+    // r-xr-xr-x: readable/listable, but no write permission, so unlinking
+    // any entry inside destDir (including the stale SKILL.md) fails EACCES.
+    chmodSync(destDir, 0o555);
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkillGuarded(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      chmodSync(destDir, 0o755);
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain("could not install the /customize skill");
+    expect(message).toContain("could not remove the stale");
+
+    // Every old file is completely untouched -- the failure happened before
+    // any data write was attempted.
+    expect(readFileSync(join(destDir, "SKILL.md"), "utf8")).toBe("OLD SKILL\n");
+    expect(readFileSync(join(destDir, "kind-facet-map.ts"), "utf8")).toBe(
+      "OLD kind-facet\n",
+    );
+    expect(readFileSync(join(destDir, "domain-map.ts"), "utf8")).toBe(
+      "OLD domain\n",
+    );
+    expect(readFileSync(join(destDir, "pack-map.ts"), "utf8")).toBe(
+      "OLD pack\n",
+    );
+    expect(readFileSync(join(destDir, "plugin-map.ts"), "utf8")).toBe(
+      "OLD plugin\n",
+    );
   });
 });
 

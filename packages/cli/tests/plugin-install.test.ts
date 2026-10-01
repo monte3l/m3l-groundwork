@@ -37,6 +37,7 @@ import {
   expect,
   expectTypeOf,
   it,
+  test,
 } from "vitest";
 import {
   mkdtempSync,
@@ -145,12 +146,19 @@ describe("copyCustomizeSkillFiles writes SKILL.md last and rolls back all-or-not
     );
   });
 
-  it("writes SKILL.md last in filesWritten for the guarded groundwork branch too", () => {
+  it("writes SKILL.md last in filesWritten for the guarded groundwork branch too, and names the differing SKILL.md in fallbackReason (item 2)", () => {
     writeDifferingClaudeSkill(targetDir);
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
     expect(result.location).toBe("groundwork");
     expect(result.filesWritten.at(-1)).toBe(
       join(".groundwork", "customize", "SKILL.md"),
+    );
+    // [item 2] fallbackReason must be set for EVERY .groundwork fallback,
+    // not only the directory-component-symlink case -- here naming the
+    // existing, differing .claude/skills/customize/SKILL.md.
+    expect(typeof result.fallbackReason).toBe("string");
+    expect(result.fallbackReason as string).toContain(
+      join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
     );
   });
 
@@ -366,6 +374,10 @@ describe("installCustomizeSkillGuarded detects presence by lstat, never existsSy
     expect(
       existsSync(join(targetDir, ".groundwork", "customize", "SKILL.md")),
     ).toBe(true);
+    // [item 2] a dangling symlink is still a "present-but-not-current"
+    // fallback, so fallbackReason must name it.
+    expect(typeof result.fallbackReason).toBe("string");
+    expect(result.fallbackReason as string).toContain(skillMdPath);
   });
 
   it("diverts to .groundwork/customize/ and leaves a project-owned pack-map.ts (regular file, no SKILL.md) byte-identical", () => {
@@ -386,6 +398,12 @@ describe("installCustomizeSkillGuarded detects presence by lstat, never existsSy
     expect(
       existsSync(join(targetDir, ".groundwork", "customize", "SKILL.md")),
     ).toBe(true);
+    // [item 2] a project-owned data file (not SKILL.md) is also a
+    // "present-but-not-current" fallback and must name the existing entry.
+    expect(typeof result.fallbackReason).toBe("string");
+    expect(result.fallbackReason as string).toContain(
+      join(existingDir, "pack-map.ts"),
+    );
   });
 });
 
@@ -423,24 +441,46 @@ describe("raw fs errors are wrapped (item C)", () => {
     );
   });
 
-  it("installCustomizeSkillGuarded wraps the same ENOTDIR failure", () => {
-    writeFileSync(join(targetDir, ".claude"), "not a directory\n");
+  // [item 5, contract change] A regular FILE sitting where a directory
+  // component is expected used to surface as a raw wrapped ENOTDIR,
+  // aborting the whole adopt run. The guarded installer must instead treat
+  // this the same as any other "can't use .claude/skills/customize/" case:
+  // fall back to .groundwork/customize/ and report why via fallbackReason,
+  // never throw. installCustomizeSkill (fresh mode) is unaffected -- fresh
+  // mode has nothing to fall back to, so it keeps throwing (see the
+  // "installCustomizeSkill wraps the ENOTDIR..." test above, unchanged).
+  const regularFileComponents: [string, string[]][] = [
+    [".claude", [".claude"]],
+    [".claude/skills", [".claude", "skills"]],
+    [".claude/skills/customize", [".claude", "skills", "customize"]],
+  ];
 
-    let thrown: unknown;
-    try {
-      installCustomizeSkillGuarded(targetDir, sourceDir);
-    } catch (error) {
-      thrown = error;
-    }
+  test.each(regularFileComponents)(
+    "installCustomizeSkillGuarded falls back to .groundwork/customize/ (no throw) when %s is a regular file, naming it in fallbackReason",
+    (_label, segments) => {
+      const ancestors = segments.slice(0, -1);
+      if (ancestors.length > 0) {
+        mkdirSync(join(targetDir, ...ancestors), { recursive: true });
+      }
+      const collisionPath = join(targetDir, ...segments);
+      writeFileSync(collisionPath, "not a directory\n");
 
-    expect(thrown).toBeInstanceOf(Error);
-    const message = (thrown as Error).message;
-    expect(message).toContain("could not install the /customize skill");
-    expect((thrown as Error).cause).toBeInstanceOf(Error);
-    expect(((thrown as Error).cause as NodeJS.ErrnoException).code).toBe(
-      "ENOTDIR",
-    );
-  });
+      const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+      expect(result.location).toBe("groundwork");
+      expect(typeof result.fallbackReason).toBe("string");
+      expect(result.fallbackReason as string).toContain(collisionPath);
+      expect(result.filesWritten).toHaveLength(5);
+      expect(
+        readFileSync(
+          join(targetDir, ".groundwork", "customize", "SKILL.md"),
+          "utf8",
+        ),
+      ).toContain("name: customize");
+      // The regular file itself is left exactly as it was.
+      expect(readFileSync(collisionPath, "utf8")).toBe("not a directory\n");
+    },
+  );
 });
 
 describe("isCustomizeSkillCurrent never reads a non-regular file (item E)", () => {
@@ -494,6 +534,10 @@ describe("isCustomizeSkillCurrent never reads a non-regular file (item E)", () =
     expect(
       existsSync(join(targetDir, ".groundwork", "customize", "SKILL.md")),
     ).toBe(true);
+    // [item 2] a non-regular (symlink) installed entry is also a
+    // "present-but-not-current" fallback and must name it.
+    expect(typeof result.fallbackReason).toBe("string");
+    expect(result.fallbackReason as string).toContain(skillMdPath);
   });
 
   // A FIFO-at-SKILL.md case (item E's other named non-regular-file example)
@@ -569,8 +613,14 @@ describe("a pre-existing .groundwork/customize/SKILL.md is removed before any da
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
     expect(message).toContain("could not install the /customize skill");
-    // The message truthfully names what this run removed.
-    expect(message).toContain("removed");
+    // [item 6] the exact clause naming the stale SKILL.md as also removed --
+    // not just a loose "contains removed" check, since that substring alone
+    // can't discriminate it from the unrelated "removed the N file(s)
+    // already written by this run" clause that's always present.
+    const staleSkillMdPath = join(destDir, "SKILL.md");
+    expect(message).toContain(
+      `; the stale ${staleSkillMdPath} was removed before any data file was rewritten`,
+    );
     expect((thrown as Error).cause).toBeDefined();
 
     // The stale SKILL.md must be gone -- never left loadable beside
@@ -594,7 +644,11 @@ describe("a pre-existing .groundwork/customize/SKILL.md is removed before any da
     ).toContain("a project-authored version");
   });
 
-  it("re-run over a stale .groundwork/customize/ installs all five current files, and never touches the project's own differing .claude/ SKILL.md", () => {
+  // [8c, regression guard only] this test asserts no new behavior of its
+  // own -- it's the happy-path companion to the failure-path test above,
+  // kept here only so a future change can't silently reintroduce the stale
+  // SKILL.md left loadable beside rewritten data.
+  it("[regression guard only] re-run over a stale .groundwork/customize/ installs all five current files, and never touches the project's own differing .claude/ SKILL.md", () => {
     writeDifferingClaudeSkill(targetDir);
     writeGroundworkSkillPayload(targetDir, "OLD");
 
@@ -608,6 +662,11 @@ describe("a pre-existing .groundwork/customize/SKILL.md is removed before any da
     expect(readFileSync(join(destDir, "SKILL.md"), "utf8")).toContain(
       "name: customize",
     );
+    // [item 2] fallbackReason must still be set here too.
+    expect(typeof result.fallbackReason).toBe("string");
+    expect(result.fallbackReason as string).toContain(
+      join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
+    );
 
     // The project's own (differing) skill under .claude/ is never removed
     // or overwritten by a write that lands at .groundwork/ instead.
@@ -617,5 +676,247 @@ describe("a pre-existing .groundwork/customize/SKILL.md is removed before any da
         "utf8",
       ),
     ).toContain("a project-authored version");
+  });
+});
+
+/**
+ * Item 4: an install interrupted after the data files but before SKILL.md
+ * (e.g. the process was killed between the two write phases) leaves
+ * `.claude/skills/customize/` with every payload file EXCEPT SKILL.md, each
+ * byte-identical to what this CLI ships. Routing that straight to
+ * `.groundwork/customize/` (the ordinary "differs" fallback) would abandon a
+ * perfectly fine `.claude/` install and stage a second, divergent copy
+ * beside it for no reason -- the guarded installer must instead recognize
+ * this exact shape and COMPLETE the interrupted install in place: write
+ * only the missing SKILL.md (the four already-correct data files are left
+ * untouched, never rewritten or removed), report location "claude". Any
+ * divergence from that exact shape (one differing byte, or a
+ * symlink/directory where a regular file is expected) must still divert to
+ * `.groundwork/customize/` rather than guess.
+ */
+describe("interrupted-install repair: all data files already current, only SKILL.md missing (item 4)", () => {
+  let sourceDir: string;
+  let targetDir: string;
+  let destDir: string;
+
+  beforeEach(() => {
+    sourceDir = mkdtempSync(join(tmpdir(), "plugin-install-repair-source-"));
+    targetDir = mkdtempSync(join(tmpdir(), "plugin-install-repair-target-"));
+    writeSourceFixture(sourceDir);
+    destDir = join(targetDir, ".claude", "skills", "customize");
+    mkdirSync(destDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(sourceDir, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  /** Writes the four non-SKILL.md payload files with byte-identical current content, leaving SKILL.md absent. */
+  function writeCurrentDataFilesOnly(): void {
+    writeFileSync(join(destDir, "kind-facet-map.ts"), "export const x = 1;\n");
+    writeFileSync(join(destDir, "domain-map.ts"), "export const y = 2;\n");
+    writeFileSync(join(destDir, "pack-map.ts"), "export const z = 3;\n");
+    writeFileSync(join(destDir, "plugin-map.ts"), "export const w = 4;\n");
+  }
+
+  it("completes the install in .claude: writes only the missing SKILL.md, leaves the four already-correct data files untouched", () => {
+    writeCurrentDataFilesOnly();
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("claude");
+    expect(result.fallbackReason).toBeUndefined();
+    // Only SKILL.md was written by this call -- the four already-correct
+    // data files were never rewritten, so they're absent from filesWritten
+    // (the result's own record of what this call actually wrote).
+    expect(result.filesWritten).toEqual([
+      join(".claude", "skills", "customize", "SKILL.md"),
+    ]);
+    expect(readFileSync(join(destDir, "SKILL.md"), "utf8")).toContain(
+      "name: customize",
+    );
+  });
+
+  it("[one differing byte] diverts to .groundwork/customize/ instead of repairing when a data file differs by even one byte", () => {
+    writeCurrentDataFilesOnly();
+    writeFileSync(join(destDir, "pack-map.ts"), "export const z = 9;\n");
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(typeof result.fallbackReason).toBe("string");
+    // The project's own differing pack-map.ts is left exactly as it was.
+    expect(readFileSync(join(destDir, "pack-map.ts"), "utf8")).toBe(
+      "export const z = 9;\n",
+    );
+    expect(existsSync(join(destDir, "SKILL.md"))).toBe(false);
+  });
+
+  it("[symlink among data files] diverts to .groundwork/customize/ instead of repairing when a data file is a symlink, even to byte-identical content", () => {
+    writeCurrentDataFilesOnly();
+    rmSync(join(destDir, "domain-map.ts"), { force: true });
+    const realDomainMap = join(targetDir, "real-domain-map.ts");
+    writeFileSync(realDomainMap, "export const y = 2;\n");
+    symlinkSync(realDomainMap, join(destDir, "domain-map.ts"));
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(lstatSync(join(destDir, "domain-map.ts")).isSymbolicLink()).toBe(
+      true,
+    );
+    expect(existsSync(join(destDir, "SKILL.md"))).toBe(false);
+  });
+
+  it("[directory among data files] diverts to .groundwork/customize/ instead of repairing when a data file name is a directory", () => {
+    writeCurrentDataFilesOnly();
+    rmSync(join(destDir, "plugin-map.ts"), { force: true });
+    mkdirSync(join(destDir, "plugin-map.ts"));
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(lstatSync(join(destDir, "plugin-map.ts")).isDirectory()).toBe(true);
+    expect(existsSync(join(destDir, "SKILL.md"))).toBe(false);
+  });
+
+  // The "SKILL.md repair write itself fails" case moved to
+  // plugin-rollback.test.ts: a directory at SKILL.md is no longer a valid
+  // way to inject that failure (see "classifyExistingSkill diverts ANY
+  // non-regular entry under a payload name to .groundwork/customize/, never
+  // throwing" below) -- any entry under SKILL.md's name that is not a
+  // regular file matching current bytes is now classified "foreign" and
+  // diverted before a repair write is even attempted, so the failure must
+  // be injected via the fs-mock seam instead.
+});
+
+/**
+ * [KNOWN BUG -- directory-at-SKILL.md] `classifyExistingSkill`
+ * (`../src/plugin.js`) special-cases `SKILL.md` being a directory by
+ * `continue`-ing past it as if the entry were absent, rather than treating
+ * it like every other non-regular-file entry under a payload name
+ * ("foreign"). That misclassifies the destination as `"installable"`
+ * whenever no OTHER payload entry is present either, so
+ * `installCustomizeSkillGuarded` proceeds to write the four data files
+ * into `.claude/skills/customize/` and then fails writing `SKILL.md`
+ * itself (the directory occupies that name) -- surfacing as a thrown,
+ * uncaught `Error` instead of the documented, non-throwing
+ * `.groundwork/customize/` fallback every other "something's already
+ * there and isn't this CLI's current copy" case gets.
+ *
+ * Maintainer policy for the fix: ANY project entry under a payload name
+ * that is not a regular file matching the CLI's current bytes diverts to
+ * `.groundwork/customize/` with `fallbackReason` set -- never thrown, never
+ * touched. The two tests below assert that contract for a directory named
+ * `SKILL.md`, empty and non-empty; both fail today (RED) because the
+ * current code throws instead.
+ */
+describe("classifyExistingSkill diverts ANY non-regular entry under a payload name to .groundwork/customize/, never throwing", () => {
+  let sourceDir: string;
+  let targetDir: string;
+
+  beforeEach(() => {
+    sourceDir = mkdtempSync(join(tmpdir(), "plugin-install-dirskill-source-"));
+    targetDir = mkdtempSync(join(tmpdir(), "plugin-install-dirskill-target-"));
+    writeSourceFixture(sourceDir);
+  });
+
+  afterEach(() => {
+    rmSync(sourceDir, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  it("[empty directory] diverts to .groundwork/customize/ without throwing when SKILL.md is an empty directory and nothing else is present", () => {
+    const existingDir = join(targetDir, ".claude", "skills", "customize");
+    const skillMdDir = join(existingDir, "SKILL.md");
+    mkdirSync(skillMdDir, { recursive: true });
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(typeof result.fallbackReason).toBe("string");
+    expect(result.fallbackReason as string).toContain(skillMdDir);
+    // The directory is left exactly as it was -- never removed or written
+    // through.
+    expect(lstatSync(skillMdDir).isDirectory()).toBe(true);
+    expect(readdirSync(skillMdDir)).toEqual([]);
+    expect(
+      existsSync(join(targetDir, ".groundwork", "customize", "SKILL.md")),
+    ).toBe(true);
+  });
+
+  it("[non-empty directory] diverts to .groundwork/customize/ without throwing when SKILL.md is a directory holding an unrelated file", () => {
+    const existingDir = join(targetDir, ".claude", "skills", "customize");
+    const skillMdDir = join(existingDir, "SKILL.md");
+    mkdirSync(skillMdDir, { recursive: true });
+    writeFileSync(join(skillMdDir, "nested.txt"), "project file\n");
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(typeof result.fallbackReason).toBe("string");
+    expect(result.fallbackReason as string).toContain(skillMdDir);
+    expect(lstatSync(skillMdDir).isDirectory()).toBe(true);
+    expect(readdirSync(skillMdDir)).toEqual(["nested.txt"]);
+    expect(readFileSync(join(skillMdDir, "nested.txt"), "utf8")).toBe(
+      "project file\n",
+    );
+  });
+});
+
+/**
+ * Regression guard, not a RED case: `classifyExistingSkill` already
+ * classifies a CURRENT, loadable `SKILL.md` sitting beside a missing data
+ * file as `"foreign"` (the `entryLoadable` branch) -- this is the correct
+ * contract, exercised here so the directory-at-SKILL.md fix above can't
+ * accidentally broaden "installable" into this case too.
+ */
+describe("classifyExistingSkill treats a current SKILL.md with a missing data file as foreign", () => {
+  let sourceDir: string;
+  let targetDir: string;
+
+  beforeEach(() => {
+    sourceDir = mkdtempSync(
+      join(tmpdir(), "plugin-install-missingdata-source-"),
+    );
+    targetDir = mkdtempSync(
+      join(tmpdir(), "plugin-install-missingdata-target-"),
+    );
+    writeSourceFixture(sourceDir);
+  });
+
+  afterEach(() => {
+    rmSync(sourceDir, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  it("diverts to .groundwork/customize/ when SKILL.md is current but domain-map.ts is missing entirely", () => {
+    const existingDir = join(targetDir, ".claude", "skills", "customize");
+    mkdirSync(existingDir, { recursive: true });
+    writeFileSync(
+      join(existingDir, "SKILL.md"),
+      "---\nname: customize\n---\n# customize\n",
+    );
+    writeFileSync(
+      join(existingDir, "kind-facet-map.ts"),
+      "export const x = 1;\n",
+    );
+    writeFileSync(join(existingDir, "pack-map.ts"), "export const z = 3;\n");
+    writeFileSync(join(existingDir, "plugin-map.ts"), "export const w = 4;\n");
+    // domain-map.ts is absent entirely -- not planted at all.
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(typeof result.fallbackReason).toBe("string");
+    expect(result.fallbackReason as string).toContain(
+      join(existingDir, "SKILL.md"),
+    );
+    // The project's own files under .claude/ are left untouched.
+    expect(existsSync(join(existingDir, "domain-map.ts"))).toBe(false);
+    expect(readFileSync(join(existingDir, "SKILL.md"), "utf8")).toContain(
+      "name: customize",
+    );
   });
 });
