@@ -957,7 +957,7 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
     );
   });
 
-  it("names an extra staged file not in stagedBaseline.files, tags it '(no-shell path)', and extends the same clause to a pack's own files, in the single stop list", () => {
+  it("names an extra staged file not in stagedBaseline.files, tags it '(no-shell path)', and extends the same clause to a pack's own files and a pack's manifest, in the single stop list", () => {
     const stopListStart = section.indexOf(
       "**For a schema 5 inventory, a `stagedBaseline` that is missing",
     );
@@ -971,7 +971,27 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
       "an extra `*.staged` file not named in `stagedBaseline.files`",
     );
     expect(stopList).toContain("(no-shell path)");
-    expect(stopList).toContain("in a pack's `files`");
+    expect(stopList).toContain("a pack's `files` or a pack's manifest");
+  });
+
+  it("keeps the stop-list's pack's-manifest clause consistent with the no-shell rule naming 'neither a listed manifest nor a listed file'", () => {
+    // Deliberately different boundaries from the stop-list slice above (hub
+    // instruction): starts mid-sentence at the `stagedBaseline` clause and
+    // extends past the stop-list's own closing line through to "What a
+    // passing check proves", so this covers the full bullet the stop list
+    // lives inside, not just the single stop-list sentence.
+    const stopListBulletStart = section.indexOf(
+      "a `stagedBaseline` that is missing",
+    );
+    const stopListBulletEnd = section.indexOf("What a passing check proves");
+    expect(stopListBulletStart).toBeGreaterThan(-1);
+    expect(stopListBulletEnd).toBeGreaterThan(stopListBulletStart);
+    const stopListBullet = section.slice(
+      stopListBulletStart,
+      stopListBulletEnd,
+    );
+    expect(stopListBullet).toContain(" a pack's manifest");
+    expect(bullet).toContain("neither a listed manifest nor a listed file");
   });
 
   it("adds a (d) item to Step 0.4's single confirmation asking whether to continue or stop when the no-shell bullet applied", () => {

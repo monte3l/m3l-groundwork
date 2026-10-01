@@ -208,7 +208,7 @@ may or may not touch.
      `absent` conflicts and `stagedBaseline.files` that do not name the same
      set, any pack whose names or file paths disagree with `inventory.packs`, and
      (no-shell path) an extra `*.staged` file not named in
-     `stagedBaseline.files` or in a pack's `files`
+     `stagedBaseline.files`, a pack's `files` or a pack's manifest
      means stop -- all of Round 1, including conflicts and packs -- and
      change nothing.** This is the single stop list for the staged baseline and the staged packs.
      Tell the user: "The staged baseline in `.groundwork/baseline/` or a staged pack in `.groundwork/packs/` is incomplete or does not match `.groundwork/inventory.json` (<the first entry that failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run `/customize` again." **Never fall back to `inventory.templateRoot` for a schema 5 inventory, packs included:** that fallback exists for a schema 1-4 inventory only, and only for the baseline additions (a schema 1-4 inventory's packs are read from their unsuffixed copy, see Step 0.4(c) and Round 1).
