@@ -180,12 +180,14 @@ This mode ships no answers, only where to look and what to ask.
    - `package.json`'s `scripts`, `dependencies`, `devDependencies`, and
      `pnpm-workspace.yaml` (workspaces, `catalog`/`catalogs`) if present;
    - the resolved tsconfig chain — every `tsconfig*.json` following
-     `extends`, using `bin/lib/toolchain-rules.mjs`'s tsconfig-chain
-     resolution if it exists rather than re-deriving the rules by hand;
+     `extends`, using `templates/core/bin/lib/toolchain-rules.mjs`'s
+     tsconfig-chain resolution (this repo has no `bin/lib` copy) rather than
+     re-deriving the rules by hand;
    - lint/test/hygiene config — `eslint.config.*` (or `.eslintrc.*`),
      `vitest.config.ts` (or another runner's), `knip.json`;
-   - existing gates — run `node bin/check-toolchain.mjs` if present, and
-     read `.groundwork/inventory.json` if present (its `toolchainGrade` and
+   - existing gates — in this repo `bin/check-toolchain.mjs` grades
+     `templates/core`, not the root, so do not run it for the profile; read the
+     root tsconfig chain directly. Also read `.groundwork/inventory.json` if present (its `toolchainGrade` and
      `toolchainConformance` are exactly this profile, already computed);
    - budget — count `.claude/agents/*.md`, `.claude/skills/*/`,
      `.claude/hooks/*.{mjs,js}`, `.github/workflows/*.yml` and
