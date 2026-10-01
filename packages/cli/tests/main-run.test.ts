@@ -14,6 +14,7 @@ import {
   rmSync,
   writeFileSync,
   readFileSync,
+  readdirSync,
   existsSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -106,6 +107,199 @@ describe("main", () => {
       expect(installCustomizeSkillGuardedMock).not.toHaveBeenCalled();
     });
 
+    describe("fails early, before writing anything", () => {
+      it.each([
+        ["an unknown pack", "no-such-pack", /unknown pack "no-such-pack"/],
+        [
+          "the retired statusline pack",
+          "statusline",
+          /renamed to "harness-extras"/,
+        ],
+      ])(
+        "rejects %s as a usage error and leaves the target untouched",
+        (_l, pack, re) => {
+          const target = join(targetDir, "never-written");
+
+          expect(() => main([target, "--pack", pack])).toThrow(CliUsageError);
+          expect(() => main([target, "--pack", pack])).toThrow(re);
+          expect(existsSync(target)).toBe(false);
+          expect(gitInitMock).not.toHaveBeenCalled();
+        },
+      );
+
+      it("names the available packs when an unknown pack is requested", () => {
+        const target = join(targetDir, "never-written-unknown");
+
+        let thrown: unknown;
+        try {
+          main([target, "--pack", "no-such-pack"]);
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).message).toMatch(/available:/);
+        expect((thrown as Error).message).toMatch(/harness-extras/);
+      });
+
+      it("leaves an existing empty target empty when a later --pack is bad", () => {
+        const target = join(targetDir, "empty-existing");
+        mkdirSync(target);
+
+        expect(() =>
+          main([target, "--pack", "harness-extras", "--pack", "nope"]),
+        ).toThrow(CliUsageError);
+        expect(readdirSync(target)).toEqual([]);
+      });
+
+      it("rejects Windows in fresh mode with a plain Error (exit 1), before writing anything", () => {
+        const target = join(targetDir, "win");
+        let thrown: unknown;
+        try {
+          main([target], "win32");
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).message).toMatch(
+          /Windows is not supported yet \(Linux and macOS only\)/,
+        );
+        expect(existsSync(target)).toBe(false);
+      });
+
+      it.each([["--help"], ["--version"], ["--list-packs"]])(
+        "still allows %s on Windows",
+        (flag) => {
+          const log = vi.spyOn(console, "log").mockImplementation(() => {});
+          try {
+            expect(() => main([flag], "win32")).not.toThrow();
+            expect(log).toHaveBeenCalled();
+          } finally {
+            log.mockRestore();
+          }
+        },
+      );
+
+      it("still allows adopt mode on Windows", () => {
+        const projectDir = join(targetDir, "win-adopt");
+        mkdirSync(projectDir);
+        writeFileSync(
+          join(projectDir, "package.json"),
+          JSON.stringify({ name: "acme", type: "module" }),
+        );
+
+        main([projectDir], "win32");
+
+        expect(
+          existsSync(join(projectDir, ".groundwork", "inventory.json")),
+        ).toBe(true);
+      });
+    });
+
+    describe("when git init fails", () => {
+      it("chains the cause and says the project was written and what to run", () => {
+        const target = join(targetDir, "git-fails");
+        const cause = new Error("git: command not found");
+        gitInitMock.mockImplementationOnce(() => {
+          throw cause;
+        });
+        vi.spyOn(console, "log").mockImplementation(() => {});
+        let thrown: unknown;
+        try {
+          main([target]);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          vi.restoreAllMocks();
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).cause).toBe(cause);
+        expect((thrown as Error).message).toMatch(/project was written/);
+        expect((thrown as Error).message).toMatch(/git init/);
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(runInstallMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("when the dependency install fails", () => {
+      function runFailing(
+        target: string,
+        failure: Error,
+      ): { thrown: unknown; logs: string[]; errs: string[] } {
+        runInstallMock.mockImplementationOnce(() => {
+          throw failure;
+        });
+        const logs: string[] = [];
+        const errs: string[] = [];
+        vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+          logs.push(String(m));
+        });
+        vi.spyOn(console, "error").mockImplementation((m: unknown) => {
+          errs.push(String(m));
+        });
+        let thrown: unknown;
+        try {
+          main([target]);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          vi.restoreAllMocks();
+        }
+        return { thrown, logs, errs };
+      }
+
+      it("chains the cause, prints no ready banner, and gives one explanation via the thrown error", () => {
+        const target = join(targetDir, "install-fails");
+        const cause = Object.assign(new Error("Command failed: pnpm install"), {
+          status: 1,
+          signal: null,
+        });
+        const { thrown, logs, errs } = runFailing(target, cause);
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).cause).toBe(cause);
+        const message = (thrown as Error).message;
+        expect(message).toMatch(/exit status 1/);
+        expect(message).toMatch(/project was written/);
+        expect(message).toMatch(/run `pnpm install`/);
+        expect(errs).toEqual([]);
+        expect(logs.join("\n")).not.toMatch(/is ready at/);
+        expect(logs.join("\n")).toMatch(
+          /written to .*but dependencies are not installed/,
+        );
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+      });
+
+      it("reports the spawn code or signal when there is no exit status", () => {
+        const { thrown } = runFailing(
+          join(targetDir, "killed"),
+          Object.assign(new Error("x"), { signal: "SIGKILL" }),
+        );
+        expect((thrown as Error).message).toMatch(/signal SIGKILL/);
+
+        const { thrown: t2 } = runFailing(
+          join(targetDir, "eacces"),
+          Object.assign(new Error("x"), { code: "EACCES" }),
+        );
+        expect((t2 as Error).message).toMatch(/EACCES/);
+      });
+
+      it("names a missing pnpm binary specifically", () => {
+        const cause = Object.assign(new Error("spawnSync pnpm ENOENT"), {
+          code: "ENOENT",
+        });
+        const { thrown } = runFailing(join(targetDir, "no-pnpm"), cause);
+
+        expect((thrown as Error).message).toMatch(/pnpm was not found on PATH/);
+        expect((thrown as Error).cause).toBe(cause);
+      });
+    });
+
     it("installs a requested pack alongside the baseline", () => {
       const packTarget = join(targetDir, "sub-pack");
 
@@ -180,14 +374,6 @@ describe("main", () => {
         ),
       ).toBe(true);
       logSpy.mockRestore();
-    });
-
-    it("throws naming the available packs when an unknown pack is requested", () => {
-      const packTarget = join(targetDir, "sub-pack-unknown");
-
-      expect(() =>
-        main([packTarget, "--skip-install", "--pack", "does-not-exist"]),
-      ).toThrow(/unknown pack "does-not-exist"/);
     });
   });
 

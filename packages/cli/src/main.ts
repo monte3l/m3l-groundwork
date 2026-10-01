@@ -39,6 +39,7 @@ import {
   writeInventory,
 } from "./inventory.js";
 import type { PackSurvey } from "./inventory.js";
+import type { Pack } from "./packs.js";
 import {
   listPackNames,
   loadPack,
@@ -335,12 +336,19 @@ export function formatCapsSummary(
   return { text: lines.join("\n"), overCap: overCap.length > 0 };
 }
 
-function runFresh(options: CliOptions): void {
+function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
+  if (platform === "win32") {
+    throw new Error("Windows is not supported yet (Linux and macOS only)");
+  }
   if (!isEmptyOrMissing(options.targetDir) && !options.force) {
     throw new Error(
       `${options.targetDir} already exists and is not empty (pass --force to overwrite, or --adopt to survey it instead)`,
     );
   }
+
+  // Resolve every --pack before the first write: a bad name must leave the
+  // target exactly as it was found.
+  const packs = options.packs.map((name) => resolveFreshPack(name));
 
   mkdirSync(options.targetDir, { recursive: true });
 
@@ -352,13 +360,8 @@ function runFresh(options: CliOptions): void {
   );
 
   const installedPacks: { name: string; budget: CapCounts }[] = [];
-  for (const name of options.packs) {
-    const pack = loadPack(name);
-    if (!pack.manifest.modes.includes("fresh")) {
-      throw new Error(
-        `pack "${name}" does not support fresh mode (modes: ${pack.manifest.modes.join(", ")})`,
-      );
-    }
+  for (const pack of packs) {
+    const name = pack.manifest.name;
     const packResult = installPack(pack, options.targetDir, tokens);
     console.log(
       `installed pack "${name}" (${packResult.filesWritten.length} files)`,
@@ -382,11 +385,33 @@ function runFresh(options: CliOptions): void {
     `installed the /customize skill (${pluginResult.filesWritten.length} files)`,
   );
 
-  gitInit(options.targetDir);
+  const { targetDir, skipInstall, projectName } = options;
+  try {
+    gitInit(targetDir);
+  } catch (error) {
+    throw new Error(
+      `git init failed, but the project was written to ${targetDir}; run \`git init\`${skipInstall ? "" : " and `pnpm install`"} there yourself`,
+      { cause: error },
+    );
+  }
   console.log("initialized git repository");
 
-  if (!options.skipInstall) {
-    runInstall(options.targetDir);
+  if (!skipInstall) {
+    try {
+      runInstall(targetDir);
+    } catch (error) {
+      console.log(
+        paint(
+          process.stdout,
+          "warning",
+          `\n${projectName} written to ${targetDir}, but dependencies are not installed`,
+        ),
+      );
+      throw new Error(
+        `${describeInstallFailure(error)}; the project was written to ${targetDir} -- run \`pnpm install\` there yourself to finish`,
+        { cause: error },
+      );
+    }
     console.log("installed dependencies");
   }
 
@@ -394,9 +419,68 @@ function runFresh(options: CliOptions): void {
     paint(
       process.stdout,
       "success",
-      `\n✓ ${options.projectName} is ready at ${options.targetDir}`,
+      `\n✓ ${projectName} is ready at ${targetDir}`,
     ),
   );
+}
+
+/**
+ * Explains why the post-emission `pnpm install` failed: a missing binary
+ * specifically, otherwise the exit status, killing signal, or error code
+ * when the thrown value carries one. Each property is read exactly once.
+ */
+function describeInstallFailure(error: unknown): string {
+  if (typeof error !== "object" || error === null) {
+    return "`pnpm install` failed";
+  }
+  const code: unknown = "code" in error ? error.code : undefined;
+  const status: unknown = "status" in error ? error.status : undefined;
+  const signal: unknown = "signal" in error ? error.signal : undefined;
+  if (code === "ENOENT") return "pnpm was not found on PATH";
+  if (typeof status === "number") {
+    return `\`pnpm install\` failed (exit status ${String(status)})`;
+  }
+  if (typeof signal === "string") {
+    return `\`pnpm install\` failed (killed by signal ${signal})`;
+  }
+  if (typeof code === "string") return `\`pnpm install\` failed (${code})`;
+  return "`pnpm install` failed";
+}
+
+// A pack that was renamed or folded into another, mapped to its successor so
+// an old `--pack` name gets a pointed hint rather than a bare "unknown pack".
+const RENAMED_PACKS: ReadonlyMap<string, string> = new Map([
+  ["statusline", "harness-extras"],
+]);
+
+/**
+ * Loads one `--pack` for fresh mode -- called for every pack before any file
+ * is written. An unknown name (with a rename hint when {@link RENAMED_PACKS}
+ * knows its successor) or a fresh-incompatible pack is a usage error (exit
+ * 2); a pack that exists but whose manifest fails to load propagates
+ * `loadPack`'s own error unchanged (exit 1), since that is a broken install,
+ * not a bad invocation.
+ */
+function resolveFreshPack(name: string): Pack {
+  const available = listPackNames();
+  if (!available.includes(name)) {
+    const successor = RENAMED_PACKS.get(name);
+    const hint =
+      successor === undefined
+        ? ""
+        : ` -- it was renamed to "${successor}"; use --pack ${successor}`;
+    const list = available.length > 0 ? available.join(", ") : "none";
+    throw new CliUsageError(
+      `unknown pack "${name}"${hint} (available: ${list})\n\n${USAGE}`,
+    );
+  }
+  const pack = loadPack(name);
+  if (!pack.manifest.modes.includes("fresh")) {
+    throw new CliUsageError(
+      `pack "${name}" does not support fresh mode (modes: ${pack.manifest.modes.join(", ")})\n\n${USAGE}`,
+    );
+  }
+  return pack;
 }
 
 /**
@@ -554,7 +638,16 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   console.log("Next: open this project in Claude Code and run /customize.");
 }
 
-export function main(argv: string[]): void {
+/**
+ * Runs the CLI. `platform` is injectable so fresh mode's Windows refusal
+ * (a runtime error, exit 1, raised before anything is written) is
+ * unit-testable on any OS; it defaults to `process.platform`. Adopt mode and
+ * `--help`/`--version`/`--list-packs` run on every platform.
+ */
+export function main(
+  argv: string[],
+  platform: NodeJS.Platform = process.platform,
+): void {
   const options = parseArgs(argv);
 
   if (options.help) {
@@ -590,6 +683,6 @@ export function main(argv: string[]): void {
     assertAdoptUsage(options);
     runAdopt(options, resolved);
   } else {
-    runFresh(options);
+    runFresh(options, platform);
   }
 }
