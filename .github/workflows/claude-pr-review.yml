@@ -96,8 +96,11 @@ jobs:
           # `not_planned` for inactivity, not resolved. Sonnet 5.5 is the
           # current Sonnet tier (see Anthropic's models overview; it is
           # also in `CURRENT_MODELS` in packages/cli/src/harness/rules.ts).
-          # Anthropic's Opus 5.5 migration guide notes that a conversation
-          # moved from Opus 5.5 to any model other than Fable 5.1 or
+          # Anthropic's Opus 5.5 migration guide ("Thinking blocks are tied
+          # to the model and the conversation",
+          # https://platform.claude.com/docs/en/models/opus-5-5/migration-guide)
+          # notes that, on the Claude API, a fallback that moves a
+          # conversation from Opus 5.5 to any model other than Fable 5.1 or
           # Mythos 5.1 runs without Opus 5.5's thinking blocks; that is
           # acceptable for an overload-only fallback. This trades the
           # Opus-level review accuracy above for a completed review over a

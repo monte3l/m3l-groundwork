@@ -103,10 +103,13 @@ paths:
   currently-unfixed gap (anthropics/claude-code-action#594, redirected to
   and auto-closed `not_planned` as anthropics/claude-code#8413) -- but it's
   worth having for the failure mode it does cover. Sonnet 5.5 is the
-  current Sonnet tier; per Anthropic's Opus 5.5 migration guide, a
-  conversation moved from Opus 5.5 to any model other than Fable 5.1 or
-  Mythos 5.1 runs without Opus 5.5's thinking blocks, which is acceptable
-  for an overload-only fallback.
+  current Sonnet tier; per Anthropic's Opus 5.5 migration guide (section
+  "Thinking blocks are tied to the model and the conversation",
+  https://platform.claude.com/docs/en/models/opus-5-5/migration-guide,
+  re-read 2026-10-01), on the Claude API a fallback that moves a
+  conversation from Opus 5.5 to any model other than Fable 5.1 or Mythos
+  5.1 runs without Opus 5.5's thinking blocks, which is acceptable for an
+  overload-only fallback.
 - `claude_args` also carries an explicit `--allowedTools` naming
   `mcp__github_inline_comment__create_inline_comment` and `gh pr comment`/
   `diff`/`view` -- load-bearing, not decorative: the action's automation
