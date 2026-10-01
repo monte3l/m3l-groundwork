@@ -11,16 +11,15 @@
  * environment acts on the pushing repository instead of its own temp
  * fixture.
  *
- * Measured: with only `GIT_DIR` set to another repository's gitdir,
- * `worktree-guards.test.ts` and `compact-handoff.test.ts` fail 10 tests
- * between them; `GIT_INDEX_FILE` alone fails 1; `GIT_PREFIX` alone fails
- * none, but is stripped anyway for parity with what git itself does to a
- * hook's environment.
+ * Measured: with only `GIT_DIR` set to another repository's gitdir, tests
+ * that spawn the shipped hooks under test fail; `GIT_INDEX_FILE` alone also
+ * makes those suites fail, while `GIT_PREFIX` alone did not -- it is
+ * stripped anyway for parity with what git itself does to a hook's
+ * environment.
  *
- * Why the five per-file `envWithoutRepoLocals` helpers (in the
- * worktree-guards, compact-handoff, core-hooks, nudge-invariants and
- * post-edit-verify tests) were not enough: they only filter the env passed
- * to each test's own fixture-setup spawns. The shipped hooks under test
+ * Why the per-file `envWithoutRepoLocals` helpers (grep for them under
+ * packages/cli/tests) were not enough: they only filter the env passed to
+ * each test's own fixture-setup spawns. The shipped hooks under test
  * (`guard-worktree-only`, `ensure-worktree-deps`, `guard-branch-isolation`,
  * `post-edit-verify`) and the helper functions `compact-handoff` exercises
  * spawn git in-process with the inherited `process.env`, so removing the
@@ -41,8 +40,9 @@
 
 /**
  * git's own `git rev-parse --local-env-vars` list, hard-coded, plus
- * `GIT_PREFIX` -- absent from that list on some git versions, but exported
- * to a hook run from a subdirectory.
+ * `GIT_PREFIX` -- listed separately because older git versions omit it from
+ * `git rev-parse --local-env-vars`, but it is still exported to a hook run
+ * from a subdirectory.
  *
  * @example
  * ```ts

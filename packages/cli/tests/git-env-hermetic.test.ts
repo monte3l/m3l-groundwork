@@ -17,9 +17,11 @@ import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { REPO_LOCAL_GIT_ENV, scrubGitEnv } from "./git-env.js";
 
-// Values git deliberately sets on purpose (a test fixture's own hermeticity
-// knobs, or a look-alike unrelated variable) that scrubGitEnv must leave
-// untouched precisely because they are not in REPO_LOCAL_GIT_ENV.
+// Variables a test fixture sets on purpose for its own hermeticity
+// (GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM, GIT_CEILING_DIRECTORIES,
+// GIT_AUTHOR_NAME), plus an unrelated look-alike (PATH, GITHUB_TOKEN), that
+// scrubGitEnv must leave untouched precisely because they are not in
+// REPO_LOCAL_GIT_ENV.
 const KEEP_ENV = {
   PATH: "/usr/bin",
   GITHUB_TOKEN: "keep-me",
@@ -54,25 +56,23 @@ describe("scrubGitEnv", () => {
 });
 
 describe("importing git-env.ts", () => {
-  const originalValue = process.env["GIT_CONFIG_GLOBAL"];
+  const originalValue = process.env["GIT_DIR"];
 
   afterEach(() => {
     if (originalValue === undefined) {
-      delete process.env["GIT_CONFIG_GLOBAL"];
+      delete process.env["GIT_DIR"];
     } else {
-      process.env["GIT_CONFIG_GLOBAL"] = originalValue;
+      process.env["GIT_DIR"] = originalValue;
     }
   });
 
   it("has no top-level side effect on process.env", async () => {
-    process.env["GIT_CONFIG_GLOBAL"] = "/fixture/untouched-by-import";
+    process.env["GIT_DIR"] = "/fixture/untouched-by-import";
     vi.resetModules();
 
     await import("./git-env.js");
 
-    expect(process.env["GIT_CONFIG_GLOBAL"]).toBe(
-      "/fixture/untouched-by-import",
-    );
+    expect(process.env["GIT_DIR"]).toBe("/fixture/untouched-by-import");
   });
 });
 
@@ -102,9 +102,7 @@ describe("the vitest setupFiles entry already scrubbed this worker", () => {
   // setupFiles) already ran before this test file's own code executed.
 
   it("process.env carries none of the repo-local git variables", () => {
-    const leaked = REPO_LOCAL_GIT_ENV.filter(
-      (key: string) => key in process.env,
-    );
+    const leaked = REPO_LOCAL_GIT_ENV.filter((key) => key in process.env);
     expect(leaked).toEqual([]);
   });
 
