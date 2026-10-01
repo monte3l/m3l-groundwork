@@ -9,7 +9,9 @@
  * error into exit code 1 (a runtime failure) -- see `packages/cli/src/main.ts`.
  * The error is printed with its full `cause` chain (`formatErrorChain`), so
  * a wrapped failure never hides the underlying reason; `handleFatal` sets the
- * exit code before printing and never throws, even when reporting fails.
+ * exit code before printing and never throws, even when reporting fails --
+ * if the painted print throws, it falls back to a plain, unpainted
+ * `process.stderr.write` (`printRaw`).
  */
 import process from "node:process";
 import { main, CliUsageError } from "../dist/main.js";
@@ -27,6 +29,9 @@ try {
       },
       print: (text) => {
         console.error(paint(process.stderr, "danger", text));
+      },
+      printRaw: (text) => {
+        process.stderr.write(`${text}\n`);
       },
     },
     (e) => e instanceof CliUsageError,

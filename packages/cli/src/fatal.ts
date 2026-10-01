@@ -25,13 +25,18 @@ function rawText(error: unknown): string {
 /**
  * Reports a fatal `error`: sets the exit code first -- 2 when
  * `isUsageError(error)` says it is a usage error, 1 otherwise, including
- * when `isUsageError` itself throws -- then prints `formatErrorChain(error)`.
- * If that print throws, prints `String(error.stack ?? error)` instead; if
- * that throws too, prints `[unprintable error]`; if even that throws,
- * gives up silently, the exit code already set. Never throws.
+ * when `isUsageError` itself throws -- then prints `formatErrorChain(error)`
+ * through `io.print`. If that print throws, the fallbacks never touch
+ * `io.print` again (it is the channel that just failed -- in the CLI, the
+ * one that paints colour): `io.printRaw` prints `String(error.stack ?? error)`
+ * instead; if that throws, `io.printRaw` prints `[unprintable error]`; if
+ * even that throws, gives up silently, the exit code already set. Never
+ * throws. A `setExitCode` that throws is swallowed and not retried -- the
+ * report is still attempted -- but it is not otherwise handled: assigning
+ * Node's `process.exitCode` cannot throw, so the CLI never hits that case.
  *
  * @param error - The value the CLI's `main()` threw.
- * @param io - Where the exit code and the report go: the process and stderr, in the CLI.
+ * @param io - Where the exit code and the report go: `print` for the formatted chain, `printRaw` -- a plain write with nothing in it that can fail the way `print` did -- for both fallbacks.
  * @param isUsageError - Whether `error` is a bad invocation rather than a runtime failure.
  *
  * @example
@@ -51,6 +56,9 @@ function rawText(error: unknown): string {
  *       print: (text) => {
  *         console.error(text);
  *       },
+ *       printRaw: (text) => {
+ *         process.stderr.write(`${text}\n`);
+ *       },
  *     },
  *     (e) => e instanceof CliUsageError,
  *   );
@@ -59,7 +67,11 @@ function rawText(error: unknown): string {
  */
 export function handleFatal(
   error: unknown,
-  io: { setExitCode(code: number): void; print(text: string): void },
+  io: {
+    setExitCode(code: number): void;
+    print(text: string): void;
+    printRaw(text: string): void;
+  },
   isUsageError: (error: unknown) => boolean,
 ): void {
   let code = 1;
@@ -77,16 +89,16 @@ export function handleFatal(
     io.print(formatErrorChain(error));
     return;
   } catch {
-    // Fall through to the raw stack.
+    // Fall through to the raw stack, on the raw channel.
   }
   try {
-    io.print(rawText(error));
+    io.printRaw(rawText(error));
     return;
   } catch {
     // Fall through to the fixed placeholder.
   }
   try {
-    io.print(LAST_RESORT);
+    io.printRaw(LAST_RESORT);
   } catch {
     // stderr itself is unusable: the exit code set above is all that is left.
   }

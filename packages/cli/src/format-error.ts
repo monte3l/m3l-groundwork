@@ -99,16 +99,18 @@ function isObjectLike(value: unknown): value is object {
   );
 }
 
-/** The first {@link MAX_CHILDREN} values a node chains to, and how many more were left out. */
+/** The values a node chains to -- its `cause` first, then at most {@link MAX_CHILDREN} `errors` members -- and how many members were left out. */
 interface Children {
   readonly kept: unknown[];
   readonly omitted: number;
 }
 
 /**
- * The values a node chains to: an `AggregateError`'s `errors` (when really
- * an array), then its `cause` (when set), capped at {@link MAX_CHILDREN}. An
- * accessor that throws yields an {@link Unreadable} child in its place.
+ * The values a node chains to: its `cause` (when set), then an
+ * `AggregateError`'s `errors` (when really an array), capped at
+ * {@link MAX_CHILDREN} members. The cause is reserved outside that cap, so
+ * no number of members can hide it. An accessor that throws yields an
+ * {@link Unreadable} child in its place.
  */
 function childrenOf(node: Inspected): Children {
   if (node.kind !== "aggregate" && node.kind !== "error") {
@@ -116,13 +118,14 @@ function childrenOf(node: Inspected): Children {
   }
   const kept: unknown[] = [];
   let omitted = 0;
-  const add = (child: unknown): void => {
-    if (kept.length < MAX_CHILDREN) {
-      kept.push(child);
-    } else {
-      omitted += 1;
+  try {
+    const cause: unknown = node.value.cause;
+    if (cause !== undefined) {
+      kept.push(cause);
     }
-  };
+  } catch {
+    kept.push(new Unreadable());
+  }
   if (node.kind === "aggregate") {
     try {
       const errors: unknown = node.value.errors;
@@ -134,19 +137,11 @@ function childrenOf(node: Inspected): Children {
         for (let i = 0; i < take; i++) {
           kept.push(errors[i]);
         }
-        omitted += length - take;
+        omitted = length - take;
       }
     } catch {
-      add(new Unreadable());
+      kept.push(new Unreadable());
     }
-  }
-  try {
-    const cause: unknown = node.value.cause;
-    if (cause !== undefined) {
-      add(cause);
-    }
-  } catch {
-    add(new Unreadable());
   }
   return { kept, omitted };
 }
@@ -229,25 +224,30 @@ function pushVisits(
   }
 }
 
-/** `message` as a `caused by:` line at `depth`, every further line indented one level deeper, so it can't pass for a sibling `caused by:` line. */
-function causedByLines(message: string, depth: number): string[] {
+/** `message` as lines, the first prefixed with `head`, every further line indented one level past `depth`, so it can't pass for a real `caused by:` line. */
+function messageLines(message: string, depth: number, head: string): string[] {
   const [first = "", ...rest] = message.split("\n");
   const continuation = "  ".repeat(depth + 1);
-  return [
-    `${"  ".repeat(depth)}caused by: ${first}`,
-    ...rest.map((line) => `${continuation}${line}`),
-  ];
+  return [`${head}${first}`, ...rest.map((line) => `${continuation}${line}`)];
+}
+
+/** `message` as a `caused by:` line at `depth`, every further line indented one level deeper. */
+function causedByLines(message: string, depth: number): string[] {
+  return messageLines(message, depth, `${"  ".repeat(depth)}caused by: `);
 }
 
 /**
- * Formats `error` as a multi-line string: its own message on the first line,
- * then one `caused by: <message>` line per chained cause, indented two more
- * spaces per depth; any further line of a cause's message is indented two
- * spaces past its own `caused by:` line. An `AggregateError`'s `errors` are
- * each listed as a `caused by:` line at the next depth (before its own
- * `cause`, if any); an `errors` property that is not an array is ignored.
- * At most 32 children are printed per parent; the rest collapse into one
- * `... and N more` line at the children's indent.
+ * Formats `error` as a multi-line string: its own message on the first line
+ * (any further line of it indented two spaces), then one
+ * `caused by: <message>` line per chained cause, indented two more spaces
+ * per depth; any further line of a cause's message is indented two spaces
+ * past its own `caused by:` line, so no message line can pass for a real
+ * `caused by:` line. An `AggregateError`'s `errors` are each listed as a
+ * `caused by:` line at the next depth (after its own `cause`, if any); an
+ * `errors` property that is not an array is ignored. At most 32 `errors`
+ * members are printed per parent; the rest collapse into one
+ * `... and N more` line at the children's indent. A `cause` never counts
+ * against that cap, so it is always printed.
  *
  * A message is an `Error`'s `message`, otherwise `String(value)`; it renders
  * as `[unprintable value]` when stringifying throws, when it is a `Symbol`,
@@ -281,7 +281,7 @@ function causedByLines(message: string, depth: number): string[] {
 export function formatErrorChain(error: unknown): string {
   const top = inspect(error);
   const topMessage = messageOf(top);
-  const lines: string[] = [topMessage];
+  const lines: string[] = messageLines(topMessage, 0, "");
   const seen = new Set<object>();
   if (isObjectLike(error)) {
     seen.add(error);

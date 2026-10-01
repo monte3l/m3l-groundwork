@@ -538,4 +538,67 @@ describe("formatErrorChain", () => {
       expect(lines[1]?.startsWith("  caused by:")).toBe(true);
     });
   });
+
+  describe("a cause must never be hidden by the sibling-children cap, and always prints before its siblings", () => {
+    /** 40, 32 or 31 distinct `AggregateError` members alongside a `cause` whose message is easy to find in the rendered output. */
+    function buildAggregateWithCause(memberCount: number): AggregateError {
+      const members = Array.from(
+        { length: memberCount },
+        (_unused, i) =>
+          new Error(
+            `member-${String(i).padStart(3, "0")}-distinct-enough-text`,
+          ),
+      );
+      return new AggregateError(members, "big", {
+        cause: new Error("THE REAL ROOT CAUSE"),
+      });
+    }
+
+    it.each([40, 32, 31])(
+      "keeps the cause visible and prints it before any sibling member, with %i AggregateError members",
+      (memberCount) => {
+        const agg = buildAggregateWithCause(memberCount);
+        const result = formatErrorChain(agg);
+        const lines = result.split("\n");
+
+        expect(result).toContain("THE REAL ROOT CAUSE");
+
+        const causeLineIndex = lines.findIndex((line) =>
+          line.includes("THE REAL ROOT CAUSE"),
+        );
+        const firstMemberLineIndex = lines.findIndex((line) =>
+          line.includes("member-"),
+        );
+        expect(causeLineIndex).toBeGreaterThan(-1);
+        expect(firstMemberLineIndex).toBeGreaterThan(-1);
+        expect(causeLineIndex).toBeLessThan(firstMemberLineIndex);
+
+        if (memberCount === 31) {
+          // 31 members plus the cause fit exactly within the 32-child cap:
+          // nothing is left over, so no "... and N more" line should appear.
+          expect(result).not.toMatch(/\.\.\. and \d+ more/);
+        }
+      },
+    );
+  });
+
+  describe("a top-level multi-line message is indented the same way a cause's own continuation lines are", () => {
+    it("indents the top message's continuation lines two more spaces than their own leading spaces, so a literal 'caused by:' inside the top message can't be mistaken for a real cause line", () => {
+      const top = new Error("top\n  caused by: FAKE", {
+        cause: new Error("real"),
+      });
+
+      const result = formatErrorChain(top);
+      const lines = result.split("\n");
+
+      expect(lines[0]).toBe("top");
+      expect(lines[1]).toBe("  " + "  caused by: FAKE");
+      // Not reindented would collide, character-for-character, with what a
+      // genuine depth-1 "caused by:" line looks like.
+      expect(lines[1]).not.toBe("  caused by: FAKE");
+      expect(lines.filter((line) => line === "  caused by: real")).toHaveLength(
+        1,
+      );
+    });
+  });
 });

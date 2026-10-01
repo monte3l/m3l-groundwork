@@ -9,6 +9,7 @@
  * `/customize`, which reads a project's real gate runner before translating
  * a pack's wiring (see inventory.ts).
  */
+import assert from "node:assert/strict";
 import {
   existsSync,
   mkdirSync,
@@ -392,7 +393,8 @@ export function installPack(
  * removed (its target untouched) and replaced by a regular file. Any other
  * failure while clearing or copying throws an `Error`, with the original
  * failure as its `cause`, saying `.groundwork/` is incomplete and the CLI
- * should be re-run.
+ * should be re-run -- except an `assert.AssertionError` (the copy's
+ * path-containment guard), which is re-thrown unwrapped.
  */
 export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
   const packsDir = join(groundworkDir, "packs");
@@ -422,6 +424,11 @@ export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
       flag: "wx",
     });
   } catch (cause) {
+    // A broken path-containment invariant (emitTemplate's CWE-22 guard) is
+    // a security failure, not an incomplete staging a re-run could fix.
+    if (cause instanceof assert.AssertionError) {
+      throw cause;
+    }
     throw new Error(
       `staging pack "${pack.manifest.name}" into ${destDir} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
       { cause },
