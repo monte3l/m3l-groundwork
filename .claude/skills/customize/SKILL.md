@@ -136,8 +136,9 @@ may or may not touch.
      them) rather than reading the file a second time.
    - **No shell tool available.** If a Bash or other command-running tool is
      available, compute the hash as above. If you cannot run a command, do
-     not work around it: write no scratch script, make no `Write` or `Edit`
-     outside `.groundwork/`, dispatch no subagent to look for a shell, and
+     not work around it: write no scratch script, while verifying, make no
+     `Write` or `Edit` outside `.groundwork/` (Round 1's confirmed installs are
+     not part of verification), dispatch no subagent to look for a shell, and
      search for a command tool at most once. Skip only the SHA-256
      comparison. Run every other check in this block with the file tools
      (`Read`, `Glob`, `Grep`): the files exist, `staged === path + ".staged"`,
