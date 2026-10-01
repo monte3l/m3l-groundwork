@@ -147,7 +147,15 @@ gh api --paginate 'repos/monte3l/m3l-groundwork/dependabot/alerts?state=open&per
 If a patched release exists, merge the Dependabot PR for
 `.github/release-tools` (or bump `npm` in its `package.json` and regenerate
 its lockfile), then make the same bump in the `publishing` pack's copy so
-shipped output stays in step.
+shipped output stays in step. Dependabot opens one PR per lockfile directory,
+so pair the two by hand; both bump `npm` and only the pack's touches shipped
+output, which needs a patch changeset.
+
+When the bump lands, also remove the dated "Security note, as of 2026-10-01"
+from the `publishing` pack's `adoptNotes` in
+`templates/packs/publishing/pack.json` (with a patch changeset). That note
+ships to every user and is only true while the pinned npm carries these
+advisories, so it goes stale the moment a patched npm is pinned.
 
 **What is not verified.** The reachability result comes from reading the
 unpacked tarballs, not from running the code. Beyond a grep, it was not
