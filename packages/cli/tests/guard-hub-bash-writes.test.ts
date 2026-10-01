@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * RED-phase tests for extending `.claude/hooks/guard-hub-src-writes.mjs`
- * (and its emitted `templates/core` twin) to also guard the Bash tool: a
+ * Tests for `.claude/hooks/guard-hub-src-writes.mjs` (and its emitted
+ * `templates/core` twin) guarding the Bash tool in addition to Write/Edit: a
  * hub-authored Bash command that writes into a guarded `src/`/`tests/` path
- * must be blocked the same way a raw Write/Edit already is. These tests are
- * written against the documented contract before the two new exports
- * (`findBashWriteToProtectedPath`, `shouldBlockHubBashWrite`), the Bash
- * entry-point branch, and the `settings.json` `Bash`-matcher registration
- * exist -- every case here is expected to fail (missing export / wrong exit
- * code) until `code-implementer` adds them.
+ * is blocked the same way a raw Write/Edit already is. Exercises the two
+ * exports this adds (`findBashWriteToProtectedPath`,
+ * `shouldBlockHubBashWrite`), the Bash entry-point branch, and the
+ * `settings.json` `Bash`-matcher registration.
  *
  * Covers, in order: the pure path-finding function across redirect / tee /
  * sed-perl-in-place / cp-mv-family / patch-apply / interpreter / wrapper
