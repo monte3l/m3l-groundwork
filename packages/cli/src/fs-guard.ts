@@ -3,7 +3,7 @@
 
 /**
  * The one symlink refusal adopt mode's staging writers share
- * (`baseline-stage.ts`, `packs.ts`'s `stagePackFiles`, `main.ts`'s
+ * (`staging.ts`, used by `baseline-stage.ts` and `pack-stage.ts`; `main.ts`'s
  * `.groundwork/` cleanup): a staging directory that is a symlink would
  * redirect a recursive delete or a write outside the adopted project.
  */

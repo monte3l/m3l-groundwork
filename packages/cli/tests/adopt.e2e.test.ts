@@ -16,6 +16,7 @@ import {
   readFileSync,
   readdirSync,
   existsSync,
+  globSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, dirname, sep } from "node:path";
@@ -148,7 +149,8 @@ describe("adopt mode end-to-end", () => {
       ).toBe(true);
 
       // Every pack under templates/packs/ is surveyed regardless of any
-      // --pack flag (none was passed here) and staged, unapplied.
+      // --pack flag (none was passed here) and staged, unapplied, each file
+      // under an inert .staged name -- never the bare unsuffixed name.
       expect(inventory.packs.some((p) => p.name === "harness-extras")).toBe(
         true,
       );
@@ -159,10 +161,45 @@ describe("adopt mode end-to-end", () => {
             ".groundwork",
             "packs",
             "harness-extras",
-            "pack.json",
+            "pack.json.staged",
           ),
         ),
       ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            projectDir,
+            ".groundwork",
+            "packs",
+            "harness-extras",
+            "pack.json",
+          ),
+        ),
+      ).toBe(false);
+
+      const stagedHarnessExtras = inventory.stagedPacks.find(
+        (p) => p.name === "harness-extras",
+      );
+      expect(stagedHarnessExtras).toBeDefined();
+      expect(stagedHarnessExtras?.dir).toBe(".groundwork/packs/harness-extras");
+      expect(stagedHarnessExtras?.suffix).toBe(".staged");
+      expect(stagedHarnessExtras?.manifest.staged).toBe("pack.json.staged");
+      for (const file of inventory.stagedPacks.flatMap((p) => p.files)) {
+        const stagedAbsPath = join(
+          projectDir,
+          ".groundwork",
+          "packs",
+          inventory.stagedPacks.find((p) => p.files.includes(file))?.name ?? "",
+          "files",
+          file.staged,
+        );
+        expect(existsSync(stagedAbsPath)).toBe(true);
+        expect(file.sha256).toBe(
+          createHash("sha256")
+            .update(readFileSync(stagedAbsPath))
+            .digest("hex"),
+        );
+      }
 
       const reportPath = join(projectDir, ".groundwork", "adoption-report.md");
       const report = readFileSync(reportPath, "utf8");
@@ -293,6 +330,50 @@ describe("adopt mode end-to-end", () => {
       };
       visitProject(projectDir);
       expect(discoveryMatchesUnderBaseline).toEqual([]);
+
+      // A real, project-wide glob (Node 24's fs.globSync) over every
+      // extension/basename a toolchain or harness grader could discover
+      // must never match anything under .groundwork/packs/ or
+      // .groundwork/baseline/ -- both the pack and baseline inert stores
+      // carry the same neutral ".staged" suffix on every file, pack.json
+      // included.
+      const globMatches = globSync(
+        [
+          "**/*.{ts,mjs,js,json,md,yml,yaml,toml}",
+          "**/SKILL.md",
+          "**/pack.json",
+        ],
+        { cwd: projectDir },
+      ).filter((relPath) => !relPath.includes("node_modules"));
+      const matchesUnderGroundworkStores = globMatches.filter(
+        (relPath) =>
+          relPath.startsWith(".groundwork/packs/") ||
+          relPath.startsWith(".groundwork/baseline/"),
+      );
+      expect(matchesUnderGroundworkStores).toEqual([]);
+
+      // Every stagedPacks hash in the real inventory.json verifies against
+      // the real staged bytes on disk.
+      expect(inventory.stagedPacks.length).toBeGreaterThan(0);
+      for (const pack of inventory.stagedPacks) {
+        const packDir = join(projectDir, ".groundwork", "packs", pack.name);
+        expect(existsSync(join(packDir, pack.manifest.staged))).toBe(true);
+        expect(existsSync(join(packDir, "pack.json"))).toBe(false);
+        expect(pack.manifest.sha256).toBe(
+          createHash("sha256")
+            .update(readFileSync(join(packDir, pack.manifest.staged)))
+            .digest("hex"),
+        );
+        for (const file of pack.files) {
+          const stagedAbsPath = join(packDir, "files", file.staged);
+          expect(existsSync(stagedAbsPath)).toBe(true);
+          expect(file.sha256).toBe(
+            createHash("sha256")
+              .update(readFileSync(stagedAbsPath))
+              .digest("hex"),
+          );
+        }
+      }
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

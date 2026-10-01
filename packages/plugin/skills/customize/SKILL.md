@@ -91,13 +91,13 @@ may or may not touch.
    copy in `.groundwork/customize/` is refreshed by re-running the CLI. What
    each version added:
 
-   | `schemaVersion` | Adds                                                                                                                                      | If absent                                                     |
-   | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-   | 1               | the survey, `conflicts`                                                                                                                   | (the floor)                                                   |
-   | 2               | `packs`                                                                                                                                   | no packs to offer; skip the pack question                     |
-   | 3               | `harnessGrade`, `harnessConformance`                                                                                                      | skip the harness-grade starting point                         |
-   | 4               | `toolchainGrade`, `toolchainConformance`                                                                                                  | skip the toolchain-grade starting point                       |
-   | 5               | `stagedBaseline` (`{ dir, suffix, files }`): the baseline additions staged at `.groundwork/baseline/`, each as `{ path, staged, sha256 }` | schema 1-4 only: read additions from `inventory.templateRoot` |
+   | `schemaVersion` | Adds                                                                                                                                                                                                                                                                                                                      | If absent                                                                                                                        |
+   | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+   | 1               | the survey, `conflicts`                                                                                                                                                                                                                                                                                                   | (the floor)                                                                                                                      |
+   | 2               | `packs`                                                                                                                                                                                                                                                                                                                   | no packs to offer; skip the pack question                                                                                        |
+   | 3               | `harnessGrade`, `harnessConformance`                                                                                                                                                                                                                                                                                      | skip the harness-grade starting point                                                                                            |
+   | 4               | `toolchainGrade`, `toolchainConformance`                                                                                                                                                                                                                                                                                  | skip the toolchain-grade starting point                                                                                          |
+   | 5               | `stagedBaseline` (`{ dir, suffix, files }`): the baseline additions staged at `.groundwork/baseline/`, each as `{ path, staged, sha256 }`; `stagedPacks` (per pack: `{ name, dir, suffix, manifest, files }`): every pack staged at `.groundwork/packs/<name>/`, its manifest and each file as `{ path, staged, sha256 }` | schema 1-4 only: read baseline additions from `inventory.templateRoot`; packs use the unsuffixed copy under `.groundwork/packs/` |
 
    **For a schema 5 inventory only: verify the staged baseline now, before
    anything is offered to the user.** A schema 1-4 inventory has no
@@ -118,7 +118,8 @@ may or may not touch.
      duplicate `path` or a duplicate `staged` among the entries. These fields
      use `/` separators on every platform: `conflicts[].relPath`,
      `packs[].fileConflicts[].relPath`, `stagedBaseline.dir`,
-     `stagedBaseline.files[].path` and its `.staged` name. Other paths in
+     `stagedBaseline.files[].path` and its `.staged` name, `stagedPacks[].dir`,
+     `stagedPacks[].files[].path` and `stagedPacks[].files[].staged`. Other paths in
      the inventory are not normalized: `templateRoot` and `targetDir` are
      absolute native paths, as are the survey's tsconfig chain entries.
    - The `absent` conflicts in `inventory.conflicts` and the paths in
@@ -135,6 +136,28 @@ may or may not touch.
      `node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' <file>`
      Keep those same bytes for the install in Round 1 (substitute tokens into
      them) rather than reading the file a second time.
+   - **Staged packs, in the same block.** For every entry of
+     `inventory.stagedPacks`:
+     - `dir` must equal `.groundwork/packs/<name>`, built from the entry's
+       own `name`, and `suffix` must equal `.staged`. Take both from this
+       list, not from the inventory.
+     - `name` must be a single path segment: not empty, not `.` or `..`, and
+       free of `/`, `\` and `:`. Reject a duplicate pack `name`.
+     - `manifest.path` must equal `pack.json` and `manifest.staged` must
+       equal `pack.json.staged`.
+     - For every entry of its `files`, require `staged === path + ".staged"`,
+       and apply the same path checks as the staged baseline's files above
+       (relative, no `..` segment, not absolute, not `""` or `"."`, no `\` or
+       `:`). Reject a duplicate `path` or a duplicate `staged` among one
+       pack's files.
+     - The pack names in `inventory.packs` and in `inventory.stagedPacks`
+       must be the same set, and for each pack its `fileConflicts[].relPath`
+       set must equal its `files[].path` set.
+     - Read the staged manifest at `<dir>/pack.json.staged` and each staged
+       file at `<dir>/files/<staged>` once, and apply the SHA-256 check above
+       to the raw bytes of each. Keep the bytes Step 0.1 read (hash-checked
+       when a command could run): Round 1's install and the prototype-key
+       check in Step 0.4(c) use them, with no second read.
    - **No shell tool available.** If a Bash or other command-running tool is
      available, compute the hash as above. If you cannot run a command, do
      not work around it: write no scratch script; while verifying, make no
@@ -153,7 +176,17 @@ may or may not touch.
      that looks truncated, is undetermined: report it in the Step 0.4 summary
      and continue, since every listed entry's existence is already checked
      one by one; only an extra `*.staged` file, one whose path is not in
-     `stagedBaseline.files`, stops the run. This is a partial no-shell
+     `stagedBaseline.files`, stops the run. Run the same structural checks
+     for `inventory.stagedPacks`: each pack's `<dir>/pack.json.staged` and
+     every `<dir>/files/<staged>` exists, `staged === path + ".staged"` with
+     paths that are relative and free of `..`, `\` and `:`, no duplicates,
+     `name`, `dir`, `suffix`, `manifest.path` and `manifest.staged` exact,
+     the pack names in `inventory.packs` and `inventory.stagedPacks` the
+     same set, and each pack's `fileConflicts[].relPath` and `files[].path`
+     the same set. List each pack's staged files with the `Glob` pattern
+     `.groundwork/packs/**/*.staged` (the same hidden-path and
+     truncation caveats apply) and compare with every listed manifest and
+     file: an extra `*.staged` file at any depth under `.groundwork/packs/` that is neither a listed manifest nor a listed file stops the run. This is a partial no-shell
      substitute for what the hash proves, and it is not tamper-resistance.
      Then spend no further turns on verification and go on to the deep
      read. State this plainly at the top of your first message to the user (the Step 0.4 summary, not a
@@ -169,18 +202,17 @@ may or may not touch.
      not a failure.
    - **For a schema 5 inventory, a `stagedBaseline` that is missing, not an
      object, or whose `files` is not an array also stops the run** (a
-     `files: {}` is not an empty list). **Any invalid entry, missing file or hash mismatch (including a
-     wrong `dir` or `suffix`), any duplicate `staged` or `path`, any `absent`
-     conflicts and `stagedBaseline.files` that do not name the same set, and
+     `files: {}` is not an empty list); so does a `stagedPacks` that is
+     missing or not an array, or a pack entry that is not an object or whose
+     `files` is not an array. **Any invalid entry, missing file or hash mismatch (including a
+     wrong `dir` or `suffix`), any duplicate `staged` or `path` or pack `name`, any
+     `absent` conflicts and `stagedBaseline.files` that do not name the same
+     set, any pack whose names or file paths disagree with `inventory.packs`, and
      (no-shell path) an extra `*.staged` file not named in
-     `stagedBaseline.files` means stop -- all of Round 1, including conflicts and packs -- and
-     change nothing.** This is the single stop list for the staged baseline.
-     Tell the
-     user: "The staged baseline in `.groundwork/baseline/` is incomplete or
-     does not match `.groundwork/inventory.json` (<the first entry that
-     failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run
-     `/customize` again." **Never fall back to `inventory.templateRoot`:**
-     that fallback exists for a schema 1-4 inventory only.
+     `stagedBaseline.files`, a pack's `files` or a pack's manifest
+     means stop -- all of Round 1, including conflicts and packs -- and
+     change nothing.** This is the single stop list for the staged baseline and the staged packs.
+     Tell the user: "The staged baseline in `.groundwork/baseline/` or a staged pack in `.groundwork/packs/` is incomplete or does not match `.groundwork/inventory.json` (<the first entry that failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run `/customize` again." **Never fall back to `inventory.templateRoot` for a schema 5 inventory, packs included:** that fallback exists for a schema 1-4 inventory only, and only for the baseline additions (a schema 1-4 inventory's packs are read from their unsuffixed copy, see Step 0.4(c) and Round 1).
    - What a passing check proves: the staging is complete and matches the
      inventory. It does **not** prove the files are untampered -- anyone who
      can edit the staged files can edit the inventory's hashes too.
@@ -250,17 +282,18 @@ may or may not touch.
    the project's kind.
 
    The same question also carries (d) if the no-shell bullet applied: say the
-   SHA-256 check was skipped, what a passing check would have proven, which
-   checks ran instead and any undetermined result, and ask whether to
-   continue or stop.
+   SHA-256 check was skipped, what a passing check would have proven,
+   which checks ran instead and any undetermined result, and
+   ask whether to continue or stop.
 
-   Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json`:
+   Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json.staged` (the bytes Step 0.1 read, hash-checked when a command could run; not a fresh read):
    if `__proto__`, `constructor` or `prototype` is a key of its `wiring.settings`
    (hook event names), `wiring.settingsTopLevel` or `wiring.packageScripts`
    (script names), stop. The project tree is untrusted, and the CLI refuses such a
    pack before staging it, so a staged manifest carrying one was edited after
    staging. Name the pack, the field and the key, tell the user to delete
    `.groundwork/` and re-run the CLI, and offer nothing from this run. Change nothing.
+   For a schema 1-4 inventory (the layout of the CLI releases before the `.staged` convention) there is no `.staged` copy and no hash: read the unsuffixed `.groundwork/packs/<name>/pack.json` (not hash-verified) and run this same prototype-key check on it.
 
 5. **Record the confirmed decisions** to `.groundwork/adoption-decisions.json`
    so a compacted or resumed session doesn't silently lose them and re-ask.
@@ -371,8 +404,8 @@ confirmed in Step 0.4:
   decided on, apply that decision (keep theirs / take groundwork's / merge
   the named keys).
 - The **approved packs** — installed from `.groundwork/packs/<name>/` (the
-  CLI's staged, self-contained copy — never `inventory.templateRoot`, which
-  may not exist by the time this runs). Before installing, call
+  CLI's staged, self-contained copy of inert `.staged` files — never
+  `inventory.templateRoot`, which may not exist by the time this runs). Before installing, call
   `recommendPacks(answers)` from `pack-map.ts` (alongside this file, same
   copy mechanism as `kind-facet-map.ts`) with the now-confirmed
   `InterviewAnswers` and compare its verdict against Step 0.4's decision.
@@ -388,16 +421,22 @@ confirmed in Step 0.4:
   pack's own `modes`: a pack whose `modes` doesn't include `"adopt"` (today,
   `publishing` — its release flow encodes decisions too project-specific to
   apply blind) is never auto-installed here even if staged and approved;
-  instead, state in Step 6 that it needs a manual install (point at
-  `.groundwork/packs/<name>/` and the pack's own `adoptNotes`) and stop
-  there for that pack. Before merging any staged `pack.json` wiring, repeat
+  instead, state in Step 6 that it needs a manual install (point at `.groundwork/packs/<name>/` and the pack's own `adoptNotes`, and say to strip the `.staged` suffix from every name when copying by hand and to replace every `__KEY__` token with the project's real value) and stop
+  there for that pack. Before merging any staged `pack.json.staged` wiring, repeat
   the prototype-key check from Step 0.4(c): if a key of `wiring.settings`,
   `wiring.settingsTopLevel` or `wiring.packageScripts` is `__proto__`,
   `constructor` or `prototype`, stop the same way and change nothing. For an
-  adopt-capable pack, install by copying
-  `.groundwork/packs/<name>/files/` into the project (respecting
-  any approved per-file conflict decision the same way the baseline's own
-  additions are applied), then translate `pack.json`'s `wiring` by hand
+  adopt-capable pack, install each file from
+  `.groundwork/packs/<name>/files/<path>.staged`, using the bytes Step 0.1 read (hash-checked when a command could run), and write it to the project at `path` (the `.staged` suffix
+  stripped, never to the staged name), filling in the `__KEY__` tokens with
+  the project's real values as you copy (respecting any approved per-file
+  conflict decision the same way the baseline's own additions are applied).
+  For a schema 1-4 inventory, install each file from the unsuffixed
+  `.groundwork/packs/<name>/files/<path>` instead (no `.staged` suffix to strip,
+  not hash-verified; token substitution still applies).
+  Then, for either schema, translate `pack.json`'s `wiring` by hand, reading it
+  from `pack.json.staged` (the bytes Step 0.1 read) for a schema 5 inventory and
+  from the unsuffixed `pack.json` for schema 1-4,
   against what Step 0.2's deep read already found — a `.claude/settings.json`
   hook fragment merges the same way the baseline's own hook entries would;
   `wiring.settingsTopLevel` is a set of top-level keys (e.g. `statusLine`)

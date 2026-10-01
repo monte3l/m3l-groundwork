@@ -11,6 +11,9 @@
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
 import type { Inventory, PackSurvey, StagedBaseline } from "./inventory.js";
+import { STAGED_PACKS_DIR, STAGED_PACK_MANIFEST } from "./pack-stage.js";
+import type { StagedPack } from "./pack-stage.js";
+import { STAGED_SUFFIX } from "./staging.js";
 
 /**
  * Estimates the post-merge total against each cap: the baseline's own count
@@ -408,21 +411,42 @@ function renderUndeterminedSection(inventory: Inventory): string {
   return lines.join("\n");
 }
 
-/** The closing paragraph (plus its trailing blank line) about the inert staged copies, or nothing when no file was staged. */
-function renderStagedFilesNote(stagedBaseline: StagedBaseline): string[] {
-  const { dir, suffix, files } = stagedBaseline;
-  if (files.length === 0) {
+/**
+ * The closing paragraph (plus its trailing blank line) about the inert staged
+ * copies -- the baseline's and the packs' -- or nothing when neither staged
+ * anything.
+ */
+function renderStagedFilesNote(
+  stagedBaseline: StagedBaseline,
+  stagedPacks: readonly StagedPack[],
+): string[] {
+  const parts: string[] = [];
+  const dirs: string[] = [];
+  if (stagedBaseline.files.length > 0) {
+    parts.push(`the baseline files staged under \`${stagedBaseline.dir}/\``);
+    dirs.push(stagedBaseline.dir);
+  }
+  if (stagedPacks.length > 0) {
+    parts.push(
+      `the ${stagedPacks.length} pack(s) staged under \`${STAGED_PACKS_DIR}/\` ` +
+        `(each pack's \`${STAGED_PACK_MANIFEST}\` included)`,
+    );
+    dirs.push(STAGED_PACKS_DIR);
+  }
+  const subject = parts.join(" and ");
+  if (subject === "") {
     return [];
   }
+  const ignoreLines = dirs.map((dir) => `\`${dir}/\``).join(" and a ");
   return [
-    `The baseline files staged under \`${dir}/\` are inert copies, never ` +
-      `installed: each carries a \`${suffix}\` suffix so no tool in this ` +
+    `${subject.charAt(0).toUpperCase()}${subject.slice(1)} are inert copies, never ` +
+      `installed: each carries a \`${STAGED_SUFFIX}\` suffix so no tool in this ` +
       "project picks one up, and `/customize` installs one only after you " +
-      `confirm it. Decide whether to commit or ignore those \`${suffix}\` ` +
+      `confirm it. Decide whether to commit or ignore those \`${STAGED_SUFFIX}\` ` +
       "files before your next commit: they are verbatim template copies, so " +
       "a strict license-header check, or any gate that runs over every " +
-      "tracked file, may flag them. To keep them out of git, add a " +
-      `\`${dir}/\` line to \`.gitignore\`.`,
+      `tracked file, may flag them. To keep them out of git, add a ` +
+      `${ignoreLines} line to \`.gitignore\`.`,
     "",
   ];
 }
@@ -464,7 +488,7 @@ export function renderReport(inventory: Inventory): string {
       "project? Say so when `/customize` asks -- that confirmation round " +
       "is the point where it's caught.",
     "",
-    ...renderStagedFilesNote(inventory.stagedBaseline),
+    ...renderStagedFilesNote(inventory.stagedBaseline, inventory.stagedPacks),
     "`.groundwork/` itself was not added to this project's `.gitignore` -- " +
       "that choice is yours. It's disposable (regenerate it any time by " +
       "re-running the CLI), so most projects gitignore it; some prefer to " +

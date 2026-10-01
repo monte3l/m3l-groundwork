@@ -9,25 +9,28 @@
  * than from `templateRoot` -- an absolute path that may not exist by the time
  * it runs -- and no toolchain globbing the project ever picks one up.
  */
-import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { restoreDotfilePath } from "./assets.js";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { FileConflict } from "./conflicts.js";
 import { isPathContained } from "./emit.js";
-import { assertNotSymlink } from "./fs-guard.js";
-import { applyTokens } from "./tokens.js";
+import {
+  STAGED_SUFFIX,
+  assertPlanBuiltFor,
+  clearStaging,
+  collectTemplateFiles,
+  findStagedPathCollision,
+  prepareStaging,
+  stageAtomically,
+  stagedNameFor,
+  toPosixPath,
+  writeStagedBytes,
+} from "./staging.js";
+import type { StagingTarget } from "./staging.js";
 import type { TokenTable } from "./tokens.js";
+
+// Re-exported so existing consumers of this module keep one import site;
+// staging.ts owns the definitions.
+export { STAGED_SUFFIX, stagedNameFor, toPosixPath };
 
 /**
  * The directory name, under `.groundwork/`, that absent baseline files are
@@ -40,17 +43,6 @@ import type { TokenTable } from "./tokens.js";
  * ```
  */
 export const STAGED_BASELINE_DIR = "baseline";
-
-/**
- * The suffix every staged file carries, so no extension-based glob
- * (`**\/*.ts`, `**\/*.md`, `vitest.config.*`) ever matches a staged copy.
- *
- * @example
- * ```ts
- * const staged = `eslint.config.js${STAGED_SUFFIX}`; // "eslint.config.js.staged"
- * ```
- */
-export const STAGED_SUFFIX = ".staged";
 
 /**
  * One staged baseline file: its install path, its staged name, and the
@@ -74,109 +66,27 @@ export interface StagedBaselineFile {
   sha256: string;
 }
 
-/**
- * The staged name for a project-relative `path`: `path` + {@link STAGED_SUFFIX}.
- * The single derivation both the stager and adopt mode's write-scope check use.
- *
- * @example
- * ```ts
- * stagedNameFor("src/index.ts"); // "src/index.ts.staged"
- * ```
- */
-export function stagedNameFor(path: string): string {
-  return `${path}${STAGED_SUFFIX}`;
-}
+/** One validated staging entry: the install path and its template source. */
+type PlannedBaselineFile = BaselineStagingPlan["files"][number];
 
 /**
- * Maps every file under `root` to its install path (tokens applied, dotfile
- * name restored) -- the same derivation `planConflicts` uses. Two files
- * mapping to the same install path (`_gitignore` beside `.gitignore`) make
- * the mapping ambiguous: throws, naming the path and both sources, rather
- * than silently letting the later one win.
- */
-function collectTemplateFiles(
-  root: string,
-  currentDir: string,
-  tokens: TokenTable,
-  results: Map<string, string>,
-): void {
-  for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
-    const sourcePath = join(currentDir, entry.name);
-    if (entry.isDirectory()) {
-      collectTemplateFiles(root, sourcePath, tokens, results);
-      continue;
-    }
-    const installPath = restoreDotfilePath(
-      applyTokens(relative(root, sourcePath), tokens),
-    );
-    const previous = results.get(installPath);
-    if (previous !== undefined) {
-      throw new Error(
-        `template files ${previous} and ${sourcePath} both install to ${installPath} under ${root}; remove one of them`,
-      );
-    }
-    results.set(installPath, sourcePath);
-  }
-}
-
-/**
- * Normalizes a native relative path to forward slashes, so a path recorded
- * in `inventory.json` reads the same whichever OS ran the CLI.
- *
- * @example
- * ```ts
- * toPosixPath("src\\index.ts"); // "src/index.ts"
- * ```
- */
-export function toPosixPath(p: string): string {
-  return p.replaceAll("\\", "/");
-}
-
-/** `rmSync` options for a staging directory: recursive, tolerant of absence, and retried on a transient EBUSY/EPERM. */
-const RM_DIR_OPTIONS = { recursive: true, force: true, maxRetries: 3 } as const;
-
-/** Prefix of every temporary staging work directory under `groundworkDir`. */
-const WORK_DIR_PREFIX = `.${STAGED_BASELINE_DIR}-`;
-
-/** Removes `path` recursively; a failure only warns, naming the path, so it can never shadow the outcome it is cleaning up after. */
-function removeBestEffort(path: string): void {
-  try {
-    rmSync(path, RM_DIR_OPTIONS);
-  } catch (error) {
-    console.warn(
-      `warning: could not remove the temporary staging directory ${path} -- delete it by hand (${error instanceof Error ? error.message : String(error)})`,
-    );
-  }
-}
-
-/** Removes every `.baseline-*` work directory a crashed earlier run left under `groundworkDir`; nothing else there is touched. */
-function removeStaleWorkDirs(groundworkDir: string): void {
-  if (!existsSync(groundworkDir)) {
-    return;
-  }
-  for (const name of readdirSync(groundworkDir)) {
-    if (name.startsWith(WORK_DIR_PREFIX)) {
-      removeBestEffort(join(groundworkDir, name));
-    }
-  }
-}
-
-/**
- * Pairs every absent conflict with its template source. Three defects are
- * refused, each with its own error and never skipped: a template with two
- * files mapping to one install path, a `relPath` whose staged name would
- * land outside `destDir` (CWE-22, docs/assurance-case.md), and an absent
- * path with no template counterpart.
+ * Pairs every absent conflict with its template source. Four defects are
+ * refused, each with its own `Error` (no `cause`) and never skipped: a
+ * template with two files mapping to one install path, a `relPath` whose
+ * staged name would land outside `destDir` (CWE-22, docs/assurance-case.md),
+ * an absent path with no template counterpart, and two staged names that
+ * would land on the same file ({@link findStagedPathCollision}: equal once
+ * NFC-normalized and case-folded, or one a directory prefix of the other).
  */
 function planStaging(
   templateRoot: string,
   absent: readonly FileConflict[],
   tokens: TokenTable,
   destDir: string,
-): { path: string; sourcePath: string }[] {
-  const templateFiles = new Map<string, string>();
-  collectTemplateFiles(templateRoot, templateRoot, tokens, templateFiles);
-  return absent.map(({ relPath }) => {
+): PlannedBaselineFile[] {
+  const templateFiles = collectTemplateFiles(templateRoot, tokens);
+  const plan = absent.map(({ relPath }): PlannedBaselineFile => {
+    // No ":" refusal here: that check (a Windows drive letter / ADS) is packs-only, in pack-stage.ts.
     const destPath = join(destDir, stagedNameFor(relPath));
     if (!isPathContained(destPath, destDir)) {
       throw new Error(
@@ -191,53 +101,110 @@ function planStaging(
     }
     return { path: relPath, sourcePath };
   });
-}
-
-/**
- * The standard staging failure: `.groundwork/` is incomplete and the CLI
- * should be re-run. The message embeds the cause's own message so it stands
- * alone; `formatErrorChain` skips the then-redundant `caused by:` line.
- */
-function incompleteStagingError(destDir: string, cause: unknown): Error {
-  const reason = cause instanceof Error ? cause.message : String(cause);
-  return new Error(
-    `staging the baseline into ${destDir} failed (${reason}), so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
-    { cause },
+  const collision = findStagedPathCollision(
+    plan.map(({ path }) => toPosixPath(stagedNameFor(path))),
   );
+  if (collision !== undefined) {
+    throw new Error(
+      `stageBaselineAdditions: two staged baseline files under ${destDir} collide: ${collision}; rename one of the template files under ${templateRoot}`,
+    );
+  }
+  return plan;
 }
 
-/** The swap's final rename and the restore of the parked previous baseline both failed: the parked copy is the only one left. */
-class ParkedBaselineError extends AggregateError {}
+/** The absent conflicts in `conflicts` -- the files a baseline staging copies. */
+function absentConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
+  return conflicts.filter((c) => c.status === "absent");
+}
 
 /**
- * Moves `newDir` into place at `destDir`, parking any previous `destDir` at
- * `parkedDir` first. If the final rename fails the parked copy is renamed
- * back; if that restore fails too, throws a {@link ParkedBaselineError}
- * carrying both errors, naming `parkedDir`, and telling the user to re-run
- * the CLI -- the staging is derived data, so the next run's stale-dir sweep
- * removes the parked copy and regenerates `destDir` from the template.
+ * The validated plan for one {@link stageBaselineAdditions} run: every path
+ * it would write, plus each file's install path and template source, so
+ * staging never re-walks the template tree. Built by
+ * {@link planBaselineStaging}.
+ *
+ * @example
+ * ```ts
+ * import { planBaselineStaging, stageBaselineAdditions } from "./baseline-stage.js";
+ * const plan = planBaselineStaging(templateRoot, conflicts, groundworkDir, tokens);
+ * stageBaselineAdditions(templateRoot, conflicts, groundworkDir, tokens, plan);
+ * ```
  */
-function swapInto(newDir: string, destDir: string, parkedDir: string): void {
-  const hadPrevious = existsSync(destDir);
-  if (hadPrevious) {
-    renameSync(destDir, parkedDir);
+export interface BaselineStagingPlan {
+  /** The `groundworkDir` the plan was computed for; {@link stageBaselineAdditions} refuses the plan for any other. */
+  readonly groundworkDir: string;
+  /** Every path the run writes: one `<groundworkDir>/baseline/<path>.staged` per absent conflict, in `conflicts` order. */
+  readonly paths: readonly string[];
+  /** Each absent conflict's install path and template source, in the same order. */
+  readonly files: readonly {
+    readonly path: string;
+    readonly sourcePath: string;
+  }[];
+}
+
+/**
+ * Validates the absent conflicts in `conflicts` against `templateRoot` and
+ * computes the plan {@link stageBaselineAdditions} writes from: every path
+ * under `<groundworkDir>/baseline/` -- one `<path>.staged` per absent
+ * conflict -- and each file's template source, so adopt mode can
+ * scope-check `paths` before anything under `.groundwork/` is deleted or
+ * written and then hand the same plan to {@link stageBaselineAdditions}.
+ * Reads the template tree (not at all when nothing is absent); writes
+ * nothing. Both arrays are empty when nothing is absent.
+ *
+ * @throws The same plan `Error`s as {@link stageBaselineAdditions}: a
+ * template with two files installing to one path, an absent conflict with no
+ * template counterpart or whose staged name would escape the staging
+ * directory, or two colliding staged names.
+ *
+ * @example
+ * ```ts
+ * import { assertAdoptWriteScope } from "./main.js";
+ * const plan = planBaselineStaging(templateRoot, conflicts, groundworkDir, tokens);
+ * assertAdoptWriteScope(targetDir, plan.paths);
+ * stageBaselineAdditions(templateRoot, conflicts, groundworkDir, tokens, plan);
+ * ```
+ */
+export function planBaselineStaging(
+  templateRoot: string,
+  conflicts: readonly FileConflict[],
+  groundworkDir: string,
+  tokens: TokenTable,
+): BaselineStagingPlan {
+  const absent = absentConflicts(conflicts);
+  if (absent.length === 0) {
+    return { groundworkDir, paths: [], files: [] };
   }
-  try {
-    renameSync(newDir, destDir);
-  } catch (error) {
-    if (!hadPrevious) {
-      throw error;
-    }
-    try {
-      renameSync(parkedDir, destDir);
-    } catch (restoreError) {
-      throw new ParkedBaselineError(
-        [error, restoreError],
-        `moving the new baseline into ${destDir} failed and restoring the previous one failed too; the previous baseline was parked at ${parkedDir} -- fix the cause and re-run the CLI: the staging is derived data, regenerated from the template, and the next run removes the parked copy`,
-      );
-    }
-    throw error;
-  }
+  const destDir = join(groundworkDir, STAGED_BASELINE_DIR);
+  const files = planStaging(templateRoot, absent, tokens, destDir);
+  const paths = files.map(({ path }) => join(destDir, stagedNameFor(path)));
+  return { groundworkDir, paths, files };
+}
+
+/**
+ * Every path {@link stageBaselineAdditions} would write for `conflicts` -- a
+ * thin wrapper returning {@link planBaselineStaging}'s `paths`. Reads the
+ * template tree; writes nothing. Returns `[]` when nothing is absent.
+ *
+ * @throws The same plan `Error`s as {@link planBaselineStaging}.
+ *
+ * @example
+ * ```ts
+ * import { assertAdoptWriteScope } from "./main.js";
+ * const paths = plannedBaselineStagingPaths(templateRoot, conflicts, groundworkDir, tokens);
+ * assertAdoptWriteScope(targetDir, paths);
+ * ```
+ */
+export function plannedBaselineStagingPaths(
+  templateRoot: string,
+  conflicts: readonly FileConflict[],
+  groundworkDir: string,
+  tokens: TokenTable,
+): string[] {
+  return [
+    ...planBaselineStaging(templateRoot, conflicts, groundworkDir, tokens)
+      .paths,
+  ];
 }
 
 /**
@@ -250,22 +217,33 @@ function swapInto(newDir: string, destDir: string, parkedDir: string): void {
  * ({@link toPosixPath}).
  *
  * What is guaranteed:
- * - Before anything is deleted or written, `groundworkDir` and
- *   `<groundworkDir>/baseline` are checked not to be symlinks.
- * - Any `.baseline-*` work directory a crashed earlier run left in
- *   `groundworkDir` is removed (best effort; a failure only warns).
+ * - The plan is validated first, before anything is deleted or written (or,
+ *   when `plan` is passed, was already validated by
+ *   {@link planBaselineStaging} and the template tree is not walked again): a
+ *   template with two files installing to the same path (a dotfile-escaped
+ *   name beside its literal twin), an absent conflict with no template
+ *   counterpart or whose staged name would escape the staging directory, or
+ *   two staged names that would land on the same file (equal once
+ *   NFC-normalized and case-folded, or one a directory prefix of the other)
+ *   throws its own
+ *   `Error`, leaving `.groundwork/` exactly as it was.
+ * - Then, still before anything is deleted or written, `groundworkDir` and
+ *   `<groundworkDir>/baseline` are checked not to be symlinks, and every
+ *   `.baseline-*` entry of the CLI-owned `groundworkDir` -- work directories
+ *   a crashed earlier run left -- is removed (best effort; a failure to
+ *   remove one only warns, a failure to list `groundworkDir` throws).
  * - When nothing is absent, any previous staging is removed and nothing is
  *   created.
- * - The plan is validated before any staging work: a template with two files
- *   installing to the same path (a dotfile-escaped name beside its literal
- *   twin), or an absent conflict with no template counterpart or whose
- *   staged name would escape the staging directory, throws its own `Error`
- *   with the previous `baseline/` untouched and no temporary directory
- *   created.
  * - Files are then written into a temporary `.baseline-*` sibling directory
- *   and swapped into place only after every copy succeeded, so a copy
- *   failure leaves any previous `baseline/` intact. A previous staging is
- *   replaced wholesale (no stale file lingers).
+ *   and swapped in by rename only after every copy succeeded, so
+ *   `baseline/` is never half-written and a copy failure leaves any previous
+ *   `baseline/` intact. A previous staging is replaced wholesale (no stale
+ *   file lingers).
+ * - With a previous `baseline/`, the swap is two renames: the previous one
+ *   is parked inside the temporary directory, then the new one moved into
+ *   place. A process killed between the two leaves `baseline/` absent and
+ *   the previous copy at `.baseline-XXXXXX/previous`; the next run's sweep
+ *   removes it and regenerates the staging.
  * - If the final swap rename fails, the previous `baseline/` is renamed back
  *   into place. Only if that restore also fails is `baseline/` left absent:
  *   the previous staging then survives, parked inside the temporary
@@ -274,13 +252,20 @@ function swapInto(newDir: string, destDir: string, parkedDir: string): void {
  * - The temporary directory is otherwise always removed; a failure to remove
  *   it only warns, naming its path.
  *
- * @throws `Error` before any delete or write when `groundworkDir` or
- * `<groundworkDir>/baseline` is a symlink; `Error` (no `cause`) for an
- * invalid plan, as above; `AggregateError` of the swap and restore failures,
- * naming where the previous baseline is parked, when both renames fail; the
- * `AssertionError` itself, unwrapped, if the staged-path containment
- * invariant ever fails while writing; otherwise an `Error` with `cause`, including the cause's message, saying
- * `.groundwork/` is incomplete and the CLI should be re-run.
+ * @throws `Error` (no `cause`, no re-run advice) for an invalid plan, as
+ * above; `Error` before any delete or write when `groundworkDir` or
+ * `<groundworkDir>/baseline` is a symlink; `AggregateError` of the swap and
+ * restore failures, naming where the previous baseline is parked, when both
+ * renames fail; the `AssertionError` itself, unwrapped, if the staged-path
+ * containment invariant ever fails while writing; otherwise an `Error` with
+ * `cause`, including the cause's message, saying `.groundwork/` is
+ * incomplete and the CLI should be re-run.
+ *
+ * @param plan - The plan {@link planBaselineStaging} computed for these same
+ * `templateRoot`, `conflicts`, `groundworkDir` and `tokens`; computed here
+ * when omitted. A plan whose `groundworkDir` resolves to a different
+ * directory throws a plain `Error` naming both ("the plan was built for …")
+ * before anything is deleted or written.
  *
  * @example
  * ```ts
@@ -295,72 +280,50 @@ export function stageBaselineAdditions(
   conflicts: readonly FileConflict[],
   groundworkDir: string,
   tokens: TokenTable,
+  // Defaulted before the symlink check and stale-dir sweep below, so an
+  // invalid plan -- a template defect, with its own message rather than the
+  // "incomplete, re-run" staging failure -- deletes and writes nothing.
+  plan: BaselineStagingPlan = planBaselineStaging(
+    templateRoot,
+    conflicts,
+    groundworkDir,
+    tokens,
+  ),
 ): StagedBaselineFile[] {
-  const destDir = join(groundworkDir, STAGED_BASELINE_DIR);
-  assertNotSymlink(groundworkDir);
-  assertNotSymlink(destDir);
-  removeStaleWorkDirs(groundworkDir);
+  assertPlanBuiltFor(
+    "stageBaselineAdditions",
+    plan.groundworkDir,
+    groundworkDir,
+  );
+  const target: StagingTarget = {
+    groundworkDir,
+    dirName: STAGED_BASELINE_DIR,
+    noun: "baseline",
+    plural: false,
+  };
 
-  const absent = conflicts.filter((c) => c.status === "absent");
-  if (absent.length === 0) {
-    try {
-      rmSync(destDir, RM_DIR_OPTIONS);
-    } catch (cause) {
-      throw incompleteStagingError(destDir, cause);
-    }
+  prepareStaging(target);
+  if (plan.files.length === 0) {
+    clearStaging(target);
     return [];
   }
 
-  // Outside the try: a plan error is a caller bug with its own message, not
-  // an "incomplete, re-run" staging failure, and nothing exists to clean up.
-  const plan = planStaging(templateRoot, absent, tokens, destDir);
-
-  let workDir: string | undefined;
-  // Set only when the previous baseline is parked inside workDir and could
-  // not be restored: workDir then holds its only copy and must survive.
-  let keepWorkDir = false;
-  try {
-    mkdirSync(groundworkDir, { recursive: true });
-    workDir = mkdtempSync(join(groundworkDir, WORK_DIR_PREFIX));
-    const newDir = join(workDir, STAGED_BASELINE_DIR);
-
-    const staged = plan.map(({ path, sourcePath }): StagedBaselineFile => {
+  return stageAtomically(target, (newDir) =>
+    plan.files.map(({ path, sourcePath }): StagedBaselineFile => {
       const stagedName = stagedNameFor(path);
-      const destPath = join(newDir, stagedName);
-      // CWE-22 invariant (docs/assurance-case.md), same as emitTemplate:
-      // planStaging already refused an escaping path; this re-asserts it
-      // against the directory actually written to.
-      assert.ok(
-        isPathContained(destPath, newDir),
-        `stageBaselineAdditions: staged path ${resolve(destPath)} escapes ${resolve(newDir)}`,
+      // writeStagedBytes re-asserts the CWE-22 containment planStaging
+      // already checked, against the directory actually written to.
+      const sha256 = writeStagedBytes(
+        "stageBaselineAdditions",
+        readFileSync(sourcePath),
+        newDir,
+        stagedName,
       );
-      const bytes = readFileSync(sourcePath);
-      mkdirSync(dirname(destPath), { recursive: true });
-      writeFileSync(destPath, bytes, { flag: "wx" });
-      const sha256 = createHash("sha256").update(bytes).digest("hex");
       return {
         path: toPosixPath(path),
         staged: toPosixPath(stagedName),
         sha256,
       };
-    });
-
-    swapInto(newDir, destDir, join(workDir, "previous"));
-    return staged;
-  } catch (cause) {
-    if (cause instanceof ParkedBaselineError) {
-      keepWorkDir = true;
-      throw cause;
-    }
-    if (cause instanceof assert.AssertionError) {
-      // A broken CWE-22 invariant is a bug in this module, not a transient
-      // failure a re-run could fix: surface it as itself.
-      throw cause;
-    }
-    throw incompleteStagingError(destDir, cause);
-  } finally {
-    if (workDir !== undefined && !keepWorkDir) {
-      removeBestEffort(workDir);
-    }
-  }
+    }),
+  );
 }

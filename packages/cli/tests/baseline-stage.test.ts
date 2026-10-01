@@ -29,6 +29,7 @@ import type { FileConflict } from "../src/conflicts.js";
 import {
   STAGED_BASELINE_DIR,
   STAGED_SUFFIX,
+  plannedBaselineStagingPaths,
   stageBaselineAdditions,
   toPosixPath,
 } from "../src/baseline-stage.js";
@@ -638,6 +639,192 @@ describe("stageBaselineAdditions", () => {
       expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
         "do not touch",
       );
+    });
+  });
+
+  describe("plannedBaselineStagingPaths (round-2 item 3)", () => {
+    it("returns every path stageBaselineAdditions would write, all resolving under groundworkDir/baseline, writing nothing", () => {
+      writeTemplateFixture();
+      writeTargetFixture();
+      const conflicts = planConflicts(templateRoot, targetDir, {});
+      const baselineDir = join(groundworkDir, STAGED_BASELINE_DIR);
+
+      const paths = plannedBaselineStagingPaths(
+        templateRoot,
+        conflicts,
+        groundworkDir,
+        {},
+      );
+
+      expect(existsSync(baselineDir)).toBe(false);
+      const absentRelPaths = conflicts
+        .filter((c) => c.status === "absent")
+        .map((c) => c.relPath);
+      expect(paths.length).toBe(absentRelPaths.length);
+      for (const path of paths) {
+        expect(path.startsWith(baselineDir)).toBe(true);
+      }
+      for (const relPath of absentRelPaths) {
+        expect(paths).toContain(
+          join(baselineDir, `${relPath}${STAGED_SUFFIX}`),
+        );
+      }
+    });
+
+    it("returns [] when nothing is absent, writing nothing", () => {
+      writeFileSync(join(templateRoot, "only.txt"), "same everywhere\n");
+      writeFileSync(join(targetDir, "only.txt"), "same everywhere\n");
+      const conflicts = planConflicts(templateRoot, targetDir, {});
+      expect(conflicts.every((c) => c.status !== "absent")).toBe(true);
+
+      const paths = plannedBaselineStagingPaths(
+        templateRoot,
+        conflicts,
+        groundworkDir,
+        {},
+      );
+
+      expect(paths).toEqual([]);
+      expect(existsSync(join(groundworkDir, STAGED_BASELINE_DIR))).toBe(false);
+    });
+
+    it("throws the same plan error as stageBaselineAdditions -- no counterpart -- writing nothing", () => {
+      const bogus: FileConflict = {
+        relPath: "ghost.txt",
+        status: "absent",
+        keyDiffs: undefined,
+      };
+
+      expect(() =>
+        plannedBaselineStagingPaths(templateRoot, [bogus], groundworkDir, {}),
+      ).toThrow(/ghost\.txt/);
+      expect(existsSync(join(groundworkDir, STAGED_BASELINE_DIR))).toBe(false);
+      expect(readdirSync(groundworkDir)).toEqual([]);
+    });
+
+    it("throws the same plan error as stageBaselineAdditions -- duplicate install path -- writing nothing", () => {
+      writeFileSync(join(templateRoot, "_gitignore"), "escaped\n");
+      writeFileSync(join(templateRoot, ".gitignore"), "literal\n");
+      const absent: FileConflict = {
+        relPath: ".gitignore",
+        status: "absent",
+        keyDiffs: undefined,
+      };
+
+      let thrown: unknown;
+      try {
+        plannedBaselineStagingPaths(templateRoot, [absent], groundworkDir, {});
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain(".gitignore");
+      expect(message).toContain("_gitignore");
+      expect(existsSync(join(groundworkDir, STAGED_BASELINE_DIR))).toBe(false);
+      expect(readdirSync(groundworkDir)).toEqual([]);
+    });
+
+    it("throws the same plan error as stageBaselineAdditions -- escaping staged path (CWE-22) -- writing nothing", () => {
+      const escaping: FileConflict = {
+        relPath: "../escape.txt",
+        status: "absent",
+        keyDiffs: undefined,
+      };
+
+      expect(() =>
+        plannedBaselineStagingPaths(
+          templateRoot,
+          [escaping],
+          groundworkDir,
+          {},
+        ),
+      ).toThrow();
+      expect(existsSync(join(groundworkDir, STAGED_BASELINE_DIR))).toBe(false);
+      expect(readdirSync(groundworkDir)).toEqual([]);
+    });
+  });
+
+  describe("staged-path collision detection (round-2 item 4)", () => {
+    it("throws its own distinct Error naming both paths -- no 'incomplete'/'re-run' wording, no cause -- when one absent file's staged name is a directory-prefix of another's (a top-level file 'x' beside a directory 'x.staged/' containing 'y')", () => {
+      writeFileSync(join(templateRoot, "x"), "the file\n");
+      mkdirSync(join(templateRoot, "x.staged"), { recursive: true });
+      writeFileSync(join(templateRoot, "x.staged", "y"), "the nested file\n");
+      const conflicts = planConflicts(templateRoot, targetDir, {});
+      expect(conflicts.map((c) => c.relPath).sort()).toEqual(
+        ["x", "x.staged/y"].sort(),
+      );
+      expect(conflicts.every((c) => c.status === "absent")).toBe(true);
+
+      let thrown: unknown;
+      try {
+        stageBaselineAdditions(templateRoot, conflicts, groundworkDir, {});
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain("x.staged");
+      expect(message).toContain("x.staged/y.staged");
+      expect(message).not.toContain("incomplete");
+      expect(message).not.toContain("re-run");
+      expect((thrown as Error).cause).toBeUndefined();
+      expect(existsSync(join(groundworkDir, STAGED_BASELINE_DIR))).toBe(false);
+      expect(readdirSync(groundworkDir)).toEqual([]);
+    });
+
+    it("throws its own distinct Error naming both paths -- no 'incomplete'/'re-run' wording, no cause -- when two absent files' staged names collide only by case (a literal 'readme.md' beside a tokenized name substituting to 'README.md')", () => {
+      writeFileSync(join(templateRoot, "readme.md"), "literal readme\n");
+      writeFileSync(
+        join(templateRoot, "__PROJECT_NAME__.md"),
+        "tokenized readme\n",
+      );
+      const tokens = { PROJECT_NAME: "README" };
+      const conflicts = planConflicts(templateRoot, targetDir, tokens);
+      expect(conflicts.map((c) => c.relPath).sort()).toEqual(
+        ["README.md", "readme.md"].sort(),
+      );
+      expect(conflicts.every((c) => c.status === "absent")).toBe(true);
+
+      let thrown: unknown;
+      try {
+        stageBaselineAdditions(templateRoot, conflicts, groundworkDir, tokens);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain("README.md");
+      expect(message).toContain("readme.md");
+      expect(message).not.toContain("incomplete");
+      expect(message).not.toContain("re-run");
+      expect((thrown as Error).cause).toBeUndefined();
+      expect(existsSync(join(groundworkDir, STAGED_BASELINE_DIR))).toBe(false);
+      expect(readdirSync(groundworkDir)).toEqual([]);
+    });
+  });
+
+  describe("colon in a relPath (round-2 item 6 -- pack-stage only, baseline unaffected)", () => {
+    it("stages a file whose relPath contains a colon without throwing -- only pack-stage.ts refuses ':'", () => {
+      writeFileSync(join(templateRoot, "c:foo"), "colon file\n");
+      const conflicts = planConflicts(templateRoot, targetDir, {});
+      expect(conflicts.find((c) => c.relPath === "c:foo")?.status).toBe(
+        "absent",
+      );
+
+      const staged = stageBaselineAdditions(
+        templateRoot,
+        conflicts,
+        groundworkDir,
+        {},
+      );
+
+      const entry = staged.find((f) => f.path === "c:foo");
+      expect(entry).toBeDefined();
+      expect(entry?.staged).toBe("c:foo.staged");
     });
   });
 });

@@ -135,11 +135,12 @@ dependency -- there isn't one (`packages/cli/package.json`'s
 - **Least common mechanism.** Fresh mode and adopt mode don't share a
   generic "write into the target directory" facility. Adopt mode's only
   writes are `.groundwork/inventory.json`, `.groundwork/adoption-report.md`,
-  inert `.staged` copies under `.groundwork/baseline/`, the staged pack
-  files under `.groundwork/packs/` (these keep their real extensions and are
-  not inert), both refused if `.groundwork` or a staging directory is a
-  symlink, and a
-  guarded, additive `/customize` copy -- there is no code path by
+  inert `.staged` copies under `.groundwork/baseline/`, and the staged pack
+  files under `.groundwork/packs/` (inert `.staged` copies too, `pack.json`
+  included). Both staging directories are written to a temp sibling and
+  swapped in by rename, never half-written, and both refuse to run if
+  `.groundwork` or a staging directory is a symlink. The one other write is
+  a guarded, additive `/customize` copy -- there is no code path by
   which surveying an arbitrary, untrusted project can reach the same
   unrestricted file-writing fresh mode uses, so a defect in one mode's
   write logic can't leak into the other's trust domain.
@@ -220,7 +221,7 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   CLI-owned `.groundwork/customize/` and, in fresh mode under `--force`, in
   `.claude/skills/customize/`. There is,
   however, a time-of-check-to-time-of-use gap between those `lstat` checks and the
-  later write: a local attacker able to swap a directory for a symlink in
+  later `rmSync` calls and writes: a local attacker able to swap a directory for a symlink in
   that window is outside the threat model this tool accepts, which assumes
   the project directory is not concurrently modified by a hostile local
   process.

@@ -133,6 +133,7 @@ function baseInventory(
       suffix: ".staged",
       files: [],
     },
+    stagedPacks: [],
     ...overrides,
   };
 }
@@ -593,6 +594,47 @@ describe("renderReport", () => {
     const report = renderReport(baseInventory(templateRoot));
     expect(report).not.toContain("Decide whether to commit or ignore");
     expect(report).not.toContain("may flag them");
+  });
+
+  function stagedPackFixture() {
+    return {
+      name: "harness-extras",
+      dir: ".groundwork/packs/harness-extras",
+      suffix: ".staged",
+      manifest: {
+        path: "pack.json",
+        staged: "pack.json.staged",
+        sha256: "a".repeat(64),
+      },
+      files: [
+        {
+          path: ".claude/hooks/guard-readonly-bash.mjs",
+          staged: ".claude/hooks/guard-readonly-bash.mjs.staged",
+          sha256: "b".repeat(64),
+        },
+      ],
+    };
+  }
+
+  it("also mentions .groundwork/packs/ and the .staged suffix (pack.json included) in the closing paragraph when stagedPacks has entries, even though stagedBaseline.files is empty", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, { stagedPacks: [stagedPackFixture()] }),
+    );
+
+    expect(report).toContain(".groundwork/packs/");
+    expect(report).toContain(".staged");
+    expect(report).toMatch(/pack\.json/);
+    // Gated on confirmation, not installed outright.
+    expect(report).toMatch(/confirm|only after/);
+  });
+
+  it("omits the closing staged-files paragraph entirely when BOTH stagedBaseline.files and stagedPacks are empty", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, { stagedPacks: [] }),
+    );
+    expect(report).not.toContain("Decide whether to commit or ignore");
+    expect(report).not.toContain("may flag them");
+    expect(report).not.toContain(".groundwork/packs/");
   });
 
   it("never leaves the could-not-determine section empty when undetermined entries exist", () => {

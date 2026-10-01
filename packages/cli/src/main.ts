@@ -13,8 +13,9 @@
  * already-established project and writes only a report -- see `mode.ts`,
  * `survey/survey.ts`, `conflicts.ts`, and `report.ts`. Adopt mode never
  * touches a project file, including a pack's: it surveys every pack under
- * `templates/packs/` into the report and defers installation to
- * `/customize`; see `runAdopt`.
+ * `templates/packs/` into the report, stages each as inert `.staged` copies
+ * under `.groundwork/packs/`, and defers installation to `/customize`; see
+ * `runAdopt`.
  */
 import {
   existsSync,
@@ -48,8 +49,8 @@ import { planConflicts } from "./conflicts.js";
 import {
   STAGED_BASELINE_DIR,
   STAGED_SUFFIX,
+  planBaselineStaging,
   stageBaselineAdditions,
-  stagedNameFor,
 } from "./baseline-stage.js";
 import { assertNotSymlink } from "./fs-guard.js";
 import {
@@ -57,15 +58,15 @@ import {
   resolveCliVersion,
   writeInventory,
 } from "./inventory.js";
-import type { PackSurvey } from "./inventory.js";
+import type { Inventory, PackSurvey } from "./inventory.js";
 import type { Pack } from "./packs.js";
 import {
   listPackNames,
   loadPack,
   installPack,
   observeWiring,
-  stagePackFiles,
 } from "./packs.js";
+import { STAGED_PACKS_DIR, planPackStaging, stagePacks } from "./pack-stage.js";
 import { renderReport } from "./report.js";
 import type { TokenTable } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
@@ -582,6 +583,78 @@ export function assertAdoptWriteScope(
   }
 }
 
+/** The previous run's files `runAdopt` deletes at its point of no return, in deletion order. */
+const STALE_FILE_NAMES = [
+  "inventory.json",
+  "adoption-report.md",
+  "adoption-decisions.json",
+] as const;
+type StaleFileName = (typeof STALE_FILE_NAMES)[number];
+
+const RERUN_ADVICE = "fix the cause and re-run the CLI";
+
+/**
+ * Which previous `.groundwork/` files a failed run actually removed, worded
+ * for a message: only those in `removed` are named, and the decisions file
+ * carries its "a re-run does not recreate it" caveat only when it is one of
+ * them.
+ */
+function describeRemoved(removed: readonly StaleFileName[]): string {
+  if (removed.length === 0) {
+    return "no previous .groundwork/ inventory, report or decisions file was removed";
+  }
+  const names =
+    removed.length === 1
+      ? removed.join("")
+      : `${removed.slice(0, -1).join(", ")} and ${removed.slice(-1).join("")}`;
+  const verb = removed.length === 1 ? "was" : "were";
+  const decisionsCaveat = removed.includes("adoption-decisions.json")
+    ? " -- adoption-decisions.json held the decisions /customize recorded, which a re-run does not recreate"
+    : "";
+  return `the previous .groundwork/${names} ${verb} removed${decisionsCaveat}`;
+}
+
+/**
+ * A failure after `runAdopt`'s point of no return. The message embeds the
+ * cause's own message so it stands alone (`formatErrorChain` then skips the
+ * redundant `caused by:` line), names only the previous files actually
+ * removed, and appends the re-run advice unless the cause already ends
+ * with it.
+ */
+function removedStaleFilesError(
+  cause: unknown,
+  removed: readonly StaleFileName[],
+): Error {
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  const advice = reason.endsWith(RERUN_ADVICE) ? "" : `; ${RERUN_ADVICE}`;
+  return new Error(
+    `adopt mode failed (${reason}); ${describeRemoved(removed)}${advice}`,
+    { cause },
+  );
+}
+
+/**
+ * Rethrows a failure after `runAdopt`'s point of no return. An
+ * `AssertionError` (a broken invariant: a bug, not something a re-run
+ * fixes) keeps its identity, after one warning naming the previous files it
+ * removed, so that loss is not silent; anything else becomes
+ * {@link removedStaleFilesError}.
+ */
+function rethrowAfterPointOfNoReturn(
+  cause: unknown,
+  removed: readonly StaleFileName[],
+): never {
+  if (cause instanceof assert.AssertionError) {
+    if (removed.length > 0) {
+      console.warn(
+        `warning: adopt mode stopped on a broken invariant after ${describeRemoved(removed)}`,
+      );
+    }
+    throw cause;
+  }
+  throw removedStaleFilesError(cause, removed);
+}
+
 /**
  * The adopt-mode next step after a `.groundwork/customize/` fallback, chosen
  * by why it was taken: only an `"entry"` fallback has a project-local copy
@@ -617,16 +690,55 @@ function groundworkNextStep(
  * `/customize` skill (see `installCustomizeSkillGuarded`), so the report
  * can point straight at a working next step. Every pack under
  * `templates/packs/` is surveyed (`main` rejects `--pack` in this mode, see
- * `assertAdoptUsage`) and staged, unapplied, at `.groundwork/packs/<name>/`;
- * absent baseline files are staged as inert `<path>.staged` copies at
- * `.groundwork/baseline/`. Every pack is loaded and validated by `loadPack`
- * first, so an invalid pack (a malformed manifest, or a prototype-sensitive
- * key in its wiring) throws before anything under `.groundwork/` is deleted
- * or written. A stale `inventory.json`/`adoption-report.md`/
- * `adoption-decisions.json` is deleted before any staging or install; then packs and the baseline are
- * staged, the `/customize` skill is installed, `adoption-report.md` is
- * written, and `inventory.json` is written last (atomically, via a temp file
- * and rename). Only console output follows it, so `inventory.json`'s
+ * `assertAdoptUsage`) and staged, unapplied and inert, at
+ * `.groundwork/packs/<name>/` -- its manifest as `pack.json.staged`, its
+ * files as `files/<path>.staged` -- all packs written to a temporary
+ * sibling directory and swapped in by rename, so `packs/` is never
+ * half-written (`stagePacks`); absent baseline files are staged the same
+ * way as inert `<path>.staged` copies at `.groundwork/baseline/`. With a
+ * previous staging in place each swap is two renames (park the old
+ * directory, then move the new one in); a kill between them leaves that
+ * directory absent with the old copy under its `.packs-*`/`.baseline-*`
+ * work directory's `previous/` -- safe, because `inventory.json` was
+ * already deleted, so nothing reads the gap as a completed run.
+ *
+ * Checked before anything under `.groundwork/` is deleted or written, in
+ * this order: the three stale-file paths are scope-checked against
+ * {@link assertAdoptWriteScope}; every pack is loaded and validated by
+ * `loadPack` and surveyed (`planConflicts`, `observeWiring`); the pack
+ * staging plan (`planPackStaging`) and the baseline staging plan
+ * (`planBaselineStaging`) are each computed once, validated, and every path
+ * they would write scope-checked; the `/customize` skill's planned install
+ * paths (`plannedCustomizeSkillPaths`, a lexical check of its path
+ * constants) are scope-checked; then `.groundwork/`, `.groundwork/packs`
+ * and `.groundwork/baseline` are each refused if they are a symlink. So an
+ * invalid pack (a malformed manifest, a prototype-sensitive key in its
+ * wiring, an unstageable file tree), an invalid baseline plan, an
+ * out-of-scope staging or skill-install path, or a symlinked staging
+ * directory throws with the previous `.groundwork/` untouched.
+ *
+ * **The point of no return** is the first deletion of a stale
+ * `inventory.json`/`adoption-report.md`/`adoption-decisions.json` (in that
+ * order), which follows those checks; which of the three existed is
+ * recorded just before. After the deletions, packs and the baseline are
+ * staged from the plans already computed (their trees are not walked
+ * again), the harness and toolchain are graded, the `/customize` skill is
+ * installed and its writes scope-checked, `adoption-report.md` is written,
+ * and `inventory.json` is written last (atomically, via a temp file and
+ * rename). A failure in any of those steps -- a failed deletion included --
+ * is rethrown as an `Error` with the failure as `cause` and its message
+ * embedded, naming only the previous files that existed and were actually
+ * removed (and, when `adoption-decisions.json` is among them, that it held
+ * the decisions `/customize` recorded, which a re-run does not recreate),
+ * and saying to fix the cause and re-run the CLI -- once, even when the
+ * cause's own message already says so. An `AssertionError` (a broken
+ * write-scope or containment invariant, a bug a re-run cannot fix) keeps
+ * its identity instead, after one `console.warn` naming the removed files
+ * (none when nothing was removed).
+ *
+ * If `inventory.json` fails to write, the just-written report is first
+ * removed (best effort: a failed removal only warns, never masking the
+ * write failure). Only console output follows `inventory.json`, so its
  * presence means every step of the run completed.
  */
 function runAdopt(options: CliOptions, detection: ModeDetection): void {
@@ -639,121 +751,164 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
 
   const groundworkDir = join(options.targetDir, ".groundwork");
   const stagedBaselineDir = `.groundwork/${STAGED_BASELINE_DIR}`;
+  const stalePaths = STALE_FILE_NAMES.map((name) => ({
+    name,
+    path: join(groundworkDir, name),
+  }));
   const inventoryPath = join(groundworkDir, "inventory.json");
   const reportPath = join(groundworkDir, "adoption-report.md");
-  const decisionsPath = join(groundworkDir, "adoption-decisions.json");
-  assertAdoptWriteScope(options.targetDir, [
-    inventoryPath,
-    reportPath,
-    decisionsPath,
-  ]);
-
-  // Every pack must pass loadPack's validation (including its
-  // prototype-sensitive wiring-key check) before anything under .groundwork/
-  // is touched, so an invalid pack fails the run with the previous
-  // inventory/report still intact rather than half-cleared.
-  const loadedPacks: Pack[] = listPackNames().map((name) => loadPack(name));
-
-  // A previous run's inventory/report -- and the decisions /customize
-  // recorded against them -- must not survive a run that fails part-way:
-  // /customize would read them as describing the new staging. All three go
-  // before anything is staged; inventory/report are rewritten only at the
-  // end, and the decisions file only by /customize.
-  assertNotSymlink(groundworkDir);
-  rmSync(inventoryPath, { force: true });
-  rmSync(reportPath, { force: true });
-  rmSync(decisionsPath, { force: true });
-
-  const packs: PackSurvey[] = loadedPacks.map((pack) => {
-    const fileConflicts = planConflicts(
-      pack.filesDir,
-      options.targetDir,
-      tokens,
-    );
-    const wiringObservations = observeWiring(options.targetDir, pack.manifest);
-    const staged = stagePackFiles(pack, groundworkDir);
-    assertAdoptWriteScope(
-      options.targetDir,
-      staged.map((file) =>
-        join(groundworkDir, "packs", pack.manifest.name, file),
-      ),
-    );
-    return {
-      name: pack.manifest.name,
-      modes: pack.manifest.modes,
-      budget: pack.manifest.budget,
-      fileConflicts,
-      wiring: pack.manifest.wiring,
-      wiringObservations,
-      adoptNotes: pack.manifest.adoptNotes,
-    };
-  });
-
-  // Scope-checked as planned, before any of them is written.
   assertAdoptWriteScope(
     options.targetDir,
-    conflicts
-      .filter((c) => c.status === "absent")
-      .map((c) => join(stagedBaselineDir, stagedNameFor(c.relPath))),
+    stalePaths.map(({ path }) => path),
   );
-  const stagedBaselineFiles = stageBaselineAdditions(
+
+  // Every pack must pass loadPack's validation (including its
+  // prototype-sensitive wiring-key check), and both staging plans (packs and
+  // baseline) must be computed and scope-checked, before anything under
+  // .groundwork/ is touched, so an invalid pack or plan fails the run with
+  // the previous inventory/report still intact rather than half-cleared.
+  const loadedPacks: Pack[] = listPackNames().map((name) => loadPack(name));
+  const packs: PackSurvey[] = loadedPacks.map((pack) => ({
+    name: pack.manifest.name,
+    modes: pack.manifest.modes,
+    budget: pack.manifest.budget,
+    fileConflicts: planConflicts(pack.filesDir, options.targetDir, tokens),
+    wiring: pack.manifest.wiring,
+    wiringObservations: observeWiring(options.targetDir, pack.manifest),
+    adoptNotes: pack.manifest.adoptNotes,
+  }));
+  // Each plan is computed once, here, and handed to its stager below, so
+  // what was scope-checked is exactly what gets written.
+  const packPlan = planPackStaging(loadedPacks, groundworkDir, tokens);
+  assertAdoptWriteScope(options.targetDir, packPlan.paths);
+  const baselinePlan = planBaselineStaging(
     templateRoot,
     conflicts,
     groundworkDir,
     tokens,
   );
-
-  const inventory = buildInventory({
-    detection,
-    templateRoot,
-    targetDir: options.targetDir,
-    survey,
-    conflicts,
-    packs,
-    harnessGrade: gradeHarness(options.targetDir),
-    toolchainGrade: gradeToolchain(options.targetDir),
-    stagedBaseline: {
-      dir: stagedBaselineDir,
-      suffix: STAGED_SUFFIX,
-      files: stagedBaselineFiles,
-    },
-  });
-
-  // The /customize skill install runs before the two .groundwork/ files (the
-  // report's "wx" write below can still fail after it), so inventory.json's
-  // presence still means the install completed.
-  //
-  // The pre-write check is a constant drift guard only: it lexically checks
-  // paths built from customize-paths.ts's constants, so it can catch one of
-  // those constants being edited to escape the project, and nothing else --
-  // it reads no filesystem state, so it cannot detect a symlink or any other
-  // runtime condition. The installer lstat-checks every directory component
-  // itself (and falls back to .groundwork/customize/ when one under .claude/
-  // is a symlink or not a directory -- see fallbackReason below).
+  assertAdoptWriteScope(options.targetDir, baselinePlan.paths);
+  // A constant drift guard only: it lexically checks paths built from
+  // customize-paths.ts's constants, so it can catch one of those constants
+  // being edited to escape the project, and nothing else -- it reads no
+  // filesystem state, so it cannot detect a symlink or any other runtime
+  // condition. The installer lstat-checks every directory component itself
+  // (and falls back to .groundwork/customize/ when one under .claude/ is a
+  // symlink or not a directory -- see fallbackReason below).
   assertAdoptWriteScope(options.targetDir, plannedCustomizeSkillPaths());
-  const pluginResult = installCustomizeSkillGuarded(options.targetDir);
-  // Deliberately no rollback if this throws: what the installer reports it
-  // wrote must sit inside the planned scope, so a failure here means the
-  // installer and customize-paths.ts drifted apart -- a programming error to
-  // surface loudly, not a runtime condition to recover from.
-  assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
-  // Resolved before the report and inventory are written, so a contract
-  // violation in the result fails the run before inventory.json claims it
-  // completed.
-  const nextStep =
-    pluginResult.location === "groundwork"
-      ? // The fresh copy is staged where Claude Code never loads a skill
-        // from, so the generic next step would be false here.
-        groundworkNextStep(pluginResult.fallbackCause)
-      : "Next: open this project in Claude Code and run /customize.";
 
-  // The report next, inventory.json last (written atomically): nothing that
-  // can fail follows it, so its presence means the whole run completed.
-  mkdirSync(groundworkDir, { recursive: true });
-  // "wx": the path was removed above, so anything there now (a symlink
-  // raced in mid-run) makes the write fail instead of being followed.
-  writeFileSync(reportPath, renderReport(inventory), { flag: "wx" });
-  writeInventory(inventory, groundworkDir);
+  // A symlinked .groundwork/ or staging directory would redirect a delete
+  // or a write outside the project; refuse it before anything is deleted.
+  // (Each stager repeats its own check; these make the refusal precede the
+  // deletions below.)
+  assertNotSymlink(groundworkDir);
+  assertNotSymlink(join(options.targetDir, STAGED_PACKS_DIR));
+  assertNotSymlink(join(groundworkDir, STAGED_BASELINE_DIR));
+
+  // Recorded before any deletion, so a failure message names only files a
+  // previous run actually left (and this run actually removed).
+  const preexisting = new Set(
+    stalePaths.filter(({ path }) => existsSync(path)).map(({ name }) => name),
+  );
+  const removed: StaleFileName[] = [];
+
+  let inventory: Inventory;
+  let pluginResult: GuardedInstallResult;
+  let nextStep: string;
+  try {
+    // The point of no return: the first deletion. A previous run's
+    // inventory/report -- and the decisions /customize recorded against
+    // them -- must not survive a run that fails part-way: /customize would
+    // read them as describing the new staging. All three go before anything
+    // is staged; inventory/report are rewritten only at the end, and the
+    // decisions file only by /customize. Inside the wrapping, so a failed
+    // deletion reports which files are already gone. Every path is removed,
+    // not just the pre-existing ones: existsSync follows symlinks, so a
+    // dangling one must still go before the report's "wx" write below.
+    for (const { name, path } of stalePaths) {
+      rmSync(path, { force: true });
+      if (preexisting.has(name)) {
+        removed.push(name);
+      }
+    }
+
+    const stagedPacks = stagePacks(
+      loadedPacks,
+      groundworkDir,
+      tokens,
+      packPlan,
+    );
+    const stagedBaselineFiles = stageBaselineAdditions(
+      templateRoot,
+      conflicts,
+      groundworkDir,
+      tokens,
+      baselinePlan,
+    );
+
+    inventory = buildInventory({
+      detection,
+      templateRoot,
+      targetDir: options.targetDir,
+      survey,
+      conflicts,
+      packs,
+      harnessGrade: gradeHarness(options.targetDir),
+      toolchainGrade: gradeToolchain(options.targetDir),
+      stagedBaseline: {
+        dir: stagedBaselineDir,
+        suffix: STAGED_SUFFIX,
+        files: stagedBaselineFiles,
+      },
+      stagedPacks,
+    });
+
+    // The /customize skill install runs before the two .groundwork/ files
+    // (the report's "wx" write below can still fail after it), so
+    // inventory.json's presence still means the install completed. Its
+    // planned paths were scope-checked before the deletions above.
+    pluginResult = installCustomizeSkillGuarded(options.targetDir);
+    // Deliberately no rollback if this throws: what the installer reports it
+    // wrote must sit inside the planned scope, so a failure here means the
+    // installer and customize-paths.ts drifted apart -- a programming error
+    // to surface loudly, not a runtime condition to recover from.
+    assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
+    // Resolved before the report and inventory are written, so a contract
+    // violation in the result fails the run before inventory.json claims it
+    // completed.
+    nextStep =
+      pluginResult.location === "groundwork"
+        ? // The fresh copy is staged where Claude Code never loads a skill
+          // from, so the generic next step would be false here.
+          groundworkNextStep(pluginResult.fallbackCause)
+        : "Next: open this project in Claude Code and run /customize.";
+
+    // The report next, inventory.json last (written atomically): nothing
+    // that can fail follows it, so its presence means the run completed.
+    mkdirSync(groundworkDir, { recursive: true });
+    // "wx": the path was removed above, so anything there now (a symlink
+    // raced in mid-run) makes the write fail instead of being followed.
+    writeFileSync(reportPath, renderReport(inventory), { flag: "wx" });
+  } catch (cause) {
+    rethrowAfterPointOfNoReturn(cause, removed);
+  }
+  const { stagedPacks } = inventory;
+  const stagedBaselineFiles = inventory.stagedBaseline.files;
+  try {
+    writeInventory(inventory, groundworkDir);
+  } catch (error) {
+    // Without inventory.json the run did not complete; a report left behind
+    // would read as if it had. Best effort: a failed removal only warns, so
+    // it can never mask the write failure being rethrown.
+    try {
+      rmSync(reportPath, { force: true });
+    } catch (cleanupError) {
+      console.warn(
+        `warning: could not remove ${reportPath} after inventory.json failed to write -- delete it by hand (${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)})`,
+      );
+    }
+    rethrowAfterPointOfNoReturn(error, removed);
+  }
 
   console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);
   console.log(`wrote ${relative(options.targetDir, reportPath)}`);
@@ -762,9 +917,9 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       `staged ${stagedBaselineFiles.length} baseline file(s) at ${stagedBaselineDir}/ for /customize`,
     );
   }
-  if (packs.length > 0) {
+  if (stagedPacks.length > 0) {
     console.log(
-      `staged ${packs.length} pack(s) at .groundwork/packs/ for /customize`,
+      `staged ${stagedPacks.length} pack(s) at ${STAGED_PACKS_DIR}/ for /customize`,
     );
   }
   if (pluginResult.location === "already-present") {

@@ -21,10 +21,12 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Inventory } from "../src/inventory.js";
 import type * as InventoryModule from "../src/inventory.js";
 import type * as ReportModule from "../src/report.js";
+import type { StagedPack, StagedPackFile } from "../src/pack-stage.js";
 import type { InstallPluginResult } from "../src/plugin.js";
 
 const gitInitMock = vi.fn();
@@ -627,7 +629,22 @@ describe("main", () => {
       );
 
       // Staged, not installed: the payload lives under .groundwork/packs/,
-      // and the project's own .claude/ tree was never created.
+      // each file under an inert .staged name, and the project's own
+      // .claude/ tree was never created.
+      expect(
+        existsSync(
+          join(
+            projectDir,
+            ".groundwork",
+            "packs",
+            "harness-extras",
+            "files",
+            ".claude",
+            "hooks",
+            "guard-readonly-bash.mjs.staged",
+          ),
+        ),
+      ).toBe(true);
       expect(
         existsSync(
           join(
@@ -641,8 +658,122 @@ describe("main", () => {
             "guard-readonly-bash.mjs",
           ),
         ),
+      ).toBe(false);
+      expect(
+        existsSync(
+          join(
+            projectDir,
+            ".groundwork",
+            "packs",
+            "harness-extras",
+            "pack.json.staged",
+          ),
+        ),
       ).toBe(true);
       expect(existsSync(join(projectDir, ".claude"))).toBe(false);
+
+      const stagedPack = inventory.stagedPacks.find(
+        (p: StagedPack) => p.name === "harness-extras",
+      );
+      expect(stagedPack).toBeDefined();
+      expect(stagedPack?.dir).toBe(".groundwork/packs/harness-extras");
+      expect(stagedPack?.suffix).toBe(".staged");
+      expect(stagedPack?.manifest.staged).toBe("pack.json.staged");
+      const stagedHook = stagedPack?.files.find(
+        (f: StagedPackFile) =>
+          f.path === ".claude/hooks/guard-readonly-bash.mjs",
+      );
+      expect(stagedHook?.staged).toBe(
+        ".claude/hooks/guard-readonly-bash.mjs.staged",
+      );
+    });
+
+    it("records every pack's stagedPacks hashes matching an independent sha256 of both the staged copy on disk and the real templates/packs/<name>/ source file", () => {
+      const projectDir = join(targetDir, "existing-project3-hashes");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+
+      main([projectDir]);
+
+      const inventory = JSON.parse(
+        readFileSync(join(projectDir, ".groundwork", "inventory.json"), "utf8"),
+      ) as Inventory;
+      expect(inventory.stagedPacks.length).toBeGreaterThan(0);
+
+      const here = dirname(fileURLToPath(import.meta.url));
+      const packsSourceRoot = join(
+        here,
+        "..",
+        "..",
+        "..",
+        "templates",
+        "packs",
+      );
+
+      for (const pack of inventory.stagedPacks) {
+        const packDir = join(projectDir, ".groundwork", "packs", pack.name);
+        const manifestBytes = readFileSync(join(packDir, pack.manifest.staged));
+        expect(pack.manifest.sha256).toBe(
+          createHash("sha256").update(manifestBytes).digest("hex"),
+        );
+        for (const file of pack.files) {
+          const stagedBytes = readFileSync(join(packDir, "files", file.staged));
+          expect(file.sha256).toBe(
+            createHash("sha256").update(stagedBytes).digest("hex"),
+          );
+          const sourceBytes = readFileSync(
+            join(packsSourceRoot, pack.name, "files", file.path),
+          );
+          expect(file.sha256).toBe(
+            createHash("sha256").update(sourceBytes).digest("hex"),
+          );
+        }
+      }
+    });
+
+    // Round-3 item 4: inventory.packs (the survey) and
+    // inventory.stagedPacks (the staged, inert copies) must describe
+    // exactly the same packs, and for each pack the same set of files --
+    // the survey's fileConflicts entries (one per file under the pack's
+    // files/ tree, regardless of status) and the staged files/ tree (every
+    // file, unconditionally -- unlike the baseline stager, which only
+    // stages "absent" conflicts) must agree on the same relPath/path set.
+    it("links inventory.packs to inventory.stagedPacks: the same set of pack names, and per pack the same set of file paths (fileConflicts vs staged files)", () => {
+      const projectDir = join(targetDir, "existing-project-pack-link");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+
+      main([projectDir]);
+
+      const inventory = JSON.parse(
+        readFileSync(join(projectDir, ".groundwork", "inventory.json"), "utf8"),
+      ) as Inventory;
+
+      const packNames = new Set(inventory.packs.map((p) => p.name));
+      const stagedPackNames = new Set(
+        inventory.stagedPacks.map((p: StagedPack) => p.name),
+      );
+      expect(packNames.size).toBeGreaterThan(0);
+      expect(packNames).toEqual(stagedPackNames);
+
+      for (const pack of inventory.packs) {
+        const staged = inventory.stagedPacks.find(
+          (p: StagedPack) => p.name === pack.name,
+        );
+        expect(staged).toBeDefined();
+        const conflictPaths = new Set(pack.fileConflicts.map((c) => c.relPath));
+        const stagedPaths = new Set(
+          (staged?.files ?? []).map((f: StagedPackFile) => f.path),
+        );
+        expect(conflictPaths.size).toBeGreaterThan(0);
+        expect(conflictPaths).toEqual(stagedPaths);
+      }
     });
 
     // Contract 1: --pack in adopt mode is rejected up front as a usage
@@ -769,7 +900,13 @@ describe("main", () => {
       expect(existsSync(decisionsPath)).toBe(false);
     });
 
-    it("leaves neither the report nor inventory.json after a staging failure (both deleted up front, baseline/ untouched)", () => {
+    // Round-3 item 1: a symlinked .groundwork/baseline is now refused BEFORE
+    // the three stale .groundwork/ files are deleted (see
+    // main-symlink-refusal-order.test.ts for the full contract) -- so,
+    // unlike before that fix, the stale inventory.json/adoption-report.md
+    // here survive the failed run untouched rather than being deleted up
+    // front.
+    it("refuses a symlinked .groundwork/baseline before deleting the stale report/inventory.json, leaving them untouched", () => {
       const projectDir = join(targetDir, "existing-project-ordering");
       mkdirSync(projectDir);
       writeFileSync(
@@ -797,14 +934,26 @@ describe("main", () => {
       );
 
       try {
-        expect(() => main([projectDir])).toThrow();
+        expect(() => main([projectDir])).toThrow(/symlink/);
 
         expect(
           existsSync(join(projectDir, ".groundwork", "inventory.json")),
-        ).toBe(false);
+        ).toBe(true);
+        expect(
+          readFileSync(
+            join(projectDir, ".groundwork", "inventory.json"),
+            "utf8",
+          ),
+        ).toBe("stale inventory\n");
         expect(
           existsSync(join(projectDir, ".groundwork", "adoption-report.md")),
-        ).toBe(false);
+        ).toBe(true);
+        expect(
+          readFileSync(
+            join(projectDir, ".groundwork", "adoption-report.md"),
+            "utf8",
+          ),
+        ).toBe("stale report\n");
         expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
           "do not touch",
         );
@@ -836,20 +985,55 @@ describe("main", () => {
       ).toBe(true);
     });
 
-    it("runs installCustomizeSkillGuarded BEFORE writing inventory.json/adoption-report.md -- neither file exists when it throws", () => {
+    // Round-3 item 3: installCustomizeSkillGuarded throwing is one of the
+    // failures past the point of no return (the three stale .groundwork/
+    // files are already deleted by the time it runs) that now gets wrapped
+    // -- see main-adopt-failure-wrapping.test.ts for the full contract
+    // across every such failure. Neither inventory.json nor
+    // adoption-report.md exists when it throws either way; what changed is
+    // that the raw cause's message is chained via `cause`, not the thrown
+    // error's own `message`.
+    it("runs installCustomizeSkillGuarded BEFORE writing inventory.json/adoption-report.md -- neither file exists when it throws, and the failure is wrapped with the original chained as cause", () => {
       const projectDir = join(targetDir, "existing-project-skill-order");
       mkdirSync(projectDir);
       writeFileSync(
         projectDir + "/package.json",
         JSON.stringify({ name: "acme", type: "module" }),
       );
+      // Seed all three stale .groundwork/ files from a PREVIOUS run, so the
+      // wrapped failure's "adoption-decisions.json ... removed" wording is
+      // legitimately true here (item 6: removedStaleFilesError names only
+      // the files that existed before the run -- a bare first run, with
+      // nothing to seed, must NOT claim this, see
+      // main-adopt-removed-files-wording.test.ts).
+      const groundworkDir = join(projectDir, ".groundwork");
+      mkdirSync(groundworkDir, { recursive: true });
+      writeFileSync(join(groundworkDir, "inventory.json"), "stale inventory\n");
+      writeFileSync(
+        join(groundworkDir, "adoption-report.md"),
+        "stale report\n",
+      );
+      writeFileSync(
+        join(groundworkDir, "adoption-decisions.json"),
+        "stale decisions\n",
+      );
+      const cause = new Error("simulated guarded skill install failure");
       installCustomizeSkillGuardedMock.mockImplementationOnce(() => {
-        throw new Error("simulated guarded skill install failure");
+        throw cause;
       });
 
-      expect(() => main([projectDir])).toThrow(
-        /simulated guarded skill install failure/,
-      );
+      let thrown: unknown;
+      try {
+        main([projectDir]);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toMatch(/adoption-decisions\.json/);
+      expect((thrown as Error).message).toMatch(/removed/);
+      expect((thrown as Error).message).toMatch(/re-run/);
+      expect((thrown as Error).cause).toBe(cause);
 
       expect(
         existsSync(join(projectDir, ".groundwork", "inventory.json")),

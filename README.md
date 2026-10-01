@@ -79,10 +79,10 @@ They stay two separate phases on purpose, rather than one -- see
 The mode is auto-detected from the target directory; `--fresh` and `--adopt`
 override it.
 
-| Mode      | When                                    | What it does                                                                                                                                                                                                                              |
-| --------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fresh** | The target is empty or missing          | Writes the full baseline, runs `git init`, installs any `--pack`, then `pnpm install`.                                                                                                                                                    |
-| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and the staged packs (`.groundwork/packs/`). It never touches a project file. |
+| Mode      | When                                    | What it does                                                                                                                                                                                                                          |
+| --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fresh** | The target is empty or missing          | Writes the full baseline, runs `git init`, installs any `--pack`, then `pnpm install`.                                                                                                                                                |
+| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and of the packs (`.groundwork/packs/`). It never touches a project file. |
 
 Adopt mode also drops a guarded, purely additive copy of the `/customize`
 skill, which is where the real work happens: it reads the survey, confirms
@@ -264,7 +264,12 @@ examples. From 1.0.0, the public API is:
    pack names. Baseline files are staged as inert copies with a `.staged`
    suffix appended to each name (so no project tool discovers them), listed
    with their original path and a `sha256` in `inventory.json`'s
-   `stagedBaseline`.
+   `stagedBaseline`. Packs follow the same convention:
+   `.groundwork/packs/<name>/pack.json.staged` and
+   `.groundwork/packs/<name>/files/<path>.staged`, listed with their original
+   path and a `sha256` in `inventory.json`'s `stagedPacks`. All packs are
+   staged together: written to a temp sibling directory and swapped in by
+   rename, never half-written.
 5. **The `engines.node` floor** -- narrowing it is breaking; widening it
    isn't.
 6. **`/customize`'s invocation name**, and the promise that it reads every
