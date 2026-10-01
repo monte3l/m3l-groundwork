@@ -1,0 +1,5 @@
+---
+"@monte3l/groundwork": patch
+---
+
+The emitted baseline's `guard-hub-src-writes.mjs` now also screens `Bash` (it was `Write|Edit` only), closing the gap where a hub-level shell command could write into `src/` or `tests/` unchecked. It applies the same writer-spoke allowlist (`test-author`, `code-implementer`) to a conservative scan of the command -- output redirects, `tee`, `sed -i`/`perl -i`, `cp`/`mv`/`install`/`rsync`/`ln` into a guarded path, `rm`/`touch`/`truncate`/`dd of=`, `patch`/`git apply` with guarded patch headers, and `python`/`node`/`ruby` inline code or out-of-project scripts that write one -- and never blocks reads, test runs, `/dev/null` redirects or git commands other than `git apply`. It registers under the existing `Bash` matcher in `.claude/settings.json` (no new hook, so the 10-hook cap is unchanged). The scan can miss indirect writes (a script inside the project, an `eval`, a build step); hub-and-spoke remains a convention backed by a guard that raises the bar, not a proof.

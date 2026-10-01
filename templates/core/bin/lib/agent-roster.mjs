@@ -1,5 +1,5 @@
 /**
- * The writer-spoke roster: the only subagent names a PreToolUse[Write|Edit]
+ * The writer-spoke roster: the only subagent names a PreToolUse[Write|Edit|Bash]
  * hook trusts to write into a guarded `src/`/`tests/` path. Kept as one
  * small, static source so `guard-hub-src-writes.mjs` and this project's
  * `code-implementer`/`test-author` agent definitions can't silently drift
