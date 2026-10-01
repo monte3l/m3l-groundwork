@@ -98,4 +98,26 @@ describe("findStagedPathCollision (round-2 item 4)", () => {
   ])("does not flag %s", (_label, paths) => {
     expect(findStagedPathCollision(paths)).toBeUndefined();
   });
+
+  // Round-3 item 5: two staged names that are byte-for-byte different but
+  // normalize to the same string are the same file on any filesystem that
+  // normalizes to NFC (notably HFS+/APFS on macOS) -- a precomposed "é"
+  // (U+00E9) and a decomposed "e" + combining acute accent (U+0301) look
+  // identical and must be flagged exactly like a case-fold collision.
+  it("flags two staged names that collide only after NFC normalization (a precomposed accented character vs. its decomposed form)", () => {
+    const precomposed = "café.md.staged";
+    const decomposed = "café.md.staged";
+    // Sanity: these are genuinely different code point sequences before
+    // normalization -- a naive byte/charCode comparison would never flag
+    // them, which is exactly the regression this test guards against.
+    expect(precomposed).not.toBe(decomposed);
+    expect(precomposed.length).not.toBe(decomposed.length);
+    expect(precomposed.normalize("NFC")).toBe(decomposed.normalize("NFC"));
+
+    const collision = findStagedPathCollision([precomposed, decomposed]);
+
+    expect(collision).toBeDefined();
+    expect(collision).toContain(precomposed);
+    expect(collision).toContain(decomposed);
+  });
 });

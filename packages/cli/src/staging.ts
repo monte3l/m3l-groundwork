@@ -68,13 +68,17 @@ export function toPosixPath(p: string): string {
 
 /**
  * Finds the first pair of staged paths that would land on the same file on
- * some supported file system: two paths equal once case-folded (macOS and
- * Windows default to case-insensitive), or one path a proper directory
- * prefix of another once case-folded (`x.staged` as both a file and the
- * directory holding `x.staged/y.staged`). Either collision makes the second
- * exclusive (`wx`) write fail mid-staging; a plan checks for it first so the
- * defect surfaces as its own error instead. Paths are compared as given --
- * pass them `/`-separated ({@link toPosixPath}).
+ * some supported file system: two paths equal once folded -- NFC-normalized
+ * (macOS's APFS treats a precomposed `é` and `e` + U+0301 as one name) and
+ * case-folded (macOS and Windows default to case-insensitive) -- or one path
+ * a proper directory prefix of another once folded (`x.staged` as both a
+ * file and the directory holding `x.staged/y.staged`). Either collision
+ * makes the second exclusive (`wx`) write fail mid-staging; a plan checks
+ * for it first so the defect surfaces as its own error instead. Folding is
+ * `toLowerCase()` after `normalize("NFC")`, not a full Unicode case fold, so
+ * it is a best-effort approximation of each file system's own rules. Paths
+ * are otherwise compared as given -- pass them `/`-separated
+ * ({@link toPosixPath}).
  *
  * @returns A description naming both colliding paths, or `undefined` when
  * none collide.
@@ -88,17 +92,20 @@ export function toPosixPath(p: string): string {
 export function findStagedPathCollision(
   stagedPaths: readonly string[],
 ): string | undefined {
+  const fold = (p: string): string => p.normalize("NFC").toLowerCase();
   const byFolded = new Map<string, string>();
   for (const path of stagedPaths) {
-    const folded = path.toLowerCase();
+    const folded = fold(path);
     const previous = byFolded.get(folded);
     if (previous !== undefined) {
-      return `${previous} and ${path} differ only by letter case, so they are the same file on a case-insensitive file system`;
+      return previous.toLowerCase() === path.toLowerCase()
+        ? `${previous} and ${path} differ only by letter case, so they are the same file on a case-insensitive file system`
+        : `${previous} and ${path} differ only by Unicode normalization (and possibly letter case), so they are the same file on a normalization-insensitive file system`;
     }
     byFolded.set(folded, path);
   }
   for (const path of stagedPaths) {
-    const segments = path.toLowerCase().split("/");
+    const segments = fold(path).split("/");
     for (let i = 1; i < segments.length; i++) {
       const ancestor = byFolded.get(segments.slice(0, i).join("/"));
       if (ancestor !== undefined) {

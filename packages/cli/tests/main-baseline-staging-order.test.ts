@@ -3,15 +3,16 @@
 
 /**
  * `runAdopt`'s write-scope ordering, extended to the BASELINE planner
- * (round-2 item 3, mirroring issue #99's pack-planner fix):
- * `plannedBaselineStagingPaths` must be called, and
- * `assertAdoptWriteScope` run against its result, BEFORE the three stale
- * `.groundwork/` files (`inventory.json`, `adoption-report.md`,
- * `adoption-decisions.json`) are deleted and before either stager writes
- * anything -- the same isolation pattern `main-pack-staging-order.test.ts`
- * uses for the pack planner, applied to the baseline planner's own export.
- * An invalid baseline plan must therefore delete nothing and stage nothing,
- * packs included.
+ * (round-2 item 3, mirroring issue #99's pack-planner fix, and round-3 item
+ * 2's `planBaselineStaging` -- the export `plannedBaselineStagingPaths` was
+ * restructured into, see `baseline-stage-plan.test.ts`): `planBaselineStaging`
+ * must be called, and `assertAdoptWriteScope` run against its result's
+ * `paths`, BEFORE the three stale `.groundwork/` files (`inventory.json`,
+ * `adoption-report.md`, `adoption-decisions.json`) are deleted and before
+ * either stager writes anything -- the same isolation pattern
+ * `main-pack-staging-order.test.ts` uses for the pack planner, applied to
+ * the baseline planner's own export. An invalid baseline plan must
+ * therefore delete nothing and stage nothing, packs included.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -45,25 +46,22 @@ vi.mock("../src/plugin.js", () => ({
   installCustomizeSkillGuarded: installCustomizeSkillGuardedMock,
 }));
 
-const {
-  plannedBaselineStagingPathsMock,
-  stageBaselineAdditionsMock,
-  stagePacksMock,
-} = vi.hoisted(() => ({
-  plannedBaselineStagingPathsMock: vi.fn(),
-  stageBaselineAdditionsMock: vi.fn(),
-  stagePacksMock: vi.fn(),
-}));
+const { planBaselineStagingMock, stageBaselineAdditionsMock, stagePacksMock } =
+  vi.hoisted(() => ({
+    planBaselineStagingMock: vi.fn(),
+    stageBaselineAdditionsMock: vi.fn(),
+    stagePacksMock: vi.fn(),
+  }));
 
 vi.mock("../src/baseline-stage.js", async (importOriginal) => {
   const actual = await importOriginal<typeof BaselineStageModule>();
   return {
     ...actual,
-    plannedBaselineStagingPaths: (
-      ...args: Parameters<typeof actual.plannedBaselineStagingPaths>
+    planBaselineStaging: (
+      ...args: Parameters<typeof actual.planBaselineStaging>
     ) =>
-      plannedBaselineStagingPathsMock(...args) as ReturnType<
-        typeof actual.plannedBaselineStagingPaths
+      planBaselineStagingMock(...args) as ReturnType<
+        typeof actual.planBaselineStaging
       >,
     stageBaselineAdditions: (
       ...args: Parameters<typeof actual.stageBaselineAdditions>
@@ -94,14 +92,14 @@ describe("runAdopt baseline-staging write-scope ordering (round-2 item 3)", () =
     runInstallMock.mockClear();
     installCustomizeSkillMock.mockClear();
     installCustomizeSkillGuardedMock.mockClear();
-    plannedBaselineStagingPathsMock.mockReset();
+    planBaselineStagingMock.mockReset();
     stageBaselineAdditionsMock.mockReset();
     stagePacksMock.mockReset();
     // Safe defaults every test can rely on unless it overrides one: an
     // empty plan/result never trips assertAdoptWriteScope and never writes
     // anything real, regardless of which of the two planners the
     // implementation happens to call first.
-    plannedBaselineStagingPathsMock.mockImplementation(() => []);
+    planBaselineStagingMock.mockImplementation(() => ({ paths: [] }));
     stageBaselineAdditionsMock.mockImplementation(() => []);
     stagePacksMock.mockImplementation(() => []);
   });
@@ -110,7 +108,24 @@ describe("runAdopt baseline-staging write-scope ordering (round-2 item 3)", () =
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  it("calls plannedBaselineStagingPaths on a normal run (feeding assertAdoptWriteScope before any staging)", () => {
+  // Round-3 item 5: strengthened from a bare "was it called" check -- this
+  // now asserts what the call actually changes: planBaselineStaging's own
+  // `paths` (delegated to the REAL implementation here, not the no-op
+  // default from beforeEach) resolve to exactly the baseline files
+  // stageBaselineAdditions ends up writing to disk.
+  it("planBaselineStaging's returned paths match the baseline files actually staged on a normal run", async () => {
+    const baselineActual = await vi.importActual<typeof BaselineStageModule>(
+      "../src/baseline-stage.js",
+    );
+    planBaselineStagingMock.mockImplementation(
+      (...args: Parameters<typeof baselineActual.planBaselineStaging>) =>
+        baselineActual.planBaselineStaging(...args),
+    );
+    stageBaselineAdditionsMock.mockImplementation(
+      (...args: Parameters<typeof baselineActual.stageBaselineAdditions>) =>
+        baselineActual.stageBaselineAdditions(...args),
+    );
+
     const projectDir = join(targetDir, "project-normal");
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(
@@ -120,13 +135,31 @@ describe("runAdopt baseline-staging write-scope ordering (round-2 item 3)", () =
 
     main([projectDir]);
 
-    expect(plannedBaselineStagingPathsMock).toHaveBeenCalled();
-    expect(existsSync(join(projectDir, ".groundwork", "inventory.json"))).toBe(
-      true,
+    expect(planBaselineStagingMock).toHaveBeenCalled();
+    const planResult = planBaselineStagingMock.mock.results[0]?.value as
+      { paths: string[] } | undefined;
+    expect(planResult?.paths.length).toBeGreaterThan(0);
+
+    const baselineDir = join(projectDir, ".groundwork", "baseline");
+    const stagedPaths: string[] = [];
+    const visit = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const absPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          visit(absPath);
+          continue;
+        }
+        stagedPaths.push(absPath);
+      }
+    };
+    visit(baselineDir);
+
+    expect([...(planResult?.paths ?? [])].sort()).toEqual(
+      [...stagedPaths].sort(),
     );
   });
 
-  it("deletes NOTHING and stages NOTHING (neither baseline nor packs) when plannedBaselineStagingPaths -- the write-scope check's input -- throws an invalid-plan error before any deletion", () => {
+  it("deletes NOTHING and stages NOTHING (neither baseline nor packs) when planBaselineStaging -- the write-scope check's input -- throws an invalid-plan error before any deletion", () => {
     const projectDir = join(targetDir, "project-invalid-baseline-plan");
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(
@@ -151,7 +184,7 @@ describe("runAdopt baseline-staging write-scope ordering (round-2 item 3)", () =
     const planError = new Error(
       "absent baseline file ghost.txt has no counterpart under /some/template/root",
     );
-    plannedBaselineStagingPathsMock.mockImplementation(() => {
+    planBaselineStagingMock.mockImplementation(() => {
       throw planError;
     });
 

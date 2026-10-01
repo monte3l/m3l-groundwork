@@ -78,7 +78,7 @@ interface PlannedBaselineFile {
  * staged name would land outside `destDir` (CWE-22, docs/assurance-case.md),
  * an absent path with no template counterpart, and two staged names that
  * would land on the same file ({@link findStagedPathCollision}: equal once
- * case-folded, or one a directory prefix of the other).
+ * NFC-normalized and case-folded, or one a directory prefix of the other).
  */
 function planStaging(
   templateRoot: string,
@@ -88,6 +88,7 @@ function planStaging(
 ): PlannedBaselineFile[] {
   const templateFiles = collectTemplateFiles(templateRoot, tokens);
   const plan = absent.map(({ relPath }): PlannedBaselineFile => {
+    // No ":" refusal here: that check (a Windows drive letter / ADS) is packs-only, in pack-stage.ts.
     const destPath = join(destDir, stagedNameFor(relPath));
     if (!isPathContained(destPath, destDir)) {
       throw new Error(
@@ -119,16 +120,70 @@ function absentConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
 }
 
 /**
- * Every path {@link stageBaselineAdditions} would write for `conflicts`,
+ * The validated plan for one {@link stageBaselineAdditions} run: every path
+ * it would write, plus each file's install path and template source, so
+ * staging never re-walks the template tree. Built by
+ * {@link planBaselineStaging}.
+ *
+ * @example
+ * ```ts
+ * import { planBaselineStaging, stageBaselineAdditions } from "./baseline-stage.js";
+ * const plan = planBaselineStaging(templateRoot, conflicts, groundworkDir, tokens);
+ * stageBaselineAdditions(templateRoot, conflicts, groundworkDir, tokens, plan);
+ * ```
+ */
+export interface BaselineStagingPlan {
+  /** Every path the run writes: one `<groundworkDir>/baseline/<path>.staged` per absent conflict, in `conflicts` order. */
+  readonly paths: readonly string[];
+  /** Each absent conflict's install path and template source, in the same order. */
+  readonly files: readonly PlannedBaselineFile[];
+}
+
+/**
+ * Validates the absent conflicts in `conflicts` against `templateRoot` and
+ * computes the plan {@link stageBaselineAdditions} writes from: every path
  * under `<groundworkDir>/baseline/` -- one `<path>.staged` per absent
- * conflict -- validated by the same plan, so adopt mode can scope-check them
- * before anything under `.groundwork/` is deleted or written. Reads the
- * template tree; writes nothing. Returns `[]` when nothing is absent.
+ * conflict -- and each file's template source, so adopt mode can
+ * scope-check `paths` before anything under `.groundwork/` is deleted or
+ * written and then hand the same plan to {@link stageBaselineAdditions}.
+ * Reads the template tree (not at all when nothing is absent); writes
+ * nothing. Both arrays are empty when nothing is absent.
  *
  * @throws The same plan `Error`s as {@link stageBaselineAdditions}: a
  * template with two files installing to one path, an absent conflict with no
  * template counterpart or whose staged name would escape the staging
  * directory, or two colliding staged names.
+ *
+ * @example
+ * ```ts
+ * import { assertAdoptWriteScope } from "./main.js";
+ * const plan = planBaselineStaging(templateRoot, conflicts, groundworkDir, tokens);
+ * assertAdoptWriteScope(targetDir, plan.paths);
+ * stageBaselineAdditions(templateRoot, conflicts, groundworkDir, tokens, plan);
+ * ```
+ */
+export function planBaselineStaging(
+  templateRoot: string,
+  conflicts: readonly FileConflict[],
+  groundworkDir: string,
+  tokens: TokenTable,
+): BaselineStagingPlan {
+  const absent = absentConflicts(conflicts);
+  if (absent.length === 0) {
+    return { paths: [], files: [] };
+  }
+  const destDir = join(groundworkDir, STAGED_BASELINE_DIR);
+  const files = planStaging(templateRoot, absent, tokens, destDir);
+  const paths = files.map(({ path }) => join(destDir, stagedNameFor(path)));
+  return { paths, files };
+}
+
+/**
+ * Every path {@link stageBaselineAdditions} would write for `conflicts` -- a
+ * thin wrapper returning {@link planBaselineStaging}'s `paths`. Reads the
+ * template tree; writes nothing. Returns `[]` when nothing is absent.
+ *
+ * @throws The same plan `Error`s as {@link planBaselineStaging}.
  *
  * @example
  * ```ts
@@ -143,14 +198,10 @@ export function plannedBaselineStagingPaths(
   groundworkDir: string,
   tokens: TokenTable,
 ): string[] {
-  const absent = absentConflicts(conflicts);
-  if (absent.length === 0) {
-    return [];
-  }
-  const destDir = join(groundworkDir, STAGED_BASELINE_DIR);
-  return planStaging(templateRoot, absent, tokens, destDir).map(({ path }) =>
-    join(destDir, stagedNameFor(path)),
-  );
+  return [
+    ...planBaselineStaging(templateRoot, conflicts, groundworkDir, tokens)
+      .paths,
+  ];
 }
 
 /**
@@ -163,12 +214,15 @@ export function plannedBaselineStagingPaths(
  * ({@link toPosixPath}).
  *
  * What is guaranteed:
- * - The plan is validated first, before anything is deleted or written: a
+ * - The plan is validated first, before anything is deleted or written (or,
+ *   when `plan` is passed, was already validated by
+ *   {@link planBaselineStaging} and the template tree is not walked again): a
  *   template with two files installing to the same path (a dotfile-escaped
  *   name beside its literal twin), an absent conflict with no template
  *   counterpart or whose staged name would escape the staging directory, or
  *   two staged names that would land on the same file (equal once
- *   case-folded, or one a directory prefix of the other) throws its own
+ *   NFC-normalized and case-folded, or one a directory prefix of the other)
+ *   throws its own
  *   `Error`, leaving `.groundwork/` exactly as it was.
  * - Then, still before anything is deleted or written, `groundworkDir` and
  *   `<groundworkDir>/baseline` are checked not to be symlinks, and every
@@ -204,6 +258,10 @@ export function plannedBaselineStagingPaths(
  * `cause`, including the cause's message, saying `.groundwork/` is
  * incomplete and the CLI should be re-run.
  *
+ * @param plan - The plan {@link planBaselineStaging} computed for these same
+ * `templateRoot`, `conflicts`, `groundworkDir` and `tokens`; computed here
+ * when omitted.
+ *
  * @example
  * ```ts
  * // conflicts: the plan `planConflicts` (conflicts.ts) computed for the target
@@ -217,6 +275,15 @@ export function stageBaselineAdditions(
   conflicts: readonly FileConflict[],
   groundworkDir: string,
   tokens: TokenTable,
+  // Defaulted before the symlink check and stale-dir sweep below, so an
+  // invalid plan -- a template defect, with its own message rather than the
+  // "incomplete, re-run" staging failure -- deletes and writes nothing.
+  plan: BaselineStagingPlan = planBaselineStaging(
+    templateRoot,
+    conflicts,
+    groundworkDir,
+    tokens,
+  ),
 ): StagedBaselineFile[] {
   const target: StagingTarget = {
     groundworkDir,
@@ -224,25 +291,15 @@ export function stageBaselineAdditions(
     noun: "baseline",
     plural: false,
   };
-  const destDir = join(groundworkDir, STAGED_BASELINE_DIR);
-
-  // Validated before the symlink check and stale-dir sweep, so an invalid
-  // plan -- a template defect, with its own message rather than the
-  // "incomplete, re-run" staging failure -- deletes and writes nothing.
-  const absent = absentConflicts(conflicts);
-  const plan =
-    absent.length === 0
-      ? []
-      : planStaging(templateRoot, absent, tokens, destDir);
 
   prepareStaging(target);
-  if (plan.length === 0) {
+  if (plan.files.length === 0) {
     clearStaging(target);
     return [];
   }
 
   return stageAtomically(target, (newDir) =>
-    plan.map(({ path, sourcePath }): StagedBaselineFile => {
+    plan.files.map(({ path, sourcePath }): StagedBaselineFile => {
       const stagedName = stagedNameFor(path);
       // writeStagedBytes re-asserts the CWE-22 containment planStaging
       // already checked, against the directory actually written to.

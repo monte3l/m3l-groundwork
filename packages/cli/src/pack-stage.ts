@@ -160,7 +160,8 @@ function serializeManifest(name: string, manifest: Pack["manifest"]): Buffer {
  * Validates and projects every pack before anything is touched. These
  * defects are refused, each with its own `Error` (no `cause`): a pack name
  * that is not a single directory name, contains `:`, or is shared by two
- * packs (also when the two differ only by letter case); a missing
+ * packs (also when the two differ only by letter case or Unicode
+ * normalization); a missing
  * `filesDir`; two files in one pack installing to the same path; an install
  * path containing `:` (a drive letter or alternate data stream on Windows);
  * a tokenized install path whose staged name would land outside the pack's
@@ -219,17 +220,69 @@ function planPacks(
   const nameCollision = findStagedPathCollision(plan.map(({ name }) => name));
   if (nameCollision !== undefined) {
     throw new Error(
-      `stagePacks: two packs' staging directories collide: ${nameCollision}; pack names must be unique ignoring case`,
+      `stagePacks: two packs' staging directories collide: ${nameCollision}; pack names must be unique ignoring case and Unicode normalization`,
     );
   }
   return plan;
 }
 
 /**
- * Every path {@link stagePacks} would write for `packs`, under
- * `<groundworkDir>/packs/` -- each pack's `pack.json.staged` and every
- * `files/<path>.staged` -- computed from the same plan, so adopt mode can
- * scope-check them before any pack is written. Reads the packs' source
+ * The validated plan for one {@link stagePacks} run: every path it would
+ * write, plus everything it needs to write them -- each pack's serialized
+ * manifest and its files' install paths and sources -- so staging never
+ * re-walks a pack's `files/` tree. Built by {@link planPackStaging}.
+ *
+ * @example
+ * ```ts
+ * import { planPackStaging, stagePacks } from "./pack-stage.js";
+ * const plan = planPackStaging(packs, groundworkDir, tokens);
+ * stagePacks(packs, groundworkDir, tokens, plan);
+ * ```
+ */
+export interface PackStagingPlan {
+  /** Every path the run writes, under `<groundworkDir>/packs/`: per pack, its `pack.json.staged`, then each `files/<path>.staged`. */
+  readonly paths: readonly string[];
+  /** Each pack's validated projection, in `packs` order. */
+  readonly packs: readonly PlannedPack[];
+}
+
+/**
+ * Validates `packs` and computes the plan {@link stagePacks} writes from:
+ * every path under `<groundworkDir>/packs/` -- each pack's
+ * `pack.json.staged` and every `files/<path>.staged` -- and each file's
+ * source, so adopt mode can scope-check `paths` before any pack is written
+ * and then hand the same plan to {@link stagePacks}. Reads the packs'
+ * source trees; writes nothing.
+ *
+ * @throws The same plan `Error`s as {@link stagePacks}.
+ *
+ * @example
+ * ```ts
+ * import { assertAdoptWriteScope } from "./main.js";
+ * const plan = planPackStaging(packs, groundworkDir, tokens);
+ * assertAdoptWriteScope(targetDir, plan.paths);
+ * stagePacks(packs, groundworkDir, tokens, plan);
+ * ```
+ */
+export function planPackStaging(
+  packs: readonly Pack[],
+  groundworkDir: string,
+  tokens: TokenTable,
+): PackStagingPlan {
+  const packsDir = join(groundworkDir, PACKS_DIR_NAME);
+  const planned = planPacks(packs, packsDir, tokens);
+  const paths = planned.flatMap(({ name, files }) => [
+    join(packsDir, name, stagedNameFor(STAGED_PACK_MANIFEST)),
+    ...files.map(({ path }) =>
+      join(packsDir, name, PACK_FILES_DIR, stagedNameFor(path)),
+    ),
+  ]);
+  return { paths, packs: planned };
+}
+
+/**
+ * Every path {@link stagePacks} would write for `packs` -- a thin wrapper
+ * returning {@link planPackStaging}'s `paths`. Reads the packs' source
  * trees; writes nothing.
  *
  * @throws The same plan `Error`s as {@link stagePacks}.
@@ -245,13 +298,7 @@ export function plannedPackStagingPaths(
   groundworkDir: string,
   tokens: TokenTable,
 ): string[] {
-  const packsDir = join(groundworkDir, PACKS_DIR_NAME);
-  return planPacks(packs, packsDir, tokens).flatMap(({ name, files }) => [
-    join(packsDir, name, stagedNameFor(STAGED_PACK_MANIFEST)),
-    ...files.map(({ path }) =>
-      join(packsDir, name, PACK_FILES_DIR, stagedNameFor(path)),
-    ),
-  ]);
+  return [...planPackStaging(packs, groundworkDir, tokens).paths];
 }
 
 function writePack(plan: PlannedPack, newDir: string): StagedPack {
@@ -303,13 +350,16 @@ function writePack(plan: PlannedPack, newDir: string): StagedPack {
  * `.groundwork/packs/<name>`, whatever `groundworkDir` was passed.
  *
  * What is guaranteed:
- * - The plan is validated first, before anything is deleted or written: a
- *   pack name that is not a single directory name, contains `:`, or is used
- *   by two packs (ignoring case), a missing `filesDir`, two files in one
+ * - The plan is validated first, before anything is deleted or written (or,
+ *   when `plan` is passed, was already validated by {@link planPackStaging}
+ *   and the packs' trees are not walked again): a pack name that is not a
+ *   single directory name, contains `:`, or is used by two packs (ignoring
+ *   case and Unicode normalization), a missing `filesDir`, two files in one
  *   pack installing to the same path, an install path containing `:`, a
  *   staged name that would escape its pack's staging directory, or two
  *   staged names in one pack landing on the same file (equal once
- *   case-folded, or one a directory prefix of the other) throws its own
+ *   NFC-normalized and case-folded, or one a directory prefix of the other)
+ *   throws its own
  *   `Error`, leaving `.groundwork/` exactly as it was. A `filesDir` that
  *   cannot be inspected (a permission error) throws a plan `Error` naming
  *   the pack and path, with the failure as `cause`.
@@ -349,6 +399,9 @@ function writePack(plan: PlannedPack, newDir: string): StagedPack {
  * `cause`, including the cause's message, saying `.groundwork/` is
  * incomplete and the CLI should be re-run.
  *
+ * @param plan - The plan {@link planPackStaging} computed for these same
+ * `packs`, `groundworkDir` and `tokens`; computed here when omitted.
+ *
  * @example
  * ```ts
  * import { listPackNames, loadPack } from "./packs.js";
@@ -361,6 +414,7 @@ export function stagePacks(
   packs: readonly Pack[],
   groundworkDir: string,
   tokens: TokenTable,
+  plan: PackStagingPlan = planPackStaging(packs, groundworkDir, tokens),
 ): StagedPack[] {
   const target: StagingTarget = {
     groundworkDir,
@@ -368,13 +422,12 @@ export function stagePacks(
     noun: "packs",
     plural: true,
   };
-  const plan = planPacks(packs, join(groundworkDir, PACKS_DIR_NAME), tokens);
   prepareStaging(target);
-  if (plan.length === 0) {
+  if (plan.packs.length === 0) {
     clearStaging(target);
     return [];
   }
   return stageAtomically(target, (newDir) =>
-    plan.map((planned) => writePack(planned, newDir)),
+    plan.packs.map((planned) => writePack(planned, newDir)),
   );
 }
