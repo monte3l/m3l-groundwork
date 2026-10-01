@@ -379,16 +379,9 @@ describe("prototype-key guard (CWE-1321)", () => {
     Reflect.deleteProperty(Object.prototype, "polluted");
   });
 
-  // Pre-fix, `settings[key] = value` on the spread-copied `settings` object
-  // (never on `obj["__proto__"]` -- that reassigns the merge's OWN local
-  // copy's [[Prototype]] slot via the Annex B exotic setter, not global
-  // Object.prototype) silently swapped that object's prototype, and
-  // JSON.stringify drops a `__proto__` accessor rather than serializing it
-  // as a key. It never reached global Object.prototype, so the
-  // `Object.hasOwn(Object.prototype, "polluted")`/`({}).polluted` lines
-  // below are only a regression tripwire, not the proof of the fix -- the
-  // real guarantee each case asserts is `toThrow(key)`: the guard throws
-  // before `assertSafeKey`'s caller ever reads or writes the dangerous key.
+  // The toThrow(key) assertions are the proof; the Object.prototype checks
+  // are only a regression tripwire, since the old code swapped the merge
+  // result's own prototype rather than polluting Object.prototype.
   it.each(DANGEROUS_KEYS)(
     "mergeSettingsTopLevel rejects a %s fragment key instead of writing it",
     (key) => {

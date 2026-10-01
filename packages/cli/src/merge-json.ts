@@ -56,6 +56,12 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return Object.is(a, b);
 }
 
+/**
+ * Key names {@link assertSafeKey} rejects. A three-name denylist is complete
+ * here, not an allowlist, because every key comes from a caller fragment
+ * merged onto a plain object, where `__proto__` is the only key with special
+ * setter behaviour; `constructor` and `prototype` are defence in depth.
+ */
 const PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
   "__proto__",
   "constructor",
