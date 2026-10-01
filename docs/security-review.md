@@ -70,10 +70,94 @@ property tests, in `pnpm test`'s example-based suite (`emit.test.ts` already
 exercises `emitTemplate` directly), and in the e2e suite -- so a violation
 fails the run rather than passing silently.
 
+## Open advisories in the pinned npm (release-tools lockfiles)
+
+**Dated 2026-10-01.** Dependabot has 20 open alerts, 10 in
+`.github/release-tools/package-lock.json` and the same 10 in
+`templates/packs/publishing/files/.github/release-tools/package-lock.json`
+(the copy the `publishing` pack ships to users). All 20 are `inBundle`
+dependencies inside the pinned `npm` package (11.20.0, read from the lockfile's
+`node_modules/npm` entry). The advisories were published 2026-09-29 and
+2026-10-01.
+
+| Advisory            | Package               | Severity | Vulnerable range     | Patched | Reachable from our commands?                                                                                                             |
+| ------------------- | --------------------- | -------- | -------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| GHSA-3wwx-pv8p-q78v | undici 6.28.0         | medium   | >= 6.25.0, < 6.28.1  | 6.28.1  | No. undici is only required by node-gyp's header-download step, which runs only for install scripts; we install with `--ignore-scripts`. |
+| GHSA-rfgv-xxqx-mfg5 | undici 6.28.0         | high     | >= 6.7.0, < 6.28.1   | 6.28.1  | No. Same evidence as above.                                                                                                              |
+| GHSA-r53p-7pc4-xj5r | undici 6.28.0         | low      | < 6.28.1             | 6.28.1  | No. Same evidence as above.                                                                                                              |
+| GHSA-2vr4-cq9g-pvrc | ip-address 10.5.0     | medium   | >= 10.2.0, <= 10.5.0 | 10.5.1  | No. ip-address is only required through socks-proxy-agent, which needs a configured proxy; CI configures none.                           |
+| GHSA-rpw4-54j3-4h4q | ip-address 10.5.0     | medium   | <= 10.5.0            | 10.5.1  | No. Same evidence as above.                                                                                                              |
+| GHSA-h3mg-xc3c-68pw | ip-address 10.5.0     | medium   | <= 10.7.0            | 10.7.1  | No. Same evidence as above.                                                                                                              |
+| GHSA-j6r3-76f7-8jcv | ip-address 10.5.0     | medium   | <= 10.7.0            | 10.7.1  | No. Same evidence as above.                                                                                                              |
+| GHSA-6j4f-fj2g-mc7p | brace-expansion 5.0.9 | high     | >= 4.0.0, < 5.0.10   | 5.0.10  | No. brace-expansion is reached through minimatch globbing, and the only patterns are the `files` globs in our own `package.json`.        |
+| GHSA-qhr7-859c-m2p7 | brace-expansion 5.0.9 | high     | >= 4.0.0, < 5.0.11   | 5.0.11  | No. Same evidence as above.                                                                                                              |
+| GHSA-q2hr-2g5m-vwhr | brace-expansion 5.0.9 | medium   | >= 4.0.0, < 5.0.12   | 5.0.12  | No. Same evidence as above.                                                                                                              |
+
+The commands the release flow runs against npm are `npm ci --ignore-scripts`,
+`npm stage publish`, and `npm pack`-style globbing of this repository's own
+`package.json` `files`.
+
+**Why this cannot be fixed in the repo.** The vulnerable copies are bundled
+inside the npm tarball (`inBundle` in the lockfile). npm's `overrides` and
+`npm audit fix` do not change bundled dependencies, so there is no lockfile
+edit that moves them.
+
+**What was ruled out.**
+
+| Option                            | Result                                                                                                                                                                                 |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overrides` / `npm audit fix`     | Cannot change bundled dependencies.                                                                                                                                                    |
+| A newer npm                       | `npm pack` of npm 11.20.0, 11.21.0 and 12.2.0 (the `latest` tag on 2026-10-01) shows the same bundled versions in every one: undici 6.28.0, ip-address 10.5.0, brace-expansion 5.0.9.  |
+| Node's own npm                    | Node 24.21.0 bundles npm 11.19.0, which is vulnerable as well.                                                                                                                         |
+| An npm older than 11.20.0         | `npm stage publish` needs npm >= 11.15.0; no npm cli commit or PR bumping the three packages was found.                                                                                |
+| pnpm, Yarn or Bun for the publish | npm's trusted-publishing docs name the npm CLI as the supported method; the others either lack OIDC publish or delegate to the npm CLI, and staged publishing is npm-only.             |
+| A direct `npm publish`            | Our trusted publisher allows staged publishing only, so this means giving up the staged 2FA gate, which [`releases.md`](../.claude/rules/releases.md) already considered and rejected. |
+
+**Decision.** The alerts stay open and are documented here. Nothing is
+dismissed: the bar is evidence, and the reachability result above is analysis
+of the tarballs, not proof. Dependabot's npm entries cover both lockfile
+directories, so a patched npm arrives as a PR.
+
+> [!WARNING]
+> **Not zero alerts.** Do not describe this repository as having zero open
+> advisories while these 20 are open. A dismissed or fixed alert does not stop
+> a new advisory against the same bundled packages from opening a new alert.
+
+**Day-of-release re-check.** Run this before approving a release, and bump the
+pin if a patched npm exists. Patched means undici >= 6.28.1, ip-address >=
+10.7.1 and brace-expansion >= 5.0.12 all bundled.
+
+```sh
+# 1. What is the newest npm, and is the current pin still the best choice?
+npm view npm dist-tags --json
+grep -A2 '"node_modules/npm"' .github/release-tools/package-lock.json
+
+# 2. What does that release actually bundle?
+npm pack npm@<version> && tar xzf npm-<version>.tgz
+for p in undici ip-address brace-expansion; do
+  grep -m1 '"version"' package/node_modules/$p/package.json
+done
+
+# 3. What is Dependabot still reporting?
+gh api --paginate 'repos/monte3l/m3l-groundwork/dependabot/alerts?state=open&per_page=100' \
+  --jq '.[] | select(.dependency.manifest_path | test("release-tools")) | [.number, .security_advisory.ghsa_id, .dependency.package.name]'
+```
+
+If a patched release exists, merge the Dependabot PR for
+`.github/release-tools` (or bump `npm` in its `package.json` and regenerate
+its lockfile), then make the same bump in the `publishing` pack's copy so
+shipped output stays in step.
+
+**What is not verified.** The reachability result comes from reading the
+unpacked tarballs, not from running the code. Beyond a grep, it was not
+verified that ip-address is unused outside the socks-proxy-agent chain.
+
 ## Next review
 
 Due within 5 years of this review, or at GA (leaving the `rc` prerelease
-series -- see [`ROADMAP.md`](../ROADMAP.md)), whichever comes first.
+series -- see [`ROADMAP.md`](../ROADMAP.md)), whichever comes first. The open
+advisories above are not on that clock: they are re-checked on the day of each
+release.
 
 ---
 

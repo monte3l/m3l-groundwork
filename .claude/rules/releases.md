@@ -150,6 +150,9 @@ stage publish` needs >= 11.15.0, Node >= 22.14.0 -- already covered by
   `.node-version`'s 24), not a range or `latest` -- OpenSSF Scorecard's
   Pinned-Dependencies check flags a floating install the same way it flags
   an unpinned Action, and this job holds the OIDC token.
+  The pinned npm currently carries open advisories in its bundled
+  dependencies, tracked in `docs/security-review.md`'s "Open advisories in the
+  pinned npm" section.
 - **No package-manager cache in `release.yml`**, and no `cancel-in-progress`: a
   restored cache is an input an attacker can poison in the jobs that publish,
   and a half-published release is worse than a queued one.
