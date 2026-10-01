@@ -119,10 +119,10 @@ describe("SKILL.md Step 0 -- staged baseline verification contract", () => {
     expect(text).toContain("once");
   });
 
-  it("forbids falling back to inventory.templateRoot for schema 5 or higher", () => {
+  it("forbids falling back to inventory.templateRoot except for a schema 1-4 inventory", () => {
     expect(text).toContain("Never fall back to");
     expect(text).toContain("inventory.templateRoot");
-    expect(text).toContain("schema 5 or higher");
+    expect(text).toContain("schema 1-4 inventory only");
   });
 
   it("states plainly what a passing check does NOT prove", () => {
@@ -229,6 +229,36 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
   it("tells the agent to pass the file to the hash one-liner as a single quoted argument", () => {
     expect(section).toContain("single quoted argument");
   });
+
+  it("says the schemaVersion-higher-than-5 stop names /plugin update, the re-run command, and the project-local reason /plugin update alone can't fix it", () => {
+    const idx = section.indexOf("higher than 5");
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(idx, idx + 650);
+    expect(window).toContain("/plugin update");
+    expect(window).toContain("npx @monte3l/groundwork@rc .");
+    expect(window).toContain("project-local");
+  });
+
+  it("names stagedBaseline missing, not an object, or files not an array in the single stop list bullet", () => {
+    const bulletStart = section.indexOf("**A `stagedBaseline` that is missing");
+    const bulletEnd = section.indexOf(
+      "What a passing check proves",
+      bulletStart,
+    );
+    expect(bulletStart).toBeGreaterThan(-1);
+    expect(bulletEnd).toBeGreaterThan(bulletStart);
+    const bullet = section.slice(bulletStart, bulletEnd);
+
+    expect(bullet).toContain("not an object");
+    expect(bullet).toContain("not an array");
+  });
+
+  it("drops the impossible '(schema 5 or higher)' / 'schema 5 or higher.**' wording now that anything above 5 stops earlier, while the schema 1-4 templateRoot fallback rule still survives", () => {
+    expect(section).not.toContain("(schema 5 or higher)");
+    expect(section).not.toContain("schema 5 or higher.**");
+    expect(text).toContain("schema 1-4");
+    expect(text).toContain("inventory.templateRoot");
+  });
 });
 
 describe("SKILL.md Round 1's approved-additions bullet", () => {
@@ -247,9 +277,7 @@ describe("SKILL.md Round 1's approved-additions bullet", () => {
 
 describe("SKILL.md Step 0 -- verification runs before the deep read and before Confirm", () => {
   it("orders the verify block before '**The deep read.**' and before 'Confirm.'", () => {
-    const verifyIndex = text.indexOf(
-      "Verify the staged baseline (schema 5 or higher) now",
-    );
+    const verifyIndex = text.indexOf("Verify the staged baseline now");
     const deepReadIndex = text.indexOf("**The deep read.**");
     const confirmIndex = text.indexOf("4. **Confirm.**");
 

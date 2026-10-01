@@ -50,13 +50,13 @@ tooling `tsconfig.json` (src + tests, no emit) and a build-only
 
 ```
 packages/cli/          Phase A: the offline bootstrapper CLI
-  src/                   main.ts, mode.ts, tokens.ts, emit.ts, git.ts, plugin.ts,
-                          conflicts.ts, inventory.ts, report.ts, jsonc.ts,
+  src/                   one module per concern -- list the directory; the
+                          ones that carry a contract: assets.ts (the one place
+                          that locates templates/ and the plugin payload),
                           baseline-stage.ts (stages absent baseline files as
                           inert .staged copies), fs-guard.ts (the shared
-                          symlink refusal), caps.ts, packs.ts, merge-json.ts, palette.ts, term.ts,
-                          assets.ts (the one place that locates templates/ and
-                          the plugin payload)
+                          symlink refusal), fatal.ts + format-error.ts (the
+                          bin's total, never-throwing error printer)
   src/harness/            the harness grader: frontmatter.ts, rules.ts, grade.ts,
                           conformance.ts, types.ts
   src/toolchain/          the toolchain grader: rules.ts, grade.ts, conformance.ts,
