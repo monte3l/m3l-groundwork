@@ -53,9 +53,110 @@ may or may not touch.
 
 ## Step 0 — Reconcile (adopt mode only)
 
-1. Look for `.groundwork/inventory.json`. **Absent → this is a fresh
-   bootstrap; skip straight to Step 1.** Everything below this step applies
-   only when it exists.
+1. Look for `.groundwork/inventory.json`.
+   - **Absent, and no `.groundwork/` directory either → this is a fresh
+     bootstrap; skip straight to Step 1.** Everything below this step applies
+     only when an inventory exists.
+   - **Absent, but `.groundwork/` exists → a previous CLI adopt run did not
+     complete** (the CLI deletes the old inventory before it stages anything
+     and writes the new one last, so no inventory beside a `.groundwork/`
+     directory means the run died part-way). **Stop. Never fall through to
+     the fresh flow** -- that would run fresh-mode tailoring on an
+     established project. Tell the user: "`.groundwork/` is incomplete: a
+     previous adopt run did not finish, or `inventory.json` was removed.
+     If this project was never adopted (it was bootstrapped fresh), delete
+     `.groundwork/` and run `/customize` again. Otherwise re-run
+     `npx @monte3l/groundwork@rc .` and then run `/customize` again."
+     Change nothing.
+   - **Present, but not valid JSON, or its `schemaVersion` is not an integer
+     of at least 1 → stop and change nothing.** Tell the user: "`.groundwork/inventory.json`
+     is not valid JSON or has no usable `schemaVersion`. Re-run
+     `npx @monte3l/groundwork@rc .` and then run `/customize` again."
+
+   **Check `inventory.schemaVersion` before reading anything else.** This
+   skill understands schema versions **1 through 5** (the highest it knows is
+   5). If `schemaVersion` is **higher than 5**, the CLI that wrote it is newer
+   than this plugin: **stop and change nothing**, do not interpret the
+   inventory (a newer schema may have renamed or repurposed fields, and a
+   confident misreading is worse than none), and tell the user to update the
+   plugin and re-run `/customize`. Say which update applies to the copy
+   that is running. For the plugin install, run `/plugin update`. For a
+   project-local copy in `.claude/skills/customize/`, `/plugin update` does
+   not touch it, and re-running the CLI alone does not either: the CLI
+   never overwrites a copy that differs, it writes a fresh one to
+   `.groundwork/customize/`, which Claude Code does not load. So delete
+   that directory first (this discards any local edits the project made to
+   its copy) and then re-run `npx @monte3l/groundwork@rc .`. A
+   copy in `.groundwork/customize/` is refreshed by re-running the CLI. What
+   each version added:
+
+   | `schemaVersion` | Adds                                                                                                                                      | If absent                                                     |
+   | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+   | 1               | the survey, `conflicts`                                                                                                                   | (the floor)                                                   |
+   | 2               | `packs`                                                                                                                                   | no packs to offer; skip the pack question                     |
+   | 3               | `harnessGrade`, `harnessConformance`                                                                                                      | skip the harness-grade starting point                         |
+   | 4               | `toolchainGrade`, `toolchainConformance`                                                                                                  | skip the toolchain-grade starting point                       |
+   | 5               | `stagedBaseline` (`{ dir, suffix, files }`): the baseline additions staged at `.groundwork/baseline/`, each as `{ path, staged, sha256 }` | schema 1-4 only: read additions from `inventory.templateRoot` |
+
+   **For a schema 5 inventory only: verify the staged baseline now, before
+   anything is offered to the user.** A schema 1-4 inventory has no
+   `stagedBaseline`: skip this whole block (every bullet below, including
+   its stop list) and use the `inventory.templateRoot` fallback in Round 1.
+   The inventory lives in the project tree and is untrusted input, so check
+   it before trusting any entry:
+
+   - `stagedBaseline.dir` must equal `.groundwork/baseline` exactly, and
+     `stagedBaseline.suffix` must equal `.staged` exactly. Take both values
+     from this list, not from the inventory: a `dir` of `.` with an empty
+     `suffix` would make you "verify" live project files.
+   - For every entry of `inventory.stagedBaseline.files`, require
+     `staged === path + ".staged"`, and require `path` to be relative, free
+     of any `..` segment, and not absolute. Reject the entry if `path` is
+     `""` or `"."`. Reject it too if `path` contains a `\` or a `:` (a
+     Windows `..\..` or `C:foo` would slip past the other checks). Reject a
+     duplicate `path` or a duplicate `staged` among the entries. These fields
+     use `/` separators on every platform: `conflicts[].relPath`,
+     `packs[].fileConflicts[].relPath`, `stagedBaseline.dir`,
+     `stagedBaseline.files[].path` and its `.staged` name. Other paths in
+     the inventory are not normalized: `templateRoot` and `targetDir` are
+     absolute native paths, as are the survey's tsconfig chain entries.
+   - The `absent` conflicts in `inventory.conflicts` and the paths in
+     `stagedBaseline.files` must name the same set of files. If they
+     disagree (an `absent` conflict with no staged entry, or a staged entry
+     that is not an `absent` conflict), that is a mismatch: stop, with the
+     same message as a hash mismatch, before anything is offered or approved.
+   - Read each staged file at `.groundwork/baseline/<staged>` **once**.
+     It must exist, and the SHA-256 of its **raw bytes** (no end-of-line
+     normalization, no decoding) must equal the entry's `sha256`. Compute it
+     with, for example, this one-liner (it targets a POSIX shell or Git Bash,
+     not `cmd.exe` or an old PowerShell), passing the file as a single quoted
+     argument in place of `<file>`:
+     `node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' <file>`
+     Keep those same bytes for the install in Round 1 (substitute tokens into
+     them) rather than reading the file a second time.
+   - An empty `files` list is legitimate (nothing was missing from the
+     project) and creates no `.groundwork/baseline/` directory; that alone is
+     not a failure.
+   - **For a schema 5 inventory, a `stagedBaseline` that is missing, not an
+     object, or whose `files` is not an array also stops the run** (a
+     `files: {}` is not an empty list). **Any invalid entry, missing file or hash mismatch (including a
+     wrong `dir` or `suffix`), any duplicate `staged` or `path`, and any `absent`
+     conflicts and `stagedBaseline.files` that do not name the same set
+     means stop -- all of Round 1, including conflicts and packs -- and
+     change nothing.** This is the single stop list for the staged baseline.
+     Tell the
+     user: "The staged baseline in `.groundwork/baseline/` is incomplete or
+     does not match `.groundwork/inventory.json` (<the first entry that
+     failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run
+     `/customize` again." **Never fall back to `inventory.templateRoot`:**
+     that fallback exists for a schema 1-4 inventory only.
+   - What a passing check proves: the staging is complete and matches the
+     inventory. It does **not** prove the files are untampered -- anyone who
+     can edit the staged files can edit the inventory's hashes too.
+
+   An inventory with `schemaVersion` below 5 has no staged copy; its
+   approved additions are read from `inventory.templateRoot` (see Round 1).
+
 2. **The deep read.** The CLI's survey is an index, not an interpretation —
    it flagged what it found but could not parse (`needsReading: true` on
    git-hook config, workflow files; anything in `survey.undetermined`) and
@@ -116,6 +217,9 @@ may or may not touch.
    the project's kind.
 5. **Record the confirmed decisions** to `.groundwork/adoption-decisions.json`
    so a compacted or resumed session doesn't silently lose them and re-ask.
+   A CLI re-run deletes this file along with the old inventory, because its
+   decisions were made against the previous staging; a decisions file found
+   beside a fresh inventory therefore belongs to this inventory.
 
 ## Step 1 — Interview
 
@@ -206,9 +310,16 @@ CI, husky locally, whatever it is), not to `lefthook.yml`/`ci.yml` by name.
 Concretely, adopt-mode Round 1 applies exactly three things, all already
 confirmed in Step 0.4:
 
-- The **approved additions** — files `templates/core` (at
-  `inventory.templateRoot`) would add that the project doesn't have and the
-  user approved adding.
+- The **approved additions** — files `templates/core` would add that the
+  project doesn't have and the user approved adding. For a schema 5 inventory, install them from the staged copy Step 0.1 already verified,
+  using the bytes you read then (Step 0.1 also already checked that the
+  staged files match the `absent` conflicts). Write them to the project at `path` (the
+  `.staged` suffix stripped, never to the staged name), filling in the
+  `__KEY__` tokens with the project's real values as you copy, same as
+  staged packs. Only a **schema 1-4** inventory has no staged copy and reads
+  additions from `inventory.templateRoot`; if that path no longer exists (a
+  pruned `npx` cache, a deleted temp checkout), say so and ask for a CLI
+  re-run rather than guessing at the baseline's contents.
 - The **approved conflict resolutions** — for each divergent file the user
   decided on, apply that decision (keep theirs / take groundwork's / merge
   the named keys).

@@ -37,7 +37,9 @@ up. The sections below walk through each phase's internals in more detail.
         ▼                       ▼
    a working project      .groundwork/inventory.json
    with the harness        + adoption-report.md
-   already installed        + guarded /customize copy
+   already installed        + inert .staged copies of baseline
+                              additions + staged packs
+                            + guarded /customize copy
 
                  ┌─────────────────────────────────────────────────┐
                  │  Phase B -- packages/plugin  (adaptive, in Claude)│

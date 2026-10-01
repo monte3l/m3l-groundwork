@@ -9,7 +9,15 @@
  * YAML or JavaScript. Every merge is append-only (it never rebuilds an
  * object wholesale, which would risk reordering keys Prettier would
  * otherwise preserve) and idempotent (merging the same fragment twice
- * produces the same result as merging it once).
+ * produces the same result as merging it once). Every key taken from a
+ * caller fragment is checked against `__proto__`/`constructor`/`prototype`
+ * before it is read or written, and such a key is rejected with a thrown error
+ * rather than merged. The hazard this closes is local, not global: assigning
+ * `obj["__proto__"] = v` on the spread-copied plain objects these merges build
+ * swaps _that object's own_ prototype instead of creating an own key, so
+ * `JSON.stringify` later drops the key without a word. It never reached the
+ * shared `Object.prototype`; CWE-1321 is cited only because that is how the
+ * weakness is catalogued.
  */
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,6 +56,39 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return Object.is(a, b);
 }
 
+/**
+ * Key names {@link assertSafeKey} rejects. A three-name denylist is complete
+ * here, not an allowlist, because every key comes from a caller fragment
+ * merged onto a plain object, where `__proto__` is the only key with special
+ * setter behaviour; `constructor` and `prototype` are defence in depth.
+ */
+const PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+/**
+ * Throws when `key` (taken from a caller fragment) is one of the
+ * prototype-sensitive names in `PROTOTYPE_KEYS`. `context` names the merge in
+ * the error message.
+ *
+ * Only `__proto__` is actually exploitable here: on a plain object,
+ * `obj["__proto__"] = v` invokes the inherited setter, swapping that one
+ * object's prototype rather than storing an own key, so the value is silently
+ * dropped by `JSON.stringify` (the shape CWE-1321 catalogues, though nothing
+ * global is polluted). `constructor` and `prototype` assign as ordinary own
+ * keys on a plain object; they are rejected anyway as cheap defence in depth,
+ * since no shipped pack uses either name.
+ */
+function assertSafeKey(key: string, context: string): void {
+  if (PROTOTYPE_KEYS.has(key)) {
+    throw new Error(
+      `${context} merge: refusing prototype-sensitive key "${key}"`,
+    );
+  }
+}
+
 interface SettingsHookCommand {
   type: string;
   command: string;
@@ -69,7 +110,10 @@ export type SettingsHooksFragment = Record<string, SettingsHookEntry[]>;
  * entry, only `hooks` commands not already present (compared by exact
  * `command` string) are appended. A command that matches on `command` but
  * differs in its other fields (`if`, `timeout`) is a hard collision, never
- * a silent overwrite.
+ * a silent overwrite. An event name of `__proto__`, `constructor` or
+ * `prototype` throws: the check runs per key inside the loop, before that
+ * key is read or written, and nothing escapes the failed merge -- `existing`
+ * is never mutated and no partial result is returned.
  */
 export function mergeSettingsHooks(
   existing: unknown,
@@ -84,6 +128,7 @@ export function mergeSettingsHooks(
     : {};
 
   for (const [event, entries] of Object.entries(fragment)) {
+    assertSafeKey(event, "settings.json hooks");
     const existingEntries = Array.isArray(hooks[event])
       ? [...hooks[event]]
       : [];
@@ -139,7 +184,11 @@ export type SettingsTopLevelFragment = Record<string, unknown>;
  * silently clobbering it. A key not yet present is appended; one already
  * present with an identical value is a no-op; one present with a different
  * value is a hard collision, never a silent overwrite -- an adopted project's
- * own `statusLine` is the user's to replace deliberately.
+ * own `statusLine` is the user's to replace deliberately. A fragment key of
+ * `__proto__`, `constructor` or `prototype` throws: the check runs per key
+ * inside the loop, before that key is read or written, and nothing escapes the
+ * failed merge -- `existing` is never mutated and no partial result is
+ * returned.
  */
 export function mergeSettingsTopLevel(
   existing: unknown,
@@ -150,6 +199,7 @@ export function mergeSettingsTopLevel(
     : {};
 
   for (const [key, value] of Object.entries(fragment)) {
+    assertSafeKey(key, "settings.json");
     if (key === "hooks") {
       throw new Error(
         'settings.json merge: "hooks" is owned by mergeSettingsHooks and cannot be set as a top-level key',
@@ -185,7 +235,11 @@ export interface MergePackageScriptsResult {
  * Merges a pack's `package.json` script additions into the existing
  * `scripts` block. Never overwrites a differing existing script -- the
  * collision is returned for the caller to report, consistent with adopt
- * mode's "report, then the user decides per conflict" policy.
+ * mode's "report, then the user decides per conflict" policy. An addition
+ * named `__proto__`, `constructor` or `prototype` is not a collision: it
+ * throws. The check runs per key inside the loop, before that key is read or
+ * written, and nothing escapes the failed merge -- `existing` is never mutated
+ * and no partial result is returned.
  */
 export function mergePackageScripts(
   existing: Record<string, string> | undefined,
@@ -195,8 +249,9 @@ export function mergePackageScripts(
   const collisions: ScriptCollision[] = [];
 
   for (const [name, cmd] of Object.entries(additions)) {
+    assertSafeKey(name, "package.json scripts");
     // Object.hasOwn, not `scripts[name] !== undefined`: bracket access walks
-    // the prototype chain, so an addition named `toString`/`constructor`
+    // the prototype chain, so an addition named `toString`/`valueOf`
     // would otherwise "collide" with an inherited Object.prototype member.
     const currentValue = Object.hasOwn(scripts, name)
       ? scripts[name]

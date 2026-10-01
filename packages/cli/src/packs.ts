@@ -9,6 +9,7 @@
  * `/customize`, which reads a project's real gate runner before translating
  * a pack's wiring (see inventory.ts).
  */
+import assert from "node:assert/strict";
 import {
   existsSync,
   mkdirSync,
@@ -21,6 +22,7 @@ import { dirname, join } from "node:path";
 import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { emitTemplate } from "./emit.js";
+import { assertNotSymlink } from "./fs-guard.js";
 import { parseJsonc } from "./jsonc.js";
 import {
   isRecord,
@@ -385,19 +387,53 @@ export function installPack(
  * installs from this self-contained copy rather than from `templateRoot`
  * (an absolute path that may not exist by the time it runs). Token
  * substitution is a no-op here (`{}`): staging a project's real name into
- * pack content is `/customize`'s job, not this offline copy's.
+ * pack content is `/customize`'s job, not this offline copy's. Throws,
+ * before deleting or writing anything, when `groundworkDir`, its `packs/`
+ * or `packs/<name>/` is a symlink. A `pack.json` that is itself a symlink is
+ * removed (its target untouched) and replaced by a regular file. Any other
+ * failure while clearing or copying throws an `Error`, with the original
+ * failure as its `cause`, saying `.groundwork/` is incomplete and the CLI
+ * should be re-run -- except an `assert.AssertionError` (the copy's
+ * path-containment guard), which is re-thrown unwrapped.
  */
 export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
-  const destDir = join(groundworkDir, "packs", pack.manifest.name);
-  // Clear a previous staging first, so a file a newer pack version dropped
-  // doesn't linger beside the current payload.
-  rmSync(join(destDir, "files"), { recursive: true, force: true });
-  const { filesWritten } = emitTemplate(
-    pack.filesDir,
-    join(destDir, "files"),
-    {},
-  );
-  writeJson(join(destDir, "pack.json"), pack.manifest);
+  const packsDir = join(groundworkDir, "packs");
+  const destDir = join(packsDir, pack.manifest.name);
+  // Refuse a symlink anywhere on the staging path before the rmSync below
+  // could follow it outside the project.
+  for (const dir of [groundworkDir, packsDir, destDir]) {
+    assertNotSymlink(dir);
+  }
+  let filesWritten: string[];
+  try {
+    // Clear a previous staging first, so a file a newer pack version dropped
+    // doesn't linger beside the current payload.
+    rmSync(join(destDir, "files"), { recursive: true, force: true });
+    ({ filesWritten } = emitTemplate(
+      pack.filesDir,
+      join(destDir, "files"),
+      {},
+    ));
+    // A pre-existing pack.json may be a symlink planted to redirect this
+    // write outside the project: rmSync removes the link itself (never its
+    // target), and the exclusive "wx" flag refuses anything re-created there
+    // in between.
+    const packJsonPath = join(destDir, "pack.json");
+    rmSync(packJsonPath, { force: true });
+    writeFileSync(packJsonPath, JSON.stringify(pack.manifest, null, 2) + "\n", {
+      flag: "wx",
+    });
+  } catch (cause) {
+    // A broken path-containment invariant (emitTemplate's CWE-22 guard) is
+    // a security failure, not an incomplete staging a re-run could fix.
+    if (cause instanceof assert.AssertionError) {
+      throw cause;
+    }
+    throw new Error(
+      `staging pack "${pack.manifest.name}" into ${destDir} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+      { cause },
+    );
+  }
   return [...filesWritten.map((f) => join("files", f)), "pack.json"];
 }
 

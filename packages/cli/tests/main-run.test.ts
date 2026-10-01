@@ -14,11 +14,17 @@ import {
   rmSync,
   writeFileSync,
   readFileSync,
+  readdirSync,
   existsSync,
+  symlinkSync,
+  lstatSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Inventory } from "../src/inventory.js";
+import type * as InventoryModule from "../src/inventory.js";
+import type * as ReportModule from "../src/report.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
@@ -36,6 +42,34 @@ vi.mock("../src/plugin.js", () => ({
   installCustomizeSkill: installCustomizeSkillMock,
   installCustomizeSkillGuarded: installCustomizeSkillGuardedMock,
 }));
+
+// Records the relative call order of renderReport (whose string result main()
+// writes to adoption-report.md immediately after calling it) and
+// writeInventory (which writes inventory.json itself, last) -- a proxy for
+// the write-order contract (report before inventory) that doesn't require
+// redefining a non-configurable node:fs ESM export.
+const { writeOrderMock } = vi.hoisted(() => ({ writeOrderMock: vi.fn() }));
+
+vi.mock("../src/report.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof ReportModule>();
+  return {
+    ...actual,
+    renderReport: (...args: Parameters<typeof actual.renderReport>) => {
+      writeOrderMock("report");
+      return actual.renderReport(...args);
+    },
+  };
+});
+vi.mock("../src/inventory.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof InventoryModule>();
+  return {
+    ...actual,
+    writeInventory: (...args: Parameters<typeof actual.writeInventory>) => {
+      writeOrderMock("inventory");
+      return actual.writeInventory(...args);
+    },
+  };
+});
 
 const { main, CliUsageError } = await import("../src/main.js");
 
@@ -104,6 +138,199 @@ describe("main", () => {
 
       expect(gitInitMock).toHaveBeenCalled();
       expect(installCustomizeSkillGuardedMock).not.toHaveBeenCalled();
+    });
+
+    describe("fails early, before writing anything", () => {
+      it.each([
+        ["an unknown pack", "no-such-pack", /unknown pack "no-such-pack"/],
+        [
+          "the retired statusline pack",
+          "statusline",
+          /renamed to "harness-extras"/,
+        ],
+      ])(
+        "rejects %s as a usage error and leaves the target untouched",
+        (_l, pack, re) => {
+          const target = join(targetDir, "never-written");
+
+          expect(() => main([target, "--pack", pack])).toThrow(CliUsageError);
+          expect(() => main([target, "--pack", pack])).toThrow(re);
+          expect(existsSync(target)).toBe(false);
+          expect(gitInitMock).not.toHaveBeenCalled();
+        },
+      );
+
+      it("names the available packs when an unknown pack is requested", () => {
+        const target = join(targetDir, "never-written-unknown");
+
+        let thrown: unknown;
+        try {
+          main([target, "--pack", "no-such-pack"]);
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).message).toMatch(/available:/);
+        expect((thrown as Error).message).toMatch(/harness-extras/);
+      });
+
+      it("leaves an existing empty target empty when a later --pack is bad", () => {
+        const target = join(targetDir, "empty-existing");
+        mkdirSync(target);
+
+        expect(() =>
+          main([target, "--pack", "harness-extras", "--pack", "nope"]),
+        ).toThrow(CliUsageError);
+        expect(readdirSync(target)).toEqual([]);
+      });
+
+      it("rejects Windows in fresh mode with a plain Error (exit 1), before writing anything", () => {
+        const target = join(targetDir, "win");
+        let thrown: unknown;
+        try {
+          main([target], "win32");
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).message).toMatch(
+          /Windows is not supported yet \(Linux and macOS only\)/,
+        );
+        expect(existsSync(target)).toBe(false);
+      });
+
+      it.each([["--help"], ["--version"], ["--list-packs"]])(
+        "still allows %s on Windows",
+        (flag) => {
+          const log = vi.spyOn(console, "log").mockImplementation(() => {});
+          try {
+            expect(() => main([flag], "win32")).not.toThrow();
+            expect(log).toHaveBeenCalled();
+          } finally {
+            log.mockRestore();
+          }
+        },
+      );
+
+      it("still allows adopt mode on Windows", () => {
+        const projectDir = join(targetDir, "win-adopt");
+        mkdirSync(projectDir);
+        writeFileSync(
+          join(projectDir, "package.json"),
+          JSON.stringify({ name: "acme", type: "module" }),
+        );
+
+        main([projectDir], "win32");
+
+        expect(
+          existsSync(join(projectDir, ".groundwork", "inventory.json")),
+        ).toBe(true);
+      });
+    });
+
+    describe("when git init fails", () => {
+      it("chains the cause and says the project was written and what to run", () => {
+        const target = join(targetDir, "git-fails");
+        const cause = new Error("git: command not found");
+        gitInitMock.mockImplementationOnce(() => {
+          throw cause;
+        });
+        vi.spyOn(console, "log").mockImplementation(() => {});
+        let thrown: unknown;
+        try {
+          main([target]);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          vi.restoreAllMocks();
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).cause).toBe(cause);
+        expect((thrown as Error).message).toMatch(/project was written/);
+        expect((thrown as Error).message).toMatch(/git init/);
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(runInstallMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("when the dependency install fails", () => {
+      function runFailing(
+        target: string,
+        failure: Error,
+      ): { thrown: unknown; logs: string[]; errs: string[] } {
+        runInstallMock.mockImplementationOnce(() => {
+          throw failure;
+        });
+        const logs: string[] = [];
+        const errs: string[] = [];
+        vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+          logs.push(String(m));
+        });
+        vi.spyOn(console, "error").mockImplementation((m: unknown) => {
+          errs.push(String(m));
+        });
+        let thrown: unknown;
+        try {
+          main([target]);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          vi.restoreAllMocks();
+        }
+        return { thrown, logs, errs };
+      }
+
+      it("chains the cause, prints no ready banner, and gives one explanation via the thrown error", () => {
+        const target = join(targetDir, "install-fails");
+        const cause = Object.assign(new Error("Command failed: pnpm install"), {
+          status: 1,
+          signal: null,
+        });
+        const { thrown, logs, errs } = runFailing(target, cause);
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).cause).toBe(cause);
+        const message = (thrown as Error).message;
+        expect(message).toMatch(/exit status 1/);
+        expect(message).toMatch(/project was written/);
+        expect(message).toMatch(/run `pnpm install`/);
+        expect(errs).toEqual([]);
+        expect(logs.join("\n")).not.toMatch(/is ready at/);
+        expect(logs.join("\n")).toMatch(
+          /written to .*but dependencies are not installed/,
+        );
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+      });
+
+      it("reports the spawn code or signal when there is no exit status", () => {
+        const { thrown } = runFailing(
+          join(targetDir, "killed"),
+          Object.assign(new Error("x"), { signal: "SIGKILL" }),
+        );
+        expect((thrown as Error).message).toMatch(/signal SIGKILL/);
+
+        const { thrown: t2 } = runFailing(
+          join(targetDir, "eacces"),
+          Object.assign(new Error("x"), { code: "EACCES" }),
+        );
+        expect((t2 as Error).message).toMatch(/EACCES/);
+      });
+
+      it("names a missing pnpm binary specifically", () => {
+        const cause = Object.assign(new Error("spawnSync pnpm ENOENT"), {
+          code: "ENOENT",
+        });
+        const { thrown } = runFailing(join(targetDir, "no-pnpm"), cause);
+
+        expect((thrown as Error).message).toMatch(/pnpm was not found on PATH/);
+        expect((thrown as Error).cause).toBe(cause);
+      });
     });
 
     it("installs a requested pack alongside the baseline", () => {
@@ -180,14 +407,6 @@ describe("main", () => {
         ),
       ).toBe(true);
       logSpy.mockRestore();
-    });
-
-    it("throws naming the available packs when an unknown pack is requested", () => {
-      const packTarget = join(targetDir, "sub-pack-unknown");
-
-      expect(() =>
-        main([packTarget, "--skip-install", "--pack", "does-not-exist"]),
-      ).toThrow(/unknown pack "does-not-exist"/);
     });
   });
 
@@ -316,6 +535,198 @@ describe("main", () => {
         /no effect in adopt mode/,
       );
       expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
+    });
+
+    it("stages absent baseline files at .groundwork/baseline/ as <path>.staged, each with a sha256 matching the staged bytes, without touching the project", () => {
+      const projectDir = join(targetDir, "existing-project4");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+
+      main([projectDir]);
+
+      const inventory = JSON.parse(
+        readFileSync(join(projectDir, ".groundwork", "inventory.json"), "utf8"),
+      ) as Inventory;
+
+      expect(inventory.stagedBaseline.dir).toBe(".groundwork/baseline");
+      expect(inventory.stagedBaseline.suffix).toBe(".staged");
+      expect(inventory.stagedBaseline.files.length).toBeGreaterThan(0);
+      const paths = inventory.stagedBaseline.files.map((f) => f.path);
+      for (const file of inventory.stagedBaseline.files) {
+        expect(file.staged).toBe(`${file.path}.staged`);
+        const stagedPath = join(
+          projectDir,
+          ".groundwork",
+          "baseline",
+          file.staged,
+        );
+        expect(existsSync(stagedPath)).toBe(true);
+        expect(file.sha256).toBe(
+          createHash("sha256").update(readFileSync(stagedPath)).digest("hex"),
+        );
+      }
+      // package.json already exists in the project (a key-level conflict,
+      // never "absent") -- it must not be staged, while a real baseline
+      // file this fixture never created (eslint.config.js) must be.
+      expect(paths).toContain("eslint.config.js");
+      expect(paths).not.toContain("package.json");
+    });
+
+    it("throws EEXIST instead of following a symlink raced into place at adoption-report.md mid-run, leaving the outside file byte-identical (the 'wx' flag's guarantee)", () => {
+      const projectDir = join(targetDir, "existing-project-report-symlink");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+
+      const outsideDir = mkdtempSync(
+        join(tmpdir(), "main-run-report-symlink-outside-"),
+      );
+      const outsidePath = join(outsideDir, "sensitive.txt");
+      writeFileSync(outsidePath, "do not touch\n");
+      const reportPath = join(projectDir, ".groundwork", "adoption-report.md");
+
+      // Simulates the race the "wx" flag guards against: nothing is stale
+      // at this path when runAdopt starts (it already deleted any stale
+      // report up front), but something plants a symlink here DURING the
+      // run, before the report write itself. installCustomizeSkillGuarded
+      // is the last call before that write (see main.ts), so it's the one
+      // reachable seam a test can use to land a symlink exactly in that
+      // window without reaching into main()'s own internals.
+      installCustomizeSkillGuardedMock.mockImplementationOnce(() => {
+        mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
+        symlinkSync(outsidePath, reportPath);
+        return { filesWritten: [], location: "claude" as const };
+      });
+
+      try {
+        expect(() => main([projectDir])).toThrow(/EEXIST/);
+
+        // The write never happened: "wx" refuses to open a path that
+        // already exists (symlink or not) rather than following it, so the
+        // outside file is never touched.
+        expect(readFileSync(outsidePath, "utf8")).toBe("do not touch\n");
+        expect(lstatSync(reportPath).isSymbolicLink()).toBe(true);
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("deletes a stale .groundwork/adoption-decisions.json before staging, the same as inventory.json/adoption-report.md", () => {
+      const projectDir = join(targetDir, "existing-project-decisions-stale");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
+      const decisionsPath = join(
+        projectDir,
+        ".groundwork",
+        "adoption-decisions.json",
+      );
+      writeFileSync(decisionsPath, JSON.stringify({ stale: true }));
+
+      main([projectDir]);
+
+      // A stale decisions file reflects decisions made against a now-replaced
+      // inventory/report; runAdopt must clear it the same way it clears
+      // inventory.json/adoption-report.md before staging.
+      expect(existsSync(decisionsPath)).toBe(false);
+    });
+
+    it("leaves neither the report nor inventory.json after a staging failure (both deleted up front, baseline/ untouched)", () => {
+      const projectDir = join(targetDir, "existing-project-ordering");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
+      writeFileSync(
+        join(projectDir, ".groundwork", "inventory.json"),
+        "stale inventory\n",
+      );
+      writeFileSync(
+        join(projectDir, ".groundwork", "adoption-report.md"),
+        "stale report\n",
+      );
+
+      const outsideDir = mkdtempSync(
+        join(tmpdir(), "main-run-ordering-outside-"),
+      );
+      writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
+      symlinkSync(
+        outsideDir,
+        join(projectDir, ".groundwork", "baseline"),
+        "dir",
+      );
+
+      try {
+        expect(() => main([projectDir])).toThrow();
+
+        expect(
+          existsSync(join(projectDir, ".groundwork", "inventory.json")),
+        ).toBe(false);
+        expect(
+          existsSync(join(projectDir, ".groundwork", "adoption-report.md")),
+        ).toBe(false);
+        expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+          "do not touch",
+        );
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("writes adoption-report.md, then inventory.json last, on a normal run", () => {
+      const projectDir = join(targetDir, "existing-project-order-normal");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      writeOrderMock.mockClear();
+
+      main([projectDir]);
+
+      // renderReport's result is written to adoption-report.md immediately
+      // after it's called; writeInventory writes inventory.json itself --
+      // the call order below is a direct proxy for the file-write order the
+      // contract requires (report, then inventory.json last).
+      expect(
+        writeOrderMock.mock.calls.map((call: unknown[]) => call[0]),
+      ).toEqual(["report", "inventory"]);
+      expect(
+        existsSync(join(projectDir, ".groundwork", "inventory.json")),
+      ).toBe(true);
+    });
+
+    it("runs installCustomizeSkillGuarded BEFORE writing inventory.json/adoption-report.md -- neither file exists when it throws", () => {
+      const projectDir = join(targetDir, "existing-project-skill-order");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      installCustomizeSkillGuardedMock.mockImplementationOnce(() => {
+        throw new Error("simulated guarded skill install failure");
+      });
+
+      expect(() => main([projectDir])).toThrow(
+        /simulated guarded skill install failure/,
+      );
+
+      expect(
+        existsSync(join(projectDir, ".groundwork", "inventory.json")),
+      ).toBe(false);
+      expect(
+        existsSync(join(projectDir, ".groundwork", "adoption-report.md")),
+      ).toBe(false);
     });
 
     // Contract 2: --adopt against a target directory that does not exist

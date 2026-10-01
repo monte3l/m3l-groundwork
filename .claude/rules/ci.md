@@ -15,12 +15,14 @@ paths:
 
 - **Continuous integration (`.github/`).** `ci.yml` has five lane jobs
   (`format`/`lint`/`typecheck`/`build`/`test`), each `node bin/verify.mjs
---group <name>`, plus an `e2e` job (`pnpm build` then `pnpm test:e2e`), a
+--group <name>`, plus an `e2e` job (`pnpm build` then `pnpm test:e2e`), an
+  `e2e-macos` job (the identical invocation on `macos-latest` -- a separate
+  job, never an `os` matrix, on the same `.node-version` pin), a
   `node-current` job (a full `pnpm verify` + `pnpm test:e2e` on whatever
   Node.js currently calls its Current release line, so a drift against the
   pinned `.node-version` surfaces before that line becomes the next LTS --
   a separate job, never a matrix, for the same `gate-lane-parity` reason as
-  below), and a `verify` aggregator -- the check the `main` ruleset gates on
+  below), and a `verify` aggregator (which `needs` all of them) -- the check the `main` ruleset gates on
   (see CLAUDE.md's "Git Workflow"). The aggregator demands an explicit
   `success` from every lane, since testing only for `failure` reports green
   over a cancelled or skipped one.
