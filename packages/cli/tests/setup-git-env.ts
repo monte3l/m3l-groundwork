@@ -6,30 +6,14 @@
 // GIT_INDEX_FILE and friends into the processes it spawns for a hook -- a
 // pre-push run from a linked worktree included -- and any test that then
 // spawns `git` with the inherited environment would act on the pushing repo
-// rather than its own temp-directory fixture. Stripping every GIT_* variable
-// here keeps those tests hermetic. Guarded by git-env-hermetic.test.ts.
+// rather than its own temp-directory fixture. Scrubbing exactly the
+// repo-local variables here keeps those tests hermetic, without touching the
+// deliberate hermeticity variables (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`,
+// `GIT_CEILING_DIRECTORIES`, `GIT_AUTHOR_NAME`) a fixture may set on purpose.
+// The actual list and scrub logic live in the pure `./git-env.js` module so
+// they can be unit-tested directly; this file only invokes it. Guarded by
+// git-env-hermetic.test.ts.
 
-/**
- * Deletes every `GIT_*` variable from `env` in place, leaving all other keys
- * (including look-alikes such as `GITHUB_TOKEN`) untouched.
- *
- * @param env - The environment to scrub; defaults to `process.env`.
- *
- * @example
- * ```ts
- * import { scrubGitEnv } from "./setup-git-env.js";
- *
- * const env: NodeJS.ProcessEnv = { GIT_DIR: "/repo/.git", PATH: "/usr/bin" };
- * scrubGitEnv(env);
- * // env is now { PATH: "/usr/bin" }
- * ```
- */
-export function scrubGitEnv(env: NodeJS.ProcessEnv = process.env): void {
-  for (const key of Object.keys(env)) {
-    if (key.startsWith("GIT_")) {
-      delete env[key];
-    }
-  }
-}
+import { scrubGitEnv } from "./git-env.js";
 
 scrubGitEnv();
