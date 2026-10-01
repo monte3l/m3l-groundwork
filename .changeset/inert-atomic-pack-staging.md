@@ -1,0 +1,5 @@
+---
+"@monte3l/groundwork": patch
+---
+
+Adopt mode now stages packs the way it stages the baseline: every file under `.groundwork/packs/<name>/` (and each `pack.json`) carries a `.staged` suffix, so a project-wide glob or Claude Code's nested-skill discovery can no longer pick one up, and all packs are staged together in a temp directory that is swapped in by rename only after every copy succeeded (a failed run leaves the previous staging intact). `inventory.json` gains a required `stagedPacks` field (per pack: `dir`, `suffix`, the staged `manifest` and `files`, each with its original `path`, `staged` name and `sha256`), still schema 5, which has not shipped. `/customize` Step 0 verifies the staged packs in the same single stop list as the staged baseline and installs from the `.staged` copies. The planned pack paths are scope-checked before any pack file is written.

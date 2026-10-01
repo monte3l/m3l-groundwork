@@ -120,6 +120,7 @@ function makeInventory(signal: string): ReturnType<typeof buildInventory> {
     harnessGrade: EMPTY_GRADE,
     toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
     stagedBaseline: EMPTY_STAGED_BASELINE,
+    stagedPacks: [],
   });
 }
 

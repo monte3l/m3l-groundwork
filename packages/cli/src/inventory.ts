@@ -17,6 +17,11 @@
  * from `templateRoot`. From schema 5 on, each staged file is an inert copy
  * named `<path>` + `stagedBaseline.suffix` (`.staged`) and carries the sha256
  * of its staged bytes, so `/customize` can verify a copy before installing it.
+ * Schema 5 also carries `stagedPacks`, added additively without a version
+ * bump: every pack staged the same inert way under `.groundwork/packs/<name>/`
+ * (`pack-stage.ts`), its manifest included. An inventory without
+ * `stagedPacks` came from an earlier schema-5 CLI that staged packs
+ * unsuffixed at the same location.
  */
 import {
   existsSync,
@@ -28,7 +33,6 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { toPosixPath } from "./baseline-stage.js";
 import type { StagedBaselineFile } from "./baseline-stage.js";
 import type { CapCounts } from "./caps.js";
 import type { FileConflict } from "./conflicts.js";
@@ -36,7 +40,9 @@ import { summarizeHarnessConformance } from "./harness/conformance.js";
 import type { HarnessConformance } from "./harness/conformance.js";
 import type { HarnessGrade } from "./harness/types.js";
 import type { ModeDetection } from "./mode.js";
+import type { StagedPack } from "./pack-stage.js";
 import type { PackWiring } from "./packs.js";
+import { toPosixPath } from "./staging.js";
 import type { ProjectSurvey } from "./survey/survey.js";
 import { summarizeToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainConformance } from "./toolchain/conformance.js";
@@ -104,6 +110,8 @@ export interface Inventory {
   toolchainConformance: ToolchainConformance;
   /** The "absent" baseline files, copied verbatim as inert `<path>.staged` copies for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative, and `dir` and every `files[].path`/`files[].staged` use `/` on every platform. */
   stagedBaseline: StagedBaseline;
+  /** Every pack, staged as inert `.staged` copies (manifest included) under `.groundwork/packs/<name>/` for `/customize` to install from after confirmation; one entry per pack, `dir` project-relative, and `dir` and every `path`/`staged` use `/` on every platform. Absent from inventories written before pack staging became inert (see the module header). */
+  stagedPacks: StagedPack[];
 }
 
 /** Resolves this CLI package's own `package.json`, relative to this module's runtime location. */
@@ -144,6 +152,7 @@ export interface BuildInventoryParams {
   harnessGrade: HarnessGrade;
   toolchainGrade: ToolchainGrade;
   stagedBaseline: StagedBaseline;
+  stagedPacks: StagedPack[];
 }
 
 /**
@@ -163,7 +172,10 @@ function toPosixConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
  * {@link toPosixPath}, plus `stagedBaseline.dir` (built by the caller as a
  * `/`-joined literal) and each `stagedBaseline.files[].path`/`.staged`
  * (already normalized by `stageBaselineAdditions` with the same
- * {@link toPosixPath}, so the conflict and staged paths agree). The harness/toolchain conformance
+ * {@link toPosixPath}, so the conflict and staged paths agree), and
+ * `stagedPacks` (passed through verbatim: `stagePacks` builds each `dir` as
+ * a `/`-joined literal and normalizes every `path`/`staged` the same way).
+ * The harness/toolchain conformance
  * summaries are computed from the normalized conflict paths. Every other
  * path -- `templateRoot`, `targetDir`, and every path inside `survey` -- is
  * passed through in the platform's native form. The caller's `conflicts` and
@@ -172,7 +184,7 @@ function toPosixConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
  * @example
  * ```ts
  * const inventory = buildInventory({ detection, templateRoot, targetDir, survey,
- *   conflicts, packs, harnessGrade, toolchainGrade, stagedBaseline });
+ *   conflicts, packs, harnessGrade, toolchainGrade, stagedBaseline, stagedPacks });
  * inventory.conflicts[0]?.relPath; // "src/index.ts", even on Windows
  * ```
  */
@@ -197,6 +209,7 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
     toolchainGrade: params.toolchainGrade,
     toolchainConformance: summarizeToolchainConformance(conflicts),
     stagedBaseline: params.stagedBaseline,
+    stagedPacks: params.stagedPacks,
   };
 }
 

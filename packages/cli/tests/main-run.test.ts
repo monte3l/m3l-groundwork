@@ -21,10 +21,12 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Inventory } from "../src/inventory.js";
 import type * as InventoryModule from "../src/inventory.js";
 import type * as ReportModule from "../src/report.js";
+import type { StagedPack, StagedPackFile } from "../src/pack-stage.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
@@ -497,7 +499,22 @@ describe("main", () => {
       );
 
       // Staged, not installed: the payload lives under .groundwork/packs/,
-      // and the project's own .claude/ tree was never created.
+      // each file under an inert .staged name, and the project's own
+      // .claude/ tree was never created.
+      expect(
+        existsSync(
+          join(
+            projectDir,
+            ".groundwork",
+            "packs",
+            "harness-extras",
+            "files",
+            ".claude",
+            "hooks",
+            "guard-readonly-bash.mjs.staged",
+          ),
+        ),
+      ).toBe(true);
       expect(
         existsSync(
           join(
@@ -511,8 +528,80 @@ describe("main", () => {
             "guard-readonly-bash.mjs",
           ),
         ),
+      ).toBe(false);
+      expect(
+        existsSync(
+          join(
+            projectDir,
+            ".groundwork",
+            "packs",
+            "harness-extras",
+            "pack.json.staged",
+          ),
+        ),
       ).toBe(true);
       expect(existsSync(join(projectDir, ".claude"))).toBe(false);
+
+      const stagedPack = inventory.stagedPacks.find(
+        (p: StagedPack) => p.name === "harness-extras",
+      );
+      expect(stagedPack).toBeDefined();
+      expect(stagedPack?.dir).toBe(".groundwork/packs/harness-extras");
+      expect(stagedPack?.suffix).toBe(".staged");
+      expect(stagedPack?.manifest.staged).toBe("pack.json.staged");
+      const stagedHook = stagedPack?.files.find(
+        (f: StagedPackFile) =>
+          f.path === ".claude/hooks/guard-readonly-bash.mjs",
+      );
+      expect(stagedHook?.staged).toBe(
+        ".claude/hooks/guard-readonly-bash.mjs.staged",
+      );
+    });
+
+    it("records every pack's stagedPacks hashes matching an independent sha256 of both the staged copy on disk and the real templates/packs/<name>/ source file", () => {
+      const projectDir = join(targetDir, "existing-project3-hashes");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+
+      main([projectDir]);
+
+      const inventory = JSON.parse(
+        readFileSync(join(projectDir, ".groundwork", "inventory.json"), "utf8"),
+      ) as Inventory;
+      expect(inventory.stagedPacks.length).toBeGreaterThan(0);
+
+      const here = dirname(fileURLToPath(import.meta.url));
+      const packsSourceRoot = join(
+        here,
+        "..",
+        "..",
+        "..",
+        "templates",
+        "packs",
+      );
+
+      for (const pack of inventory.stagedPacks) {
+        const packDir = join(projectDir, ".groundwork", "packs", pack.name);
+        const manifestBytes = readFileSync(join(packDir, pack.manifest.staged));
+        expect(pack.manifest.sha256).toBe(
+          createHash("sha256").update(manifestBytes).digest("hex"),
+        );
+        for (const file of pack.files) {
+          const stagedBytes = readFileSync(join(packDir, "files", file.staged));
+          expect(file.sha256).toBe(
+            createHash("sha256").update(stagedBytes).digest("hex"),
+          );
+          const sourceBytes = readFileSync(
+            join(packsSourceRoot, pack.name, "files", file.path),
+          );
+          expect(file.sha256).toBe(
+            createHash("sha256").update(sourceBytes).digest("hex"),
+          );
+        }
+      }
     });
 
     // Contract 1: --pack in adopt mode is rejected up front as a usage

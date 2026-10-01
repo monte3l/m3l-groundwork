@@ -82,7 +82,12 @@ date.
   files the baseline already reads (`merge-json.ts`) -- never YAML, never
   JavaScript. Fresh mode installs a requested pack directly; adopt mode
   only surveys and stages it under `.groundwork/packs/` for `/customize` to
-  install after confirmation.
+  install after confirmation. Every staged pack file, and each `pack.json`,
+  carries a `.staged` suffix (so no project tool discovers it), and all packs
+  are staged together into a temp sibling directory and swapped in by rename
+  (`pack-stage.ts`, built on the swap/sweep helpers in `staging.ts` that
+  `baseline-stage.ts` shares). `inventory.stagedPacks` records each file's
+  original path and `sha256`.
 - **`assets.ts`** is the one place that locates `templates/` and the plugin
   payload, whether running from the source checkout or a published npm
   tarball -- see its own header comment for why the probe order matters.

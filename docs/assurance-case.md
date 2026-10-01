@@ -136,8 +136,8 @@ dependency -- there isn't one (`packages/cli/package.json`'s
   generic "write into the target directory" facility. Adopt mode's only
   writes are `.groundwork/inventory.json`, `.groundwork/adoption-report.md`,
   inert `.staged` copies under `.groundwork/baseline/`, the staged pack
-  files under `.groundwork/packs/` (these keep their real extensions and are
-  not inert), both refused if `.groundwork` or a staging directory is a
+  files under `.groundwork/packs/` (inert `.staged` copies too, `pack.json`
+  included, swapped in atomically), both refused if `.groundwork` or a staging directory is a
   symlink, and a
   guarded, additive `/customize` copy -- there is no code path by
   which surveying an arbitrary, untrusted project can reach the same

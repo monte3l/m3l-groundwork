@@ -33,6 +33,7 @@ import type {
 } from "../src/inventory.js";
 import { toPosixPath } from "../src/baseline-stage.js";
 import type { StagedBaselineFile } from "../src/baseline-stage.js";
+import type { StagedPack, StagedPackFile } from "../src/pack-stage.js";
 import type { FileConflict } from "../src/conflicts.js";
 import type { HarnessGrade } from "../src/harness/types.js";
 import type { ToolchainGrade } from "../src/toolchain/types.js";
@@ -191,6 +192,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks: [],
     });
 
     expect(inventory.schemaVersion).toBe(INVENTORY_SCHEMA_VERSION);
@@ -225,6 +227,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline,
+      stagedPacks: [],
     });
 
     expect(inventory.stagedBaseline).toBe(stagedBaseline);
@@ -246,6 +249,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks: [],
     });
 
     expect(inventory.harnessGrade).toBe(EMPTY_GRADE);
@@ -274,6 +278,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks: [],
     });
 
     expect(inventory.toolchainGrade).toBe(EMPTY_TOOLCHAIN_GRADE);
@@ -297,6 +302,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks: [],
     });
 
     const path = writeInventory(inventory, join(groundworkDir, "nested"));
@@ -322,6 +328,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline,
+      stagedPacks: [],
     });
 
     const path = writeInventory(inventory, join(groundworkDir, "roundtrip"));
@@ -355,6 +362,7 @@ describe("writeInventory writes atomically", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks: [],
     });
 
     const path = writeInventory(inventory, groundworkDir);
@@ -401,6 +409,7 @@ describe("writeInventory refuses to write through a pre-existing symlink at inve
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks: [],
     });
 
     writeInventory(inventory, groundworkDir);
@@ -465,6 +474,7 @@ describe("buildInventory normalizes backslash paths to forward slashes", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks: [],
     });
   }
 
@@ -546,6 +556,7 @@ describe("buildInventory normalizes backslash paths to forward slashes", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline,
+      stagedPacks: [],
     });
 
     const inventoryAbsentPaths = new Set(
@@ -569,6 +580,111 @@ describe("StagedBaseline / StagedBaselineFile shapes", () => {
       files: StagedBaselineFile[];
     }>();
     expectTypeOf<StagedBaselineFile>().toEqualTypeOf<{
+      path: string;
+      staged: string;
+      sha256: string;
+    }>();
+  });
+});
+
+function stagedPackFile(
+  overrides: Partial<StagedPackFile> = {},
+): StagedPackFile {
+  return {
+    path: ".claude/agents/a.md",
+    staged: ".claude/agents/a.md.staged",
+    sha256: "b".repeat(64),
+    ...overrides,
+  };
+}
+
+function stagedPack(overrides: Partial<StagedPack> = {}): StagedPack {
+  return {
+    name: "harness-extras",
+    dir: ".groundwork/packs/harness-extras",
+    suffix: ".staged",
+    manifest: {
+      path: "pack.json",
+      staged: "pack.json.staged",
+      sha256: "c".repeat(64),
+    },
+    files: [stagedPackFile()],
+    ...overrides,
+  };
+}
+
+describe("Inventory.stagedPacks", () => {
+  let groundworkDir: string;
+
+  beforeEach(() => {
+    groundworkDir = mkdtempSync(join(tmpdir(), "inventory-staged-packs-"));
+  });
+
+  afterEach(() => {
+    rmSync(groundworkDir, { recursive: true, force: true });
+  });
+
+  it("stays schemaVersion 5 -- stagedPacks is additive within the same schema, not a further bump", () => {
+    expect(INVENTORY_SCHEMA_VERSION).toBe(5);
+  });
+
+  it("carries stagedPacks through buildInventory verbatim, one entry per pack", () => {
+    const stagedPacks: StagedPack[] = [
+      stagedPack({ name: "harness-extras" }),
+      stagedPack({ name: "quality", dir: ".groundwork/packs/quality" }),
+    ];
+
+    const inventory = buildInventory({
+      detection: { mode: "adopt", signal: "found package.json" },
+      templateRoot: "/tmp/templates/core",
+      targetDir: "/tmp/project",
+      survey: EMPTY_SURVEY,
+      conflicts: [],
+      packs: [],
+      harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks,
+    });
+
+    expect(inventory.stagedPacks).toBe(stagedPacks);
+  });
+
+  it("round-trips stagedPacks (name/dir/suffix/manifest/files) through JSON", () => {
+    const stagedPacks: StagedPack[] = [stagedPack()];
+    const inventory = buildInventory({
+      detection: { mode: "adopt", signal: "found package.json" },
+      templateRoot: "/tmp/templates/core",
+      targetDir: "/tmp/project",
+      survey: EMPTY_SURVEY,
+      conflicts: [],
+      packs: [],
+      harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedPacks,
+    });
+
+    const path = writeInventory(inventory, groundworkDir);
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Inventory;
+
+    expect(parsed.stagedPacks).toEqual(stagedPacks);
+    expect(parsed.stagedPacks[0]?.dir).toBe(".groundwork/packs/harness-extras");
+    expect(parsed.stagedPacks[0]?.manifest.staged).toBe("pack.json.staged");
+    expect(parsed.stagedPacks[0]?.files[0]?.staged).toBe(
+      ".claude/agents/a.md.staged",
+    );
+  });
+
+  it("types StagedPack as { name, dir, suffix, manifest: StagedPackFile, files: StagedPackFile[] }", () => {
+    expectTypeOf<StagedPack>().toEqualTypeOf<{
+      name: string;
+      dir: string;
+      suffix: string;
+      manifest: StagedPackFile;
+      files: StagedPackFile[];
+    }>();
+    expectTypeOf<StagedPackFile>().toEqualTypeOf<{
       path: string;
       staged: string;
       sha256: string;

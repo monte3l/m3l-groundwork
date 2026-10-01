@@ -13,8 +13,9 @@
  * already-established project and writes only a report -- see `mode.ts`,
  * `survey/survey.ts`, `conflicts.ts`, and `report.ts`. Adopt mode never
  * touches a project file, including a pack's: it surveys every pack under
- * `templates/packs/` into the report and defers installation to
- * `/customize`; see `runAdopt`.
+ * `templates/packs/` into the report, stages each as inert `.staged` copies
+ * under `.groundwork/packs/`, and defers installation to `/customize`; see
+ * `runAdopt`.
  */
 import {
   existsSync,
@@ -58,8 +59,12 @@ import {
   loadPack,
   installPack,
   observeWiring,
-  stagePackFiles,
 } from "./packs.js";
+import {
+  STAGED_PACKS_DIR,
+  plannedPackStagingPaths,
+  stagePacks,
+} from "./pack-stage.js";
 import { renderReport } from "./report.js";
 import type { TokenTable } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
@@ -564,13 +569,19 @@ export function assertAdoptWriteScope(
  * `/customize` skill (see `installCustomizeSkillGuarded`), so the report
  * can point straight at a working next step. Every pack under
  * `templates/packs/` is surveyed (`main` rejects `--pack` in this mode, see
- * `assertAdoptUsage`) and staged, unapplied, at `.groundwork/packs/<name>/`;
- * absent baseline files are staged as inert `<path>.staged` copies at
- * `.groundwork/baseline/`. Every pack is loaded and validated by `loadPack`
- * first, so an invalid pack (a malformed manifest, or a prototype-sensitive
- * key in its wiring) throws before anything under `.groundwork/` is deleted
- * or written. A stale `inventory.json`/`adoption-report.md`/
- * `adoption-decisions.json` is deleted before any staging or install; then packs and the baseline are
+ * `assertAdoptUsage`) and staged, unapplied and inert, at
+ * `.groundwork/packs/<name>/` -- its manifest as `pack.json.staged`, its
+ * files as `files/<path>.staged` -- all packs swapped into place in one
+ * atomic rename (`stagePacks`); absent baseline files are staged as inert
+ * `<path>.staged` copies at `.groundwork/baseline/`. Every pack is loaded
+ * and validated by `loadPack`, surveyed (`planConflicts`, `observeWiring`),
+ * and its staging plan validated and scope-checked against
+ * {@link assertAdoptWriteScope} (`plannedPackStagingPaths`) first, so an
+ * invalid pack (a malformed manifest, a prototype-sensitive key in its
+ * wiring, an unstageable file tree) or an out-of-scope staging path throws
+ * before anything under `.groundwork/` is deleted or written. A stale
+ * `inventory.json`/`adoption-report.md`/`adoption-decisions.json` is then
+ * deleted before any staging or install; then packs and the baseline are
  * staged, the `/customize` skill is installed, `adoption-report.md` is
  * written, and `inventory.json` is written last (atomically, via a temp file
  * and rename). Only console output follows it, so `inventory.json`'s
@@ -596,10 +607,24 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   ]);
 
   // Every pack must pass loadPack's validation (including its
-  // prototype-sensitive wiring-key check) before anything under .groundwork/
+  // prototype-sensitive wiring-key check), and its survey and staging plan
+  // must be computed and scope-checked, before anything under .groundwork/
   // is touched, so an invalid pack fails the run with the previous
   // inventory/report still intact rather than half-cleared.
   const loadedPacks: Pack[] = listPackNames().map((name) => loadPack(name));
+  const packs: PackSurvey[] = loadedPacks.map((pack) => ({
+    name: pack.manifest.name,
+    modes: pack.manifest.modes,
+    budget: pack.manifest.budget,
+    fileConflicts: planConflicts(pack.filesDir, options.targetDir, tokens),
+    wiring: pack.manifest.wiring,
+    wiringObservations: observeWiring(options.targetDir, pack.manifest),
+    adoptNotes: pack.manifest.adoptNotes,
+  }));
+  assertAdoptWriteScope(
+    options.targetDir,
+    plannedPackStagingPaths(loadedPacks, groundworkDir, tokens),
+  );
 
   // A previous run's inventory/report -- and the decisions /customize
   // recorded against them -- must not survive a run that fails part-way:
@@ -611,30 +636,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   rmSync(reportPath, { force: true });
   rmSync(decisionsPath, { force: true });
 
-  const packs: PackSurvey[] = loadedPacks.map((pack) => {
-    const fileConflicts = planConflicts(
-      pack.filesDir,
-      options.targetDir,
-      tokens,
-    );
-    const wiringObservations = observeWiring(options.targetDir, pack.manifest);
-    const staged = stagePackFiles(pack, groundworkDir);
-    assertAdoptWriteScope(
-      options.targetDir,
-      staged.map((file) =>
-        join(groundworkDir, "packs", pack.manifest.name, file),
-      ),
-    );
-    return {
-      name: pack.manifest.name,
-      modes: pack.manifest.modes,
-      budget: pack.manifest.budget,
-      fileConflicts,
-      wiring: pack.manifest.wiring,
-      wiringObservations,
-      adoptNotes: pack.manifest.adoptNotes,
-    };
-  });
+  const stagedPacks = stagePacks(loadedPacks, groundworkDir, tokens);
 
   // Scope-checked as planned, before any of them is written.
   assertAdoptWriteScope(
@@ -664,6 +666,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       suffix: STAGED_SUFFIX,
       files: stagedBaselineFiles,
     },
+    stagedPacks,
   });
 
   // The /customize skill install is the last step that can fail before the
@@ -686,9 +689,9 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       `staged ${stagedBaselineFiles.length} baseline file(s) at ${stagedBaselineDir}/ for /customize`,
     );
   }
-  if (packs.length > 0) {
+  if (stagedPacks.length > 0) {
     console.log(
-      `staged ${packs.length} pack(s) at .groundwork/packs/ for /customize`,
+      `staged ${stagedPacks.length} pack(s) at ${STAGED_PACKS_DIR}/ for /customize`,
     );
   }
   if (pluginResult.location === "already-present") {
