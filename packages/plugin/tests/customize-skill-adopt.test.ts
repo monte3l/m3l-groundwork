@@ -233,14 +233,18 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
   it("says the schemaVersion-higher-than-5 stop names /plugin update, the re-run command, and the project-local reason /plugin update alone can't fix it", () => {
     const idx = section.indexOf("higher than 5");
     expect(idx).toBeGreaterThan(-1);
-    const window = section.slice(idx, idx + 650);
+    // Widened from 650: the corrected local-copy advice (delete-first,
+    // names both local-copy locations) lengthened this paragraph.
+    const window = section.slice(idx, idx + 1100);
     expect(window).toContain("/plugin update");
     expect(window).toContain("npx @monte3l/groundwork@rc .");
     expect(window).toContain("project-local");
   });
 
   it("names stagedBaseline missing, not an object, or files not an array in the single stop list bullet", () => {
-    const bulletStart = section.indexOf("**A `stagedBaseline` that is missing");
+    const bulletStart = section.indexOf(
+      "**For a schema 5 inventory, a `stagedBaseline` that is missing",
+    );
     const bulletEnd = section.indexOf(
       "What a passing check proves",
       bulletStart,
@@ -277,7 +281,7 @@ describe("SKILL.md Round 1's approved-additions bullet", () => {
 
 describe("SKILL.md Step 0 -- verification runs before the deep read and before Confirm", () => {
   it("orders the verify block before '**The deep read.**' and before 'Confirm.'", () => {
-    const verifyIndex = text.indexOf("Verify the staged baseline now");
+    const verifyIndex = text.indexOf("verify the staged baseline now");
     const deepReadIndex = text.indexOf("**The deep read.**");
     const confirmIndex = text.indexOf("4. **Confirm.**");
 
@@ -286,5 +290,125 @@ describe("SKILL.md Step 0 -- verification runs before the deep read and before C
     expect(confirmIndex).toBeGreaterThan(-1);
     expect(verifyIndex).toBeLessThan(deepReadIndex);
     expect(verifyIndex).toBeLessThan(confirmIndex);
+  });
+});
+
+describe("SKILL.md Step 0.1 -- the staged-baseline verify block is scoped to schema 5 only", () => {
+  // Same heading-scoped slice as the "Step 0.1 section" describe block above
+  // (a module-level `section` would leak the first describe's scope, so this
+  // is recomputed locally per the test-author instructions).
+  const sectionStart = text.indexOf("1. Look for");
+  const sectionEnd = text.indexOf("2. **The deep read.**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.1 section markers ('1. Look for' / '2. **The deep read.**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  const headerPhrase = "For a schema 5 inventory only";
+  const fullHeaderSubstring =
+    "**For a schema 5 inventory only: verify the staged baseline now";
+  const scopeSentence =
+    "A schema 1-4 inventory has no `stagedBaseline`: skip this whole block";
+  const stopBulletSubstring =
+    "**For a schema 5 inventory, a `stagedBaseline` that is missing";
+
+  function allIndicesOf(haystack: string, needle: string): number[] {
+    const indices: number[] = [];
+    let index = haystack.indexOf(needle);
+    while (index !== -1) {
+      indices.push(index);
+      index = haystack.indexOf(needle, index + 1);
+    }
+    return indices;
+  }
+
+  it("states the verify block applies to a schema 5 inventory only, and names the schema 1-4 skip in the same breath", () => {
+    expect(section).toContain(fullHeaderSubstring);
+    expect(section).toContain(scopeSentence);
+  });
+
+  it("opens the single stop list bullet with the schema-5-only phrasing", () => {
+    expect(section).toContain(stopBulletSubstring);
+  });
+
+  it("places the schema-5-only scope statement before the first `stagedBaseline.dir` mention and before the stop bullet's 'that is missing' text", () => {
+    const headerIndex = section.indexOf(headerPhrase);
+    const dirIndex = section.indexOf("`stagedBaseline.dir`");
+    const stopBulletIndex = section.indexOf(stopBulletSubstring);
+    const thatIsMissingIndex = section.indexOf("that is missing");
+
+    expect(headerIndex).toBeGreaterThan(-1);
+    expect(dirIndex).toBeGreaterThan(-1);
+    expect(stopBulletIndex).toBeGreaterThan(-1);
+    expect(thatIsMissingIndex).toBeGreaterThan(-1);
+
+    expect(headerIndex).toBeLessThan(dirIndex);
+    expect(headerIndex).toBeLessThan(stopBulletIndex);
+    expect(headerIndex).toBeLessThan(thatIsMissingIndex);
+  });
+
+  it("keeps every stagedBaseline.files/dir/suffix mention and the 'missing, not an object' bullet wording after the schema-5-only scope statement", () => {
+    const headerIndex = section.indexOf(headerPhrase);
+    expect(headerIndex).toBeGreaterThan(-1);
+
+    const needles = [
+      "stagedBaseline.files",
+      "stagedBaseline.dir",
+      "stagedBaseline.suffix",
+      "missing, not an object",
+    ];
+    for (const needle of needles) {
+      const occurrences = allIndicesOf(section, needle);
+      expect(occurrences.length).toBeGreaterThan(0);
+      for (const occurrenceIndex of occurrences) {
+        expect(occurrenceIndex).toBeGreaterThan(headerIndex);
+      }
+    }
+  });
+
+  it("still gives the schema 1-4 templateRoot fallback alongside the skip-this-block instruction", () => {
+    expect(section).toContain("skip this whole block");
+    expect(section).toContain("templateRoot");
+  });
+});
+
+describe("SKILL.md Step 3 Round 1 -- schema-5 install condition wording", () => {
+  const step3Start = text.indexOf("## Step 3");
+  if (step3Start === -1) {
+    throw new Error("'## Step 3' heading was not found in SKILL.md");
+  }
+  const step3Text = text.slice(step3Start);
+
+  it("no longer gates the staged-copy install on the old '`schemaVersion` 5 or higher' wording", () => {
+    expect(step3Text).not.toContain("`schemaVersion` 5 or higher");
+  });
+
+  it("states the schema-5 install condition with the new wording", () => {
+    expect(step3Text).toContain("For a schema 5 inventory, install them");
+  });
+});
+
+describe("SKILL.md Step 0.1 -- corrected local-copy advice for a schemaVersion higher than 5", () => {
+  const higherThan5Index = text.indexOf("higher than 5");
+
+  it("finds the 'higher than 5' paragraph", () => {
+    expect(higherThan5Index).toBeGreaterThan(-1);
+  });
+
+  it("tells the agent to delete the stale local copy first, names both local-copy locations, and says /plugin update does not load a deleted copy back", () => {
+    const window = text.slice(higherThan5Index, higherThan5Index + 1100);
+    expect(window).toContain("delete that directory first");
+    expect(window).toContain("`.claude/skills/customize/`");
+    expect(window).toContain("never overwrites a copy that differs");
+    expect(window).toContain("`.groundwork/customize/`");
+    expect(window).toContain("does not load");
+    expect(window).toContain("`/plugin update`");
+  });
+
+  it("drops the incorrect claim that re-running the CLI refreshes the plugin's local copy", () => {
+    const window = text.slice(higherThan5Index, higherThan5Index + 1100);
+    expect(window).not.toContain("so the CLI refreshes its local copy");
   });
 });

@@ -79,12 +79,15 @@ may or may not touch.
    than this plugin: **stop and change nothing**, do not interpret the
    inventory (a newer schema may have renamed or repurposed fields, and a
    confident misreading is worse than none), and tell the user to update the
-   plugin (`/plugin update`) and re-run `/customize`. If this skill runs
-   from a project-local copy (`.claude/skills/customize/` or
-   `.groundwork/customize/`, which the CLI installs in adopt mode),
-   `/plugin update` does not refresh it: tell the user to run
-   `/plugin update`, or to re-run `npx @monte3l/groundwork@rc .` so the CLI
-   refreshes its local copy. What each version added:
+   plugin and re-run `/customize`. Say which update applies to the copy
+   that is running. For the plugin install, run `/plugin update`. For a
+   project-local copy in `.claude/skills/customize/`, `/plugin update` does
+   not touch it, and re-running the CLI alone does not either: the CLI
+   never overwrites a copy that differs, it writes a fresh one to
+   `.groundwork/customize/`, which Claude Code does not load. So delete
+   that directory first and then re-run `npx @monte3l/groundwork@rc .`. A
+   copy in `.groundwork/customize/` is refreshed by re-running the CLI. What
+   each version added:
 
    | `schemaVersion` | Adds                                                                                                                                      | If absent                                                     |
    | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -94,10 +97,12 @@ may or may not touch.
    | 4               | `toolchainGrade`, `toolchainConformance`                                                                                                  | skip the toolchain-grade starting point                       |
    | 5               | `stagedBaseline` (`{ dir, suffix, files }`): the baseline additions staged at `.groundwork/baseline/`, each as `{ path, staged, sha256 }` | schema 1-4 only: read additions from `inventory.templateRoot` |
 
-   **Verify the staged baseline now (anything above schema 5 already stopped
-   you above), before anything is
-   offered to the user.** The inventory lives in the project tree and is
-   untrusted input, so check it before trusting any entry:
+   **For a schema 5 inventory only: verify the staged baseline now, before
+   anything is offered to the user.** A schema 1-4 inventory has no
+   `stagedBaseline`: skip this whole block (every bullet below, including
+   its stop list) and use the `inventory.templateRoot` fallback in Round 1.
+   The inventory lives in the project tree and is untrusted input, so check
+   it before trusting any entry:
 
    - `stagedBaseline.dir` must equal `.groundwork/baseline` exactly, and
      `stagedBaseline.suffix` must equal `.staged` exactly. Take both values
@@ -127,9 +132,9 @@ may or may not touch.
    - An empty `files` list is legitimate (nothing was missing from the
      project) and creates no `.groundwork/baseline/` directory; that alone is
      not a failure.
-   - **A `stagedBaseline` that is missing, not an object, or whose `files`
-     is not an array also stops the run** (a `files: {}` is not an empty
-     list). **Any invalid entry, missing file or hash mismatch (including a
+   - **For a schema 5 inventory, a `stagedBaseline` that is missing, not an
+     object, or whose `files` is not an array also stops the run** (a
+     `files: {}` is not an empty list). **Any invalid entry, missing file or hash mismatch (including a
      wrong `dir` or `suffix`), any duplicate `staged` or `path`, and any `absent`
      conflicts and `stagedBaseline.files` that do not name the same set
      means stop -- all of Round 1, including conflicts and packs -- and
@@ -301,8 +306,7 @@ Concretely, adopt-mode Round 1 applies exactly three things, all already
 confirmed in Step 0.4:
 
 - The **approved additions** — files `templates/core` would add that the
-  project doesn't have and the user approved adding. For `schemaVersion` 5
-  or higher, install them from the staged copy Step 0.1 already verified,
+  project doesn't have and the user approved adding. For a schema 5 inventory, install them from the staged copy Step 0.1 already verified,
   using the bytes you read then (Step 0.1 also already checked that the
   staged files match the `absent` conflicts). Write them to the project at `path` (the
   `.staged` suffix stripped, never to the staged name), filling in the

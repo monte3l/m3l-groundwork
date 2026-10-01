@@ -760,8 +760,9 @@ set for one file.
   `templateRoot` inside the CLI run itself, where it still exists. **Staged
   pack files keep their real extensions and are not inert** (unlike
   `baseline/`), and pack staging is not atomic; atomic, `.staged`-suffixed
-  pack staging is planned before 1.0. Pack staging today only refuses a
-  symlinked staging directory or `pack.json`.
+  pack staging is planned before 1.0. Pack staging today refuses a
+  symlinked staging directory, and replaces a pre-existing `pack.json` (even
+  a symlink, which is removed rather than followed) with a regular file.
 - **Adopt mode's post-merge cap counts (in `report.ts`) are an estimate, not
   a reconciliation.** It assumes no name overlap between the baseline's
   agents/skills/hooks and the project's own -- good enough to flag "you may
