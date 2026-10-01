@@ -211,11 +211,14 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   project file (see "Fail-safe defaults" above), so the practical impact is
   a write escaping to a symlink target the project owner themselves created,
   not an attacker-controlled one. The staging writers and the `/customize`
-  skill copy (`plugin.ts`, which guards `.claude`, `.claude/skills`,
-  `.claude/skills/customize`, `.groundwork` and `.groundwork/customize`, and
-  replaces each payload file remove-then-`wx`) add an `lstat`
-  refusal on `.groundwork` and the staging directories (`fs-guard.ts`), but
-  there is a time-of-check-to-time-of-use gap between that `lstat` and the
+  skill copy (`plugin.ts`) add an `lstat`
+  refusal on `.groundwork` and the staging directories (`fs-guard.ts`); the
+  skill copy never writes through a symlinked or non-directory component
+  under `.claude` and instead installs into `.groundwork/customize/`, never
+  removes or replaces an entry the project owns under
+  `.claude/skills/customize/`, and replaces files remove-then-`wx` only in
+  the CLI-owned `.groundwork/customize/`. There is,
+  however, a time-of-check-to-time-of-use gap between those `lstat` checks and the
   later write: a local attacker able to swap a directory for a symlink in
   that window is outside the threat model this tool accepts, which assumes
   the project directory is not concurrently modified by a hostile local
