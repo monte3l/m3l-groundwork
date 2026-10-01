@@ -14,6 +14,7 @@ import {
   rmSync,
   writeFileSync,
   readFileSync,
+  readdirSync,
   existsSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -104,6 +105,107 @@ describe("main", () => {
 
       expect(gitInitMock).toHaveBeenCalled();
       expect(installCustomizeSkillGuardedMock).not.toHaveBeenCalled();
+    });
+
+    describe("fails early, before writing anything", () => {
+      it.each([
+        ["an unknown pack", "no-such-pack", /unknown pack "no-such-pack"/],
+        [
+          "the retired statusline pack",
+          "statusline",
+          /folded into.*harness-extras/,
+        ],
+      ])(
+        "rejects %s as a usage error and leaves the target untouched",
+        (_l, pack, re) => {
+          const target = join(targetDir, "never-written");
+
+          expect(() => main([target, "--pack", pack])).toThrow(CliUsageError);
+          expect(() => main([target, "--pack", pack])).toThrow(re);
+          expect(existsSync(target)).toBe(false);
+          expect(gitInitMock).not.toHaveBeenCalled();
+        },
+      );
+
+      it("leaves an existing empty target empty when a later --pack is bad", () => {
+        const target = join(targetDir, "empty-existing");
+        mkdirSync(target);
+
+        expect(() =>
+          main([target, "--pack", "harness-extras", "--pack", "nope"]),
+        ).toThrow(CliUsageError);
+        expect(readdirSync(target)).toEqual([]);
+      });
+
+      it("rejects Windows as a usage error before writing anything", () => {
+        const target = join(targetDir, "win");
+
+        expect(() => main([target], "win32")).toThrow(CliUsageError);
+        expect(() => main([target], "win32")).toThrow(
+          /Windows is not supported yet \(Linux and macOS only\)/,
+        );
+        expect(existsSync(target)).toBe(false);
+      });
+
+      it("still allows --help on Windows", () => {
+        expect(() => main(["--help"], "win32")).not.toThrow();
+      });
+    });
+
+    describe("when the dependency install fails", () => {
+      it("reports the written project, tells the user to run pnpm install, and still exits non-zero", () => {
+        const target = join(targetDir, "install-fails");
+        runInstallMock.mockImplementationOnce(() => {
+          throw new Error("Command failed: pnpm install");
+        });
+        const logs: string[] = [];
+        const errs: string[] = [];
+        vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+          logs.push(String(m));
+        });
+        vi.spyOn(console, "error").mockImplementation((m: unknown) => {
+          errs.push(String(m));
+        });
+
+        try {
+          let thrown: unknown;
+          try {
+            main([target]);
+          } catch (error) {
+            thrown = error;
+          }
+          expect(thrown).toBeInstanceOf(Error);
+          expect(thrown).not.toBeInstanceOf(CliUsageError);
+          expect((thrown as Error).message).toMatch(/pnpm install/);
+        } finally {
+          vi.restoreAllMocks();
+        }
+
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(logs.join("\n")).toMatch(/is ready at/);
+        expect(errs.join("\n")).toMatch(/project was written/);
+        expect(errs.join("\n")).toMatch(/run `pnpm install`/);
+      });
+
+      it("names a missing pnpm binary specifically", () => {
+        const target = join(targetDir, "no-pnpm");
+        runInstallMock.mockImplementationOnce(() => {
+          throw Object.assign(new Error("spawnSync pnpm ENOENT"), {
+            code: "ENOENT",
+          });
+        });
+        const errs: string[] = [];
+        vi.spyOn(console, "log").mockImplementation(() => undefined);
+        vi.spyOn(console, "error").mockImplementation((m: unknown) => {
+          errs.push(String(m));
+        });
+        try {
+          expect(() => main([target])).toThrow(/pnpm/);
+        } finally {
+          vi.restoreAllMocks();
+        }
+        expect(errs.join("\n")).toMatch(/pnpm was not found on PATH/);
+      });
     });
 
     it("installs a requested pack alongside the baseline", () => {

@@ -39,6 +39,7 @@ import {
   writeInventory,
 } from "./inventory.js";
 import type { PackSurvey } from "./inventory.js";
+import type { Pack } from "./packs.js";
 import {
   listPackNames,
   loadPack,
@@ -342,6 +343,10 @@ function runFresh(options: CliOptions): void {
     );
   }
 
+  // Resolve every --pack before the first write: a bad name must leave the
+  // target exactly as it was found.
+  const packs = options.packs.map((name) => resolveFreshPack(name));
+
   mkdirSync(options.targetDir, { recursive: true });
 
   const tokens = buildTokens(options.projectName);
@@ -352,13 +357,8 @@ function runFresh(options: CliOptions): void {
   );
 
   const installedPacks: { name: string; budget: CapCounts }[] = [];
-  for (const name of options.packs) {
-    const pack = loadPack(name);
-    if (!pack.manifest.modes.includes("fresh")) {
-      throw new Error(
-        `pack "${name}" does not support fresh mode (modes: ${pack.manifest.modes.join(", ")})`,
-      );
-    }
+  for (const pack of packs) {
+    const name = pack.manifest.name;
     const packResult = installPack(pack, options.targetDir, tokens);
     console.log(
       `installed pack "${name}" (${packResult.filesWritten.length} files)`,
@@ -385,9 +385,14 @@ function runFresh(options: CliOptions): void {
   gitInit(options.targetDir);
   console.log("initialized git repository");
 
+  let installFailure: string | undefined;
   if (!options.skipInstall) {
-    runInstall(options.targetDir);
-    console.log("installed dependencies");
+    try {
+      runInstall(options.targetDir);
+    } catch (error) {
+      installFailure = describeInstallFailure(error);
+    }
+    if (installFailure === undefined) console.log("installed dependencies");
   }
 
   console.log(
@@ -397,6 +402,51 @@ function runFresh(options: CliOptions): void {
       `\n✓ ${options.projectName} is ready at ${options.targetDir}`,
     ),
   );
+
+  if (installFailure !== undefined) {
+    console.error(
+      `${installFailure}\nThe project was written; run \`pnpm install\` in ${options.targetDir} yourself to finish.`,
+    );
+    throw new Error(
+      "dependency install failed -- the project was written; run `pnpm install` yourself",
+    );
+  }
+}
+
+/** Explains why the post-emission `pnpm install` failed, naming a missing binary specifically. */
+function describeInstallFailure(error: unknown): string {
+  const code: unknown =
+    typeof error === "object" && error !== null && "code" in error
+      ? error.code
+      : undefined;
+  return code === "ENOENT"
+    ? "pnpm was not found on PATH, so dependencies were not installed."
+    : "`pnpm install` failed, so dependencies were not installed.";
+}
+
+/**
+ * Loads one `--pack` for fresh mode, as a usage error (exit 2) when it is
+ * unknown, malformed, or fresh-incompatible -- called for every pack before
+ * any file is written.
+ */
+function resolveFreshPack(name: string): Pack {
+  let pack: Pack;
+  try {
+    pack = loadPack(name);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    const hint =
+      name === "statusline"
+        ? " -- the statusline pack was folded into harness-extras; use --pack harness-extras"
+        : "";
+    throw new CliUsageError(`${reason}${hint}\n\n${USAGE}`, { cause: error });
+  }
+  if (!pack.manifest.modes.includes("fresh")) {
+    throw new CliUsageError(
+      `pack "${name}" does not support fresh mode (modes: ${pack.manifest.modes.join(", ")})\n\n${USAGE}`,
+    );
+  }
+  return pack;
 }
 
 /**
@@ -554,7 +604,14 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   console.log("Next: open this project in Claude Code and run /customize.");
 }
 
-export function main(argv: string[]): void {
+/**
+ * Runs the CLI. `platform` is injectable so the Windows refusal is
+ * unit-testable on any OS; it defaults to `process.platform`.
+ */
+export function main(
+  argv: string[],
+  platform: NodeJS.Platform = process.platform,
+): void {
   const options = parseArgs(argv);
 
   if (options.help) {
@@ -578,6 +635,12 @@ export function main(argv: string[]): void {
       }
     }
     return;
+  }
+
+  if (platform === "win32") {
+    throw new CliUsageError(
+      "Windows is not supported yet (Linux and macOS only)",
+    );
   }
 
   const detected = detectMode(options.targetDir);
