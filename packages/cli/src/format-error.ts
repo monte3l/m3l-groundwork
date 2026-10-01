@@ -7,8 +7,11 @@
  * which would silently drop every chained cause.
  */
 
-/** Rendered in place of a value that cannot be read or stringified (a throwing getter, a null-prototype object, a `Symbol` message). */
+/** Rendered in place of a value that cannot be read or stringified (a throwing getter, a null-prototype object, a `Symbol` message, a revoked Proxy). */
 const UNPRINTABLE = "[unprintable value]";
+
+/** Rendered in place of an object already printed elsewhere in the output (not an ancestor, so not a cycle). */
+const SEE_ABOVE = "(see above)";
 
 /**
  * Most links followed along any one branch -- printed and suppressed links
@@ -16,30 +19,70 @@ const UNPRINTABLE = "[unprintable value]";
  */
 const MAX_DEPTH = 32;
 
+/** Most children printed per parent before the rest collapse into one `... and N more` line. */
+const MAX_CHILDREN = 32;
+
 /** Shortest cause message that is suppressed merely for appearing inside its parent's message. */
 const MIN_SUBSTRING_LENGTH = 8;
 
 /**
  * Stands in for a child whose `cause`/`errors` accessor threw. A fresh
  * instance per occurrence, so two unreadable children are never mistaken
- * for one repeated value by the cycle check.
+ * for one repeated value.
  */
 class Unreadable {}
 
-/** The value's own one-line message, or {@link UNPRINTABLE} when reading or stringifying it fails. */
-function messageOf(value: unknown): string {
+/** A value classified once, so an accessor or Proxy trap answering differently on a later read cannot change the verdict. */
+type Inspected =
+  | { readonly kind: "aggregate"; readonly value: AggregateError }
+  | { readonly kind: "error"; readonly value: Error }
+  | { readonly kind: "other"; readonly value: unknown }
+  | { readonly kind: "unreadable" };
+
+/** Classifies `value`; an `instanceof` check that throws (a Proxy's `getPrototypeOf` trap, a revoked Proxy) makes it unreadable. */
+function inspect(value: unknown): Inspected {
   try {
     if (value instanceof Unreadable) {
-      return UNPRINTABLE;
+      return { kind: "unreadable" };
     }
-    // Read once: an accessor may answer differently on every read.
-    const raw: unknown = value instanceof Error ? value.message : value;
+    if (value instanceof AggregateError) {
+      return { kind: "aggregate", value };
+    }
+    if (value instanceof Error) {
+      return { kind: "error", value };
+    }
+    return { kind: "other", value };
+  } catch {
+    // The formatter runs while reporting another failure; a value that
+    // cannot even be classified must not replace that report with its own.
+    return { kind: "unreadable" };
+  }
+}
+
+/** The value's own message (unindented, possibly multi-line), or {@link UNPRINTABLE} when reading or stringifying it fails. */
+function messageOf(node: Inspected): string {
+  try {
+    let raw: unknown;
+    switch (node.kind) {
+      case "unreadable":
+        return UNPRINTABLE;
+      case "aggregate":
+      case "error":
+        // Read once: an accessor may answer differently on every read.
+        raw = node.value.message;
+        break;
+      case "other":
+        raw = node.value;
+        break;
+      default: {
+        const exhaustive: never = node;
+        return String(exhaustive);
+      }
+    }
     // String(symbol) would succeed, but a Symbol is not a message.
     return typeof raw === "symbol" ? UNPRINTABLE : String(raw);
   } catch {
-    // The formatter runs while reporting another failure; a value that
-    // cannot be read or stringified must not replace that report with its
-    // own error.
+    // Same rationale as inspect(): never let the report itself throw.
     return UNPRINTABLE;
   }
 }
@@ -49,45 +92,70 @@ function isArray(value: unknown): value is readonly unknown[] {
   return Array.isArray(value);
 }
 
+/** Whether `value` has an identity worth tracking: only an object or a function can repeat or form a cycle. */
+function isObjectLike(value: unknown): value is object {
+  return (
+    (typeof value === "object" && value !== null) || typeof value === "function"
+  );
+}
+
+/** The first {@link MAX_CHILDREN} values a node chains to, and how many more were left out. */
+interface Children {
+  readonly kept: unknown[];
+  readonly omitted: number;
+}
+
 /**
  * The values a node chains to: an `AggregateError`'s `errors` (when really
- * an array), then its `cause` (when set). An accessor that throws yields an
- * {@link Unreadable} child in its place.
+ * an array), then its `cause` (when set), capped at {@link MAX_CHILDREN}. An
+ * accessor that throws yields an {@link Unreadable} child in its place.
  */
-function childrenOf(value: unknown): unknown[] {
-  if (!(value instanceof Error)) {
-    return [];
+function childrenOf(node: Inspected): Children {
+  if (node.kind !== "aggregate" && node.kind !== "error") {
+    return { kept: [], omitted: 0 };
   }
-  const children: unknown[] = [];
-  if (value instanceof AggregateError) {
+  const kept: unknown[] = [];
+  let omitted = 0;
+  const add = (child: unknown): void => {
+    if (kept.length < MAX_CHILDREN) {
+      kept.push(child);
+    } else {
+      omitted += 1;
+    }
+  };
+  if (node.kind === "aggregate") {
     try {
-      const errors: unknown = value.errors;
+      const errors: unknown = node.value.errors;
       if (isArray(errors)) {
-        // A loop, not push(...errors): spreading a huge array as call
-        // arguments can throw a RangeError.
-        for (const entry of errors) {
-          children.push(entry);
+        // Read only the entries that can be printed; a huge array is
+        // counted by its length, never walked.
+        const length = errors.length;
+        const take = Math.min(length, MAX_CHILDREN);
+        for (let i = 0; i < take; i++) {
+          kept.push(errors[i]);
         }
+        omitted += length - take;
       }
     } catch {
-      children.push(new Unreadable());
+      add(new Unreadable());
     }
   }
   try {
-    const cause: unknown = value.cause;
+    const cause: unknown = node.value.cause;
     if (cause !== undefined) {
-      children.push(cause);
+      add(cause);
     }
   } catch {
-    children.push(new Unreadable());
+    add(new Unreadable());
   }
-  return children;
+  return { kept, omitted };
 }
 
 /** Whether `message` adds nothing to `parentMessage` and need not be printed again. */
 function isRedundant(message: string, parentMessage: string): boolean {
-  if (message === "") {
-    // Every string "includes" the empty string.
+  if (message.trim() === "") {
+    // Every string "includes" the empty string, and an all-whitespace
+    // message would "equal" any other one after trim().
     return false;
   }
   return (
@@ -96,55 +164,110 @@ function isRedundant(message: string, parentMessage: string): boolean {
   );
 }
 
-/** One pending child visit in the iterative walk. */
-interface Visit {
+/** One link of the path from the top value down to the node being visited. */
+interface Ancestor {
   readonly value: unknown;
-  /** The nearest printed ancestor's message, compared against for suppression. */
-  readonly parentMessage: string;
+  readonly parent: Ancestor | undefined;
+}
+
+/** Whether `value` already appears on the `ancestors` path -- a genuine cycle. The path is at most {@link MAX_DEPTH} + 1 long. */
+function isAncestor(value: unknown, ancestors: Ancestor | undefined): boolean {
+  for (let link = ancestors; link !== undefined; link = link.parent) {
+    if (link.value === value) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Fields every pending visit carries. */
+interface VisitBase {
   /** Indent level: grows only on a printed link. */
   readonly depth: number;
   /** Links followed from the top: grows on every link, printed or suppressed. */
   readonly steps: number;
-  /** Shared by one parent's children, so a cut emits one `...` line, not one per sibling. */
+  /** Shared by one parent's visits, so a cut emits one `...` line, not one per sibling. */
   readonly cut: { done: boolean };
 }
 
-/** Pushes `value`'s child visits onto `stack`, reversed so they pop in their original order. */
+/** A pending child, or the trailing `... and N more` marker of a parent with more than {@link MAX_CHILDREN} children. */
+type Visit =
+  | (VisitBase & {
+      readonly kind: "child";
+      readonly value: unknown;
+      /** The nearest printed ancestor's message, compared against for suppression. */
+      readonly parentMessage: string;
+      /** The path from the top value down to (and including) this child's parent. */
+      readonly ancestors: Ancestor;
+    })
+  | (VisitBase & { readonly kind: "more"; readonly omitted: number });
+
+/** Pushes `node`'s child visits onto `stack`, reversed so they pop in their original order, the `... and N more` marker last. */
 function pushVisits(
   stack: Visit[],
-  value: unknown,
+  node: Inspected,
   parentMessage: string,
   depth: number,
   steps: number,
+  ancestors: Ancestor,
 ): void {
   const cut = { done: false };
-  const children = childrenOf(value);
-  for (let i = children.length - 1; i >= 0; i--) {
-    stack.push({ value: children[i], parentMessage, depth, steps, cut });
+  const { kept, omitted } = childrenOf(node);
+  if (omitted > 0) {
+    stack.push({ kind: "more", omitted, depth, steps, cut });
   }
+  for (let i = kept.length - 1; i >= 0; i--) {
+    stack.push({
+      kind: "child",
+      value: kept[i],
+      parentMessage,
+      depth,
+      steps,
+      cut,
+      ancestors,
+    });
+  }
+}
+
+/** `message` as a `caused by:` line at `depth`, every further line indented one level deeper, so it can't pass for a sibling `caused by:` line. */
+function causedByLines(message: string, depth: number): string[] {
+  const [first = "", ...rest] = message.split("\n");
+  const continuation = "  ".repeat(depth + 1);
+  return [
+    `${"  ".repeat(depth)}caused by: ${first}`,
+    ...rest.map((line) => `${continuation}${line}`),
+  ];
 }
 
 /**
  * Formats `error` as a multi-line string: its own message on the first line,
  * then one `caused by: <message>` line per chained cause, indented two more
- * spaces per depth. An `AggregateError`'s `errors` are each listed as a
- * `caused by:` line at the next depth (before its own `cause`, if any); an
- * `errors` property that is not an array is ignored.
+ * spaces per depth; any further line of a cause's message is indented two
+ * spaces past its own `caused by:` line. An `AggregateError`'s `errors` are
+ * each listed as a `caused by:` line at the next depth (before its own
+ * `cause`, if any); an `errors` property that is not an array is ignored.
+ * At most 32 children are printed per parent; the rest collapse into one
+ * `... and N more` line at the children's indent.
  *
  * A message is an `Error`'s `message`, otherwise `String(value)`; it renders
  * as `[unprintable value]` when stringifying throws, when it is a `Symbol`,
- * or when the `message`, `cause` or `errors` accessor itself throws.
+ * when the `message`, `cause` or `errors` accessor itself throws, or when the
+ * value cannot even be classified (a Proxy whose `getPrototypeOf` trap
+ * throws, a revoked Proxy) -- such a value has no children.
  *
  * A cause is not printed again (its own causes still are, at the same
- * indent) when its message is non-empty and either equals its parent's after
- * `trim()` or is at least 8 characters long and contained in its parent's
- * message.
+ * indent) when its message is not empty or whitespace-only and either equals
+ * the nearest printed ancestor's message after `trim()` or is at least 8
+ * characters long and contained in it.
  *
- * A cause cycle is cut at the first repeat. Every branch follows at most 32
- * links -- suppressed links count too -- and a branch cut there gets a `...`
- * line in place, at the cut point, with any sibling branches still printed
- * after it. The walk is iterative, so the function always terminates and
- * never throws, however long the chain.
+ * An object (or function) that is its own ancestor -- a cause cycle -- is
+ * cut silently at the repeat; one already printed on another branch renders
+ * as `caused by: (see above)`. Primitives are never deduplicated. Every
+ * branch follows at most 32 links -- suppressed links count too -- and a
+ * parent whose children are cut there gets exactly one `...` line, at the
+ * cut point, with any sibling branches still printed after it. The walk is
+ * iterative and bounded, so the function always terminates and never
+ * throws, however long the chain.
  *
  * @example
  * ```ts
@@ -156,33 +279,55 @@ function pushVisits(
  * ```
  */
 export function formatErrorChain(error: unknown): string {
-  const topMessage = messageOf(error);
+  const top = inspect(error);
+  const topMessage = messageOf(top);
   const lines: string[] = [topMessage];
-  const seen = new Set<unknown>([error]);
+  const seen = new Set<object>();
+  if (isObjectLike(error)) {
+    seen.add(error);
+  }
   const stack: Visit[] = [];
-  pushVisits(stack, error, topMessage, 1, 1);
+  pushVisits(stack, top, topMessage, 1, 1, {
+    value: error,
+    parent: undefined,
+  });
 
   for (let visit = stack.pop(); visit !== undefined; visit = stack.pop()) {
-    const { value, parentMessage, depth, steps, cut } = visit;
-    if (seen.has(value)) {
+    const { depth, steps, cut } = visit;
+    const indent = "  ".repeat(depth);
+    if (visit.kind === "child" && isAncestor(visit.value, visit.ancestors)) {
+      // A cycle: everything from here on is already being printed above.
       continue;
     }
     if (steps > MAX_DEPTH) {
       if (!cut.done) {
         cut.done = true;
-        lines.push(`${"  ".repeat(depth)}...`);
+        lines.push(`${indent}...`);
       }
       continue;
     }
-    seen.add(value);
-    const message = messageOf(value);
-    if (isRedundant(message, parentMessage)) {
-      // Already printed as part of the parent's message.
-      pushVisits(stack, value, parentMessage, depth, steps + 1);
+    if (visit.kind === "more") {
+      lines.push(`${indent}... and ${String(visit.omitted)} more`);
       continue;
     }
-    lines.push(`${"  ".repeat(depth)}caused by: ${message}`);
-    pushVisits(stack, value, message, depth + 1, steps + 1);
+    const { value, parentMessage, ancestors } = visit;
+    if (isObjectLike(value)) {
+      if (seen.has(value)) {
+        lines.push(`${indent}caused by: ${SEE_ABOVE}`);
+        continue;
+      }
+      seen.add(value);
+    }
+    const node = inspect(value);
+    const message = messageOf(node);
+    const path: Ancestor = { value, parent: ancestors };
+    if (isRedundant(message, parentMessage)) {
+      // Already printed as part of the parent's message.
+      pushVisits(stack, node, parentMessage, depth, steps + 1, path);
+      continue;
+    }
+    lines.push(...causedByLines(message, depth));
+    pushVisits(stack, node, message, depth + 1, steps + 1, path);
   }
 
   return lines.join("\n");

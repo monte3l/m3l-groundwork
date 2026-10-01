@@ -165,8 +165,11 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
  *
  * The write is atomic: the JSON goes to `inventory.json.tmp` first and is
  * renamed over `inventory.json` only once complete, so a reader never sees a
- * half-written file. On failure the temp file is removed (best effort) and
- * any existing `inventory.json` is left untouched.
+ * half-written file. On failure the temp file is removed (best effort: a
+ * failed removal only warns, naming the temp file), any existing
+ * `inventory.json` is left untouched, and an `Error` is thrown, with the
+ * original failure as its `cause`, saying `.groundwork/` is incomplete and
+ * the CLI should be re-run.
  *
  * @example
  * ```ts
@@ -193,11 +196,15 @@ export function writeInventory(
   } catch (cause) {
     try {
       rmSync(tmpPath, { force: true });
-    } catch {
-      // Best effort: the write failure below is the error worth reporting.
+    } catch (cleanupError) {
+      // Best effort: the write failure below is the error worth reporting,
+      // so a failed cleanup only warns, naming the leftover file.
+      console.warn(
+        `warning: could not remove the temporary file ${tmpPath} -- delete it by hand (${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)})`,
+      );
     }
     throw new Error(
-      `writing ${path} failed; any previous inventory.json is unchanged`,
+      `writing ${path} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
       { cause },
     );
   }

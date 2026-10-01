@@ -389,7 +389,10 @@ export function installPack(
  * pack content is `/customize`'s job, not this offline copy's. Throws,
  * before deleting or writing anything, when `groundworkDir`, its `packs/`
  * or `packs/<name>/` is a symlink. A `pack.json` that is itself a symlink is
- * removed (its target untouched) and replaced by a regular file.
+ * removed (its target untouched) and replaced by a regular file. Any other
+ * failure while clearing or copying throws an `Error`, with the original
+ * failure as its `cause`, saying `.groundwork/` is incomplete and the CLI
+ * should be re-run.
  */
 export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
   const packsDir = join(groundworkDir, "packs");
@@ -399,23 +402,31 @@ export function stagePackFiles(pack: Pack, groundworkDir: string): string[] {
   for (const dir of [groundworkDir, packsDir, destDir]) {
     assertNotSymlink(dir);
   }
-  // Clear a previous staging first, so a file a newer pack version dropped
-  // doesn't linger beside the current payload.
-  rmSync(join(destDir, "files"), { recursive: true, force: true });
-  const { filesWritten } = emitTemplate(
-    pack.filesDir,
-    join(destDir, "files"),
-    {},
-  );
-  // A pre-existing pack.json may be a symlink planted to redirect this
-  // write outside the project: rmSync removes the link itself (never its
-  // target), and the exclusive "wx" flag refuses anything re-created there
-  // in between.
-  const packJsonPath = join(destDir, "pack.json");
-  rmSync(packJsonPath, { force: true });
-  writeFileSync(packJsonPath, JSON.stringify(pack.manifest, null, 2) + "\n", {
-    flag: "wx",
-  });
+  let filesWritten: string[];
+  try {
+    // Clear a previous staging first, so a file a newer pack version dropped
+    // doesn't linger beside the current payload.
+    rmSync(join(destDir, "files"), { recursive: true, force: true });
+    ({ filesWritten } = emitTemplate(
+      pack.filesDir,
+      join(destDir, "files"),
+      {},
+    ));
+    // A pre-existing pack.json may be a symlink planted to redirect this
+    // write outside the project: rmSync removes the link itself (never its
+    // target), and the exclusive "wx" flag refuses anything re-created there
+    // in between.
+    const packJsonPath = join(destDir, "pack.json");
+    rmSync(packJsonPath, { force: true });
+    writeFileSync(packJsonPath, JSON.stringify(pack.manifest, null, 2) + "\n", {
+      flag: "wx",
+    });
+  } catch (cause) {
+    throw new Error(
+      `staging pack "${pack.manifest.name}" into ${destDir} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+      { cause },
+    );
+  }
   return [...filesWritten.map((f) => join("files", f)), "pack.json"];
 }
 

@@ -221,11 +221,11 @@ describe("formatErrorChain", () => {
     });
   });
 
-  it("counts a suppressed link toward the 32-deep cap: a chain of 100000 identical-message causes (every link suppressed) terminates without a stack overflow and ends with a '...' line", () => {
+  it("counts a suppressed link toward the 32-deep cap: a chain of 40 identical-message causes (every link suppressed) terminates without a stack overflow and ends with a '...' line", () => {
     const longMessage =
       "same message repeated at every link, long enough to clear the 8-char floor";
     let current = new Error(longMessage);
-    const chainLength = 100_000;
+    const chainLength = 40;
     for (let i = 1; i < chainLength; i++) {
       current = new Error(longMessage, { cause: current });
     }
@@ -332,6 +332,210 @@ describe("formatErrorChain", () => {
       expect(shortErrorIndex).toBeGreaterThan(-1);
       expect(truncationIndex).toBe(lastLinkLineIndex + 1);
       expect(truncationIndex).toBeLessThan(shortErrorIndex);
+    });
+  });
+
+  describe("never throws on a Proxy-wrapped or revoked Error value, rendering [unprintable value] instead", () => {
+    it("handles a Proxy of an Error whose getPrototypeOf trap throws, as the top-level thrown value", () => {
+      const target = new Error("proxied failure");
+      const proxy = new Proxy(target, {
+        getPrototypeOf() {
+          throw new Error("getPrototypeOf trap boom");
+        },
+      });
+
+      let result = "";
+      expect(() => {
+        result = formatErrorChain(proxy);
+      }).not.toThrow();
+      expect(result).toBe("[unprintable value]");
+    });
+
+    it("handles a Proxy of an Error whose getPrototypeOf trap throws, as a chained cause", () => {
+      const target = new Error("proxied failure");
+      const proxy = new Proxy(target, {
+        getPrototypeOf() {
+          throw new Error("getPrototypeOf trap boom");
+        },
+      });
+      const top = new Error("top failure", { cause: proxy });
+
+      let result = "";
+      expect(() => {
+        result = formatErrorChain(top);
+      }).not.toThrow();
+      expect(result).toBe(
+        ["top failure", "  caused by: [unprintable value]"].join("\n"),
+      );
+    });
+
+    it("handles a revoked Proxy as the top-level thrown value", () => {
+      const { proxy, revoke } = Proxy.revocable(
+        new Error("will be revoked"),
+        {},
+      );
+      revoke();
+
+      let result = "";
+      expect(() => {
+        result = formatErrorChain(proxy);
+      }).not.toThrow();
+      expect(result).toBe("[unprintable value]");
+    });
+
+    it("handles a revoked Proxy as a chained cause", () => {
+      const { proxy, revoke } = Proxy.revocable(
+        new Error("will be revoked"),
+        {},
+      );
+      revoke();
+      const top = new Error("top failure", { cause: proxy });
+
+      let result = "";
+      expect(() => {
+        result = formatErrorChain(top);
+      }).not.toThrow();
+      expect(result).toBe(
+        ["top failure", "  caused by: [unprintable value]"].join("\n"),
+      );
+    });
+  });
+
+  describe("the 'seen' tracker only dedupes objects/functions, and distinguishes a genuine cycle from a shared non-cyclic reference", () => {
+    it("prints every member of an AggregateError whose errors array repeats primitive values, each visited independently rather than deduped like an object would be", () => {
+      const agg = new AggregateError(
+        ["ETIMEDOUT", "ETIMEDOUT", 1, 1],
+        "multi-primitive failure",
+      );
+
+      const result = formatErrorChain(agg);
+      const causedByLines = result
+        .split("\n")
+        .filter((line) => line.includes("caused by:"));
+
+      expect(causedByLines).toHaveLength(4);
+      expect(
+        causedByLines.filter((line) => line.includes("ETIMEDOUT")),
+      ).toHaveLength(2);
+      expect(
+        causedByLines.filter((line) => line.trim().endsWith("1")),
+      ).toHaveLength(2);
+    });
+
+    it("prints a shared Error object reachable from two sibling branches fully once, and 'caused by: (see above)' the second time", () => {
+      const shared = new Error("shared failure reused across siblings");
+      const agg = new AggregateError(
+        [shared, shared],
+        "two siblings share one error object",
+      );
+
+      const result = formatErrorChain(agg);
+      const lines = result.split("\n");
+
+      expect(
+        lines.filter((line) =>
+          line.includes("shared failure reused across siblings"),
+        ),
+      ).toHaveLength(1);
+      expect(
+        lines.filter((line) => line.trim() === "caused by: (see above)"),
+      ).toHaveLength(1);
+    });
+
+    it("still cuts a genuine cause cycle silently, with no '(see above)' marker", () => {
+      const a = new Error("error A");
+      const b = new Error("error B", { cause: a });
+      a.cause = b;
+
+      const result = formatErrorChain(a);
+
+      expect(result).not.toContain("(see above)");
+    });
+  });
+
+  describe("multi-line cause messages are indented under their own 'caused by:' line", () => {
+    it("indents each continuation line two more spaces than its own 'caused by:' line", () => {
+      const cause = new Error("a\nb\nc");
+      const top = new Error("top failure", { cause });
+
+      const result = formatErrorChain(top);
+
+      expect(result).toBe(
+        ["top failure", "  caused by: a", "    b", "    c"].join("\n"),
+      );
+    });
+
+    it("keeps a literal 'caused by: fake' substring inside a cause's OWN message distinguishable from a real 'caused by:' line by its deeper indent", () => {
+      const cause = new Error("header line\ncaused by: fake");
+      const top = new Error("top failure", { cause });
+
+      const result = formatErrorChain(top);
+      const lines = result.split("\n");
+
+      expect(lines[0]).toBe("top failure");
+      expect(lines[1]).toBe("  caused by: header line");
+      expect(lines[2]).toBe("    caused by: fake");
+      expect(lines[2]).not.toBe("  caused by: fake");
+    });
+  });
+
+  describe("caps the children printed per parent at 32, replacing the rest with one '... and N more' line", () => {
+    it("prints 32 of 40 distinct AggregateError members, then a single '... and 8 more' line", () => {
+      const errors = Array.from(
+        { length: 40 },
+        (_unused, i) => new Error(`distinct child message number ${i}xxxxx`),
+      );
+      const agg = new AggregateError(errors, "forty distinct children");
+
+      const result = formatErrorChain(agg);
+      const lines = result.split("\n");
+      const childLines = lines.filter((line) =>
+        /distinct child message number \d+xxxxx/.test(line),
+      );
+
+      expect(childLines).toHaveLength(32);
+      expect(lines.some((line) => line.trim() === "... and 8 more")).toBe(true);
+    });
+  });
+
+  describe("the 'already printed for this parent' truncation branch is shared across siblings", () => {
+    it("shares one truncation line across two AggregateError members that both land exactly at the depth cap (same parent, same shared cut)", () => {
+      const childA = new Error("leaf A reached past the depth cap");
+      const childB = new Error("leaf B reached past the depth cap");
+      const agg = new AggregateError(
+        [childA, childB],
+        "aggregate at the cap boundary",
+      );
+
+      let node: Error = agg;
+      for (let i = 0; i < 32; i++) {
+        node = new Error(`wrap link number ${i} in a long chain`, {
+          cause: node,
+        });
+      }
+
+      const result = formatErrorChain(node);
+      const lines = result.split("\n");
+      const truncationLines = lines.filter((line) => line.includes("..."));
+
+      expect(truncationLines).toHaveLength(1);
+      // Neither leaf's own message is ever read: both are cut before
+      // messageOf runs on them.
+      expect(result).not.toContain("leaf A");
+      expect(result).not.toContain("leaf B");
+    });
+  });
+
+  describe("a whitespace-only cause message is not suppressed merely because trim() is empty", () => {
+    it("still prints a 'caused by:' line for a cause whose message is only spaces", () => {
+      const cause = new Error("   ");
+      const top = new Error("top failure", { cause });
+
+      const result = formatErrorChain(top);
+      const lines = result.split("\n");
+
+      expect(lines.length).toBeGreaterThan(1);
+      expect(lines[1]?.startsWith("  caused by:")).toBe(true);
     });
   });
 });

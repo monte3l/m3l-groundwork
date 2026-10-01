@@ -816,6 +816,50 @@ describe("stagePackFiles replaces a symlinked pack.json", () => {
   });
 });
 
+describe("stagePackFiles -- non-guard failure wraps with cause", () => {
+  it('throws a wrapped Error naming the pack and destination dir -- "staging pack ... failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI" -- when a pack source file is an unreadable dangling symlink', () => {
+    const packsRoot = mkdtempSync(
+      join(tmpdir(), "packs-stage-unreadable-root-"),
+    );
+    const groundworkDir = mkdtempSync(
+      join(tmpdir(), "packs-stage-unreadable-gw-"),
+    );
+    try {
+      writeManifest(packsRoot, "unreadable-src");
+      const filesDir = join(packsRoot, "unreadable-src", "files");
+      // A dangling symlink inside the pack's own files/ tree: readdirSync
+      // lists it as a (non-directory) entry, but emitTemplate's
+      // readFileSync fails to resolve it -- a genuine, non-guard I/O
+      // failure, distinct from the symlink-GUARD errors below (which fire
+      // on groundworkDir/packs/destDir itself, before any copy is ever
+      // attempted, and whose own wording/shape must stay unchanged).
+      symlinkSync(
+        join(packsRoot, "does-not-exist.txt"),
+        join(filesDir, "dangling.txt"),
+      );
+
+      const pack = loadPack("unreadable-src", packsRoot);
+      const destDir = join(groundworkDir, "packs", "unreadable-src");
+
+      let thrown: unknown;
+      try {
+        stagePackFiles(pack, groundworkDir);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toBe(
+        `staging pack "unreadable-src" into ${destDir} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+      );
+      expect((thrown as Error).cause).toBeDefined();
+    } finally {
+      rmSync(packsRoot, { recursive: true, force: true });
+      rmSync(groundworkDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("stagePackFiles symlink guard", () => {
   let groundworkDir: string;
   let outsideDir: string;

@@ -87,7 +87,13 @@ export function stagedNameFor(path: string): string {
   return `${path}${STAGED_SUFFIX}`;
 }
 
-/** Maps every file under `root` to its install path (tokens applied, dotfile name restored) -- the same derivation `planConflicts` uses. */
+/**
+ * Maps every file under `root` to its install path (tokens applied, dotfile
+ * name restored) -- the same derivation `planConflicts` uses. Two files
+ * mapping to the same install path (`_gitignore` beside `.gitignore`) make
+ * the mapping ambiguous: throws, naming the path and both sources, rather
+ * than silently letting the later one win.
+ */
 function collectTemplateFiles(
   root: string,
   currentDir: string,
@@ -100,10 +106,16 @@ function collectTemplateFiles(
       collectTemplateFiles(root, sourcePath, tokens, results);
       continue;
     }
-    results.set(
-      restoreDotfilePath(applyTokens(relative(root, sourcePath), tokens)),
-      sourcePath,
+    const installPath = restoreDotfilePath(
+      applyTokens(relative(root, sourcePath), tokens),
     );
+    const previous = results.get(installPath);
+    if (previous !== undefined) {
+      throw new Error(
+        `template files ${previous} and ${sourcePath} both install to ${installPath} under ${root}; remove one of them`,
+      );
+    }
+    results.set(installPath, sourcePath);
   }
 }
 
@@ -150,10 +162,11 @@ function removeStaleWorkDirs(groundworkDir: string): void {
 }
 
 /**
- * Pairs every absent conflict with its template source. Two caller bugs are
- * refused, each with its own error and never skipped: a `relPath` whose
- * staged name would land outside `destDir` (CWE-22, docs/assurance-case.md),
- * and an absent path with no template counterpart.
+ * Pairs every absent conflict with its template source. Three defects are
+ * refused, each with its own error and never skipped: a template with two
+ * files mapping to one install path, a `relPath` whose staged name would
+ * land outside `destDir` (CWE-22, docs/assurance-case.md), and an absent
+ * path with no template counterpart.
  */
 function planStaging(
   templateRoot: string,
@@ -243,10 +256,12 @@ function swapInto(newDir: string, destDir: string, parkedDir: string): void {
  *   `groundworkDir` is removed (best effort; a failure only warns).
  * - When nothing is absent, any previous staging is removed and nothing is
  *   created.
- * - The plan is validated before any staging work: an absent conflict with
- *   no template counterpart, or whose staged name would escape the staging
- *   directory, throws its own `Error` with the previous `baseline/`
- *   untouched and no temporary directory created.
+ * - The plan is validated before any staging work: a template with two files
+ *   installing to the same path (a dotfile-escaped name beside its literal
+ *   twin), or an absent conflict with no template counterpart or whose
+ *   staged name would escape the staging directory, throws its own `Error`
+ *   with the previous `baseline/` untouched and no temporary directory
+ *   created.
  * - Files are then written into a temporary `.baseline-*` sibling directory
  *   and swapped into place only after every copy succeeded, so a copy
  *   failure leaves any previous `baseline/` intact. A previous staging is
@@ -262,8 +277,9 @@ function swapInto(newDir: string, destDir: string, parkedDir: string): void {
  * @throws `Error` before any delete or write when `groundworkDir` or
  * `<groundworkDir>/baseline` is a symlink; `Error` (no `cause`) for an
  * invalid plan, as above; `AggregateError` of the swap and restore failures,
- * naming where the previous baseline is parked, when both renames fail;
- * otherwise an `Error` with `cause`, including the cause's message, saying
+ * naming where the previous baseline is parked, when both renames fail; the
+ * `AssertionError` itself, unwrapped, if the staged-path containment
+ * invariant ever fails while writing; otherwise an `Error` with `cause`, including the cause's message, saying
  * `.groundwork/` is incomplete and the CLI should be re-run.
  *
  * @example
@@ -334,6 +350,11 @@ export function stageBaselineAdditions(
   } catch (cause) {
     if (cause instanceof ParkedBaselineError) {
       keepWorkDir = true;
+      throw cause;
+    }
+    if (cause instanceof assert.AssertionError) {
+      // A broken CWE-22 invariant is a bug in this module, not a transient
+      // failure a re-run could fix: surface it as itself.
       throw cause;
     }
     throw incompleteStagingError(destDir, cause);

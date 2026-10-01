@@ -466,6 +466,34 @@ describe("stageBaselineAdditions", () => {
         expect(readdirSync(groundworkDir)).toEqual([STAGED_BASELINE_DIR]);
       });
 
+      it("throws its own distinct Error naming the path and both sources -- no 'incomplete'/'re-run' wording, no cause -- when two template files map to the same install path (a dotfile-escaped name and its literal twin)", () => {
+        writeFileSync(join(templateRoot, "_gitignore"), "escaped\n");
+        writeFileSync(join(templateRoot, ".gitignore"), "literal\n");
+        const absent: FileConflict = {
+          relPath: ".gitignore",
+          status: "absent",
+          keyDiffs: undefined,
+        };
+
+        let thrown: unknown;
+        try {
+          stageBaselineAdditions(templateRoot, [absent], groundworkDir, {});
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).toContain(".gitignore");
+        expect(message).toContain("_gitignore");
+        expect(message).not.toContain("re-run");
+        expect(message).not.toContain("incomplete");
+        expect((thrown as Error).cause).toBeUndefined();
+        expect(existsSync(join(groundworkDir, STAGED_BASELINE_DIR))).toBe(
+          false,
+        );
+      });
+
       it("throws its own distinct Error -- not the no-counterpart wording either -- when an absent conflict's relPath would escape the staging directory (CWE-22)", () => {
         writeTemplateFixture();
         writeTargetFixture();
