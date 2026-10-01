@@ -106,6 +106,8 @@ than this rollout's scope covers.
 
 ## Adding project #2's docs site
 
+`.github/deploy-tools/package.json` carries an `overrides` floor, `undici: ^7.29.1`, because wrangler 4.141.0's miniflare resolves an undici with open advisories; drop it once miniflare itself requires undici >= 7.29.1.
+
 This setup is deliberately local to this repo for now (see this repo's
 `CLAUDE.md`, "Known gaps" analog for the docs pipeline). Until it's
 extracted into a shared `monte3l/.github` repo, stand up a new project's
