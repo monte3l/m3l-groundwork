@@ -373,7 +373,7 @@ function renderConflictsSection(inventory: Inventory): string {
   const lines = [
     "## What groundwork would change",
     "",
-    `- ${absent.length} file(s) would be added cleanly (no collision).`,
+    `- ${absent.length} file(s) would be added cleanly (no collision); staged for /customize at ${inventory.stagedBaseline.dir}/.`,
     `- ${identical.length} file(s) already match the baseline.`,
     `- ${divergent.length} file(s) conflict and need a decision.`,
   ];

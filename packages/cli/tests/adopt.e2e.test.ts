@@ -134,7 +134,7 @@ describe("adopt mode end-to-end", () => {
         readFileSync(inventoryPath, "utf8"),
       ) as Inventory;
 
-      expect(inventory.schemaVersion).toBe(4);
+      expect(inventory.schemaVersion).toBe(5);
       expect(inventory.survey.toolchain.testRunner.tool).toBe("jest");
       expect(
         inventory.survey.harness.agents.some(
@@ -200,6 +200,29 @@ describe("adopt mode end-to-end", () => {
       expect(inventory.toolchainConformance.divergent).toBeGreaterThan(0);
       expect(report).toContain("## Toolchain grade");
       expect(report).toContain("[eslint-flat-config] .eslintrc.cjs");
+
+      // Absent-file staging: eslint.config.js is a real templates/core file
+      // the fixture never created (it ships .eslintrc.cjs instead), so the
+      // conflict plan marks it "absent" and it must be staged; package.json
+      // already exists in the fixture (a key-level conflict, never
+      // "absent") and must NOT be staged.
+      expect(
+        inventory.conflicts.find((c) => c.relPath === "eslint.config.js")
+          ?.status,
+      ).toBe("absent");
+      expect(
+        inventory.conflicts.find((c) => c.relPath === "package.json")?.status,
+      ).not.toBe("absent");
+
+      expect(inventory.stagedBaseline.dir).toBe(".groundwork/baseline");
+      expect(inventory.stagedBaseline.files.length).toBeGreaterThan(0);
+      expect(inventory.stagedBaseline.files).toContain("eslint.config.js");
+      expect(inventory.stagedBaseline.files).not.toContain("package.json");
+      for (const file of inventory.stagedBaseline.files) {
+        expect(
+          existsSync(join(projectDir, ".groundwork", "baseline", file)),
+        ).toBe(true);
+      }
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

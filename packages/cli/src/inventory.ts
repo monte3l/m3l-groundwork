@@ -11,7 +11,10 @@
  * rather than crash on one -- `schemaVersion: 1` predates packs (no `packs`
  * field), `schemaVersion` below 3 predates the harness grade (no
  * `harnessGrade`/`harnessConformance`), and `schemaVersion` below 4 predates
- * the toolchain grade (no `toolchainGrade`/`toolchainConformance`).
+ * the toolchain grade (no `toolchainGrade`/`toolchainConformance`), and
+ * `schemaVersion` below 5 predates staged baseline additions (no
+ * `stagedBaseline`) -- `/customize` then falls back to reading absent files
+ * from `templateRoot`.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -28,7 +31,15 @@ import { summarizeToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainGrade } from "./toolchain/types.js";
 
-export const INVENTORY_SCHEMA_VERSION = 4;
+export const INVENTORY_SCHEMA_VERSION = 5;
+
+/** Where adopt mode staged the baseline files the project lacks entirely (`baseline-stage.ts`). */
+interface StagedBaseline {
+  /** The staging directory, relative to the project root (e.g. `.groundwork/baseline`). */
+  dir: string;
+  /** The staged files, relative to `dir`. */
+  files: string[];
+}
 
 export interface PackSurvey {
   name: string;
@@ -61,6 +72,8 @@ export interface Inventory {
   toolchainGrade: ToolchainGrade;
   /** How far the project's toolchain files have drifted from the baseline's -- information, never a defect. Absent when schemaVersion is below 4. */
   toolchainConformance: ToolchainConformance;
+  /** The "absent" baseline files, copied verbatim for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative. */
+  stagedBaseline: StagedBaseline;
 }
 
 /** Resolves this CLI package's own `package.json`, relative to this module's runtime location. */
@@ -100,6 +113,7 @@ export interface BuildInventoryParams {
   packs: PackSurvey[];
   harnessGrade: HarnessGrade;
   toolchainGrade: ToolchainGrade;
+  stagedBaseline: StagedBaseline;
 }
 
 /** Builds the inventory object. Does not write anything -- see `writeInventory`. */
@@ -118,6 +132,7 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
     harnessConformance: summarizeHarnessConformance(params.conflicts),
     toolchainGrade: params.toolchainGrade,
     toolchainConformance: summarizeToolchainConformance(params.conflicts),
+    stagedBaseline: params.stagedBaseline,
   };
 }
 

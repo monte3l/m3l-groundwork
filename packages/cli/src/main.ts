@@ -34,6 +34,10 @@ import { detectMode, resolveMode } from "./mode.js";
 import { surveyProject } from "./survey/survey.js";
 import { planConflicts } from "./conflicts.js";
 import {
+  STAGED_BASELINE_DIR,
+  stageBaselineAdditions,
+} from "./baseline-stage.js";
+import {
   buildInventory,
   resolveCliVersion,
   writeInventory,
@@ -589,6 +593,18 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     };
   });
 
+  const stagedBaselineFiles = stageBaselineAdditions(
+    templateRoot,
+    conflicts,
+    groundworkDir,
+  );
+  assertAdoptWriteScope(
+    options.targetDir,
+    stagedBaselineFiles.map((file) =>
+      join(groundworkDir, STAGED_BASELINE_DIR, file),
+    ),
+  );
+
   const inventory = buildInventory({
     detection,
     templateRoot,
@@ -598,6 +614,10 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     packs,
     harnessGrade: gradeHarness(options.targetDir),
     toolchainGrade: gradeToolchain(options.targetDir),
+    stagedBaseline: {
+      dir: `.groundwork/${STAGED_BASELINE_DIR}`,
+      files: stagedBaselineFiles,
+    },
   });
 
   const inventoryPath = writeInventory(inventory, groundworkDir);
@@ -608,6 +628,11 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
 
   console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);
   console.log(`wrote ${relative(options.targetDir, reportPath)}`);
+  if (stagedBaselineFiles.length > 0) {
+    console.log(
+      `staged ${stagedBaselineFiles.length} baseline file(s) at .groundwork/${STAGED_BASELINE_DIR}/ for /customize`,
+    );
+  }
   if (packs.length > 0) {
     console.log(
       `staged ${packs.length} pack(s) at .groundwork/packs/ for /customize`,

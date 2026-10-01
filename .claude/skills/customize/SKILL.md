@@ -56,6 +56,23 @@ may or may not touch.
 1. Look for `.groundwork/inventory.json`. **Absent → this is a fresh
    bootstrap; skip straight to Step 1.** Everything below this step applies
    only when it exists.
+
+   **Check `inventory.schemaVersion` before reading anything else.** This
+   skill understands schema versions **1 through 5** (the highest it knows is
+   5). If `schemaVersion` is **higher than 5**, the CLI that wrote it is newer
+   than this plugin: **stop**, do not interpret the inventory (a newer schema
+   may have renamed or repurposed fields, and a confident misreading is worse
+   than none), and tell the user to update the plugin (`/plugin update`) and
+   re-run `/customize`. What each version added:
+
+   | `schemaVersion` | Adds                                                                                          | If absent                                            |
+   | --------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+   | 1               | the survey, `conflicts`                                                                       | (the floor)                                          |
+   | 2               | `packs`                                                                                       | no packs to offer; skip the pack question            |
+   | 3               | `harnessGrade`, `harnessConformance`                                                          | skip the harness-grade starting point                |
+   | 4               | `toolchainGrade`, `toolchainConformance`                                                      | skip the toolchain-grade starting point              |
+   | 5               | `stagedBaseline` (`{ dir, files }`): the baseline additions staged at `.groundwork/baseline/` | read additions from `inventory.templateRoot` instead |
+
 2. **The deep read.** The CLI's survey is an index, not an interpretation —
    it flagged what it found but could not parse (`needsReading: true` on
    git-hook config, workflow files; anything in `survey.undetermined`) and
@@ -206,9 +223,17 @@ CI, husky locally, whatever it is), not to `lefthook.yml`/`ci.yml` by name.
 Concretely, adopt-mode Round 1 applies exactly three things, all already
 confirmed in Step 0.4:
 
-- The **approved additions** — files `templates/core` (at
-  `inventory.templateRoot`) would add that the project doesn't have and the
-  user approved adding.
+- The **approved additions** — files `templates/core` would add that the
+  project doesn't have and the user approved adding. Copy them from the
+  CLI's staged, self-contained copy at `.groundwork/baseline/`
+  (`inventory.stagedBaseline.dir`, listing `files`; bytes verbatim, so the
+  `__KEY__` tokens are still unsubstituted and are filled in with the
+  project's real values as you copy, same as staged packs). Fall back to
+  `inventory.templateRoot` **only** when the staged copy is missing (a
+  schema 1-4 inventory, or a `.groundwork/baseline/` someone deleted), and
+  if that path no longer exists either (a pruned `npx` cache, a deleted
+  temp checkout), say so and ask the user to re-run the CLI rather than
+  guessing at the baseline's contents.
 - The **approved conflict resolutions** — for each divergent file the user
   decided on, apply that decision (keep theirs / take groundwork's / merge
   the named keys).

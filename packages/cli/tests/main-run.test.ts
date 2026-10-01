@@ -497,6 +497,34 @@ describe("main", () => {
       expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
     });
 
+    it("stages absent baseline files at .groundwork/baseline/ without touching the project", () => {
+      const projectDir = join(targetDir, "existing-project4");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+
+      main([projectDir]);
+
+      const inventory = JSON.parse(
+        readFileSync(join(projectDir, ".groundwork", "inventory.json"), "utf8"),
+      ) as Inventory;
+
+      expect(inventory.stagedBaseline.dir).toBe(".groundwork/baseline");
+      expect(inventory.stagedBaseline.files.length).toBeGreaterThan(0);
+      for (const file of inventory.stagedBaseline.files) {
+        expect(
+          existsSync(join(projectDir, ".groundwork", "baseline", file)),
+        ).toBe(true);
+      }
+      // package.json already exists in the project (a key-level conflict,
+      // never "absent") -- it must not be staged, while a real baseline
+      // file this fixture never created (eslint.config.js) must be.
+      expect(inventory.stagedBaseline.files).toContain("eslint.config.js");
+      expect(inventory.stagedBaseline.files).not.toContain("package.json");
+    });
+
     // Contract 2: --adopt against a target directory that does not exist
     // yet is a clean usage error, not an uncaught filesystem exception --
     // resolveMode checks existence before forcing adopt, so a missing

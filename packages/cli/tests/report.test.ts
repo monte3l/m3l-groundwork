@@ -128,6 +128,7 @@ function baseInventory(
     harnessConformance: NO_CONFORMANCE,
     toolchainGrade: CLEAN_TOOLCHAIN_GRADE,
     toolchainConformance: NO_CONFORMANCE,
+    stagedBaseline: { dir: ".groundwork/baseline", files: [] },
     ...overrides,
   };
 }
@@ -452,6 +453,30 @@ describe("renderReport", () => {
   it("reports no conflicts when the conflict list has nothing divergent", () => {
     const report = renderReport(baseInventory(templateRoot, { conflicts: [] }));
     expect(report).toContain("No conflicts found.");
+  });
+
+  it("tells the reader where absent files are staged for /customize", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        conflicts: [
+          { relPath: "README.md", status: "absent", keyDiffs: undefined },
+          {
+            relPath: "eslint.config.js",
+            status: "absent",
+            keyDiffs: undefined,
+          },
+          { relPath: "package.json", status: "identical", keyDiffs: [] },
+        ],
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          files: ["README.md", "eslint.config.js"],
+        },
+      }),
+    );
+    expect(report).toContain(
+      "- 2 file(s) would be added cleanly (no collision); staged for " +
+        "/customize at .groundwork/baseline/.",
+    );
   });
 
   it("never leaves the could-not-determine section empty when undetermined entries exist", () => {

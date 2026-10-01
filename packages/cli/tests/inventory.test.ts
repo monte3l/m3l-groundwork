@@ -129,6 +129,8 @@ describe("resolveCliVersion", () => {
   });
 });
 
+const EMPTY_STAGED_BASELINE = { dir: ".groundwork/baseline", files: [] };
+
 describe("buildInventory / writeInventory", () => {
   let groundworkDir: string;
 
@@ -138,6 +140,13 @@ describe("buildInventory / writeInventory", () => {
 
   afterEach(() => {
     rmSync(groundworkDir, { recursive: true, force: true });
+  });
+
+  it("bumps the schema version to 5 for stagedBaseline", () => {
+    // Hardcoded rather than compared against the imported constant: this
+    // pins the version bump itself, which a self-referencing comparison
+    // against INVENTORY_SCHEMA_VERSION could never discriminate.
+    expect(INVENTORY_SCHEMA_VERSION).toBe(5);
   });
 
   it("builds an inventory carrying the schema version, mode signal, and survey", () => {
@@ -150,6 +159,7 @@ describe("buildInventory / writeInventory", () => {
       packs: [],
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline: EMPTY_STAGED_BASELINE,
     });
 
     expect(inventory.schemaVersion).toBe(INVENTORY_SCHEMA_VERSION);
@@ -157,6 +167,26 @@ describe("buildInventory / writeInventory", () => {
     expect(inventory.templateRoot).toBe("/tmp/templates/core");
     expect(inventory.survey).toBe(EMPTY_SURVEY);
     expect(inventory.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("carries stagedBaseline through verbatim", () => {
+    const stagedBaseline = {
+      dir: ".groundwork/baseline",
+      files: ["eslint.config.js", "vitest.config.ts"],
+    };
+    const inventory = buildInventory({
+      detection: { mode: "adopt", signal: "found package.json" },
+      templateRoot: "/tmp/templates/core",
+      targetDir: "/tmp/project",
+      survey: EMPTY_SURVEY,
+      conflicts: [],
+      packs: [],
+      harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline,
+    });
+
+    expect(inventory.stagedBaseline).toBe(stagedBaseline);
   });
 
   it("carries the harness grade verbatim and derives conformance from the conflict plan, counting only harness paths", () => {
@@ -174,6 +204,7 @@ describe("buildInventory / writeInventory", () => {
       packs: [],
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline: EMPTY_STAGED_BASELINE,
     });
 
     expect(inventory.harnessGrade).toBe(EMPTY_GRADE);
@@ -201,6 +232,7 @@ describe("buildInventory / writeInventory", () => {
       packs: [],
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline: EMPTY_STAGED_BASELINE,
     });
 
     expect(inventory.toolchainGrade).toBe(EMPTY_TOOLCHAIN_GRADE);
@@ -223,6 +255,7 @@ describe("buildInventory / writeInventory", () => {
       packs: [],
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline: EMPTY_STAGED_BASELINE,
     });
 
     const path = writeInventory(inventory, join(groundworkDir, "nested"));
