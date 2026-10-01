@@ -680,7 +680,6 @@ function firstUnusableComponent(
   return undefined;
 }
 
-/** What is already at `.claude/skills/customize/`, judged against the payload. */
 /**
  * Whether the regular file at `path` holds exactly `bytes`. A read failure
  * throws (wrapped) under `"refuse"`, and is a mismatch under `"not-current"`.
@@ -710,6 +709,7 @@ function regularFileMatches(
   }
 }
 
+/** What is already at `.claude/skills/customize/`, judged against the payload. */
 type ExistingSkill =
   | { readonly kind: "current" }
   | {
