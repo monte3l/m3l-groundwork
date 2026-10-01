@@ -8,7 +8,7 @@
  */
 import { formatErrorChain } from "./format-error.js";
 
-/** Printed when neither the formatted chain nor the raw stack could be printed. */
+/** Printed when neither the formatted chain nor the raw stack could be printed on the raw channel. */
 const LAST_RESORT = "[unprintable error]";
 
 /** `error.stack` when readable, otherwise `String(error)` -- the fallback text when printing the formatted chain failed. */
@@ -28,15 +28,18 @@ function rawText(error: unknown): string {
  * when `isUsageError` itself throws -- then prints `formatErrorChain(error)`
  * through `io.print`. If that print throws, the fallbacks never touch
  * `io.print` again (it is the channel that just failed -- in the CLI, the
- * one that paints colour): `io.printRaw` prints `String(error.stack ?? error)`
- * instead; if that throws, `io.printRaw` prints `[unprintable error]`; if
- * even that throws, gives up silently, the exit code already set. Never
+ * one that paints colour), so `print` is called exactly once: `io.printRaw`
+ * prints the same `formatErrorChain(error)`, so the cause chain survives a
+ * failing `print`; if that throws, `io.printRaw` prints
+ * `String(error.stack ?? error)`; if that throws, `io.printRaw` prints
+ * `[unprintable error]`; if even that throws, gives up silently, the exit
+ * code already set. Never
  * throws. A `setExitCode` that throws is swallowed and not retried -- the
  * report is still attempted -- but it is not otherwise handled: assigning
  * Node's `process.exitCode` cannot throw, so the CLI never hits that case.
  *
  * @param error - The value the CLI's `main()` threw.
- * @param io - Where the exit code and the report go: `print` for the formatted chain, `printRaw` -- a plain write with nothing in it that can fail the way `print` did -- for both fallbacks.
+ * @param io - Where the exit code and the report go: `print` for the formatted chain, `printRaw` -- a plain write with nothing in it that can fail the way `print` did -- for all three fallbacks.
  * @param isUsageError - Whether `error` is a bad invocation rather than a runtime failure.
  *
  * @example
@@ -57,7 +60,7 @@ function rawText(error: unknown): string {
  *         console.error(text);
  *       },
  *       printRaw: (text) => {
- *         process.stderr.write(`${text}\n`);
+ *         console.error(text);
  *       },
  *     },
  *     (e) => e instanceof CliUsageError,
@@ -89,7 +92,13 @@ export function handleFatal(
     io.print(formatErrorChain(error));
     return;
   } catch {
-    // Fall through to the raw stack, on the raw channel.
+    // Fall through to the same chain, on the raw channel.
+  }
+  try {
+    io.printRaw(formatErrorChain(error));
+    return;
+  } catch {
+    // Fall through to the raw stack.
   }
   try {
     io.printRaw(rawText(error));

@@ -5,11 +5,13 @@
  * `handleFatal` is `bin/m3l-groundwork.mjs`'s own top-level catch handler,
  * extracted so it can be unit-tested: it decides the process exit code
  * (2 for a usage error, 1 otherwise) and prints `formatErrorChain(error)`
- * via `io.print`, falling back twice on a channel the caller can't make
- * throw the same way (`io.printRaw`) -- first the raw stack, then a fixed
- * placeholder -- so a failure inside the error-reporting path itself (a
- * `print` that paints colour and can throw) can never make the CLI crash
- * uncaught or exit without a code. See `src/format-error.ts`.
+ * via `io.print`, falling back up to three times on a channel the caller
+ * can't make throw the same way (`io.printRaw`) -- first the same formatted
+ * chain (so the cause chain survives even when `print` is what failed),
+ * then the raw stack, then a fixed placeholder -- so a failure inside the
+ * error-reporting path itself (a `print` that paints colour and can throw)
+ * can never make the CLI crash uncaught or exit without a code. `print` is
+ * called at most once. See `src/format-error.ts`.
  */
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { formatErrorChain } from "../src/format-error.js";
@@ -123,8 +125,10 @@ describe("handleFatal", () => {
     expect(firstPrintIndex).toBeGreaterThan(0);
   });
 
-  it("uses printRaw -- never print again -- with the error's own stack when the primary print throws", () => {
-    const error = new Error("boom with stack");
+  it("falls back to printRaw(formatErrorChain(error)) -- never print again -- when the primary print throws, preserving the full cause chain", () => {
+    const error = new Error("boom with stack", {
+      cause: new Error("root cause"),
+    });
     let printCallCount = 0;
     const rawPrints: string[] = [];
     const io: FatalIo = {
@@ -145,30 +149,15 @@ describe("handleFatal", () => {
     }).not.toThrow();
 
     expect(printCallCount).toBe(1);
-    expect(rawPrints).toEqual([String(error.stack ?? error)]);
+    expect(rawPrints).toEqual([formatErrorChain(error)]);
+    // The cause chain survives onto the raw channel -- not just the top
+    // message, which `String(error.stack ?? error)` alone would carry.
+    expect(rawPrints[0]).toContain("boom with stack");
+    expect(rawPrints[0]).toContain("root cause");
   });
 
-  it("falls back to String(error) (no .stack) via printRaw when the thrown value isn't an Error and the primary print throws", () => {
-    const rawPrints: string[] = [];
-    const io: FatalIo = {
-      setExitCode: () => {
-        // not under test here
-      },
-      print: () => {
-        throw new Error("primary print boom");
-      },
-      printRaw: (text) => {
-        rawPrints.push(text);
-      },
-    };
-
-    handleFatal("a raw string failure", io, () => false);
-
-    expect(rawPrints).toEqual(["a raw string failure"]);
-  });
-
-  it("attempts printRaw('[unprintable error]') when print AND the first printRaw attempt both throw", () => {
-    const error = new Error("boom");
+  it("falls back to printRaw(String(error.stack ?? error)) when BOTH print and the first printRaw(formatErrorChain) attempt throw", () => {
+    const error = new Error("boom with stack");
     let printCallCount = 0;
     const rawAttempts: string[] = [];
     const io: FatalIo = {
@@ -193,6 +182,116 @@ describe("handleFatal", () => {
 
     expect(printCallCount).toBe(1);
     expect(rawAttempts).toEqual([
+      formatErrorChain(error),
+      String(error.stack ?? error),
+    ]);
+  });
+
+  it("falls back to String(error) (no .stack) via printRaw when the thrown value isn't an Error and the primary print throws", () => {
+    const rawPrints: string[] = [];
+    const io: FatalIo = {
+      setExitCode: () => {
+        // not under test here
+      },
+      print: () => {
+        throw new Error("primary print boom");
+      },
+      printRaw: (text) => {
+        rawPrints.push(text);
+      },
+    };
+
+    handleFatal("a raw string failure", io, () => false);
+
+    expect(rawPrints).toEqual(["a raw string failure"]);
+  });
+
+  it("falls back to rawText's non-object arm -- String(value) -- when the thrown value isn't an object and BOTH print and the first printRaw(formatErrorChain) attempt throw", () => {
+    const value = "a raw string failure";
+    let printCallCount = 0;
+    const rawAttempts: string[] = [];
+    const io: FatalIo = {
+      setExitCode: () => {
+        // not under test here
+      },
+      print: () => {
+        printCallCount += 1;
+        throw new Error("primary print boom");
+      },
+      printRaw: (text) => {
+        rawAttempts.push(text);
+        if (rawAttempts.length === 1) {
+          throw new Error("first printRaw boom");
+        }
+      },
+    };
+
+    expect(() => {
+      handleFatal(value, io, () => false);
+    }).not.toThrow();
+
+    expect(printCallCount).toBe(1);
+    expect(rawAttempts).toEqual([formatErrorChain(value), String(value)]);
+  });
+
+  it("falls back to rawText's String(error) arm when an Error's own 'stack' was deleted, and BOTH print and the first printRaw(formatErrorChain) attempt throw", () => {
+    const error = new Error("boom with no stack");
+    delete error.stack;
+    let printCallCount = 0;
+    const rawAttempts: string[] = [];
+    const io: FatalIo = {
+      setExitCode: () => {
+        // not under test here
+      },
+      print: () => {
+        printCallCount += 1;
+        throw new Error("primary print boom");
+      },
+      printRaw: (text) => {
+        rawAttempts.push(text);
+        if (rawAttempts.length === 1) {
+          throw new Error("first printRaw boom");
+        }
+      },
+    };
+
+    expect(() => {
+      handleFatal(error, io, () => false);
+    }).not.toThrow();
+
+    expect(printCallCount).toBe(1);
+    expect(rawAttempts).toEqual([formatErrorChain(error), String(error)]);
+  });
+
+  it("attempts printRaw('[unprintable error]') when print AND both earlier printRaw attempts (formatErrorChain, then the raw stack) throw", () => {
+    const error = new Error("boom");
+    let printCallCount = 0;
+    const rawAttempts: string[] = [];
+    const io: FatalIo = {
+      setExitCode: () => {
+        // not under test here
+      },
+      print: () => {
+        printCallCount += 1;
+        throw new Error("primary print boom");
+      },
+      printRaw: (text) => {
+        rawAttempts.push(text);
+        if (rawAttempts.length <= 2) {
+          throw new Error(
+            `printRaw attempt ${String(rawAttempts.length)} boom`,
+          );
+        }
+      },
+    };
+
+    expect(() => {
+      handleFatal(error, io, () => false);
+    }).not.toThrow();
+
+    expect(printCallCount).toBe(1);
+    expect(rawAttempts).toEqual([
+      formatErrorChain(error),
       String(error.stack ?? error),
       "[unprintable error]",
     ]);

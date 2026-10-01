@@ -453,19 +453,19 @@ describe("formatErrorChain", () => {
     });
   });
 
-  describe("multi-line cause messages are indented under their own 'caused by:' line", () => {
-    it("indents each continuation line two more spaces than its own 'caused by:' line", () => {
+  describe("multi-line cause messages are indented under their own 'caused by:' line, continuation lines marked with '| '", () => {
+    it("indents each continuation line two more spaces than its own 'caused by:' line and prefixes it with '| '", () => {
       const cause = new Error("a\nb\nc");
       const top = new Error("top failure", { cause });
 
       const result = formatErrorChain(top);
 
       expect(result).toBe(
-        ["top failure", "  caused by: a", "    b", "    c"].join("\n"),
+        ["top failure", "  caused by: a", "    | b", "    | c"].join("\n"),
       );
     });
 
-    it("keeps a literal 'caused by: fake' substring inside a cause's OWN message distinguishable from a real 'caused by:' line by its deeper indent", () => {
+    it("keeps a literal 'caused by: fake' substring inside a cause's OWN message distinguishable from a real 'caused by:' line by its deeper indent and the '| ' marker", () => {
       const cause = new Error("header line\ncaused by: fake");
       const top = new Error("top failure", { cause });
 
@@ -474,7 +474,8 @@ describe("formatErrorChain", () => {
 
       expect(lines[0]).toBe("top failure");
       expect(lines[1]).toBe("  caused by: header line");
-      expect(lines[2]).toBe("    caused by: fake");
+      expect(lines[2]).toBe("    | caused by: fake");
+      expect(lines).not.toContain("    caused by: fake");
       expect(lines[2]).not.toBe("  caused by: fake");
     });
   });
@@ -583,7 +584,7 @@ describe("formatErrorChain", () => {
   });
 
   describe("a top-level multi-line message is indented the same way a cause's own continuation lines are", () => {
-    it("indents the top message's continuation lines two more spaces than their own leading spaces, so a literal 'caused by:' inside the top message can't be mistaken for a real cause line", () => {
+    it("indents the top message's continuation lines two more spaces than their own leading spaces, and marks them with '| ' so a literal 'caused by:' inside the top message can't be mistaken for a real cause line", () => {
       const top = new Error("top\n  caused by: FAKE", {
         cause: new Error("real"),
       });
@@ -592,13 +593,76 @@ describe("formatErrorChain", () => {
       const lines = result.split("\n");
 
       expect(lines[0]).toBe("top");
-      expect(lines[1]).toBe("  " + "  caused by: FAKE");
-      // Not reindented would collide, character-for-character, with what a
-      // genuine depth-1 "caused by:" line looks like.
+      expect(lines[1]).toBe("  " + "| " + "  caused by: FAKE");
+      // Not reindented/marked would collide, character-for-character, with
+      // what a genuine depth-1 "caused by:" line looks like.
       expect(lines[1]).not.toBe("  caused by: FAKE");
       expect(lines.filter((line) => line === "  caused by: real")).toHaveLength(
         1,
       );
+    });
+  });
+
+  describe("marks every continuation line with an unforgeable '| ' prefix", () => {
+    it("marks a top-level continuation line, so a literal unindented 'caused by:' line in the top message can't pass for a real depth-1 cause line", () => {
+      const top = new Error("bad thing\ncaused by: FAKE", {
+        cause: new Error("REAL"),
+      });
+
+      const result = formatErrorChain(top);
+      const lines = result.split("\n");
+
+      expect(lines).toEqual([
+        "bad thing",
+        "  | caused by: FAKE",
+        "  caused by: REAL",
+      ]);
+      expect(lines).not.toContain("  caused by: FAKE");
+    });
+
+    it("marks a continuation line inside a depth-1 cause, so an unindented 'caused by:' line in the cause's OWN message can't pass for a real depth-2 cause line", () => {
+      const cause = new Error("x\ncaused by: FAKE");
+      const top = new Error("top failure", { cause });
+
+      const result = formatErrorChain(top);
+      const lines = result.split("\n");
+
+      expect(lines).toEqual([
+        "top failure",
+        "  caused by: x",
+        "    | caused by: FAKE",
+      ]);
+      expect(lines).not.toContain("    caused by: FAKE");
+    });
+
+    it("splits a CRLF-separated message into lines with no stray '\\r' carried into either the first line or a marked continuation", () => {
+      const error = new Error("a\r\nb");
+
+      const result = formatErrorChain(error);
+      const lines = result.split("\n");
+
+      expect(lines).toEqual(["a", "  | b"]);
+      expect(result).not.toContain("\r");
+    });
+
+    it("drops a trailing newline rather than emitting an extra empty continuation line", () => {
+      const error = new Error("abc\n");
+
+      const result = formatErrorChain(error);
+
+      expect(result.split("\n")).toEqual(["abc"]);
+    });
+
+    it("prints an interior empty line as '<indent>|' with no trailing space after the marker", () => {
+      const error = new Error("a\n\nb");
+
+      const result = formatErrorChain(error);
+      const lines = result.split("\n");
+
+      expect(lines).toEqual(["a", "  |", "  | b"]);
+      // No trailing space after a bare marker -- guards against a
+      // `${continuation}| ${line}` template firing even when `line` is "".
+      expect(lines[1]).not.toBe("  | ");
     });
   });
 });

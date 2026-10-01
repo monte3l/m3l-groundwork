@@ -19,7 +19,7 @@ const SEE_ABOVE = "(see above)";
  */
 const MAX_DEPTH = 32;
 
-/** Most children printed per parent before the rest collapse into one `... and N more` line. */
+/** Most `errors` members printed per parent before the rest collapse into one `... and N more` line; the `cause` sits outside this cap. */
 const MAX_CHILDREN = 32;
 
 /** Shortest cause message that is suppressed merely for appearing inside its parent's message. */
@@ -185,7 +185,7 @@ interface VisitBase {
   readonly cut: { done: boolean };
 }
 
-/** A pending child, or the trailing `... and N more` marker of a parent with more than {@link MAX_CHILDREN} children. */
+/** A pending child, or the trailing `... and N more` marker of a parent with more than {@link MAX_CHILDREN} `errors` members (its `cause` is not counted). */
 type Visit =
   | (VisitBase & {
       readonly kind: "child";
@@ -224,14 +224,27 @@ function pushVisits(
   }
 }
 
-/** `message` as lines, the first prefixed with `head`, every further line indented one level past `depth`, so it can't pass for a real `caused by:` line. */
+/**
+ * `message` as lines (split on `\n` or `\r\n`, trailing empty lines dropped),
+ * the first prefixed with `head`, every further line indented one level past
+ * `depth` and marked `| ` -- a bare `|` when the line is empty -- so no
+ * continuation line can ever equal a real `caused by:` line.
+ */
 function messageLines(message: string, depth: number, head: string): string[] {
-  const [first = "", ...rest] = message.split("\n");
-  const continuation = "  ".repeat(depth + 1);
-  return [`${head}${first}`, ...rest.map((line) => `${continuation}${line}`)];
+  const [first = "", ...rest] = message.split(/\r?\n/);
+  while (rest.length > 0 && rest[rest.length - 1] === "") {
+    rest.pop();
+  }
+  const continuation = `${"  ".repeat(depth + 1)}|`;
+  return [
+    `${head}${first}`,
+    ...rest.map((line) =>
+      line === "" ? continuation : `${continuation} ${line}`,
+    ),
+  ];
 }
 
-/** `message` as a `caused by:` line at `depth`, every further line indented one level deeper. */
+/** `message` as a `caused by:` line at `depth`, every further line indented one level deeper and marked `| `. */
 function causedByLines(message: string, depth: number): string[] {
   return messageLines(message, depth, `${"  ".repeat(depth)}caused by: `);
 }
@@ -241,8 +254,10 @@ function causedByLines(message: string, depth: number): string[] {
  * (any further line of it indented two spaces), then one
  * `caused by: <message>` line per chained cause, indented two more spaces
  * per depth; any further line of a cause's message is indented two spaces
- * past its own `caused by:` line, so no message line can pass for a real
- * `caused by:` line. An `AggregateError`'s `errors` are each listed as a
+ * past its own `caused by:` line. Every such continuation line is marked
+ * `| ` after its indent (an empty one prints a bare `|`), so no message line
+ * can pass for a real `caused by:` line. Messages split on `\n` or `\r\n`;
+ * trailing empty lines are dropped. An `AggregateError`'s `errors` are each listed as a
  * `caused by:` line at the next depth (after its own `cause`, if any); an
  * `errors` property that is not an array is ignored. At most 32 `errors`
  * members are printed per parent; the rest collapse into one
