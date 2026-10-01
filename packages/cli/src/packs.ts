@@ -7,7 +7,11 @@
  * mode never calls `installPack` -- it surveys packs into the report
  * (`observeWiring`, `stagePackFiles`) and defers installation to
  * `/customize`, which reads a project's real gate runner before translating
- * a pack's wiring (see inventory.ts).
+ * a pack's wiring (see inventory.ts). Both modes call `loadPack` for every
+ * pack they handle (fresh mode: each `--pack`; adopt mode: every pack)
+ * before writing anything, and `loadPack` refuses a prototype-sensitive
+ * key in `wiring.settings`, `wiring.settingsTopLevel` or
+ * `wiring.packageScripts`, so such a pack is neither installed nor staged.
  */
 import assert from "node:assert/strict";
 import {
@@ -25,6 +29,7 @@ import { emitTemplate } from "./emit.js";
 import { assertNotSymlink } from "./fs-guard.js";
 import { parseJsonc } from "./jsonc.js";
 import {
+  isPrototypeSensitiveKey,
   isRecord,
   mergePackageScripts,
   mergeSettingsHooks,
@@ -154,7 +159,32 @@ function assertValidVerifyStep(
   }
 }
 
-/** Throws, naming the offending key or value, when `wiring.settings`/`packageScripts` is missing or isn't an object, `verifySteps` is missing or isn't an array, or any `verifySteps[]` entry is malformed (see {@link assertValidVerifyStep}). */
+/**
+ * Throws, naming the pack, the field and the key, when one of `fragment`'s own
+ * enumerable keys is prototype-sensitive ({@link isPrototypeSensitiveKey}).
+ * `Object.keys` sees a `__proto__` key here because `parseJsonc`, like
+ * `JSON.parse`, creates it as an ordinary own data property. Only the
+ * fragment's own top-level keys are checked: they are the names a merge
+ * writes, while everything nested below them is an opaque value.
+ */
+function assertNoPrototypeSensitiveKeys(
+  name: string,
+  field: string,
+  fragment: Record<string, unknown>,
+): void {
+  for (const key of Object.keys(fragment)) {
+    if (isPrototypeSensitiveKey(key)) {
+      throw new Error(
+        `pack "${name}": pack.json's wiring.${field} must not use the prototype-sensitive key ${JSON.stringify(key)}`,
+      );
+    }
+  }
+}
+
+/**
+ * Throws, naming the offending key or value, when `wiring.settings`/`packageScripts` is missing or isn't an object, `verifySteps` is missing or isn't an array, any `verifySteps[]` entry is malformed (see {@link assertValidVerifyStep}), or `settings`, `packageScripts` or (when it is an object) `settingsTopLevel` has a prototype-sensitive own key (see {@link assertNoPrototypeSensitiveKeys}).
+ * Those three are the only wiring fields whose keys a merge writes; `verifySteps` ids are values. An absent or non-object `settingsTopLevel` is not rejected here.
+ */
 function assertValidWiringShape(
   name: string,
   wiring: Record<string, unknown>,
@@ -166,6 +196,13 @@ function assertValidWiringShape(
         `pack "${name}": pack.json's wiring.${key} must be an object`,
       );
     }
+    assertNoPrototypeSensitiveKeys(name, key, value);
+  }
+  const topLevel: unknown = Object.hasOwn(wiring, "settingsTopLevel")
+    ? wiring["settingsTopLevel"]
+    : undefined;
+  if (isRecord(topLevel)) {
+    assertNoPrototypeSensitiveKeys(name, "settingsTopLevel", topLevel);
   }
   const steps: unknown = Object.hasOwn(wiring, "verifySteps")
     ? wiring["verifySteps"]
@@ -180,7 +217,7 @@ function assertValidWiringShape(
   });
 }
 
-/** Loads and validates one pack's manifest from under `root` (default `templates/packs`, overridable for tests). Throws, naming the available packs, if unknown or malformed. */
+/** Loads and validates one pack's manifest from under `root` (default `templates/packs`, overridable for tests). Throws, naming the available packs, if unknown; throws naming the pack and the problem if malformed, including a prototype-sensitive key in its wiring (see {@link assertValidWiringShape}). */
 export function loadPack(name: string, root: string = packsRootDir()): Pack {
   const packDir = join(root, name);
   const manifestPath = join(packDir, "pack.json");

@@ -499,6 +499,169 @@ describe("loadPack hardened validation -- non-object pack.json", () => {
   });
 });
 
+describe("loadPack wiring-key prototype guard (#97)", () => {
+  let packsRoot: string;
+
+  beforeEach(() => {
+    packsRoot = mkdtempSync(join(tmpdir(), "packs-wiring-keys-root-"));
+  });
+
+  afterEach(() => {
+    rmSync(packsRoot, { recursive: true, force: true });
+  });
+
+  /**
+   * Builds an object whose OWN key is literally `key`, via JSON.parse rather
+   * than object-literal syntax -- same rationale as merge-json.test.ts's own
+   * identically-named helper: `{ __proto__: value }` and
+   * `obj["__proto__"] = value` both invoke the Annex B exotic setter instead
+   * of creating a data property, which would make a test built on either
+   * form vacuous (the manifest reader would never see the key as an own
+   * key at all). JSON.parse -- like the real pack.json text loadPack reads
+   * -- creates a genuine own, enumerable data property even when named
+   * "__proto__".
+   */
+  function buildOwnKeyFragment<T>(key: string, value: T): Record<string, T> {
+    return JSON.parse(`{"${key}":${JSON.stringify(value)}}`) as Record<
+      string,
+      T
+    >;
+  }
+
+  const DANGEROUS_KEYS = ["__proto__", "constructor", "prototype"] as const;
+  const WIRING_FIELDS = [
+    "settings",
+    "settingsTopLevel",
+    "packageScripts",
+  ] as const;
+
+  /** Builds the one fragment-shaped value each wiring field actually holds: an array of hook entries for `settings`, a single settings value for `settingsTopLevel`, a command string for `packageScripts`. */
+  function fragmentFor(field: string, key: string): Record<string, unknown> {
+    if (field === "settings") {
+      return buildOwnKeyFragment(key, [
+        { hooks: [{ type: "command", command: "node malicious.mjs" }] },
+      ]);
+    }
+    if (field === "settingsTopLevel") {
+      return buildOwnKeyFragment(key, {
+        type: "command",
+        command: "node malicious.mjs",
+      });
+    }
+    return buildOwnKeyFragment(key, "node malicious.mjs");
+  }
+
+  test.each(
+    WIRING_FIELDS.flatMap((field) =>
+      DANGEROUS_KEYS.map((key) => [field, key] as [string, string]),
+    ),
+  )('throws naming the pack, "wiring.%s" and the key "%s"', (field, key) => {
+    // PACK_NAME_PATTERN requires a bare lowercase identifier -- lowercase
+    // the field segment (e.g. "settingsTopLevel" -> "settingstoplevel") so
+    // this fixture fails on the wiring-key guard under test, never on the
+    // unrelated pack-name-shape check that runs earlier in loadPack.
+    const dirName = `proto-${field.toLowerCase()}-${key.replace(/[^a-z]/gi, "")}`;
+    writeRawManifest(packsRoot, dirName, {
+      schemaVersion: 1,
+      name: dirName,
+      description: "a test pack with a prototype-sensitive wiring key",
+      modes: ["fresh", "adopt"],
+      budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+      wiring: {
+        settings: {},
+        packageScripts: {},
+        verifySteps: [],
+        [field]: fragmentFor(field, key),
+      },
+    });
+
+    let thrown: unknown;
+    try {
+      loadPack(dirName, packsRoot);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    // The full exact message, not a substring: `dirName` and `key` share
+    // characters ("proto-settings-constructor" already contains
+    // "constructor"), so toContain(key) would pass even if the thrown
+    // message named the WRONG key -- and "wiring.settings" is itself a
+    // substring of "wiring.settingsTopLevel", so toContain("wiring.settings")
+    // would pass even if the implementation always reported
+    // "settingsTopLevel" regardless of which field was actually checked.
+    // Pinning the whole string is what makes field and key independently
+    // load-bearing.
+    expect((thrown as Error).message).toBe(
+      `pack "${dirName}": pack.json's wiring.${field} must not use the prototype-sensitive key ${JSON.stringify(key)}`,
+    );
+  });
+
+  it("still loads a valid pack whose wiring has no prototype-sensitive keys, with settingsTopLevel present", () => {
+    writeManifest(packsRoot, "control-with-top-level", {
+      wiring: {
+        settings: {},
+        settingsTopLevel: {
+          statusLine: { type: "command", command: "s.mjs" },
+        },
+        packageScripts: { build: "tsc" },
+        verifySteps: [],
+      },
+    });
+    expect(() => loadPack("control-with-top-level", packsRoot)).not.toThrow();
+  });
+
+  it("still loads a valid pack whose wiring omits settingsTopLevel entirely", () => {
+    writeManifest(packsRoot, "control-no-top-level");
+    const pack = loadPack("control-no-top-level", packsRoot);
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
+  });
+
+  it("does not reject a prototype-sensitive name that appears only as a nested VALUE, never as an own key of settings/settingsTopLevel/packageScripts themselves", () => {
+    writeRawManifest(packsRoot, "proto-value-not-key", {
+      schemaVersion: 1,
+      name: "proto-value-not-key",
+      description: "a test pack with a prototype-sensitive name in a VALUE",
+      modes: ["fresh", "adopt"],
+      budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+      wiring: {
+        settings: {
+          // The event NAME ("PreToolUse") is the only key loadPack's guard
+          // enumerates here -- it is safe. The nested "meta" field's own
+          // key "__proto__" is a hook entry's VALUE, never read as a key.
+          PreToolUse: [
+            {
+              matcher: "Bash",
+              hooks: [
+                {
+                  type: "command",
+                  command: "node x.mjs",
+                  meta: buildOwnKeyFragment("__proto__", "nested-value"),
+                },
+              ],
+            },
+          ],
+        },
+        settingsTopLevel: {
+          // Likewise "statusLine" is the only top-level key enumerated;
+          // "constructor" here is nested inside its VALUE.
+          statusLine: {
+            type: "command",
+            command: "s.mjs",
+            meta: buildOwnKeyFragment("constructor", "nested-value"),
+          },
+        },
+        // The script's NAME is "build" (safe); its VALUE merely contains the
+        // dangerous names as ordinary text, never as a key.
+        packageScripts: { build: "echo __proto__ constructor prototype" },
+        verifySteps: [],
+      },
+    });
+
+    expect(() => loadPack("proto-value-not-key", packsRoot)).not.toThrow();
+  });
+});
+
 describe("installPack", () => {
   let packsRoot: string;
   let targetDir: string;

@@ -66,7 +66,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - uses: anthropics/claude-code-action@9171db3e57d6a3140a37ddc2ba92788584e0ead6 # v1.0.234
+      - uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # v1.0.238
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Pinned rather than left on the action's default: there is no
@@ -93,19 +93,25 @@ jobs:
           # or org-policy failure, which is a real, currently-unfixed gap:
           # anthropics/claude-code-action#594 was closed by redirecting to
           # anthropics/claude-code#8413, which was itself auto-closed
-          # `not_planned` for inactivity, not resolved. Sonnet 5 is this
-          # repo's other current, generally-capable model tier
-          # (`CURRENT_MODELS` in packages/cli/src/harness/rules.ts) and a
-          # separate model pool from Opus, so it isn't overloaded by the
-          # same demand spike; this trades the Opus-level review accuracy
-          # above for a completed review over a silently-skipped one on
-          # exactly the failure modes the flag does cover. The switch is
+          # `not_planned` for inactivity, not resolved. Sonnet 5.5 is the
+          # current Sonnet tier (see Anthropic's models overview; it is
+          # also in `CURRENT_MODELS` in packages/cli/src/harness/rules.ts).
+          # Anthropic's Opus 5.5 migration guide ("Thinking blocks are tied
+          # to the model and the conversation",
+          # https://platform.claude.com/docs/en/models/opus-5-5/migration-guide)
+          # notes that, on the Claude API, a fallback that moves a
+          # conversation from Opus 5.5 to any model other than Fable 5.1 or
+          # Mythos 5.1 runs without Opus 5.5's thinking blocks; that is
+          # acceptable for an overload-only fallback. This trades the
+          # Opus-level review accuracy above for a completed review over a
+          # silently-skipped one on exactly the failure modes the flag does
+          # cover. The switch is
           # scoped to this one action invocation (Claude Code's fallback
           # lasts for the current turn only), so it doesn't relax anything
           # about which model claude.yml's separate, unattached session uses.
           claude_args: |
             --model claude-opus-5-5
-            --fallback-model claude-sonnet-5
+            --fallback-model claude-sonnet-5-5
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
           prompt: |
             REPO: ${{ github.repository }}

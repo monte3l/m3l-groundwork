@@ -30,6 +30,14 @@ workflows, Claude Code harness -- that a fresh bootstrap writes into a new
 project.
 In this repo: `templates/core/`.
 
+### Bundled dependency
+
+A dependency whose code ships inside another package's own tarball, so
+overrides and audit fixes in the consuming project's lockfile cannot change
+it; a lockfile marks one `inBundle`.
+In this repo: the pinned npm's bundled packages, in
+[`docs/security-review.md`](security-review.md#open-advisories-in-the-pinned-npm-release-tools-lockfiles).
+
 ### Cap
 
 A hard upper limit on how many of something (agents, skills, hooks, CI
@@ -58,6 +66,14 @@ install; a marketplace is a registry (here, a relative-path entry in a
 `marketplace.json` file) that Claude Code installs a plugin from.
 In this repo: `.claude-plugin/marketplace.json`, `packages/plugin/`.
 
+### Commit marker
+
+The file whose presence means a multi-file write finished: adopt mode
+deletes any old `inventory.json` first and writes it last, atomically, so a
+`.groundwork/` directory without one marks an interrupted run.
+In this repo: [`CLAUDE.md`](../CLAUDE.md#architecture-notes), the adopt mode
+contract; `packages/cli/src/main.ts`.
+
 ### /customize
 
 The Claude Code skill this project ships as its adaptive phase: for a fresh
@@ -81,6 +97,15 @@ specific published version, so `npx package@tag` resolves to that version
 without naming it explicitly.
 In this repo: the CLI currently ships on the `rc` dist-tag.
 
+### Dynamic analysis
+
+Testing a program by running it on generated input and watching how it
+behaves, which is what the OpenSSF Best Practices Gold criterion of the same
+name asks for before a release -- as opposed to static analysis, which reads
+code without running it.
+In this repo: [`docs/security-review.md`](security-review.md#dynamic-analysis)
+and [`SECURITY.md`](../SECURITY.md#dynamic-analysis).
+
 ### Fresh mode
 
 The CLI mode used when the target directory is empty or missing: it writes
@@ -93,6 +118,14 @@ In this repo: `packages/cli/src/mode.ts`.
 One individual check that can pass or fail -- for example, a single ESLint
 run, or the harness grader -- as opposed to a whole verify group.
 In this repo: `bin/lib/verify-steps.mjs`.
+
+### Gate-lane-parity
+
+A structural check in the toolchain grader that scrapes `ci.yml` and
+`lefthook.yml` as text and fails if either names a verify step directly or
+matrices the lanes, so a new gate joins every lane without a YAML edit.
+In this repo: `gate-lane-parity` in `packages/cli/src/toolchain/rules.ts`;
+see [`.claude/rules/ci.md`](../.claude/rules/ci.md).
 
 ### Guidance sweep
 
@@ -135,6 +168,14 @@ its identity to another service (such as npm) without a stored, long-lived
 secret.
 In this repo: used for npm trusted publishing in `release.yml`.
 
+### OpenSSF Scorecard
+
+An automated OpenSSF check that scores a repository's supply-chain hygiene
+(pinned dependencies, branch protection, token permissions) and publishes the
+results.
+In this repo: `.github/workflows/scorecard.yml`; accepted findings are listed
+in [`SECURITY.md`](../SECURITY.md#accepted-openssf-scorecard-findings).
+
 ### Pack
 
 An optional bundle of extra files -- an agent, a hook, a gate -- installed
@@ -150,6 +191,15 @@ apart.
 In this repo: `tests/harness/harness-parity.test.ts`,
 `tests/toolchain/toolchain-parity.test.ts`.
 
+### Property-based testing
+
+A test style where a library such as `fast-check` generates many inputs
+across a function's whole domain and checks that a stated property always
+holds, instead of an example-based test asserting one hand-picked input and
+output.
+In this repo: the `*.property.test.ts` files in `packages/cli/tests/`, for
+example `jsonc.property.test.ts`.
+
 ### Provenance
 
 A cryptographically verifiable record of exactly which build -- which
@@ -164,6 +214,21 @@ stable release but not yet declared stable.
 In this repo: the CLI's `1.0.0-rc.N` versions, shipped on the `rc`
 dist-tag until GA.
 
+### Red/green
+
+The test-driven loop the spokes follow: `test-author` writes tests that fail
+for the right reason (red), then `code-implementer` writes the minimal code
+to make them pass (green) and refactors.
+In this repo: [`CLAUDE.md`](../CLAUDE.md#agent-operating-model).
+
+### REUSE
+
+A convention from [reuse.software](https://reuse.software) for stating the
+copyright and license of every file; a file that cannot or should not carry
+an inline header is covered by an annotation in a `REUSE.toml` file instead.
+In this repo: [`REUSE.toml`](../REUSE.toml), gap-checked by
+`bin/check-license-headers.mjs`.
+
 ### Rubric finding
 
 A grader result that reflects a stylistic or best-practice judgment call
@@ -176,6 +241,22 @@ A packaged set of instructions Claude Code can load for a particular task
 -- for example, `/customize` or `typescript-guidance` -- invoked by name or
 by a matching trigger.
 In this repo: `templates/core/.claude/skills/`.
+
+### SPDX header
+
+A comment near the top of a source file carrying two machine-readable lines,
+`SPDX-FileCopyrightText` and `SPDX-License-Identifier`, that state who owns
+the file and under which license.
+In this repo: required on every tracked `.ts`/`.mjs`/`.js`/`.sh`/`.yml`/`.yaml`
+file outside `templates/**`; see `bin/check-license-headers.mjs`.
+
+### Staged baseline
+
+Adopt mode's inert copy of the baseline additions, written under
+`.groundwork/baseline/` with a `.staged` suffix so no project tool can
+discover the files as live source; `/customize` strips the suffix on install.
+In this repo: [`CLAUDE.md`](../CLAUDE.md#architecture-notes), the adopt mode
+contract; `inventory.stagedBaseline` in `.groundwork/inventory.json`.
 
 ### Staged publish
 
