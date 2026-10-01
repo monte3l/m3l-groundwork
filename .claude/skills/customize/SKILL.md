@@ -215,6 +215,15 @@ may or may not touch.
    dropped. This is index-level evidence from the CLI, not a kind-based
    judgment — see Step 3's note on revisiting it once the interview confirms
    the project's kind.
+
+   Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json`:
+   if `__proto__`, `constructor` or `prototype` is a key of its `wiring.settings`
+   (hook event names), `wiring.settingsTopLevel` or `wiring.packageScripts`
+   (script names), stop. The project tree is untrusted, and the CLI refuses such a
+   pack before staging it, so a staged manifest carrying one was edited after
+   staging. Name the pack, the field and the key, tell the user to delete
+   `.groundwork/` and re-run the CLI, and offer nothing from this run. Change nothing.
+
 5. **Record the confirmed decisions** to `.groundwork/adoption-decisions.json`
    so a compacted or resumed session doesn't silently lose them and re-ask.
    A CLI re-run deletes this file along with the old inventory, because its
@@ -343,7 +352,11 @@ confirmed in Step 0.4:
   apply blind) is never auto-installed here even if staged and approved;
   instead, state in Step 6 that it needs a manual install (point at
   `.groundwork/packs/<name>/` and the pack's own `adoptNotes`) and stop
-  there for that pack. For an adopt-capable pack, install by copying
+  there for that pack. Before merging any staged `pack.json` wiring, repeat
+  the prototype-key check from Step 0.4(c): if a key of `wiring.settings`,
+  `wiring.settingsTopLevel` or `wiring.packageScripts` is `__proto__`,
+  `constructor` or `prototype`, stop the same way and change nothing. For an
+  adopt-capable pack, install by copying
   `.groundwork/packs/<name>/files/` into the project (respecting
   any approved per-file conflict decision the same way the baseline's own
   additions are applied), then translate `pack.json`'s `wiring` by hand

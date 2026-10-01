@@ -566,7 +566,10 @@ export function assertAdoptWriteScope(
  * `templates/packs/` is surveyed (`main` rejects `--pack` in this mode, see
  * `assertAdoptUsage`) and staged, unapplied, at `.groundwork/packs/<name>/`;
  * absent baseline files are staged as inert `<path>.staged` copies at
- * `.groundwork/baseline/`. A stale `inventory.json`/`adoption-report.md`/
+ * `.groundwork/baseline/`. Every pack is loaded and validated by `loadPack`
+ * first, so an invalid pack (a malformed manifest, or a prototype-sensitive
+ * key in its wiring) throws before anything under `.groundwork/` is deleted
+ * or written. A stale `inventory.json`/`adoption-report.md`/
  * `adoption-decisions.json` is deleted before any staging or install; then packs and the baseline are
  * staged, the `/customize` skill is installed, `adoption-report.md` is
  * written, and `inventory.json` is written last (atomically, via a temp file
@@ -592,6 +595,12 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     decisionsPath,
   ]);
 
+  // Every pack must pass loadPack's validation (including its
+  // prototype-sensitive wiring-key check) before anything under .groundwork/
+  // is touched, so an invalid pack fails the run with the previous
+  // inventory/report still intact rather than half-cleared.
+  const loadedPacks: Pack[] = listPackNames().map((name) => loadPack(name));
+
   // A previous run's inventory/report -- and the decisions /customize
   // recorded against them -- must not survive a run that fails part-way:
   // /customize would read them as describing the new staging. All three go
@@ -602,8 +611,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   rmSync(reportPath, { force: true });
   rmSync(decisionsPath, { force: true });
 
-  const packs: PackSurvey[] = listPackNames().map((name) => {
-    const pack = loadPack(name);
+  const packs: PackSurvey[] = loadedPacks.map((pack) => {
     const fileConflicts = planConflicts(
       pack.filesDir,
       options.targetDir,
