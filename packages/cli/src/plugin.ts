@@ -10,7 +10,6 @@
  * setup step.
  */
 import {
-  existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -98,8 +97,10 @@ interface PayloadFile {
 /**
  * Reads every payload file from the plugin source, in
  * {@link CUSTOMIZE_SKILL_WRITE_ORDER} (`SKILL.md` last), before anything is
- * written. A missing source file is a broken install, not something to
- * degrade past silently: it throws.
+ * written. A missing or unreadable source file is a broken install, not
+ * something to degrade past silently: it throws, with the raw read error
+ * (its errno intact) as `cause`, and a message saying "is missing" only for
+ * `ENOENT`.
  */
 function readCustomizeSkillPayload(sourceDir: string): readonly PayloadFile[] {
   return CUSTOMIZE_SKILL_WRITE_ORDER.map((name) => {
@@ -107,16 +108,15 @@ function readCustomizeSkillPayload(sourceDir: string): readonly PayloadFile[] {
       name === CUSTOMIZE_SKILL_ENTRY_FILE
         ? join(sourceDir, "skills", "customize", name)
         : join(sourceDir, "src", name);
-    if (!existsSync(from)) {
-      throw installError(
-        "could not read the plugin payload",
-        new Error(`the /customize skill's source file is missing: ${from}`),
-      );
+    try {
+      return { name, bytes: readFileSync(from) };
+    } catch (cause) {
+      const detail =
+        errnoField(cause, "code") === "ENOENT"
+          ? `the /customize skill's source file is missing: ${from}`
+          : `could not read ${from}`;
+      throw installError(detail, cause);
     }
-    return {
-      name,
-      bytes: wrapFs(`could not read ${from}`, () => readFileSync(from)),
-    };
   });
 }
 
@@ -124,14 +124,17 @@ function readCustomizeSkillPayload(sourceDir: string): readonly PayloadFile[] {
  * How a destination's existing entries are treated.
  *
  * - `"overwrite"`: fresh mode's `.claude/skills/customize/` (which `--force`
- *   may point at a non-empty directory) -- each payload file is removed, then
- *   recreated with `"wx"`.
+ *   may point at a non-empty directory, or a previous install).
+ * - `"cli-owned"`: `.groundwork/customize/`, the CLI's own staging.
+ *
+ *   Both replace existing entries: an existing `SKILL.md` is removed first
+ *   ({@link removeStaleSkillEntry}), then each payload file is removed and
+ *   recreated with `"wx"`. A pre-existing entry removed this way is gone
+ *   even if the run later fails -- rollback removes what this run wrote, it
+ *   never restores what was replaced.
  * - `"additive"`: adopt mode's `.claude/skills/customize/`, which belongs to
  *   the project -- nothing is ever removed; `"wx"` alone, so an entry that
  *   appears there mid-install makes the write fail `EEXIST`.
- * - `"cli-owned"`: `.groundwork/customize/`, the CLI's own staging -- a stale
- *   `SKILL.md` is removed first ({@link removeStaleSkillEntry}), then each
- *   payload file is removed and recreated with `"wx"`.
  */
 type WritePolicy = "overwrite" | "additive" | "cli-owned";
 
@@ -170,19 +173,58 @@ function replacesExistingEntries(policy: WritePolicy): boolean {
 }
 
 /**
- * For the CLI-owned destination only: removes an existing non-directory
+ * Pre-flight for every policy: `lstat`s each payload name in `destDir` that
+ * this run will write (names in `alreadyCurrent` are skipped) and throws,
+ * naming it, if any is a directory -- before anything is removed or written,
+ * so a destination a non-recursive remove-then-`"wx"` could never complete
+ * is refused with every existing entry untouched. A name whose own `lstat`
+ * fails cannot be judged here; it is left to its own remove/write, which
+ * surfaces the real error (rolled back as usual) -- as does a directory
+ * that appears after this check (a race).
+ */
+function assertNoDirectoryAtPayloadNames(
+  destDir: string,
+  payload: readonly PayloadFile[],
+  alreadyCurrent: ReadonlySet<string>,
+): void {
+  for (const { name } of payload) {
+    if (alreadyCurrent.has(name)) {
+      continue;
+    }
+    const dest = join(destDir, name);
+    let isDirectory: boolean;
+    try {
+      isDirectory =
+        lstatSync(dest, { throwIfNoEntry: false })?.isDirectory() === true;
+    } catch {
+      // Unjudgeable, not refused: the write path reports the real error.
+      continue;
+    }
+    if (isDirectory) {
+      throw installError(
+        `could not write ${dest}`,
+        new Error(
+          `${dest} is a directory, not a file this install can replace; nothing was removed or written`,
+        ),
+      );
+    }
+  }
+}
+
+/**
+ * For every policy that replaces existing entries: removes an existing
  * `SKILL.md` entry (a file or a symlink, unlinked, never followed) BEFORE any
  * data file is rewritten, so a later failure never leaves a stale `SKILL.md`
- * loadable beside missing or half-rewritten data. A directory named
- * `SKILL.md` is not a loadable entry; it is left to the `SKILL.md` write,
- * which fails on it. Returns the removed path, if any; throws (wrapped)
- * before anything is written when the removal fails.
+ * loadable beside missing or half-rewritten data. Runs after
+ * {@link assertNoDirectoryAtPayloadNames}, so a directory there has already
+ * been refused (one raced in since makes `rmSync` throw). Returns the
+ * removed path, if any; throws (wrapped) before anything is written when the
+ * removal fails.
  */
 function removeStaleSkillEntry(destDir: string): string | undefined {
   const staleEntry = join(destDir, CUSTOMIZE_SKILL_ENTRY_FILE);
   return wrapFs(`could not remove the stale ${staleEntry}`, () => {
-    const stat = lstatSync(staleEntry, { throwIfNoEntry: false });
-    if (stat === undefined || stat.isDirectory()) {
+    if (lstatSync(staleEntry, { throwIfNoEntry: false }) === undefined) {
       return undefined;
     }
     rmSync(staleEntry, { force: true });
@@ -194,10 +236,14 @@ function removeStaleSkillEntry(destDir: string): string | undefined {
  * Whether a failed `"wx"` write had already created `dest` itself. An `open`
  * failure (`EEXIST` included) creates nothing, so only a failure after the
  * exclusive open succeeded -- e.g. `ENOSPC` mid-write -- leaves a file this
- * call owns. Best effort: an `lstat` that itself fails counts as "not
- * created", so an entry of unknown origin is never removed.
+ * call owns. `"unknown"` when the `lstat` probing `dest` itself fails: the
+ * entry is then neither removed (its origin is unknown) nor silently
+ * treated as absent -- the caller names it in the error.
  */
-function createdByFailedWrite(dest: string, cause: unknown): boolean {
+function createdByFailedWrite(
+  dest: string,
+  cause: unknown,
+): boolean | "unknown" {
   if (
     errnoField(cause, "syscall") === "open" ||
     errnoField(cause, "code") === "EEXIST"
@@ -207,7 +253,7 @@ function createdByFailedWrite(dest: string, cause: unknown): boolean {
   try {
     return lstatSync(dest, { throwIfNoEntry: false })?.isFile() === true;
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
@@ -216,7 +262,7 @@ function writePayloadFile(
   dest: string,
   bytes: Buffer,
   policy: WritePolicy,
-): { cause: unknown; created: boolean } | undefined {
+): { cause: unknown; created: boolean | "unknown" } | undefined {
   try {
     if (replacesExistingEntries(policy)) {
       // Remove, then "wx": a symlink at dest is replaced, never followed.
@@ -266,17 +312,29 @@ function rollBack(written: readonly string[]): {
  * component swapped for a symlink between the check and the write (a TOCTOU
  * race) is not covered.
  *
- * Writes follow {@link CUSTOMIZE_SKILL_WRITE_ORDER}, `SKILL.md` last; for
- * `"cli-owned"`, {@link removeStaleSkillEntry} establishes that order's
- * no-`SKILL.md`-yet precondition first. If any write fails, every file THIS
- * call created -- including one whose own write created it and then failed
- * part-way -- is removed (best effort), and the error names how many were,
- * any it could not remove (with its errno code), and the stale `SKILL.md`
- * if one was pre-removed; no entry this call did not create is ever
- * removed. Every failure -- a symlink refusal, a raw `lstat`/`mkdir` error
- * such as `ENOTDIR`, a write error -- is thrown as one "could not install
- * the /customize skill" `Error` carrying the underlying message and the raw
- * error as `cause`.
+ * Before anything is removed or written, a directory at any payload name
+ * this run writes is refused ({@link assertNoDirectoryAtPayloadNames}),
+ * leaving every existing entry untouched. Writes then follow
+ * {@link CUSTOMIZE_SKILL_WRITE_ORDER}, `SKILL.md` last; for the policies
+ * that replace existing entries, {@link removeStaleSkillEntry} establishes
+ * that order's no-`SKILL.md`-yet precondition first. Names in
+ * `alreadyCurrent` are not rechecked before the `SKILL.md` write: one
+ * changed after the caller classified it (an accepted race window) is not
+ * detected.
+ *
+ * If any write fails, every file THIS call wrote -- including one whose own
+ * write created it and then failed part-way -- is removed (best effort), and
+ * the error names how many were, any it could not remove (with its errno
+ * code), any whose creation could not be determined (left in place, marked
+ * "unknown whether created"), and the stale `SKILL.md` if one was
+ * pre-removed. Rollback never removes an entry this call did not write, but
+ * under `"overwrite"`/`"cli-owned"` the pre-existing entries this call
+ * replaced before the failure (the stale `SKILL.md`, and each payload file
+ * removed ahead of its own write) are not restored. Every failure -- a
+ * symlink refusal, a directory at a payload name, a raw `lstat`/`mkdir`
+ * error such as `ENOTDIR`, a write error -- is thrown as one "could not
+ * install the /customize skill" `Error` carrying the underlying message and
+ * the raw error as `cause`.
  */
 function copyCustomizeSkillFiles(
   targetDir: string,
@@ -298,8 +356,10 @@ function copyCustomizeSkillFiles(
     },
   );
 
-  const staleRemoved =
-    policy === "cli-owned" ? removeStaleSkillEntry(destDir) : undefined;
+  assertNoDirectoryAtPayloadNames(destDir, payload, alreadyCurrent);
+  const staleRemoved = replacesExistingEntries(policy)
+    ? removeStaleSkillEntry(destDir)
+    : undefined;
   const staleClause =
     staleRemoved === undefined
       ? ""
@@ -314,10 +374,13 @@ function copyCustomizeSkillFiles(
     const dest = join(destDir, name);
     const failure = writePayloadFile(dest, bytes, policy);
     if (failure !== undefined) {
-      if (failure.created) {
+      if (failure.created === true) {
         written.push(dest);
       }
       const { removed, leftBehind } = rollBack(written);
+      if (failure.created === "unknown") {
+        leftBehind.push(`${dest} (unknown whether created)`);
+      }
       const notRemoved =
         leftBehind.length > 0
           ? ` (could not remove: ${leftBehind.join(", ")})`
@@ -327,7 +390,7 @@ function copyCustomizeSkillFiles(
           ? `; an entry this run did not create sits there (a project entry appeared during the install, or the name was already taken) and was left untouched`
           : "";
       throw installError(
-        `could not write ${dest}${occupied}; removed the ${removed} file(s) already written by this run${notRemoved}${staleClause}`,
+        `could not write ${dest}${occupied}; removed the ${removed} file(s) written by this run${notRemoved}${staleClause}`,
         failure.cause,
       );
     }
@@ -341,14 +404,17 @@ function copyCustomizeSkillFiles(
 /**
  * Installs the skill into `<targetDir>/.claude/skills/customize/`. Used by
  * fresh-bootstrap mode, where the directory is normally new (`--force` may
- * point it at a non-empty one, so each payload file is removed, then
+ * point it at a non-empty one or an earlier install, so any existing
+ * `SKILL.md` is removed first, then each payload file is removed and
  * recreated). A symlinked `.claude`, `.claude/skills` or
  * `.claude/skills/customize` is refused, not routed around.
  *
  * @throws `Error` ("could not install the /customize skill ...", raw error
- * as `cause`) on a missing source file (before anything is written), a
- * symlinked or non-directory directory component, any fs failure, or a
- * failed write -- after removing every file this call created.
+ * as `cause`) on a missing or unreadable source file or a directory at any
+ * payload name (both before anything is removed or written), a symlinked or
+ * non-directory directory component, any fs failure, or a failed write --
+ * after removing every file this call wrote. Entries it replaced before
+ * the failure are not restored.
  *
  * @example
  * ```ts
@@ -392,6 +458,14 @@ export interface GuardedInstallResult {
    * project entry under one of the skill's payload names.
    */
   fallbackReason?: string;
+  /**
+   * Set exactly when `fallbackReason` is: `"component"` when a
+   * `.claude`/`.claude/skills`/`.claude/skills/customize` component is a
+   * symlink or not a directory (no project-local copy of the skill exists),
+   * `"entry"` when a project-owned entry sits under one of the skill's
+   * payload names (a project copy exists, and is what a user would replace).
+   */
+  fallbackCause?: "entry" | "component";
 }
 
 /** Why `<targetDir>/<segments>` cannot be written into: its first component that is a symlink or not a directory, if any. */
@@ -478,8 +552,9 @@ function classifyExistingSkill(
  *
  * - If `.claude`, `.claude/skills` or `.claude/skills/customize` is a
  *   symlink or not a directory, the skill is written to
- *   `.groundwork/customize/` instead and `fallbackReason` names that path --
- *   the entry (and any link target) is left untouched.
+ *   `.groundwork/customize/` instead, `fallbackReason` names that path and
+ *   `fallbackCause` is `"component"` -- the entry (and any link target) is
+ *   left untouched.
  * - Otherwise, if every payload file already there is a regular file
  *   matching what this CLI ships byte-for-byte: with all five present the
  *   result is `"already-present"` (nothing written); with no `SKILL.md` file
@@ -489,20 +564,24 @@ function classifyExistingSkill(
  * - Anything else under a payload name (a differing file, a symlink --
  *   dangling or not -- a directory, a `SKILL.md` without its data; detected
  *   by `lstat`) is kept as the project's own: the skill is written to
- *   `.groundwork/customize/` instead and `fallbackReason` names that entry.
- *   Claude Code does not load a skill from there; the caller must say so.
+ *   `.groundwork/customize/` instead, `fallbackReason` names that entry and
+ *   `fallbackCause` is `"entry"`. Claude Code does not load a skill from
+ *   there; the caller must say so.
  *
  * Writes into `.claude/skills/customize/` use `"wx"` only, so an entry that
  * appears there mid-install fails the run (rolled back) rather than being
  * replaced. Writes into the CLI-owned `.groundwork/customize/` replace that
- * directory's payload files (remove, then `"wx"`); a symlinked `.groundwork`
- * or `.groundwork/customize` is refused, never routed around.
+ * directory's payload files (any `SKILL.md` removed first, then each file
+ * removed and recreated with `"wx"`); a symlinked `.groundwork` or
+ * `.groundwork/customize`, or a directory at any payload name there, is
+ * refused, never routed around.
  *
  * @throws `Error` ("could not install the /customize skill ...", raw error
- * as `cause`) on a missing source file (before anything is written), any fs
- * failure while probing or writing, or a symlinked
- * `.groundwork`/`.groundwork/customize` -- after removing every file this
- * call created.
+ * as `cause`) on a missing or unreadable source file (before anything is
+ * written), any fs failure while probing or writing, a symlinked
+ * `.groundwork`/`.groundwork/customize`, or a directory at a payload name
+ * there -- after removing every file this call wrote. A failed
+ * `.groundwork/customize/` install also names why the fallback was taken.
  *
  * @example
  * ```ts
@@ -518,21 +597,38 @@ export function installCustomizeSkillGuarded(
 ): GuardedInstallResult {
   const payload = readCustomizeSkillPayload(sourceDir);
   const existingDir = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
-  const installToGroundwork = (reason: string): GuardedInstallResult => ({
-    filesWritten: copyCustomizeSkillFiles(
-      targetDir,
-      CLI_OWNED_DESTINATION,
-      payload,
-    ).filesWritten,
-    location: "groundwork",
-    fallbackReason: `${reason}, so the /customize skill was installed into .groundwork/customize/ instead`,
-  });
+  const installToGroundwork = (
+    reason: string,
+    fallbackCause: "entry" | "component",
+  ): GuardedInstallResult => {
+    let filesWritten: string[];
+    try {
+      ({ filesWritten } = copyCustomizeSkillFiles(
+        targetDir,
+        CLI_OWNED_DESTINATION,
+        payload,
+      ));
+    } catch (cause) {
+      // Already an installError; this adds only why the fallback
+      // destination was being written at all.
+      throw installError(
+        `${reason}, so it fell back to .groundwork/customize/, and that install failed too`,
+        cause,
+      );
+    }
+    return {
+      filesWritten,
+      location: "groundwork",
+      fallbackReason: `${reason}, so the /customize skill was installed into .groundwork/customize/ instead`,
+      fallbackCause,
+    };
+  };
 
   const unusable = wrapFs(`could not inspect ${existingDir}`, () =>
     firstUnusableComponent(targetDir, CLAUDE_DEST_SEGMENTS),
   );
   if (unusable !== undefined) {
-    return installToGroundwork(unusable);
+    return installToGroundwork(unusable, "component");
   }
 
   const existing = wrapFs(`could not compare ${existingDir}`, () =>
@@ -542,7 +638,7 @@ export function installCustomizeSkillGuarded(
     case "current":
       return { filesWritten: [], location: "already-present" };
     case "foreign":
-      return installToGroundwork(existing.reason);
+      return installToGroundwork(existing.reason, "entry");
     case "installable": {
       const { filesWritten } = copyCustomizeSkillFiles(
         targetDir,

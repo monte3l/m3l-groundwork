@@ -72,10 +72,12 @@ describe("runAdopt's /customize next-step message depends on installCustomizeSki
   });
 
   it('does NOT print the generic next step, and prints a truthful one instead, when location is "groundwork"', () => {
+    const fallbackReason = "a project-owned .claude/skills/customize/ differs";
     installCustomizeSkillGuardedMock.mockReturnValue({
       filesWritten: [join(".groundwork", "customize", "SKILL.md")],
       location: "groundwork",
-      fallbackReason: "a project-owned .claude/skills/customize/ differs",
+      fallbackReason,
+      fallbackCause: "entry",
     });
 
     const output = runAndCaptureOutput(projectDir);
@@ -86,6 +88,9 @@ describe("runAdopt's /customize next-step message depends on installCustomizeSki
     expect(output).toContain(".groundwork/customize");
     expect(output.toLowerCase()).toMatch(/does not load/);
     expect(output.toLowerCase()).toMatch(/\/customize|replace/);
+    // [this round, item 5] the WHY must be printed too -- deleting main's
+    // own print of fallbackReason must fail this assertion.
+    expect(output).toContain(fallbackReason);
   });
 
   it('[regression guard] still prints the generic next step, unchanged, when location is "claude"', () => {
@@ -109,5 +114,69 @@ describe("runAdopt's /customize next-step message depends on installCustomizeSki
 
     expect(output).toContain("the /customize skill was already up to date");
     expect(output).toContain(GENERIC_NEXT_STEP);
+  });
+});
+
+/**
+ * [this round, item 5] `GuardedInstallResult.fallbackCause` (`"entry"` |
+ * `"component"`, see `../src/plugin.js`) distinguishes WHY the
+ * `.groundwork/customize/` fallback was taken. The generic "replace the
+ * project-local .claude/skills/customize/ copy" advice in the current
+ * `"groundwork"` next-step message is only true for `"entry"` (a real
+ * project-owned entry exists there to replace); for `"component"` (a
+ * symlinked or non-directory `.claude` path component) there is NO such
+ * project-local copy -- advising the user to "replace" one would be
+ * actively misleading, and the real fix is to fix or replace `.claude`
+ * itself.
+ */
+describe("runAdopt's /customize next-step message distinguishes fallbackCause 'component' from 'entry' (this round, item 5)", () => {
+  let targetDir: string;
+  let projectDir: string;
+
+  beforeEach(() => {
+    targetDir = mkdtempSync(join(tmpdir(), "main-next-step-cause-"));
+    projectDir = join(targetDir, "project");
+    mkdirSync(projectDir);
+    writeFileSync(
+      join(projectDir, "package.json"),
+      JSON.stringify({ name: "acme", type: "module" }),
+    );
+    installCustomizeSkillGuardedMock.mockReset();
+  });
+
+  afterEach(() => {
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  it('fallbackCause "component": does not advise replacing a project-local .claude/skills/customize/ copy (none exists), and instead says to fix/replace .claude', () => {
+    installCustomizeSkillGuardedMock.mockReturnValue({
+      filesWritten: [join(".groundwork", "customize", "SKILL.md")],
+      location: "groundwork",
+      fallbackReason: `${join(projectDir, ".claude")} is a symlink, so the /customize skill was installed into .groundwork/customize/ instead`,
+      fallbackCause: "component",
+    });
+
+    const output = runAndCaptureOutput(projectDir);
+
+    expect(output).not.toContain(
+      "replace the project-local .claude/skills/customize",
+    );
+    expect(output.toLowerCase()).toMatch(/fix|replace/);
+    expect(output).toContain(".claude");
+  });
+
+  it('fallbackCause "entry": keeps the replace-the-project-copy advice unchanged', () => {
+    installCustomizeSkillGuardedMock.mockReturnValue({
+      filesWritten: [join(".groundwork", "customize", "SKILL.md")],
+      location: "groundwork",
+      fallbackReason: "a project-owned .claude/skills/customize/ differs",
+      fallbackCause: "entry",
+    });
+
+    const output = runAndCaptureOutput(projectDir);
+
+    expect(output).toContain(
+      "replace the project-local .claude/skills/customize",
+    );
   });
 });

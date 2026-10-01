@@ -34,6 +34,7 @@ import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
 } from "./plugin.js";
+import type { GuardedInstallResult } from "./plugin.js";
 import {
   CLAUDE_DEST_SEGMENTS,
   GROUNDWORK_DEST_SEGMENTS,
@@ -567,6 +568,30 @@ export function assertAdoptWriteScope(
 }
 
 /**
+ * The adopt-mode next step after a `.groundwork/customize/` fallback, chosen
+ * by why it was taken: only an `"entry"` fallback has a project-local copy
+ * of the skill to replace. `undefined` (never set alongside a `"groundwork"`
+ * location by the installer) gets the `"entry"` text.
+ */
+function groundworkNextStep(
+  cause: GuardedInstallResult["fallbackCause"],
+): string {
+  const staged =
+    "Next: the current /customize skill is staged at .groundwork/customize/, but Claude Code does not load skills from there";
+  switch (cause) {
+    case "component":
+      return `${staged}, and no project-local .claude/skills/customize/ copy exists -- fix or replace the .claude path named above so .claude/skills/customize/ is a real directory, copy the staged skill there and then run /customize, or run the m3l-groundwork plugin's own /customize.`;
+    case "entry":
+    case undefined:
+      return `${staged} -- run the m3l-groundwork plugin's own /customize, or replace the project-local .claude/skills/customize/ copy with the staged one and then run /customize.`;
+    default: {
+      const exhaustive: never = cause;
+      throw new Error(`unhandled fallback cause: ${String(exhaustive)}`);
+    }
+  }
+}
+
+/**
  * Surveys an already-established project and writes `.groundwork/` --
  * `inventory.json` and `adoption-report.md`. Never touches a project file:
  * the one addition is a purely-additive, collision-guarded copy of the
@@ -688,6 +713,11 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   // below).
   assertAdoptWriteScope(options.targetDir, plannedCustomizeSkillPaths());
   const pluginResult = installCustomizeSkillGuarded(options.targetDir);
+  // Deliberately no rollback if this throws: it is a lexical drift guard
+  // over paths built from the same customize-paths.ts constants the
+  // pre-write check above already accepted, so it cannot fail unless those
+  // constants and the installer drift apart -- a programming error to
+  // surface loudly, not a runtime condition to recover from.
   assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
 
   // The report next, inventory.json last (written atomically): nothing that
@@ -735,9 +765,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   if (pluginResult.location === "groundwork") {
     // The fresh copy is staged where Claude Code never loads a skill from,
     // so the generic next step would be false here.
-    console.log(
-      "Next: the current /customize skill is staged at .groundwork/customize/, but Claude Code does not load skills from there -- run the m3l-groundwork plugin's own /customize, or replace the project-local .claude/skills/customize/ copy with the staged one and then run /customize.",
-    );
+    console.log(groundworkNextStep(pluginResult.fallbackCause));
   } else {
     console.log("Next: open this project in Claude Code and run /customize.");
   }

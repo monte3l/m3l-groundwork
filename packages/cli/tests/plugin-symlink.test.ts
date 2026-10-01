@@ -327,67 +327,18 @@ describe("copyCustomizeSkillFiles wraps a remove-then-wx write failure", () => {
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  /**
-   * Replaces the payload destination with a non-empty directory. `rmSync`
-   * is called without `recursive`, so it throws `ERR_FS_EISDIR` rather than
-   * removing it -- the same shape of failure the surrounding `try`/`catch`
-   * in `copyCustomizeSkillFiles` exists to wrap (a permission error on a
-   * read-only destination directory throws the same way, but a non-empty
-   * directory is portable across platforms and doesn't need a root check).
-   */
-  function plantNonEmptyDirectoryAt(destPath: string): void {
-    mkdirSync(destPath, { recursive: true });
-    writeFileSync(join(destPath, "blocks-the-rm.txt"), "occupied\n");
-  }
+  // [round-two review, item A] the test that used to live here planted a
+  // non-empty directory at SKILL.md to force its own pre-write `rmSync` to
+  // throw `ERR_FS_EISDIR` after the other four payload files had already
+  // been written. `assertNoDirectoryAtPayloadNames` (`../src/plugin.js`) now
+  // refuses that same directory up front, before anything is removed or
+  // written -- so the injection never reaches a mid-loop write failure at
+  // all (see `plugin-preflight.test.ts`). The same "wraps a remove-then-wx
+  // write failure" invariant, injected instead via the fs-mock seam, now
+  // lives in `plugin-rollback.test.ts`'s "copyCustomizeSkillFiles wraps a
+  // remove-then-wx write failure, moved from plugin-symlink.test.ts" test.
 
-  // [round-two review, item A] the wrapper message changed shape: it now
-  // leads with "could not install the /customize skill" (not "could not
-  // write <path>") and names how many of THIS call's own files were rolled
-  // back, since a write failure is now all-or-nothing rather than
-  // per-file. SKILL.md is written last (see plugin-install.test.ts for the
-  // full ordering/rollback contract), so planting the obstacle at SKILL.md
-  // means every one of the other four payload files was written first and
-  // must be rolled back.
-  it("installCustomizeSkill (fresh mode) wraps the fs error in a message naming the destination and the rollback, with the original error as cause", () => {
-    mkdirSync(join(targetDir, ".claude", "skills", "customize"), {
-      recursive: true,
-    });
-    const destDir = join(targetDir, ".claude", "skills", "customize");
-    const destPath = join(destDir, "SKILL.md");
-    plantNonEmptyDirectoryAt(destPath);
-
-    let thrown: unknown;
-    try {
-      installCustomizeSkill(targetDir, sourceDir);
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(Error);
-    const message = (thrown as Error).message;
-    expect(message).toContain("could not install the /customize skill");
-    expect(message).toContain(destPath);
-    expect(message).toContain("removed the 4 file(s) already written");
-    expect((thrown as Error).cause).toBeInstanceOf(Error);
-    // The raw fs error's own message is distinct from the wrapper's -- this
-    // is what a missing catch (letting the raw error propagate unwrapped)
-    // would fail: the raw SystemError never mentions the wrapper's own
-    // phrasing, only the underlying EISDIR fact.
-    expect(((thrown as Error).cause as Error).message).not.toContain(
-      "could not install the /customize skill",
-    );
-    // The four files written before SKILL.md was attempted were rolled back.
-    for (const name of [
-      "kind-facet-map.ts",
-      "domain-map.ts",
-      "pack-map.ts",
-      "plugin-map.ts",
-    ]) {
-      expect(existsSync(join(destDir, name))).toBe(false);
-    }
-  });
-
-  // By design (see plugin.ts's `isCustomizeSkillCurrent`/"present" check),
+  // By design (see plugin.ts's `classifyExistingSkill`/"present" check),
   // any lstat-visible entry under a payload name now diverts this call into
   // the "differs"/.groundwork branch rather than the "absent" branch --
   // planting a non-empty directory AT a payload name (pack-map.ts, as the

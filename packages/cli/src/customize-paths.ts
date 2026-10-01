@@ -51,10 +51,13 @@ export const CUSTOMIZE_SKILL_FILE_NAMES = [
  * first, {@link CUSTOMIZE_SKILL_ENTRY_FILE} last. A run that fails part-way
  * (and whose rollback cannot remove everything) therefore never leaves a
  * loadable `SKILL.md` beside missing or stale data files -- given the
- * precondition that no `SKILL.md` already sits at the destination. For a
- * re-install over the CLI-owned `.groundwork/customize/`, `plugin.ts`
- * establishes that precondition by removing any existing `SKILL.md` entry
- * before the first data file is rewritten.
+ * precondition that no `SKILL.md` already sits at the destination. Wherever
+ * an install replaces existing entries -- fresh mode's
+ * `.claude/skills/customize/` (a `--force` re-run over an earlier install)
+ * and the CLI-owned `.groundwork/customize/` -- `plugin.ts` establishes that
+ * precondition by removing any existing `SKILL.md` entry before the first
+ * data file is rewritten. Adopt mode's additive `.claude/skills/customize/`
+ * install only ever writes there when no `SKILL.md` entry exists.
  *
  * @example
  * ```ts
