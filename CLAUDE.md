@@ -503,6 +503,30 @@ at. For a piece of work with a clear contract:
    run in parallel over the diff. Must-fix findings route back to
    `code-implementer`, and the loop repeats until clean.
 
+**The guard covers `Bash` as well as `Write|Edit`, but it raises the bar
+rather than proving anything.** `guard-hub-src-writes.mjs` also runs on every
+`Bash` call (registered under the `Bash` matcher too -- same file, no extra
+hook, so the baseline's 10-hook cap is untouched) and applies the same
+writer-spoke allowlist to a conservative scan of `tool_input.command`: it
+blocks output redirects, `tee`, `sed -i`/`perl -i`, `cp`/`mv`/`install`/
+`rsync`/`ln` into a guarded path, `rm`/`unlink`/`touch`/`truncate`, `dd of=`,
+`patch`/`git apply` whose patch headers name a guarded path, and
+`python`/`node`/`ruby`/`perl` inline code, heredocs or out-of-project script
+files that both write and name a guarded path (issue #96). It can only
+produce false negatives, never prove a negative: an interpreter running a
+script that lives inside the project, an `eval` of a computed string, a
+build step or generator that writes `src/`, a formatter or fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/`git stash pop`, a write into an ancestor of `src/`
+or `tests/` (`rsync -a /tmp/pkg/ packages/cli/`, `rm -rf packages/cli`), `php` file
+writes, `find -exec`/`xargs` with no
+literal operand, a target spelled through a variable, glob or command
+substitution, and `tar`/`curl -o`/`git checkout|restore` all pass. So
+hub-and-spoke stays a convention backed by a guard that raises the bar, not
+a proof; the review spokes and the `main` ruleset remain the real backstop.
+The maintainer's override is to run the command yourself with the `!`
+prefix at the Claude Code prompt (not a tool call, so no hook sees it) or to
+edit the hook's registration in `.claude/settings.json`; no flag or
+environment variable turns the guard off.
+
 **A Claude Code Enterprise/managed deployment sits above this and can
 silently disable it.** Anthropic's settings precedence puts managed
 settings (a `managed-settings.json` file, an MDM policy, or a
