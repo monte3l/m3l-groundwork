@@ -54,7 +54,11 @@ packages/cli/          Phase A: the offline bootstrapper CLI
                           ones that carry a contract: assets.ts (the one place
                           that locates templates/ and the plugin payload),
                           baseline-stage.ts (stages absent baseline files as
-                          inert .staged copies), fs-guard.ts (the shared
+                          inert .staged copies), pack-stage.ts (the same for
+                          every pack, all packs as one unit, written to a
+                          temp sibling and swapped in by rename),
+                          staging.ts (the suffix, posix-path rule and swap/
+                          sweep helpers both share), fs-guard.ts (the shared
                           symlink refusal), fatal.ts + format-error.ts (the
                           bin's total, never-throwing error printer)
   src/harness/            the harness grader: frontmatter.ts, rules.ts, grade.ts,
@@ -237,6 +241,11 @@ steps) before considering any task here done.
   tsc, eslint, Claude Code's skill loader) can discover them as live source;
   `inventory.stagedBaseline.files` records each one's original `path`, its
   `staged` name and a `sha256`, and `/customize` strips the suffix on install.
+  Staged packs follow the identical convention (`pack.json.staged` and
+  `files/<path>.staged` under `.groundwork/packs/<name>/`, recorded in
+  `inventory.stagedPacks`, added to schema 5 before it shipped); all packs are
+  staged as one unit in a temp sibling directory and swapped in by rename, and
+  their planned paths are scope-checked before any is written.
   `inventory.json` is the commit marker: any old one is deleted before
   staging starts, and it is written atomically (temp file, then rename) after
   the staging, the `/customize` skill copy and the report, so its presence
@@ -786,12 +795,10 @@ set for one file.
   falls back to `templateRoot` for a schema 5+ inventory. Only a schema 1-4
   inventory still reads additions from it, and Step 0 reports a vanished path
   and asks for a re-run rather than guessing. `report.ts`'s cap estimate reads
-  `templateRoot` inside the CLI run itself, where it still exists. **Staged
-  pack files keep their real extensions and are not inert** (unlike
-  `baseline/`), and pack staging is not atomic; atomic, `.staged`-suffixed
-  pack staging is planned before 1.0. Pack staging today refuses a
-  symlinked staging directory, and replaces a pre-existing `pack.json` (even
-  a symlink, which is removed rather than followed) with a regular file.
+  `templateRoot` inside the CLI run itself, where it still exists. Staged
+  pack files are inert `.staged` copies, written to a temp sibling and swapped in by rename (never half-written), like
+  `baseline/`; the staging refuses a symlinked `.groundwork` or `packs/`
+  directory.
 - **Adopt mode's post-merge cap counts (in `report.ts`) are an estimate, not
   a reconciliation.** It assumes no name overlap between the baseline's
   agents/skills/hooks and the project's own -- good enough to flag "you may

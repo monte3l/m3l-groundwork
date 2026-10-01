@@ -8,7 +8,6 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,9 +19,9 @@ import {
   loadPack,
   observeWiring,
   packsRootDir,
-  stagePackFiles,
 } from "../src/packs.js";
 import type { PackManifest } from "../src/packs.js";
+import { stagePacks } from "../src/pack-stage.js";
 import { walkBounded } from "../src/survey/fs-walk.js";
 import { countPackBudget } from "../src/caps.js";
 
@@ -134,7 +133,9 @@ describe("listPackNames / loadPack", () => {
     // packDir is built from the CALL argument ("safe-dir"), not from
     // manifest.name -- so this manifest loads successfully today with no
     // validation at all of the internal name field, even though that field
-    // is later used to build a filesystem path in stagePackFiles.
+    // is later used to build a filesystem path in pack-stage.ts's
+    // stagePacks (which re-validates it independently via
+    // assertSingleSegmentName).
     writeManifest(packsRoot, "safe-dir", { name: "../escape" });
     expect(() => loadPack("safe-dir", packsRoot)).toThrow(/pack name/i);
   });
@@ -144,8 +145,8 @@ describe("listPackNames / loadPack", () => {
     // ("different-name") is shape-valid (passes PACK_NAME_PATTERN) but never
     // cross-checked against the directory it lives in -- so two pack
     // directories could declare the same internal name while living at
-    // different paths, and stagePackFiles/installPack key their staging path
-    // and rmSync cleanup on manifest.name alone. This must be a DIFFERENT
+    // different paths, and pack-stage.ts's stagePacks/installPack key their
+    // staging path and rmSync cleanup on manifest.name alone. This must be a DIFFERENT
     // failure than the shape-only check above (which fires on a malformed
     // name, not a mismatched one), so assert on both names appearing in the
     // message rather than just /pack name/i.
@@ -869,220 +870,6 @@ describe("installPack", () => {
   });
 });
 
-describe("stagePackFiles", () => {
-  it("copies pack.json and the files/ tree, unmodified, into <groundworkDir>/packs/<name>/", () => {
-    const packsRoot = mkdtempSync(join(tmpdir(), "packs-stage-root-"));
-    const groundworkDir = mkdtempSync(join(tmpdir(), "packs-stage-gw-"));
-    try {
-      writeManifest(packsRoot, "stage-me");
-      mkdirSync(join(packsRoot, "stage-me", "files", ".claude", "agents"), {
-        recursive: true,
-      });
-      writeFileSync(
-        join(packsRoot, "stage-me", "files", ".claude", "agents", "a.md"),
-        "# a\n",
-      );
-
-      const pack = loadPack("stage-me", packsRoot);
-      const written = stagePackFiles(pack, groundworkDir);
-
-      expect(written).toContain("pack.json");
-      expect(
-        existsSync(join(groundworkDir, "packs", "stage-me", "pack.json")),
-      ).toBe(true);
-      expect(
-        existsSync(
-          join(
-            groundworkDir,
-            "packs",
-            "stage-me",
-            "files",
-            ".claude",
-            "agents",
-            "a.md",
-          ),
-        ),
-      ).toBe(true);
-    } finally {
-      rmSync(packsRoot, { recursive: true, force: true });
-      rmSync(groundworkDir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("stagePackFiles clears stale staged files", () => {
-  it("removes a file staged by a previous pack version that the current version no longer has", () => {
-    const packsRoot = mkdtempSync(join(tmpdir(), "packs-stage-stale-root-"));
-    const groundworkDir = mkdtempSync(join(tmpdir(), "packs-stage-stale-gw-"));
-    try {
-      writeManifest(packsRoot, "evolve");
-      mkdirSync(join(packsRoot, "evolve", "files"), { recursive: true });
-      writeFileSync(join(packsRoot, "evolve", "files", "a.txt"), "a\n");
-      writeFileSync(join(packsRoot, "evolve", "files", "b.txt"), "b\n");
-
-      const packV1 = loadPack("evolve", packsRoot);
-      stagePackFiles(packV1, groundworkDir);
-      expect(
-        existsSync(join(groundworkDir, "packs", "evolve", "files", "b.txt")),
-      ).toBe(true);
-
-      // Simulate a newer pack version that dropped b.txt.
-      rmSync(join(packsRoot, "evolve", "files", "b.txt"));
-      const packV2 = loadPack("evolve", packsRoot);
-      stagePackFiles(packV2, groundworkDir);
-
-      expect(
-        existsSync(join(groundworkDir, "packs", "evolve", "files", "b.txt")),
-      ).toBe(false);
-    } finally {
-      rmSync(packsRoot, { recursive: true, force: true });
-      rmSync(groundworkDir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("stagePackFiles replaces a symlinked pack.json", () => {
-  it("removes a pre-existing pack.json symlink and writes a regular file, leaving the symlink's outside target untouched", () => {
-    const packsRoot = mkdtempSync(join(tmpdir(), "packs-stage-symjson-root-"));
-    const groundworkDir = mkdtempSync(
-      join(tmpdir(), "packs-stage-symjson-gw-"),
-    );
-    const outsideDir = mkdtempSync(
-      join(tmpdir(), "packs-stage-symjson-outside-"),
-    );
-    try {
-      writeManifest(packsRoot, "stage-symjson");
-      const pack = loadPack("stage-symjson", packsRoot);
-
-      const destDir = join(groundworkDir, "packs", "stage-symjson");
-      mkdirSync(destDir, { recursive: true });
-      const outsideFile = join(outsideDir, "outside-pack.json");
-      writeFileSync(outsideFile, "do not touch\n");
-      symlinkSync(outsideFile, join(destDir, "pack.json"));
-
-      const written = stagePackFiles(pack, groundworkDir);
-
-      expect(written).toContain("pack.json");
-      const packJsonPath = join(destDir, "pack.json");
-      // The outside file is untouched -- removed (not followed/overwritten)
-      // before a regular file was written in its place.
-      expect(readFileSync(outsideFile, "utf8")).toBe("do not touch\n");
-      const written2 = JSON.parse(readFileSync(packJsonPath, "utf8")) as {
-        name: string;
-      };
-      expect(written2.name).toBe("stage-symjson");
-    } finally {
-      rmSync(packsRoot, { recursive: true, force: true });
-      rmSync(groundworkDir, { recursive: true, force: true });
-      rmSync(outsideDir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("stagePackFiles -- non-guard failure wraps with cause", () => {
-  it('throws a wrapped Error naming the pack and destination dir -- "staging pack ... failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI" -- when a pack source file is an unreadable dangling symlink', () => {
-    const packsRoot = mkdtempSync(
-      join(tmpdir(), "packs-stage-unreadable-root-"),
-    );
-    const groundworkDir = mkdtempSync(
-      join(tmpdir(), "packs-stage-unreadable-gw-"),
-    );
-    try {
-      writeManifest(packsRoot, "unreadable-src");
-      const filesDir = join(packsRoot, "unreadable-src", "files");
-      // A dangling symlink inside the pack's own files/ tree: readdirSync
-      // lists it as a (non-directory) entry, but emitTemplate's
-      // readFileSync fails to resolve it -- a genuine, non-guard I/O
-      // failure, distinct from the symlink-GUARD errors below (which fire
-      // on groundworkDir/packs/destDir itself, before any copy is ever
-      // attempted, and whose own wording/shape must stay unchanged).
-      symlinkSync(
-        join(packsRoot, "does-not-exist.txt"),
-        join(filesDir, "dangling.txt"),
-      );
-
-      const pack = loadPack("unreadable-src", packsRoot);
-      const destDir = join(groundworkDir, "packs", "unreadable-src");
-
-      let thrown: unknown;
-      try {
-        stagePackFiles(pack, groundworkDir);
-      } catch (error) {
-        thrown = error;
-      }
-
-      expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).message).toBe(
-        `staging pack "unreadable-src" into ${destDir} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
-      );
-      expect((thrown as Error).cause).toBeDefined();
-    } finally {
-      rmSync(packsRoot, { recursive: true, force: true });
-      rmSync(groundworkDir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("stagePackFiles symlink guard", () => {
-  let groundworkDir: string;
-  let outsideDir: string;
-
-  beforeEach(() => {
-    groundworkDir = mkdtempSync(join(tmpdir(), "packs-stage-symlink-gw-"));
-    outsideDir = mkdtempSync(join(tmpdir(), "packs-stage-symlink-outside-"));
-  });
-
-  afterEach(() => {
-    rmSync(groundworkDir, { recursive: true, force: true });
-    rmSync(outsideDir, { recursive: true, force: true });
-  });
-
-  it("throws before writing or deleting anything when groundworkDir itself is a symlink", () => {
-    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
-    rmSync(groundworkDir, { recursive: true, force: true });
-    symlinkSync(outsideDir, groundworkDir, "dir");
-
-    const pack = loadPack("harness-extras");
-
-    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
-    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
-      "do not touch",
-    );
-    expect(existsSync(join(outsideDir, "packs"))).toBe(false);
-  });
-
-  it("throws before writing or deleting anything when <groundworkDir>/packs is a symlink", () => {
-    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
-    symlinkSync(outsideDir, join(groundworkDir, "packs"), "dir");
-
-    const pack = loadPack("harness-extras");
-
-    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
-    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
-      "do not touch",
-    );
-    expect(existsSync(join(outsideDir, "harness-extras"))).toBe(false);
-  });
-
-  it("throws before writing or deleting anything when <groundworkDir>/packs/<name> is a symlink", () => {
-    writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch");
-    mkdirSync(join(groundworkDir, "packs"), { recursive: true });
-    const pack = loadPack("harness-extras");
-    symlinkSync(
-      outsideDir,
-      join(groundworkDir, "packs", pack.manifest.name),
-      "dir",
-    );
-
-    expect(() => stagePackFiles(pack, groundworkDir)).toThrow();
-    expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
-      "do not touch",
-    );
-    expect(existsSync(join(outsideDir, "files"))).toBe(false);
-    expect(existsSync(join(outsideDir, "pack.json"))).toBe(false);
-  });
-});
-
 describe("observeWiring", () => {
   let targetDir: string;
 
@@ -1384,16 +1171,20 @@ describe("the real quality pack", () => {
     }
   });
 
-  it("adopt mode stages pack.json and the files/ tree unmodified under .groundwork/packs/quality/", () => {
+  it("adopt mode stages pack.json and the files/ tree unmodified, each under an inert .staged name, under .groundwork/packs/quality/", () => {
     const groundworkDir = mkdtempSync(join(tmpdir(), "packs-quality-stage-"));
     try {
       const pack = loadPack("quality");
-      const written = stagePackFiles(pack, groundworkDir);
+      const [staged] = stagePacks([pack], groundworkDir, {});
 
-      expect(written).toContain("pack.json");
+      expect(staged?.name).toBe("quality");
+      expect(staged?.dir).toBe(".groundwork/packs/quality");
+      expect(
+        existsSync(join(groundworkDir, "packs", "quality", "pack.json.staged")),
+      ).toBe(true);
       expect(
         existsSync(join(groundworkDir, "packs", "quality", "pack.json")),
-      ).toBe(true);
+      ).toBe(false);
       expect(
         existsSync(
           join(
@@ -1403,7 +1194,7 @@ describe("the real quality pack", () => {
             "files",
             ".claude",
             "agents",
-            "type-design-analyzer.md",
+            "type-design-analyzer.md.staged",
           ),
         ),
       ).toBe(true);
@@ -1415,7 +1206,7 @@ describe("the real quality pack", () => {
             "quality",
             "files",
             "bin",
-            "check-file-budget.mjs",
+            "check-file-budget.mjs.staged",
           ),
         ),
       ).toBe(true);
@@ -1610,18 +1401,24 @@ describe("the real supply-chain pack", () => {
     }
   });
 
-  it("adopt mode stages pack.json and the files/ tree unmodified under .groundwork/packs/supply-chain/", () => {
+  it("adopt mode stages pack.json and the files/ tree unmodified, each under an inert .staged name, under .groundwork/packs/supply-chain/", () => {
     const groundworkDir = mkdtempSync(
       join(tmpdir(), "packs-supply-chain-stage-"),
     );
     try {
       const pack = loadPack("supply-chain");
-      const written = stagePackFiles(pack, groundworkDir);
+      const [staged] = stagePacks([pack], groundworkDir, {});
 
-      expect(written).toContain("pack.json");
+      expect(staged?.name).toBe("supply-chain");
+      expect(staged?.dir).toBe(".groundwork/packs/supply-chain");
+      expect(
+        existsSync(
+          join(groundworkDir, "packs", "supply-chain", "pack.json.staged"),
+        ),
+      ).toBe(true);
       expect(
         existsSync(join(groundworkDir, "packs", "supply-chain", "pack.json")),
-      ).toBe(true);
+      ).toBe(false);
       expect(
         existsSync(
           join(
@@ -1631,7 +1428,7 @@ describe("the real supply-chain pack", () => {
             "files",
             ".github",
             "workflows",
-            "gitleaks.yml",
+            "gitleaks.yml.staged",
           ),
         ),
       ).toBe(true);
@@ -1642,7 +1439,7 @@ describe("the real supply-chain pack", () => {
             "packs",
             "supply-chain",
             "files",
-            ".gitleaks.toml",
+            ".gitleaks.toml.staged",
           ),
         ),
       ).toBe(true);
