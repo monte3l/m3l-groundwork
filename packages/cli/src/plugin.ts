@@ -116,10 +116,20 @@ function rollBack(written: readonly string[]): {
  * is replaced, never written through. A directory component swapped for a
  * symlink between the check and the write (a TOCTOU race) is not covered.
  *
- * Writes follow {@link CUSTOMIZE_SKILL_WRITE_ORDER}, `SKILL.md` last. If any
+ * Writes follow {@link CUSTOMIZE_SKILL_WRITE_ORDER}, `SKILL.md` last. That
+ * order alone only protects a destination with no `SKILL.md` yet, so when
+ * `removeStaleEntry` is set (the CLI-owned `.groundwork/customize/` only --
+ * never `.claude/`, where an existing entry diverts the install elsewhere
+ * and is never touched) an existing non-directory `SKILL.md` entry (a file
+ * or a symlink) is removed FIRST, before any data file is rewritten, and a
+ * failure to remove it throws before anything is written: a later failure
+ * then never leaves a stale `SKILL.md` loadable beside missing or
+ * half-rewritten data. A directory at `SKILL.md` is not a loadable entry
+ * and is left to the `SKILL.md` write, which fails on it. If any
  * write fails, every file THIS call already wrote is removed (best effort)
- * and the error names how many were; a file this call did not write is
- * never removed by the rollback. Every failure -- a symlink refusal, a raw
+ * and the error names how many were, plus the stale `SKILL.md` if one was
+ * pre-removed; no other file this call did not write is ever removed. Every
+ * failure -- a symlink refusal, a raw
  * `lstat`/`mkdir` error such as `ENOTDIR`, a write error -- is thrown as one
  * "could not install the /customize skill" `Error` carrying the underlying
  * message and the raw error as `cause`.
@@ -128,6 +138,7 @@ function copyCustomizeSkillFiles(
   targetDir: string,
   destSegments: readonly string[],
   sourceDir: string,
+  removeStaleEntry: boolean,
 ): InstallPluginResult {
   const contents = customizeSkillPayload(sourceDir).map(([toName, from]) => {
     if (!existsSync(from)) {
@@ -152,6 +163,23 @@ function copyCustomizeSkillFiles(
     },
   );
 
+  const staleEntry = join(destDir, CUSTOMIZE_SKILL_ENTRY_FILE);
+  const staleRemoved =
+    removeStaleEntry &&
+    wrapFs(`could not remove the stale ${staleEntry}`, () => {
+      const stat = lstatSync(staleEntry, { throwIfNoEntry: false });
+      // A directory named SKILL.md is not a loadable skill entry; it is left
+      // to the SKILL.md write below, which fails on it and rolls back.
+      if (stat === undefined || stat.isDirectory()) {
+        return false;
+      }
+      rmSync(staleEntry, { force: true });
+      return true;
+    });
+  const staleClause = staleRemoved
+    ? `; the stale ${staleEntry} was removed before any data file was rewritten`
+    : "";
+
   const written: string[] = [];
   const filesWritten: string[] = [];
   for (const [toName, content] of contents) {
@@ -167,7 +195,7 @@ function copyCustomizeSkillFiles(
           ? ` (could not remove: ${leftBehind.join(", ")})`
           : "";
       throw installError(
-        `could not write ${dest}; removed the ${removed} file(s) already written by this run${notRemoved}`,
+        `could not write ${dest}; removed the ${removed} file(s) already written by this run${notRemoved}${staleClause}`,
         cause,
       );
     }
@@ -200,7 +228,12 @@ export function installCustomizeSkill(
   targetDir: string,
   sourceDir: string = pluginDir(),
 ): InstallPluginResult {
-  return copyCustomizeSkillFiles(targetDir, CLAUDE_DEST_SEGMENTS, sourceDir);
+  return copyCustomizeSkillFiles(
+    targetDir,
+    CLAUDE_DEST_SEGMENTS,
+    sourceDir,
+    false,
+  );
 }
 
 type InstallLocation = "claude" | "groundwork" | "already-present";
@@ -305,7 +338,12 @@ export function installCustomizeSkillGuarded(
   sourceDir: string = pluginDir(),
 ): GuardedInstallResult {
   const installToGroundwork = (): InstallPluginResult =>
-    copyCustomizeSkillFiles(targetDir, GROUNDWORK_DEST_SEGMENTS, sourceDir);
+    copyCustomizeSkillFiles(
+      targetDir,
+      GROUNDWORK_DEST_SEGMENTS,
+      sourceDir,
+      true,
+    );
   const existingDir = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
 
   const symlinked = wrapFs(`could not inspect ${existingDir}`, () =>

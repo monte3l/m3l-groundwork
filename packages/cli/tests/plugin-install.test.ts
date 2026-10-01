@@ -57,6 +57,7 @@ import {
   installCustomizeSkillGuarded,
   type GuardedInstallResult,
 } from "../src/plugin.js";
+import { CUSTOMIZE_SKILL_FILE_NAMES } from "../src/customize-paths.js";
 
 /** The same five-file payload fixture plugin.test.ts/plugin-symlink.test.ts use. */
 function writeSourceFixture(sourceDir: string): void {
@@ -100,6 +101,18 @@ function writeDifferingClaudeSkill(targetDir: string): void {
 function plantNonEmptyDirectoryAt(destPath: string): void {
   mkdirSync(destPath, { recursive: true });
   writeFileSync(join(destPath, "blocks-the-rm.txt"), "occupied\n");
+}
+
+/**
+ * Pre-populates `.groundwork/customize/` with all five payload files holding
+ * `content` -- simulating a stale prior fallback install this run re-visits.
+ */
+function writeGroundworkSkillPayload(targetDir: string, content: string): void {
+  const dir = join(targetDir, ".groundwork", "customize");
+  mkdirSync(dir, { recursive: true });
+  for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+    writeFileSync(join(dir, name), content);
+  }
 }
 
 describe("GuardedInstallResult carries an optional fallbackReason (item D's result shape)", () => {
@@ -499,4 +512,110 @@ describe("isCustomizeSkillCurrent never reads a non-regular file (item E)", () =
   // non-blocking means (e.g. asserting `lstat(...).isFIFO()` is checked
   // before any read is attempted, never by planting a real unopened FIFO
   // in this suite).
+});
+
+/**
+ * Item F (the destination this run re-visits already holds a prior
+ * install): `CUSTOMIZE_SKILL_WRITE_ORDER`'s own TSDoc (`../src/
+ * customize-paths.js`) says writing every data file first and SKILL.md
+ * LAST means a run that fails part-way "never leaves a loadable SKILL.md
+ * beside missing or stale data files" -- true for a FRESH destination,
+ * since no SKILL.md exists until the final write succeeds. It is NOT yet
+ * true when the destination already holds an OLD install from a prior
+ * run (`.groundwork/customize/`, reached via `installCustomizeSkillGuarded`'s
+ * "differs" fallback): that pre-existing SKILL.md sits there, loadable,
+ * before this run writes anything, and the current write loop only
+ * reaches (and so only replaces) it AFTER every data file -- so a failure
+ * on an EARLIER data file leaves the stale SKILL.md right where it was,
+ * now beside partially-rewritten data. The fix this test is written
+ * against: a pre-existing SKILL.md at the destination must be removed
+ * FIRST, before the data-file loop begins.
+ */
+describe("a pre-existing .groundwork/customize/SKILL.md is removed before any data file is rewritten (item F)", () => {
+  let sourceDir: string;
+  let targetDir: string;
+  let destDir: string;
+
+  beforeEach(() => {
+    sourceDir = mkdtempSync(join(tmpdir(), "plugin-install-stale-source-"));
+    targetDir = mkdtempSync(join(tmpdir(), "plugin-install-stale-target-"));
+    writeSourceFixture(sourceDir);
+    destDir = join(targetDir, ".groundwork", "customize");
+  });
+
+  afterEach(() => {
+    rmSync(sourceDir, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  it("removes the stale SKILL.md before rewriting data, so a failure on the 2nd data file (domain-map.ts) never leaves it loadable beside stale/missing data", () => {
+    // Forces installCustomizeSkillGuarded's "differs" -> groundwork branch.
+    writeDifferingClaudeSkill(targetDir);
+    // A stale prior install already sits at the groundwork destination.
+    writeGroundworkSkillPayload(targetDir, "OLD");
+    // Replace domain-map.ts (2nd in write order) with a non-empty directory,
+    // so its own pre-write `rmSync` throws ERR_FS_EISDIR -- after
+    // kind-facet-map.ts (1st) has already been rewritten successfully.
+    rmSync(join(destDir, "domain-map.ts"), { force: true });
+    plantNonEmptyDirectoryAt(join(destDir, "domain-map.ts"));
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkillGuarded(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain("could not install the /customize skill");
+    // The message truthfully names what this run removed.
+    expect(message).toContain("removed");
+    expect((thrown as Error).cause).toBeDefined();
+
+    // The stale SKILL.md must be gone -- never left loadable beside
+    // missing/stale data after a partial failure. Checked by lstat (not
+    // existsSync) so any leftover entry, not just a regular file, fails
+    // this assertion.
+    expect(
+      lstatSync(join(destDir, "SKILL.md"), { throwIfNoEntry: false }),
+    ).toBeUndefined();
+
+    // The obstacle itself is untouched -- the call never removed it.
+    expect(lstatSync(join(destDir, "domain-map.ts")).isDirectory()).toBe(true);
+
+    // The pre-existing, differing .claude/ SKILL.md is a wholly separate
+    // destination and is never touched by the groundwork-branch failure.
+    expect(
+      readFileSync(
+        join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
+        "utf8",
+      ),
+    ).toContain("a project-authored version");
+  });
+
+  it("re-run over a stale .groundwork/customize/ installs all five current files, and never touches the project's own differing .claude/ SKILL.md", () => {
+    writeDifferingClaudeSkill(targetDir);
+    writeGroundworkSkillPayload(targetDir, "OLD");
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(result.filesWritten).toHaveLength(5);
+    for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+      expect(readFileSync(join(destDir, name), "utf8")).not.toContain("OLD");
+    }
+    expect(readFileSync(join(destDir, "SKILL.md"), "utf8")).toContain(
+      "name: customize",
+    );
+
+    // The project's own (differing) skill under .claude/ is never removed
+    // or overwritten by a write that lands at .groundwork/ instead.
+    expect(
+      readFileSync(
+        join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
+        "utf8",
+      ),
+    ).toContain("a project-authored version");
+  });
 });
