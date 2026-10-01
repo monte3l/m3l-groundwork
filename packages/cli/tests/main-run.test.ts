@@ -25,10 +25,13 @@ import { join } from "node:path";
 import type { Inventory } from "../src/inventory.js";
 import type * as InventoryModule from "../src/inventory.js";
 import type * as ReportModule from "../src/report.js";
+import type { InstallPluginResult } from "../src/plugin.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
-const installCustomizeSkillMock = vi.fn(() => ({ filesWritten: [] }));
+const installCustomizeSkillMock = vi.fn((): InstallPluginResult => ({
+  filesWritten: [],
+}));
 const installCustomizeSkillGuardedMock = vi.fn(() => ({
   filesWritten: [],
   location: "claude" as const,
@@ -138,6 +141,41 @@ describe("main", () => {
 
       expect(gitInitMock).toHaveBeenCalled();
       expect(installCustomizeSkillGuardedMock).not.toHaveBeenCalled();
+    });
+
+    it("prints 'the /customize skill was already up to date' when installCustomizeSkill reports a no-op (filesWritten: [])", () => {
+      const emptyTarget = join(targetDir, "sub-noop");
+      installCustomizeSkillMock.mockReturnValueOnce({ filesWritten: [] });
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      main([emptyTarget, "--skip-install"]);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        "the /customize skill was already up to date",
+      );
+      logSpy.mockRestore();
+    });
+
+    it("prints 'installed the /customize skill (N files)' when installCustomizeSkill actually wrote files", () => {
+      const emptyTarget = join(targetDir, "sub-installed");
+      installCustomizeSkillMock.mockReturnValueOnce({
+        filesWritten: [
+          join(".claude", "skills", "customize", "SKILL.md"),
+          join(".claude", "skills", "customize", "kind-facet-map.ts"),
+        ],
+      });
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      main([emptyTarget, "--skip-install"]);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        "installed the /customize skill (2 files)",
+      );
+      logSpy.mockRestore();
     });
 
     describe("fails early, before writing anything", () => {
@@ -254,6 +292,41 @@ describe("main", () => {
         expect((thrown as Error).message).toMatch(/project was written/);
         expect((thrown as Error).message).toMatch(/git init/);
         expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(runInstallMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("when the /customize skill install fails (item 2)", () => {
+      it("says the project was written, the skill install and git init/pnpm install did not run, and how to re-run, chaining the cause", () => {
+        const target = join(targetDir, "skill-install-fails");
+        const cause = new Error("simulated /customize skill install failure");
+        installCustomizeSkillMock.mockImplementationOnce(() => {
+          throw cause;
+        });
+        vi.spyOn(console, "log").mockImplementation(() => {});
+        let thrown: unknown;
+        try {
+          main([target]);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          vi.restoreAllMocks();
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).cause).toBe(cause);
+        const message = (thrown as Error).message;
+        expect(message).toContain("was written to");
+        expect(message).toContain(target);
+        expect(message).toContain("git init");
+        expect(message).toContain("pnpm install did not run");
+        expect(message).toContain("--fresh --force");
+
+        // The template itself was written; neither git nor the dependency
+        // install ran.
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(gitInitMock).not.toHaveBeenCalled();
         expect(runInstallMock).not.toHaveBeenCalled();
       });
     });

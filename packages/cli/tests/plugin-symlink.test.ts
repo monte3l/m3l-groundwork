@@ -522,7 +522,7 @@ describe("plain run (no symlinks) is unchanged by the guard", () => {
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  it("writes the same filesWritten names and byte-identical content, and a second run over its own output still succeeds", () => {
+  it("writes the same filesWritten names and byte-identical content, and a second, byte-identical run over its own output is a no-op", () => {
     const expectedNames = [
       join(".claude", "skills", "customize", "SKILL.md"),
       join(".claude", "skills", "customize", "kind-facet-map.ts"),
@@ -542,10 +542,11 @@ describe("plain run (no symlinks) is unchanged by the guard", () => {
       "export const y = 2;\n",
     );
 
-    // Re-running over its own output must still succeed, with the same
-    // names and the same (unchanged) content.
+    // Re-running over its own, still byte-identical output is a no-op per
+    // the overwrite policy's classify-first contract: nothing is removed or
+    // rewritten, and filesWritten is empty.
     const result2 = installCustomizeSkill(targetDir, sourceDir);
-    expect([...result2.filesWritten].sort()).toEqual(expectedNames);
+    expect(result2.filesWritten).toEqual([]);
     expect(readFileSync(join(destDir, "plugin-map.ts"), "utf8")).toBe(
       "export const w = 4;\n",
     );

@@ -33,6 +33,7 @@ import {
   readFileSync,
   existsSync,
   lstatSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -776,13 +777,24 @@ describe("fresh-mode --force over an existing install removes the old SKILL.md f
     );
     writeSourceFixture(sourceDir);
     const destDir = join(targetDir, ".claude", "skills", "customize");
+    const kindFacetDest = join(destDir, "kind-facet-map.ts");
 
-    // First run: a plain, successful install via the real passthrough.
+    // First run: a plain, successful install via the real passthrough -- a
+    // genuinely WORKING install, every payload file already correct.
     const first = installCustomizeSkill(targetDir, sourceDir);
     expect(first.filesWritten).toHaveLength(5);
     expect(existsSync(join(destDir, "SKILL.md"))).toBe(true);
 
-    // Re-run; this time domain-map.ts's write throws mid-way.
+    // Make kind-facet-map.ts (1st file) genuinely differ before the re-run:
+    // the overwrite policy's classify-first no-op contract (a byte-identical
+    // re-run writes nothing at all) would otherwise make this re-run touch
+    // NOTHING, and the domain-map.ts write-failure mock below would never
+    // fire. This forces classifyExistingSkill to see something other than
+    // "current", so the re-run actually proceeds to remove-and-rewrite.
+    real.writeFileSync(kindFacetDest, "DIFFERENT\n");
+
+    // Re-run (as --force would, in fresh mode); this time domain-map.ts's
+    // write throws mid-way.
     const domainMapDest = join(destDir, "domain-map.ts");
     writeFileSyncMock.mockImplementation(
       (...args: Parameters<typeof NodeFs.writeFileSync>) => {
@@ -802,13 +814,427 @@ describe("fresh-mode --force over an existing install removes the old SKILL.md f
     }
 
     expect(thrown).toBeInstanceOf(Error);
-    expect((thrown as Error).message).toContain(
-      "could not install the /customize skill",
-    );
+    const message = (thrown as Error).message;
+    expect(message).toContain("could not install the /customize skill");
     // The PREVIOUS run's SKILL.md must not survive this failed re-run.
     expect(
       lstatSync(join(destDir, "SKILL.md"), { throwIfNoEntry: false }),
     ).toBeUndefined();
+
+    // [item 1] The failure also erased the PREVIOUS WORKING install's own
+    // content, not just this run's own write: the stale SKILL.md was
+    // unconditionally removed before the data loop even started (as
+    // documented), and kind-facet-map.ts (written successfully, then rolled
+    // back by `rollBack`) is also gone -- the working copy it held before
+    // this re-run is NOT restored. The message must say so, naming each
+    // entry, rather than only reporting this run's own rollback count. The
+    // overwrite policy's wording calls SKILL.md "the existing SKILL.md"
+    // (not "stale") -- the "stale" phrasing is reserved for the
+    // .groundwork cli-owned destination.
+    expect(message).toContain("the existing SKILL.md");
+    expect(message).toContain(kindFacetDest);
+    expect(message).toContain(
+      "removed and NOT restored -- the skill is not loadable until a successful re-run",
+    );
+    // The existing rollback-count clause must still be present alongside
+    // the new one.
+    expect(message).toContain("removed the 1 file(s) written by this run");
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Item 3: `installCustomizeSkill` (fresh mode's "overwrite" policy) today
+ * never classifies what is already at the destination before writing --
+ * every re-run unconditionally removes and rewrites every payload file, even
+ * when the destination is already byte-for-byte identical to what this run
+ * would write (a plain re-run of the CLI over its own output, with no
+ * `--force`-driven change at all). The fix this suite is written against:
+ * classify first (the same byte-for-byte comparison
+ * `installCustomizeSkillGuarded`'s `classifyExistingSkill` already performs
+ * for adopt mode), and when every payload file is already current, return
+ * without removing or rewriting anything -- mirroring the adopt-mode
+ * `"already-present"` result's own `filesWritten: []` convention for "we
+ * verified it, we touched nothing".
+ *
+ * `plugin-symlink.test.ts`'s "plain run (no symlinks) is unchanged by the
+ * guard" suite's second-run test was updated alongside this one (renamed to
+ * "...is a no-op") to assert `filesWritten: []` on a second, byte-identical
+ * run rather than the full five-name list again -- the two suites agree on
+ * this contract.
+ */
+describe("installCustomizeSkill classifies before writing: a byte-identical re-run is a no-op (item 3)", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  it("removes and rewrites nothing on a second install over an already byte-identical .claude/skills/customize/", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-noop-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-noop-tgt-"));
+    writeSourceFixture(sourceDir);
+
+    const first = installCustomizeSkill(targetDir, sourceDir);
+    expect(first.filesWritten).toHaveLength(5);
+
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    const skillMdPath = join(destDir, "SKILL.md");
+    const mtimeBefore = statSync(skillMdPath).mtimeMs;
+
+    rmSyncMock.mockClear();
+    writeFileSyncMock.mockClear();
+
+    const second = installCustomizeSkill(targetDir, sourceDir);
+
+    expect(second.filesWritten).toEqual([]);
+    expect(rmSyncMock).not.toHaveBeenCalled();
+    expect(writeFileSyncMock).not.toHaveBeenCalled();
+    expect(statSync(skillMdPath).mtimeMs).toBe(mtimeBefore);
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Item 4: `assertNoDirectoryAtPayloadNames` (`../src/plugin.js`) today
+ * silently swallows ANY `lstat` failure against a payload name (not just a
+ * missing entry) and leaves the obstacle "to its own remove/write" -- for a
+ * policy that REPLACES existing entries (`"overwrite"`, `"cli-owned"`), that
+ * means a transient `lstat` failure (e.g. a permissions race, an `EIO`) is
+ * never reported as a pre-flight refusal at all; the run proceeds to
+ * remove-then-rewrite past an obstacle it never actually judged. The fix
+ * this suite is written against: under a replacing policy, a pre-flight
+ * `lstat` failure refuses the whole install up front ("could not inspect
+ * <path>; nothing was removed or written", the raw error as `cause`),
+ * before anything is removed or written. The purely-additive policy keeps
+ * today's behavior unchanged (continues, left to the real write).
+ *
+ * NOTE for the hub: the exact call-site this fix lands in may also be
+ * touched by item 3's classify-first change for the "overwrite" policy --
+ * if a future unified classify+preflight pass calls `lstat` more than once
+ * per payload name before any write is attempted, the single unconditional
+ * failure this test injects would surface during whichever call reaches it
+ * first. The assertions below are intentionally about the OUTER contract
+ * (the wrapper message's wording, the cause, nothing written) rather than
+ * which internal call produced it, so they should hold either way; flagging
+ * the coupling here rather than guessing at an implementation it doesn't
+ * own.
+ */
+describe("a pre-flight lstat failure refuses a replacing-policy install, and nothing is touched (item 4)", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  it("[overwrite, fresh mode] refuses the whole install, naming the path and leaving nothing written", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-preflight-io-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-preflight-io-tgt-"));
+    writeSourceFixture(sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    const kindFacetDest = join(destDir, "kind-facet-map.ts");
+
+    const probeFailure = new Error(
+      "EIO: some I/O error (simulated)",
+    ) as NodeJS.ErrnoException;
+    probeFailure.code = "EIO";
+    lstatSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.lstatSync>) => {
+        const [target] = args;
+        if (String(target) === kindFacetDest) {
+          throw probeFailure;
+        }
+        return real.lstatSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkill(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain("could not install the /customize skill");
+    expect(message).toContain(`could not inspect ${kindFacetDest}`);
+    expect(message).toContain("nothing was removed or written");
+    expect((thrown as Error).cause).toBe(probeFailure);
+
+    for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+      expect(existsSync(join(destDir, name))).toBe(false);
+    }
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  it("[cli-owned, .groundwork fallback] refuses the whole install the same way", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-preflight-gw-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-preflight-gw-tgt-"));
+    writeSourceFixture(sourceDir);
+    // Forces installCustomizeSkillGuarded's "differs" -> groundwork branch.
+    writeDifferingClaudeSkill(targetDir);
+    const destDir = join(targetDir, ".groundwork", "customize");
+    const kindFacetDest = join(destDir, "kind-facet-map.ts");
+
+    const probeFailure = new Error(
+      "EIO: some I/O error (simulated)",
+    ) as NodeJS.ErrnoException;
+    probeFailure.code = "EIO";
+    lstatSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.lstatSync>) => {
+        const [target] = args;
+        if (String(target) === kindFacetDest) {
+          throw probeFailure;
+        }
+        return real.lstatSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkillGuarded(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain("could not install the /customize skill");
+    expect(message).toContain(`could not inspect ${kindFacetDest}`);
+    expect(message).toContain("nothing was removed or written");
+    expect((thrown as Error).cause).toBe(probeFailure);
+
+    for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+      expect(existsSync(join(destDir, name))).toBe(false);
+    }
+    // The project's own differing .claude/ SKILL.md is untouched.
+    expect(
+      readFileSync(
+        join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
+        "utf8",
+      ),
+    ).toContain("a project-authored version");
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  // [regression guard] the additive policy must keep today's behavior: a
+  // pre-flight lstat failure is left to the real write, not refused. This
+  // already passes under today's code (assertNoDirectoryAtPayloadNames
+  // swallows every policy's lstat failure); item 4 must not change that for
+  // "additive".
+  it("[additive, first-time adopt install] still continues past its own lstat failure, leaving the failure to the real write", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-preflight-add-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-preflight-add-tgt-"));
+    writeSourceFixture(sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    const domainMapDest = join(destDir, "domain-map.ts");
+
+    // The first lstat call against this path is classifyExistingSkill's own
+    // probe (must succeed -- the file genuinely does not exist yet); the
+    // second is assertNoDirectoryAtPayloadNames's own probe for the SAME
+    // name, since "installable" classification over a brand-new install
+    // leaves `alreadyCurrent` empty.
+    let calls = 0;
+    lstatSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.lstatSync>) => {
+        const [target] = args;
+        if (String(target) === domainMapDest) {
+          calls += 1;
+          if (calls >= 2) {
+            throw new Error("EIO: preflight probe failure (simulated)");
+          }
+        }
+        return real.lstatSync(...args);
+      },
+    );
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("claude");
+    expect(result.filesWritten).toHaveLength(5);
+    expect(readFileSync(domainMapDest, "utf8")).toBe("export const y = 2;\n");
+    expect(calls).toBeGreaterThanOrEqual(2);
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Item 5: when a write failure's own rollback ALSO fails to remove SKILL.md
+ * -- the one file whose presence makes Claude Code load the skill at all --
+ * today's generic "(could not remove: <path> (<code>))" clause gives no
+ * sense of how serious that specific leftover is. The fix this suite is
+ * written against: a left-behind SKILL.md gets its own, specific warning
+ * telling the operator to delete it by hand, and why (Claude Code will load
+ * a truncated skill otherwise).
+ */
+describe("a left-behind SKILL.md after a failed rollback gets its own warning (item 5)", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  it("says to delete it by hand since Claude Code will load a truncated skill", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-item5-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-item5-tgt-"));
+    writeSourceFixture(sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    const skillMdDest = join(destDir, "SKILL.md");
+
+    // SKILL.md's own "wx" write physically creates it, then fails mid-way.
+    // Tracked via a flag (not an unconditional throw) so the PRE-write
+    // cleanup rmSync (writePayloadFile's own remove-then-"wx", a harmless
+    // no-op here since nothing exists yet) is left alone -- only the
+    // ROLLBACK's later rmSync against this same path must fail.
+    let writeAttempted = false;
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) => {
+        const [target] = args;
+        if (String(target) === skillMdDest) {
+          writeAttempted = true;
+          real.writeFileSync(target, "PARTIAL CONTENT", { flag: "wx" });
+          throw new Error("ENOSPC: no space left on device (simulated)");
+        }
+        return real.writeFileSync(...args);
+      },
+    );
+    // Rollback's own removal of SKILL.md fails too -- genuinely left behind.
+    rmSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.rmSync>) => {
+        const [target] = args;
+        if (String(target) === skillMdDest && writeAttempted) {
+          const failure = new Error(
+            "EBUSY: resource busy or locked, unlink (simulated)",
+          ) as NodeJS.ErrnoException;
+          failure.code = "EBUSY";
+          throw failure;
+        }
+        return real.rmSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkill(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain(skillMdDest);
+    expect(message).toContain("delete it by hand");
+    expect(message).toContain("Claude Code will load a truncated skill");
+    // Genuinely left behind: rollback's own removal failed.
+    expect(existsSync(skillMdDest)).toBe(true);
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Item 6 (part a): `installToGroundwork`'s own `catch` (`../src/plugin.js`,
+ * around the `.groundwork/customize/` fallback) re-wraps whatever
+ * `copyCustomizeSkillFiles` throws -- which, for every failure that function
+ * can produce, is ALREADY an `installError`-wrapped `Error` whose own
+ * message starts with "could not install the /customize skill: ...". The
+ * outer re-wrap prepends that exact same prefix a second time around the
+ * inner message, so the final thrown message contains it twice. The fix
+ * this suite is written against: the prefix must appear exactly once,
+ * while the fallback's own reason clause survives untouched.
+ */
+describe("the fallback-install re-wrap does not duplicate the 'could not install the /customize skill:' prefix (item 6a)", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  it("names the wrapper prefix exactly once and still carries the fallback's own reason", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-item6a-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-item6a-tgt-"));
+    writeSourceFixture(sourceDir);
+    // Forces installCustomizeSkillGuarded's "differs" -> groundwork branch.
+    writeDifferingClaudeSkill(targetDir);
+    const destDir = join(targetDir, ".groundwork", "customize");
+    const domainMapDest = join(destDir, "domain-map.ts");
+
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) => {
+        const [target] = args;
+        if (String(target) === domainMapDest) {
+          const failure = new Error(
+            "EACCES: permission denied, open (simulated)",
+          ) as NodeJS.ErrnoException;
+          failure.code = "EACCES";
+          throw failure;
+        }
+        return real.writeFileSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkillGuarded(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    const prefix = "could not install the /customize skill:";
+    const occurrences = message.split(prefix).length - 1;
+    expect(occurrences).toBe(1);
+    expect(message).toContain("fell back to .groundwork/customize/");
+    expect(message).toContain("and that install failed too");
 
     real.rmSync(sourceDir, { recursive: true, force: true });
     real.rmSync(targetDir, { recursive: true, force: true });
@@ -851,20 +1277,27 @@ describe("createdByFailedWrite surfaces its own lstat failure instead of silentl
     // A write failure with no .code/.syscall -- reaches
     // createdByFailedWrite's own lstat check (not short-circuited by the
     // EEXIST/"open" fast paths).
+    let writeAttempted = false;
     writeFileSyncMock.mockImplementation(
       (...args: Parameters<typeof NodeFs.writeFileSync>) => {
         const [target] = args;
         if (String(target) === domainMapDest) {
+          writeAttempted = true;
           throw new Error("EIO: some I/O error (simulated)");
         }
         return real.writeFileSync(...args);
       },
     );
-    // createdByFailedWrite's own lstat(dest) call fails outright.
+    // createdByFailedWrite's own lstat(dest) call fails outright -- but only
+    // AFTER the write was attempted. [item 4] a replacing policy now refuses
+    // up front on a pre-flight lstat failure, so this mock must not also
+    // misfire during assertNoDirectoryAtPayloadNames's own, earlier probe of
+    // this same path -- that one must still succeed, same as it does on a
+    // real filesystem where nothing is wrong yet.
     lstatSyncMock.mockImplementation(
       (...args: Parameters<typeof NodeFs.lstatSync>) => {
         const [target] = args;
-        if (String(target) === domainMapDest) {
+        if (String(target) === domainMapDest && writeAttempted) {
           throw new Error("EIO: lstat itself failed (simulated)");
         }
         return real.lstatSync(...args);
@@ -882,6 +1315,14 @@ describe("createdByFailedWrite surfaces its own lstat failure instead of silentl
     const message = (thrown as Error).message;
     expect(message).toContain(domainMapDest);
     expect(message).toContain("(unknown whether created)");
+    // [item 6b] an "unknown whether created" entry gets its own clause --
+    // "left in place, origin unknown" -- rather than being folded into the
+    // "(could not remove: ...)" list alongside entries that genuinely
+    // failed removal. This is the ONLY leftBehind-like entry in this
+    // scenario, so the generic "could not remove:" clause must not appear
+    // at all.
+    expect(message).toContain("left in place, origin unknown");
+    expect(message).not.toContain("could not remove:");
 
     real.rmSync(sourceDir, { recursive: true, force: true });
     real.rmSync(targetDir, { recursive: true, force: true });
@@ -1376,6 +1817,168 @@ describe("copyCustomizeSkillFiles wraps a remove-then-wx write failure, moved fr
     ]) {
       expect(existsSync(join(destDir, name))).toBe(false);
     }
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Coverage: item 5's warning (a left-behind `SKILL.md` after a failed
+ * rollback) words its "delete it by hand" remediation differently per
+ * policy -- `failureClauses` (`../src/plugin.js`) says "it is a truncated
+ * copy" for the CLI-owned `.groundwork/customize/` destination, and "Claude
+ * Code will load a truncated skill" for fresh mode's `.claude/` destination.
+ * The `describe("a left-behind SKILL.md after a failed rollback gets its own
+ * warning (item 5)")` suite above only exercises the fresh-mode ("overwrite")
+ * wording; this covers the cli-owned arm.
+ */
+describe("coverage: a left-behind SKILL.md at the cli-owned .groundwork/customize/ says 'it is a truncated copy'", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  it("uses the cli-owned wording, not fresh mode's 'Claude Code will load a truncated skill'", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-item5-gw-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-item5-gw-tgt-"));
+    writeSourceFixture(sourceDir);
+    // Forces installCustomizeSkillGuarded's "differs" -> groundwork branch.
+    writeDifferingClaudeSkill(targetDir);
+    const destDir = join(targetDir, ".groundwork", "customize");
+    const skillMdDest = join(destDir, "SKILL.md");
+
+    // SKILL.md's own "wx" write physically creates it, then fails mid-way;
+    // rollback's later removal of it also fails -- genuinely left behind.
+    let writeAttempted = false;
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) => {
+        const [target] = args;
+        if (String(target) === skillMdDest) {
+          writeAttempted = true;
+          real.writeFileSync(target, "PARTIAL CONTENT", { flag: "wx" });
+          throw new Error("ENOSPC: no space left on device (simulated)");
+        }
+        return real.writeFileSync(...args);
+      },
+    );
+    rmSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.rmSync>) => {
+        const [target] = args;
+        if (String(target) === skillMdDest && writeAttempted) {
+          const failure = new Error(
+            "EBUSY: resource busy or locked, unlink (simulated)",
+          ) as NodeJS.ErrnoException;
+          failure.code = "EBUSY";
+          throw failure;
+        }
+        return real.rmSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkillGuarded(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain(skillMdDest);
+    expect(message).toContain("delete it by hand");
+    expect(message).toContain("it is a truncated copy");
+    expect(message).not.toContain("Claude Code will load a truncated skill");
+    // Genuinely left behind: rollback's own removal failed.
+    expect(existsSync(skillMdDest)).toBe(true);
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Coverage: the cli-owned "previous ... removed and NOT restored" clause
+ * (`replacedClause`'s `"cli-owned"` arm, `../src/plugin.js`) with exactly ONE
+ * stale data file replaced before the failure -- the singular "was" wording
+ * (`replaced.length === 1 ? "was" : "were"`), alongside the stale `SKILL.md`
+ * clause. The existing item F suite above always replaces two files (the
+ * failing file is not the first), which only exercises the plural "were"
+ * arm; this exercises the singular one by failing on the very FIRST payload
+ * file's own write (which still counts as "replaced", since its pre-write
+ * `rmSync` of the stale entry succeeds before the write itself fails).
+ */
+describe("coverage: the cli-owned replaced-entries clause, singular wording (exactly one file replaced)", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  it("says 'the previous <path> was removed and NOT restored', singular, alongside the stale SKILL.md clause", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-singular-gw-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-singular-gw-tgt-"));
+    writeSourceFixture(sourceDir);
+    // Forces installCustomizeSkillGuarded's "differs" -> groundwork branch.
+    writeDifferingClaudeSkill(targetDir);
+    // A stale prior install already sits at the groundwork destination.
+    writeGroundworkSkillPayload(targetDir, "OLD");
+    const destDir = join(targetDir, ".groundwork", "customize");
+    const kindFacetDest = join(destDir, "kind-facet-map.ts");
+    const staleSkillMdPath = join(destDir, "SKILL.md");
+
+    // kind-facet-map.ts is the FIRST payload file: its own pre-write rmSync
+    // of the stale entry succeeds (marking it "replaced"), then its "wx"
+    // write itself fails -- so exactly one file ends up in the "replaced"
+    // list, and none in "written" (nothing to roll back).
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) => {
+        const [target] = args;
+        if (String(target) === kindFacetDest) {
+          throw new Error("EACCES: permission denied, write (simulated)");
+        }
+        return real.writeFileSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkillGuarded(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain("could not install the /customize skill");
+    expect(message).toContain("removed the 0 file(s) written by this run");
+    expect(message).toContain(
+      `; the stale ${staleSkillMdPath} was removed before any data file was rewritten`,
+    );
+    expect(message).toContain(
+      `the previous ${kindFacetDest} was removed and NOT restored`,
+    );
+    // Singular: not the plural "were" phrasing.
+    expect(message).not.toContain(`${kindFacetDest} were removed`);
 
     real.rmSync(sourceDir, { recursive: true, force: true });
     real.rmSync(targetDir, { recursive: true, force: true });

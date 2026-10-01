@@ -43,28 +43,56 @@ function pluginDir(): string {
  * ```
  */
 export interface InstallPluginResult {
-  /** Paths relative to the project root, in write order (`SKILL.md` last). */
+  /** Paths relative to the project root, in write order (`SKILL.md` last); empty when the destination already held this exact payload. */
   filesWritten: string[];
 }
 
 /** The remediation every install failure ends with -- appended once, never twice. */
 const REMEDIATION = "re-run the CLI";
 
+/** The prefix every install failure's message starts with -- stated once, never twice. */
+const INSTALL_ERROR_PREFIX = "could not install the /customize skill: ";
+
+/**
+ * An already-built install failure. Private: it exists only so
+ * {@link installError} can recognise one it is asked to re-wrap and fold it
+ * in rather than nest a second prefix around it.
+ */
+class CustomizeInstallError extends Error {
+  /** The message without {@link INSTALL_ERROR_PREFIX}. */
+  readonly body: string;
+
+  constructor(body: string, cause: unknown) {
+    super(`${INSTALL_ERROR_PREFIX}${body}`, { cause });
+    this.body = body;
+  }
+}
+
 /**
  * Builds the one error shape every install failure surfaces as, keeping the
  * underlying message and chaining the raw error as `cause`. A cause whose own
  * message already ends in a "re-run the CLI" remediation (e.g.
- * {@link assertNotSymlink}'s) is not given a second one.
+ * {@link assertNotSymlink}'s) is not given a second one. A cause that is
+ * itself an install failure is folded in: its body follows `detail` under a
+ * single prefix, and its own raw `cause` (not the wrapper) is chained.
  */
 function installError(detail: string, cause: unknown): Error {
+  if (cause instanceof CustomizeInstallError) {
+    return new CustomizeInstallError(`${detail}: ${cause.body}`, cause.cause);
+  }
   const causeMessage = cause instanceof Error ? cause.message : String(cause);
   const remediation = causeMessage.includes(REMEDIATION)
     ? ""
     : ` -- fix the cause and ${REMEDIATION}`;
-  return new Error(
-    `could not install the /customize skill: ${detail}: ${causeMessage}${remediation}`,
-    { cause },
+  return new CustomizeInstallError(
+    `${detail}: ${causeMessage}${remediation}`,
+    cause,
   );
+}
+
+/** Wording for a pre-write probe failure: nothing has been touched yet. */
+function untouched(action: string, path: string): string {
+  return `${action} ${path}; nothing was removed or written`;
 }
 
 /** Runs one fallible fs probe/setup step, rethrowing any failure as an {@link installError}. */
@@ -131,7 +159,9 @@ function readCustomizeSkillPayload(sourceDir: string): readonly PayloadFile[] {
  *   ({@link removeStaleSkillEntry}), then each payload file is removed and
  *   recreated with `"wx"`. A pre-existing entry removed this way is gone
  *   even if the run later fails -- rollback removes what this run wrote, it
- *   never restores what was replaced.
+ *   never restores what was replaced; the error names every such entry.
+ *   `"overwrite"` first classifies the destination and, when every payload
+ *   file is already byte-identical, removes and writes nothing.
  * - `"additive"`: adopt mode's `.claude/skills/customize/`, which belongs to
  *   the project -- nothing is ever removed; `"wx"` alone, so an entry that
  *   appears there mid-install makes the write fail `EEXIST`.
@@ -178,14 +208,19 @@ function replacesExistingEntries(policy: WritePolicy): boolean {
  * naming it, if any is a directory -- before anything is removed or written,
  * so a destination a non-recursive remove-then-`"wx"` could never complete
  * is refused with every existing entry untouched. A name whose own `lstat`
- * fails cannot be judged here; it is left to its own remove/write, which
- * surfaces the real error (rolled back as usual) -- as does a directory
- * that appears after this check (a race).
+ * fails cannot be judged here: under a policy that replaces existing
+ * entries that refuses the install too ("could not inspect <path>; nothing
+ * was removed or written", the raw error as `cause`), since the run would
+ * otherwise remove an entry it never judged; under `"additive"` (which never
+ * removes anything) it is left to its own `"wx"` write, which surfaces the
+ * real error (rolled back as usual). A directory that appears after this
+ * check (a race) is likewise left to the write.
  */
 function assertNoDirectoryAtPayloadNames(
   destDir: string,
   payload: readonly PayloadFile[],
   alreadyCurrent: ReadonlySet<string>,
+  policy: WritePolicy,
 ): void {
   for (const { name } of payload) {
     if (alreadyCurrent.has(name)) {
@@ -196,8 +231,12 @@ function assertNoDirectoryAtPayloadNames(
     try {
       isDirectory =
         lstatSync(dest, { throwIfNoEntry: false })?.isDirectory() === true;
-    } catch {
-      // Unjudgeable, not refused: the write path reports the real error.
+    } catch (cause) {
+      if (replacesExistingEntries(policy)) {
+        throw installError(untouched("could not inspect", dest), cause);
+      }
+      // Additive: unjudgeable, not refused -- the "wx" write reports the
+      // real error, and nothing is ever removed on this path.
       continue;
     }
     if (isDirectory) {
@@ -219,11 +258,15 @@ function assertNoDirectoryAtPayloadNames(
  * {@link assertNoDirectoryAtPayloadNames}, so a directory there has already
  * been refused (one raced in since makes `rmSync` throw). Returns the
  * removed path, if any; throws (wrapped) before anything is written when the
- * removal fails.
+ * removal fails. `label` is how the entry is described: `"existing"` for a
+ * project's own `.claude/` copy, `"stale"` for the CLI-owned staging.
  */
-function removeStaleSkillEntry(destDir: string): string | undefined {
+function removeStaleSkillEntry(
+  destDir: string,
+  label: "existing" | "stale",
+): string | undefined {
   const staleEntry = join(destDir, CUSTOMIZE_SKILL_ENTRY_FILE);
-  return wrapFs(`could not remove the stale ${staleEntry}`, () => {
+  return wrapFs(`could not remove the ${label} ${staleEntry}`, () => {
     if (lstatSync(staleEntry, { throwIfNoEntry: false }) === undefined) {
       return undefined;
     }
@@ -257,44 +300,141 @@ function createdByFailedWrite(
   }
 }
 
-/** Writes one payload file under `policy`; on failure, returns the error and whether this call's own write created `dest` before failing. */
+/** How one payload write went: whether it removed a pre-existing entry first, and, on failure, the error and whether its own write created `dest`. */
+interface PayloadWriteOutcome {
+  readonly replaced: boolean;
+  readonly failure:
+    | { readonly cause: unknown; readonly created: boolean | "unknown" }
+    | undefined;
+}
+
+/**
+ * Writes one payload file under `policy`. A replacing policy `lstat`s `dest`
+ * before removing it, so the caller learns whether a pre-existing entry was
+ * removed (and so is gone even if the run later fails).
+ */
 function writePayloadFile(
   dest: string,
   bytes: Buffer,
   policy: WritePolicy,
-): { cause: unknown; created: boolean | "unknown" } | undefined {
+): PayloadWriteOutcome {
+  let replaced = false;
   try {
     if (replacesExistingEntries(policy)) {
+      const existed = lstatSync(dest, { throwIfNoEntry: false }) !== undefined;
       // Remove, then "wx": a symlink at dest is replaced, never followed.
       rmSync(dest, { force: true });
+      replaced = existed;
     }
   } catch (cause) {
-    return { cause, created: false };
+    return { replaced: false, failure: { cause, created: false } };
   }
   try {
     writeFileSync(dest, bytes, { flag: "wx" });
-    return undefined;
+    return { replaced, failure: undefined };
   } catch (cause) {
-    return { cause, created: createdByFailedWrite(dest, cause) };
+    return {
+      replaced,
+      failure: { cause, created: createdByFailedWrite(dest, cause) },
+    };
   }
+}
+
+/** A path rollback could not remove, with the errno code of that failure. */
+interface LeftBehind {
+  readonly path: string;
+  readonly code: string;
 }
 
 /** Removes every path in `written` (best effort), returning how many were actually removed and which were not, each with its errno code. */
 function rollBack(written: readonly string[]): {
   removed: number;
-  leftBehind: string[];
+  leftBehind: LeftBehind[];
 } {
-  const leftBehind: string[] = [];
+  const leftBehind: LeftBehind[] = [];
   for (const path of written) {
     try {
       rmSync(path, { force: true });
     } catch (error) {
       // Best effort: the write failure is the error that matters; a path
       // this rollback could not remove is named in that error instead.
-      leftBehind.push(`${path} (${errnoField(error, "code") ?? "unknown"})`);
+      leftBehind.push({ path, code: errnoField(error, "code") ?? "unknown" });
     }
   }
   return { removed: written.length - leftBehind.length, leftBehind };
+}
+
+/**
+ * The clauses a failed write's error adds after its rollback count: paths
+ * rollback could not remove, a write whose own creation is unknown, a
+ * left-behind `SKILL.md`, and the pre-existing entries this run removed and
+ * cannot restore. Each is `""` when it does not apply.
+ */
+function failureClauses(args: {
+  readonly dest: string;
+  readonly destDir: string;
+  readonly policy: WritePolicy;
+  readonly leftBehind: readonly LeftBehind[];
+  readonly createdUnknown: boolean;
+  readonly skillRemoved: string | undefined;
+  readonly replaced: readonly string[];
+}): string {
+  const { dest, destDir, policy, leftBehind, createdUnknown } = args;
+  const notRemoved =
+    leftBehind.length > 0
+      ? ` (could not remove: ${leftBehind.map((l) => `${l.path} (${l.code})`).join(", ")})`
+      : "";
+  const unknown = createdUnknown
+    ? `; ${dest} (unknown whether created) was left in place, origin unknown`
+    : "";
+  const skillPath = join(destDir, CUSTOMIZE_SKILL_ENTRY_FILE);
+  const skillLeft = leftBehind.some((l) => l.path === skillPath)
+    ? `; ${skillPath} was left behind -- delete it by hand; ${
+        policy === "cli-owned"
+          ? "it is a truncated copy"
+          : "Claude Code will load a truncated skill"
+      }`
+    : "";
+  return `${notRemoved}${unknown}${skillLeft}${replacedClause(policy, args.skillRemoved, args.replaced)}`;
+}
+
+/** The "removed and not restored" clause for a replacing policy's pre-existing entries; `""` when none were removed. */
+function replacedClause(
+  policy: WritePolicy,
+  skillRemoved: string | undefined,
+  replaced: readonly string[],
+): string {
+  const others =
+    replaced.length > 0
+      ? `the previous ${replaced.join(", ")} ${replaced.length === 1 ? "was" : "were"} removed and NOT restored`
+      : "";
+  switch (policy) {
+    case "overwrite": {
+      if (skillRemoved === undefined && others === "") {
+        return "";
+      }
+      const skill =
+        skillRemoved === undefined
+          ? ""
+          : `the existing SKILL.md (${skillRemoved}) was removed before any data file was rewritten`;
+      const joined = [skill, others].filter((part) => part !== "").join(", ");
+      const restored = others === "" ? " and NOT restored" : "";
+      return `; ${joined}${restored} -- the skill is not loadable until a successful re-run`;
+    }
+    case "cli-owned": {
+      const stale =
+        skillRemoved === undefined
+          ? ""
+          : `; the stale ${skillRemoved} was removed before any data file was rewritten`;
+      return `${stale}${others === "" ? "" : `; ${others}`}`;
+    }
+    case "additive":
+      return "";
+    default: {
+      const exhaustive: never = policy;
+      throw new Error(`unhandled write policy: ${String(exhaustive)}`);
+    }
+  }
 }
 
 /**
@@ -312,8 +452,15 @@ function rollBack(written: readonly string[]): {
  * component swapped for a symlink between the check and the write (a TOCTOU
  * race) is not covered.
  *
+ * Under `"overwrite"`, the destination is classified first
+ * ({@link classifyExistingSkill}); when every payload file there is already
+ * a byte-identical regular file, nothing is removed or written and
+ * `filesWritten` is empty. A failing probe there throws before anything is
+ * touched.
+ *
  * Before anything is removed or written, a directory at any payload name
- * this run writes is refused ({@link assertNoDirectoryAtPayloadNames}),
+ * this run writes is refused ({@link assertNoDirectoryAtPayloadNames}), as
+ * is -- under a replacing policy -- a payload name whose `lstat` fails,
  * leaving every existing entry untouched. Writes then follow
  * {@link CUSTOMIZE_SKILL_WRITE_ORDER}, `SKILL.md` last; for the policies
  * that replace existing entries, {@link removeStaleSkillEntry} establishes
@@ -325,16 +472,18 @@ function rollBack(written: readonly string[]): {
  * If any write fails, every file THIS call wrote -- including one whose own
  * write created it and then failed part-way -- is removed (best effort), and
  * the error names how many were, any it could not remove (with its errno
- * code), any whose creation could not be determined (left in place, marked
- * "unknown whether created"), and the stale `SKILL.md` if one was
- * pre-removed. Rollback never removes an entry this call did not write, but
- * under `"overwrite"`/`"cli-owned"` the pre-existing entries this call
- * replaced before the failure (the stale `SKILL.md`, and each payload file
- * removed ahead of its own write) are not restored. Every failure -- a
- * symlink refusal, a directory at a payload name, a raw `lstat`/`mkdir`
- * error such as `ENOTDIR`, a write error -- is thrown as one "could not
- * install the /customize skill" `Error` carrying the underlying message and
- * the raw error as `cause`.
+ * code; a left-behind `SKILL.md` additionally says to delete it by hand),
+ * any whose creation could not be determined (in its own "left in place,
+ * origin unknown" clause), and the pre-removed `SKILL.md` if there was one.
+ * Rollback never removes an entry this call did not write, but under
+ * `"overwrite"`/`"cli-owned"` the pre-existing entries this call replaced
+ * before the failure (the `SKILL.md`, and each payload file removed ahead of
+ * its own write) are not restored -- the error names each of them as
+ * "removed and NOT restored". Every failure -- a symlink refusal, a
+ * directory at a payload name, a raw `lstat`/`mkdir` error such as
+ * `ENOTDIR`, a write error -- is thrown as one "could not install the
+ * /customize skill" `Error` carrying the underlying message and the raw
+ * error as `cause`.
  */
 function copyCustomizeSkillFiles(
   targetDir: string,
@@ -356,41 +505,55 @@ function copyCustomizeSkillFiles(
     },
   );
 
-  assertNoDirectoryAtPayloadNames(destDir, payload, alreadyCurrent);
-  const staleRemoved = replacesExistingEntries(policy)
-    ? removeStaleSkillEntry(destDir)
+  // Fresh mode's re-run over its own, still-current output touches nothing.
+  if (
+    policy === "overwrite" &&
+    classifyExistingSkill(destDir, payload).kind === "current"
+  ) {
+    return { filesWritten: [] };
+  }
+
+  assertNoDirectoryAtPayloadNames(destDir, payload, alreadyCurrent, policy);
+  const skillRemoved = replacesExistingEntries(policy)
+    ? removeStaleSkillEntry(
+        destDir,
+        policy === "overwrite" ? "existing" : "stale",
+      )
     : undefined;
-  const staleClause =
-    staleRemoved === undefined
-      ? ""
-      : `; the stale ${staleRemoved} was removed before any data file was rewritten`;
 
   const written: string[] = [];
+  const replaced: string[] = [];
   const filesWritten: string[] = [];
   for (const { name, bytes } of payload) {
     if (alreadyCurrent.has(name)) {
       continue;
     }
     const dest = join(destDir, name);
-    const failure = writePayloadFile(dest, bytes, policy);
+    const outcome = writePayloadFile(dest, bytes, policy);
+    if (outcome.replaced) {
+      replaced.push(dest);
+    }
+    const { failure } = outcome;
     if (failure !== undefined) {
       if (failure.created === true) {
         written.push(dest);
       }
       const { removed, leftBehind } = rollBack(written);
-      if (failure.created === "unknown") {
-        leftBehind.push(`${dest} (unknown whether created)`);
-      }
-      const notRemoved =
-        leftBehind.length > 0
-          ? ` (could not remove: ${leftBehind.join(", ")})`
-          : "";
       const occupied =
         errnoField(failure.cause, "code") === "EEXIST"
           ? `; an entry this run did not create sits there (a project entry appeared during the install, or the name was already taken) and was left untouched`
           : "";
+      const clauses = failureClauses({
+        dest,
+        destDir,
+        policy,
+        leftBehind,
+        createdUnknown: failure.created === "unknown",
+        skillRemoved,
+        replaced,
+      });
       throw installError(
-        `could not write ${dest}${occupied}; removed the ${removed} file(s) written by this run${notRemoved}${staleClause}`,
+        `could not write ${dest}${occupied}; removed the ${removed} file(s) written by this run${clauses}`,
         failure.cause,
       );
     }
@@ -404,17 +567,20 @@ function copyCustomizeSkillFiles(
 /**
  * Installs the skill into `<targetDir>/.claude/skills/customize/`. Used by
  * fresh-bootstrap mode, where the directory is normally new (`--force` may
- * point it at a non-empty one or an earlier install, so any existing
- * `SKILL.md` is removed first, then each payload file is removed and
- * recreated). A symlinked `.claude`, `.claude/skills` or
- * `.claude/skills/customize` is refused, not routed around.
+ * point it at a non-empty one or an earlier install). An earlier install
+ * that is already byte-identical to this payload is left untouched
+ * (`filesWritten` is empty); otherwise any existing `SKILL.md` is removed
+ * first, then each payload file is removed and recreated. A symlinked
+ * `.claude`, `.claude/skills` or `.claude/skills/customize` is refused, not
+ * routed around.
  *
  * @throws `Error` ("could not install the /customize skill ...", raw error
- * as `cause`) on a missing or unreadable source file or a directory at any
- * payload name (both before anything is removed or written), a symlinked or
- * non-directory directory component, any fs failure, or a failed write --
- * after removing every file this call wrote. Entries it replaced before
- * the failure are not restored.
+ * as `cause`) on a missing or unreadable source file, a directory at any
+ * payload name, or a payload name or existing file that cannot be
+ * `lstat`ed or read (all before anything is removed or written), a
+ * symlinked or non-directory directory component, any fs failure, or a
+ * failed write -- after removing every file this call wrote. Entries it
+ * replaced before the failure are not restored; the error names them.
  *
  * @example
  * ```ts
@@ -512,6 +678,9 @@ type ExistingSkill =
  * - `"foreign"`: anything else -- including any non-regular entry (a
  *   directory, symlink or FIFO) under any payload name, `SKILL.md` included;
  *   `reason` names the first offending entry.
+ *
+ * Runs before anything is removed or written, so a failing `lstat` or read
+ * throws (wrapped, raw error as `cause`) naming the path and saying so.
  */
 function classifyExistingSkill(
   existingDir: string,
@@ -521,11 +690,18 @@ function classifyExistingSkill(
   let entryLoadable = false;
   for (const { name, bytes } of payload) {
     const installedPath = join(existingDir, name);
-    const stat = lstatSync(installedPath, { throwIfNoEntry: false });
+    const stat = wrapFs(untouched("could not inspect", installedPath), () =>
+      lstatSync(installedPath, { throwIfNoEntry: false }),
+    );
     if (stat === undefined) {
       continue;
     }
-    if (!stat.isFile() || !readFileSync(installedPath).equals(bytes)) {
+    const matches =
+      stat.isFile() &&
+      wrapFs(untouched("could not read", installedPath), () =>
+        readFileSync(installedPath),
+      ).equals(bytes);
+    if (!matches) {
       return {
         kind: "foreign",
         reason: `${installedPath} already exists and is not this CLI's current copy`,
@@ -631,9 +807,8 @@ export function installCustomizeSkillGuarded(
     return installToGroundwork(unusable, "component");
   }
 
-  const existing = wrapFs(`could not compare ${existingDir}`, () =>
-    classifyExistingSkill(existingDir, payload),
-  );
+  // Throws its own wrapped error naming the path it could not probe.
+  const existing = classifyExistingSkill(existingDir, payload);
   switch (existing.kind) {
     case "current":
       return { filesWritten: [], location: "already-present" };

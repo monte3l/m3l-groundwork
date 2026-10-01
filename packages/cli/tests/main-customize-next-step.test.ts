@@ -179,4 +179,23 @@ describe("runAdopt's /customize next-step message distinguishes fallbackCause 'c
       "replace the project-local .claude/skills/customize",
     );
   });
+
+  // [item 6c] `GuardedInstallResult`'s own TSDoc says `fallbackCause` is
+  // "Set on every 'groundwork' result, and only then" -- a 'groundwork'
+  // result with no `fallbackCause` at all is therefore a contract
+  // violation from the installer, not a real state `groundworkNextStep`
+  // should silently absorb via its exhaustive switch's `case undefined`
+  // arm (today's code treats it the same as "entry"). It must throw
+  // instead, the same way the switch's own `default` arm already throws on
+  // a genuinely unhandled value.
+  it('throws when location is "groundwork" but fallbackCause is missing, rather than silently treating it as "entry"', () => {
+    installCustomizeSkillGuardedMock.mockReturnValue({
+      filesWritten: [join(".groundwork", "customize", "SKILL.md")],
+      location: "groundwork",
+      fallbackReason: "x",
+      // fallbackCause deliberately omitted.
+    });
+
+    expect(() => main([projectDir])).toThrow(/unhandled fallback cause/);
+  });
 });
