@@ -214,10 +214,11 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   skill copy (`plugin.ts`) add an `lstat`
   refusal on `.groundwork` and the staging directories (`fs-guard.ts`); the
   skill copy never writes through a symlinked or non-directory component
-  under `.claude` and instead installs into `.groundwork/customize/`, never
-  removes or replaces an entry the project owns under
-  `.claude/skills/customize/`, and replaces files remove-then-`wx` only in
-  the CLI-owned `.groundwork/customize/`. There is,
+  under `.claude` and instead installs into `.groundwork/customize/`, and in
+  adopt mode never removes or replaces an entry the project owns under
+  `.claude/skills/customize/`. It replaces files remove-then-`wx` only in the
+  CLI-owned `.groundwork/customize/` and, in fresh mode under `--force`, in
+  `.claude/skills/customize/`. There is,
   however, a time-of-check-to-time-of-use gap between those `lstat` checks and the
   later write: a local attacker able to swap a directory for a symlink in
   that window is outside the threat model this tool accepts, which assumes
@@ -226,10 +227,13 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
 - **The skill install is not fully atomic.** A pre-flight refuses a directory
   sitting at any of the skill's file names before anything is touched, and a
   failed write removes the files that run created. A failure after the install
-  has begun still cannot restore what it had already replaced in the CLI-owned
-  `.groundwork/customize/` (the previous copy's `SKILL.md` and each file removed
-  ahead of its own rewrite), and an entry that appears after the pre-flight, for
-  example a directory created concurrently, fails the install part-way. The
+  has begun still cannot restore what it had already replaced, in the CLI-owned
+  `.groundwork/customize/` and in fresh mode under `--force` in
+  `.claude/skills/customize/` (the previous copy's `SKILL.md` and each file
+  removed ahead of its own rewrite; after such a failure on a fresh `--force`
+  re-run the previously loadable skill is gone until a successful re-run, and
+  the error says so). An entry that appears after the pre-flight, for example a
+  directory created concurrently, fails the install part-way. The
   `.claude/skills/customize/` location is never replaced in adopt mode.
 - **The adopt survey reads project files through symlinks** (for example
   `survey-harness.ts` reading a skill's `SKILL.md`), so a symlinked skill or
