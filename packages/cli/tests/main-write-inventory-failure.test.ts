@@ -17,6 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import type * as FsModule from "node:fs";
+import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type * as InventoryModule from "../src/inventory.js";
@@ -121,7 +122,17 @@ describe("runAdopt -- writeInventory failure", () => {
       thrown = error;
     }
 
-    expect(thrown).toBe(writeFailure);
+    // writeInventory's own failure is now rethrown wrapped as
+    // removedStaleFilesError (item 1): the original failure is chained as
+    // `cause`, not surfaced bare.
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBe(writeFailure);
+    expect((thrown as Error).cause).toBe(writeFailure);
+    expect((thrown as Error).message).toMatch(/re-run/);
+    // Nothing under .groundwork/ pre-existed before this (first) run, so the
+    // message must not claim adoption-decisions.json "was removed" -- there
+    // was nothing to remove (item 6).
+    expect((thrown as Error).message).not.toContain("adoption-decisions.json");
     expect(existsSync(reportPath)).toBe(false);
   });
 
@@ -170,9 +181,13 @@ describe("runAdopt -- writeInventory failure", () => {
     // would fail this specific assertion, discriminating the fix from a
     // trivial "an attempt was made at some point" check.
     expect(reportRmCalls).toBeGreaterThan(1);
-    // The ORIGINAL writeInventory failure is what propagates -- a failed
-    // best-effort cleanup must never replace or mask it.
-    expect(thrown).toBe(writeFailure);
+    // The ORIGINAL writeInventory failure is still what's chained -- a
+    // failed best-effort cleanup must never replace or mask it -- but it is
+    // now wrapped as removedStaleFilesError (item 1), not surfaced bare.
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBe(writeFailure);
+    expect((thrown as Error).cause).toBe(writeFailure);
+    expect((thrown as Error).message).toMatch(/re-run/);
   });
 
   it("still propagates writeInventory's own failure, unmasked, and still warns, when the report cleanup rmSync throws a non-Error value", () => {
@@ -226,9 +241,11 @@ describe("runAdopt -- writeInventory failure", () => {
     // restoring first would silently empty warnSpy.mock.calls and make the
     // "was it called" assertions below pass vacuously against an empty array.
     expect(reportRmCalls).toBeGreaterThan(1);
-    // The ORIGINAL writeInventory failure is what propagates, not the
-    // non-Error cleanup failure.
-    expect(thrown).toBe(writeFailure);
+    // The ORIGINAL writeInventory failure is still what's chained, not the
+    // non-Error cleanup failure -- wrapped as removedStaleFilesError (item 1).
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBe(writeFailure);
+    expect((thrown as Error).cause).toBe(writeFailure);
     expect(warnSpy).toHaveBeenCalled();
     const sawCleanupWarning = warnSpy.mock.calls.some((call) =>
       call.some(
@@ -238,5 +255,33 @@ describe("runAdopt -- writeInventory failure", () => {
     );
     expect(sawCleanupWarning).toBe(true);
     warnSpy.mockRestore();
+  });
+
+  it("propagates an AssertionError thrown by writeInventory itself UNWRAPPED (never happens in practice, but the passthrough must still hold)", () => {
+    const projectDir = join(targetDir, "project-write-inventory-assertion");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "package.json"),
+      JSON.stringify({ name: "acme", type: "module" }),
+    );
+
+    const assertionFailure = new assert.AssertionError({
+      message: "simulated broken invariant inside writeInventory",
+    });
+    writeInventoryMock.mockImplementationOnce(() => {
+      throw assertionFailure;
+    });
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    // A broken invariant is a bug, not something removedStaleFilesError's
+    // "fix the cause and re-run" wrapping would help with -- it propagates
+    // as the exact same instance, never wrapped.
+    expect(thrown).toBe(assertionFailure);
   });
 });

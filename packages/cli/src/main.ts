@@ -559,18 +559,76 @@ export function assertAdoptWriteScope(
   }
 }
 
+/** The previous run's files `runAdopt` deletes at its point of no return, in deletion order. */
+const STALE_FILE_NAMES = [
+  "inventory.json",
+  "adoption-report.md",
+  "adoption-decisions.json",
+] as const;
+type StaleFileName = (typeof STALE_FILE_NAMES)[number];
+
+const RERUN_ADVICE = "fix the cause and re-run the CLI";
+
 /**
- * A failure after `runAdopt`'s point of no return: the previous
- * `.groundwork/` files are already gone. The message embeds the cause's own
- * message so it stands alone; `formatErrorChain` then skips the redundant
- * `caused by:` line.
+ * Which previous `.groundwork/` files a failed run actually removed, worded
+ * for a message: only those in `removed` are named, and the decisions file
+ * carries its "a re-run does not recreate it" caveat only when it is one of
+ * them.
  */
-function removedStaleFilesError(cause: unknown): Error {
+function describeRemoved(removed: readonly StaleFileName[]): string {
+  if (removed.length === 0) {
+    return "no previous .groundwork/ inventory, report or decisions file was removed";
+  }
+  const names =
+    removed.length === 1
+      ? removed.join("")
+      : `${removed.slice(0, -1).join(", ")} and ${removed.slice(-1).join("")}`;
+  const verb = removed.length === 1 ? "was" : "were";
+  const decisionsCaveat = removed.includes("adoption-decisions.json")
+    ? " -- adoption-decisions.json held the decisions /customize recorded, which a re-run does not recreate"
+    : "";
+  return `the previous .groundwork/${names} ${verb} removed${decisionsCaveat}`;
+}
+
+/**
+ * A failure after `runAdopt`'s point of no return. The message embeds the
+ * cause's own message so it stands alone (`formatErrorChain` then skips the
+ * redundant `caused by:` line), names only the previous files actually
+ * removed, and appends the re-run advice unless the cause already ends
+ * with it.
+ */
+function removedStaleFilesError(
+  cause: unknown,
+  removed: readonly StaleFileName[],
+): Error {
   const reason = cause instanceof Error ? cause.message : String(cause);
+  const advice = reason.endsWith(RERUN_ADVICE) ? "" : `; ${RERUN_ADVICE}`;
   return new Error(
-    `adopt mode failed (${reason}) after the previous .groundwork/inventory.json, adoption-report.md and adoption-decisions.json were removed -- adoption-decisions.json held the decisions /customize recorded, which a re-run does not recreate; fix the cause and re-run the CLI`,
+    `adopt mode failed (${reason}); ${describeRemoved(removed)}${advice}`,
     { cause },
   );
+}
+
+/**
+ * Rethrows a failure after `runAdopt`'s point of no return. An
+ * `AssertionError` (a broken invariant: a bug, not something a re-run
+ * fixes) keeps its identity, after one warning naming the previous files it
+ * removed, so that loss is not silent; anything else becomes
+ * {@link removedStaleFilesError}.
+ */
+function rethrowAfterPointOfNoReturn(
+  cause: unknown,
+  removed: readonly StaleFileName[],
+): never {
+  if (cause instanceof assert.AssertionError) {
+    if (removed.length > 0) {
+      console.warn(
+        `warning: adopt mode stopped on a broken invariant after ${describeRemoved(removed)}`,
+      );
+    }
+    throw cause;
+  }
+  throw removedStaleFilesError(cause, removed);
 }
 
 /**
@@ -605,23 +663,28 @@ function removedStaleFilesError(cause: unknown): Error {
  * out-of-scope staging path, or a symlinked staging directory throws with
  * the previous `.groundwork/` untouched.
  *
- * **The point of no return** is the deletion of a stale
- * `inventory.json`/`adoption-report.md`/`adoption-decisions.json`, which
- * follows those checks. After it, packs and the baseline are staged from
- * the plans already computed (their trees are not walked again), the
- * harness and toolchain are graded, the `/customize` skill is installed and
- * its writes scope-checked, and `adoption-report.md` is written. A failure
- * in any of those steps is rethrown as an `Error` saying those three files
- * were removed -- `adoption-decisions.json` holds the decisions `/customize`
- * recorded, which a re-run does not recreate -- and to fix the cause and
- * re-run the CLI, with the failure as `cause` and its message embedded. An
- * `AssertionError` (a broken write-scope or containment invariant, a bug a
- * re-run cannot fix) propagates unwrapped instead.
+ * **The point of no return** is the first deletion of a stale
+ * `inventory.json`/`adoption-report.md`/`adoption-decisions.json` (in that
+ * order), which follows those checks; which of the three existed is
+ * recorded just before. After the deletions, packs and the baseline are
+ * staged from the plans already computed (their trees are not walked
+ * again), the harness and toolchain are graded, the `/customize` skill is
+ * installed and its writes scope-checked, `adoption-report.md` is written,
+ * and `inventory.json` is written last (atomically, via a temp file and
+ * rename). A failure in any of those steps -- a failed deletion included --
+ * is rethrown as an `Error` with the failure as `cause` and its message
+ * embedded, naming only the previous files that existed and were actually
+ * removed (and, when `adoption-decisions.json` is among them, that it held
+ * the decisions `/customize` recorded, which a re-run does not recreate),
+ * and saying to fix the cause and re-run the CLI -- once, even when the
+ * cause's own message already says so. An `AssertionError` (a broken
+ * write-scope or containment invariant, a bug a re-run cannot fix) keeps
+ * its identity instead, after one `console.warn` naming the removed files
+ * (none when nothing was removed).
  *
- * `inventory.json` is written last (atomically, via a temp file and
- * rename), outside that wrapping: if it fails, the just-written report is
- * removed (best effort, never masking that failure) and the failure is
- * rethrown unchanged. Only console output follows it, so `inventory.json`'s
+ * If `inventory.json` fails to write, the just-written report is first
+ * removed (best effort: a failed removal only warns, never masking the
+ * write failure). Only console output follows `inventory.json`, so its
  * presence means every step of the run completed.
  */
 function runAdopt(options: CliOptions, detection: ModeDetection): void {
@@ -634,14 +697,16 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
 
   const groundworkDir = join(options.targetDir, ".groundwork");
   const stagedBaselineDir = `.groundwork/${STAGED_BASELINE_DIR}`;
+  const stalePaths = STALE_FILE_NAMES.map((name) => ({
+    name,
+    path: join(groundworkDir, name),
+  }));
   const inventoryPath = join(groundworkDir, "inventory.json");
   const reportPath = join(groundworkDir, "adoption-report.md");
-  const decisionsPath = join(groundworkDir, "adoption-decisions.json");
-  assertAdoptWriteScope(options.targetDir, [
-    inventoryPath,
-    reportPath,
-    decisionsPath,
-  ]);
+  assertAdoptWriteScope(
+    options.targetDir,
+    stalePaths.map(({ path }) => path),
+  );
 
   // Every pack must pass loadPack's validation (including its
   // prototype-sensitive wiring-key check), and both staging plans (packs and
@@ -678,18 +743,32 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   assertNotSymlink(join(options.targetDir, STAGED_PACKS_DIR));
   assertNotSymlink(join(groundworkDir, STAGED_BASELINE_DIR));
 
-  // The point of no return. A previous run's inventory/report -- and the
-  // decisions /customize recorded against them -- must not survive a run
-  // that fails part-way: /customize would read them as describing the new
-  // staging. All three go before anything is staged; inventory/report are
-  // rewritten only at the end, and the decisions file only by /customize.
-  rmSync(inventoryPath, { force: true });
-  rmSync(reportPath, { force: true });
-  rmSync(decisionsPath, { force: true });
+  // Recorded before any deletion, so a failure message names only files a
+  // previous run actually left (and this run actually removed).
+  const preexisting = new Set(
+    stalePaths.filter(({ path }) => existsSync(path)).map(({ name }) => name),
+  );
+  const removed: StaleFileName[] = [];
 
   let inventory: Inventory;
   let pluginResult: GuardedInstallResult;
   try {
+    // The point of no return: the first deletion. A previous run's
+    // inventory/report -- and the decisions /customize recorded against
+    // them -- must not survive a run that fails part-way: /customize would
+    // read them as describing the new staging. All three go before anything
+    // is staged; inventory/report are rewritten only at the end, and the
+    // decisions file only by /customize. Inside the wrapping, so a failed
+    // deletion reports which files are already gone. Every path is removed,
+    // not just the pre-existing ones: existsSync follows symlinks, so a
+    // dangling one must still go before the report's "wx" write below.
+    for (const { name, path } of stalePaths) {
+      rmSync(path, { force: true });
+      if (preexisting.has(name)) {
+        removed.push(name);
+      }
+    }
+
     const stagedPacks = stagePacks(
       loadedPacks,
       groundworkDir,
@@ -733,11 +812,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     // raced in mid-run) makes the write fail instead of being followed.
     writeFileSync(reportPath, renderReport(inventory), { flag: "wx" });
   } catch (cause) {
-    if (cause instanceof assert.AssertionError) {
-      // A broken invariant is a bug, not something a re-run fixes.
-      throw cause;
-    }
-    throw removedStaleFilesError(cause);
+    rethrowAfterPointOfNoReturn(cause, removed);
   }
   const { stagedPacks } = inventory;
   const stagedBaselineFiles = inventory.stagedBaseline.files;
@@ -754,7 +829,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
         `warning: could not remove ${reportPath} after inventory.json failed to write -- delete it by hand (${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)})`,
       );
     }
-    throw error;
+    rethrowAfterPointOfNoReturn(error, removed);
   }
 
   console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);

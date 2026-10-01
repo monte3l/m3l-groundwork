@@ -219,7 +219,8 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
  *
  * The write is atomic: the JSON goes to `inventory.json.tmp` first and is
  * renamed over `inventory.json` only once complete, so a reader never sees a
- * half-written file. On failure the temp file is removed (best effort: a
+ * half-written file. On failure -- creating `groundworkDir` included -- the
+ * temp file is removed (best effort: a
  * failed removal only warns, naming the temp file), any existing
  * `inventory.json` is left untouched, and an `Error` is thrown, with the
  * original failure as its `cause`, saying `.groundwork/` is incomplete and
@@ -235,10 +236,10 @@ export function writeInventory(
   inventory: Inventory,
   groundworkDir: string,
 ): string {
-  mkdirSync(groundworkDir, { recursive: true });
   const path = join(groundworkDir, "inventory.json");
   const tmpPath = `${path}.tmp`;
   try {
+    mkdirSync(groundworkDir, { recursive: true });
     // Remove whatever already sits at the temp path (a crashed run's
     // leftover, or a symlink planted there), then create it exclusively:
     // "wx" fails rather than following a symlink raced in between.

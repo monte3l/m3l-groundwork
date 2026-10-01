@@ -17,6 +17,7 @@ import { isPathContained } from "./emit.js";
 import type { Pack } from "./packs.js";
 import {
   STAGED_SUFFIX,
+  assertPlanBuiltFor,
   clearStaging,
   collectTemplateFiles,
   findStagedPathCollision,
@@ -107,11 +108,7 @@ export interface StagedPack {
 }
 
 /** One pack's validated plan: everything later steps need, read once from the caller's `Pack`. */
-interface PlannedPack {
-  readonly name: string;
-  readonly manifestBytes: Buffer;
-  readonly files: readonly { path: string; sourcePath: string }[];
-}
+type PlannedPack = PackStagingPlan["packs"][number];
 
 function assertSingleSegmentName(name: string): void {
   if (name === "" || name === "." || name === ".." || /[\\/]/.test(name)) {
@@ -240,10 +237,19 @@ function planPacks(
  * ```
  */
 export interface PackStagingPlan {
+  /** The `groundworkDir` the plan was computed for; {@link stagePacks} refuses the plan for any other. */
+  readonly groundworkDir: string;
   /** Every path the run writes, under `<groundworkDir>/packs/`: per pack, its `pack.json.staged`, then each `files/<path>.staged`. */
   readonly paths: readonly string[];
-  /** Each pack's validated projection, in `packs` order. */
-  readonly packs: readonly PlannedPack[];
+  /** Each pack's validated projection, in `packs` order: its name, serialized manifest, and each file's install path and source, sorted by path. */
+  readonly packs: readonly {
+    readonly name: string;
+    readonly manifestBytes: Buffer;
+    readonly files: readonly {
+      readonly path: string;
+      readonly sourcePath: string;
+    }[];
+  }[];
 }
 
 /**
@@ -277,7 +283,7 @@ export function planPackStaging(
       join(packsDir, name, PACK_FILES_DIR, stagedNameFor(path)),
     ),
   ]);
-  return { paths, packs: planned };
+  return { groundworkDir, paths, packs: planned };
 }
 
 /**
@@ -400,7 +406,10 @@ function writePack(plan: PlannedPack, newDir: string): StagedPack {
  * incomplete and the CLI should be re-run.
  *
  * @param plan - The plan {@link planPackStaging} computed for these same
- * `packs`, `groundworkDir` and `tokens`; computed here when omitted.
+ * `packs`, `groundworkDir` and `tokens`; computed here when omitted. A plan
+ * whose `groundworkDir` resolves to a different directory throws a plain
+ * `Error` naming both ("the plan was built for …") before anything is
+ * deleted or written.
  *
  * @example
  * ```ts
@@ -416,6 +425,7 @@ export function stagePacks(
   tokens: TokenTable,
   plan: PackStagingPlan = planPackStaging(packs, groundworkDir, tokens),
 ): StagedPack[] {
+  assertPlanBuiltFor("stagePacks", plan.groundworkDir, groundworkDir);
   const target: StagingTarget = {
     groundworkDir,
     dirName: PACKS_DIR_NAME,

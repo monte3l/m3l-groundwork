@@ -870,6 +870,23 @@ describe("main", () => {
         projectDir + "/package.json",
         JSON.stringify({ name: "acme", type: "module" }),
       );
+      // Seed all three stale .groundwork/ files from a PREVIOUS run, so the
+      // wrapped failure's "adoption-decisions.json ... removed" wording is
+      // legitimately true here (item 6: removedStaleFilesError names only
+      // the files that existed before the run -- a bare first run, with
+      // nothing to seed, must NOT claim this, see
+      // main-adopt-removed-files-wording.test.ts).
+      const groundworkDir = join(projectDir, ".groundwork");
+      mkdirSync(groundworkDir, { recursive: true });
+      writeFileSync(join(groundworkDir, "inventory.json"), "stale inventory\n");
+      writeFileSync(
+        join(groundworkDir, "adoption-report.md"),
+        "stale report\n",
+      );
+      writeFileSync(
+        join(groundworkDir, "adoption-decisions.json"),
+        "stale decisions\n",
+      );
       const cause = new Error("simulated guarded skill install failure");
       installCustomizeSkillGuardedMock.mockImplementationOnce(() => {
         throw cause;

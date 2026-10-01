@@ -370,7 +370,7 @@ describe("runAdopt -- failure wrapping after the point of no return (round-3 ite
     expect(existsSync(decisionsPath)).toBe(false);
   });
 
-  it("propagates assertAdoptWriteScope's own AssertionError UNWRAPPED when it fires AFTER the deletions (installCustomizeSkillGuarded reporting an out-of-scope filesWritten path)", () => {
+  it("propagates assertAdoptWriteScope's own AssertionError UNWRAPPED when it fires AFTER the deletions (installCustomizeSkillGuarded reporting an out-of-scope filesWritten path), but still console.warn's ONCE naming the three removed files (item 5)", () => {
     const projectDir = seedProject(targetDir, "escape-after-deletion");
     const { inventoryPath, reportPath, decisionsPath } =
       seedStaleGroundwork(projectDir);
@@ -380,6 +380,8 @@ describe("runAdopt -- failure wrapping after the point of no return (round-3 ite
       location: "claude" as const,
     }));
 
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     let thrown: unknown;
     try {
       main([projectDir]);
@@ -387,6 +389,9 @@ describe("runAdopt -- failure wrapping after the point of no return (round-3 ite
       thrown = error;
     }
 
+    // Assert on the spy's recorded calls BEFORE restoring it -- mockRestore()
+    // also resets call history, which would make the assertions below pass
+    // vacuously against an empty array.
     expect(thrown).toBeInstanceOf(assert.AssertionError);
     expect((thrown as Error).message).toMatch(
       /adopt mode wrote outside its scope/,
@@ -395,8 +400,74 @@ describe("runAdopt -- failure wrapping after the point of no return (round-3 ite
     // "removed ... re-run" staging-failure wording.
     expect((thrown as Error).message).not.toMatch(/re-run the CLI/);
 
+    // item 5: the thrown value is the SAME AssertionError instance (not a
+    // new object, not re-wrapped) -- but runAdopt still warns once, since
+    // the three stale files really were removed before this fired.
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const warnArgs = warnSpy.mock.calls[0] ?? [];
+    const warnText = warnArgs
+      .filter((arg): arg is string => typeof arg === "string")
+      .join(" ");
+    expect(warnText).toMatch(/inventory\.json/);
+    expect(warnText).toMatch(/adoption-report\.md/);
+    expect(warnText).toMatch(/adoption-decisions\.json/);
+    expect(warnText).toMatch(/not recreate/i);
+    warnSpy.mockRestore();
+
     expect(existsSync(inventoryPath)).toBe(false);
     expect(existsSync(reportPath)).toBe(false);
     expect(existsSync(decisionsPath)).toBe(false);
+  });
+
+  it("does NOT console.warn for an ORDINARY wrapped staging failure (only the AssertionError passthrough warns, item 5)", () => {
+    const projectDir = seedProject(targetDir, "ordinary-wrapped-no-warn");
+    seedStaleGroundwork(projectDir);
+
+    const cause = new Error(
+      "simulated ordinary stageBaselineAdditions failure",
+    );
+    stageBaselineAdditionsMock.mockImplementationOnce(() => {
+      throw cause;
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(assert.AssertionError);
+    expect((thrown as Error).cause).toBe(cause);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("contains 're-run the CLI' exactly ONCE when the wrapped cause's own message already ends with it, rather than doubling the advice (item 7)", () => {
+    const projectDir = seedProject(targetDir, "dedupe-rerun-wording");
+    const { inventoryPath } = seedStaleGroundwork(projectDir);
+
+    const cause = new Error(
+      `staging the packs into ${join(inventoryPath, "..", "packs")} failed (simulated), so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+    );
+    stagePacksMock.mockImplementationOnce(() => {
+      throw cause;
+    });
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).cause).toBe(cause);
+    const message = (thrown as Error).message;
+    const occurrences = message.match(/re-run the CLI/g) ?? [];
+    expect(occurrences).toHaveLength(1);
   });
 });

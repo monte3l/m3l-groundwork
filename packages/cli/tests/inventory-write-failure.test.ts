@@ -22,14 +22,20 @@ import type { HarnessGrade } from "../src/harness/types.js";
 import type { ToolchainGrade } from "../src/toolchain/types.js";
 import type { ProjectSurvey } from "../src/survey/survey.js";
 
-const { renameSyncMock, rmSyncMock } = vi.hoisted(() => ({
+const { renameSyncMock, rmSyncMock, mkdirSyncMock } = vi.hoisted(() => ({
   renameSyncMock: vi.fn(),
   rmSyncMock: vi.fn(),
+  mkdirSyncMock: vi.fn(),
 }));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof FsModule>();
-  return { ...actual, renameSync: renameSyncMock, rmSync: rmSyncMock };
+  return {
+    ...actual,
+    renameSync: renameSyncMock,
+    rmSync: rmSyncMock,
+    mkdirSync: mkdirSyncMock,
+  };
 });
 
 const EMPTY_TALLY = { checked: 0, failed: 0 };
@@ -135,6 +141,7 @@ describe("writeInventory -- rename failure", () => {
     realRmSync = actual.rmSync;
     renameSyncMock.mockReset();
     rmSyncMock.mockReset();
+    mkdirSyncMock.mockReset();
     renameSyncMock.mockImplementation(
       (...args: Parameters<typeof FsModule.renameSync>) =>
         realRenameSync(...args),
@@ -142,12 +149,17 @@ describe("writeInventory -- rename failure", () => {
     rmSyncMock.mockImplementation(
       (...args: Parameters<typeof FsModule.rmSync>) => realRmSync(...args),
     );
+    mkdirSyncMock.mockImplementation(
+      (...args: Parameters<typeof FsModule.mkdirSync>) =>
+        actual.mkdirSync(...args),
+    );
     groundworkDir = mkdtempSync(join(tmpdir(), "inventory-write-failure-"));
   });
 
   afterEach(() => {
     renameSyncMock.mockReset();
     rmSyncMock.mockReset();
+    mkdirSyncMock.mockReset();
     realRmSync(groundworkDir, { recursive: true, force: true });
   });
 
@@ -194,6 +206,7 @@ describe("writeInventory -- failed tmp-file cleanup warns instead of swallowing"
     realRmSync = actual.rmSync;
     renameSyncMock.mockReset();
     rmSyncMock.mockReset();
+    mkdirSyncMock.mockReset();
     renameSyncMock.mockImplementation(
       (...args: Parameters<typeof FsModule.renameSync>) =>
         realRenameSync(...args),
@@ -201,12 +214,17 @@ describe("writeInventory -- failed tmp-file cleanup warns instead of swallowing"
     rmSyncMock.mockImplementation(
       (...args: Parameters<typeof FsModule.rmSync>) => realRmSync(...args),
     );
+    mkdirSyncMock.mockImplementation(
+      (...args: Parameters<typeof FsModule.mkdirSync>) =>
+        actual.mkdirSync(...args),
+    );
     groundworkDir = mkdtempSync(join(tmpdir(), "inventory-cleanup-warn-"));
   });
 
   afterEach(() => {
     renameSyncMock.mockReset();
     rmSyncMock.mockReset();
+    mkdirSyncMock.mockReset();
     vi.restoreAllMocks();
     realRmSync(groundworkDir, { recursive: true, force: true });
   });
@@ -255,5 +273,58 @@ describe("writeInventory -- failed tmp-file cleanup warns instead of swallowing"
       call.some((arg) => typeof arg === "string" && arg.includes(tmpPath)),
     );
     expect(sawTmpPath).toBe(true);
+  });
+});
+
+describe("writeInventory -- mkdirSync failure (item 1: mkdirSync now runs inside the write's own try)", () => {
+  let parentDir: string;
+  let realRmSync: typeof FsModule.rmSync;
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof FsModule>("node:fs");
+    realRmSync = actual.rmSync;
+    renameSyncMock.mockReset();
+    rmSyncMock.mockReset();
+    mkdirSyncMock.mockReset();
+    renameSyncMock.mockImplementation(
+      (...args: Parameters<typeof FsModule.renameSync>) =>
+        actual.renameSync(...args),
+    );
+    rmSyncMock.mockImplementation(
+      (...args: Parameters<typeof FsModule.rmSync>) => actual.rmSync(...args),
+    );
+    mkdirSyncMock.mockImplementation(
+      (...args: Parameters<typeof FsModule.mkdirSync>) =>
+        actual.mkdirSync(...args),
+    );
+    parentDir = mkdtempSync(join(tmpdir(), "inventory-mkdir-failure-"));
+  });
+
+  afterEach(() => {
+    renameSyncMock.mockReset();
+    rmSyncMock.mockReset();
+    mkdirSyncMock.mockReset();
+    realRmSync(parentDir, { recursive: true, force: true });
+  });
+
+  it("wraps an mkdirSync failure with the same 'incomplete, re-run' message and cause, rather than letting it propagate raw", () => {
+    const groundworkDir = join(parentDir, "nested", ".groundwork");
+    const mkdirFailure = new Error("simulated mkdirSync failure");
+    mkdirSyncMock.mockImplementation(() => {
+      throw mkdirFailure;
+    });
+
+    let thrown: unknown;
+    try {
+      writeInventory(makeInventory("found package.json"), groundworkDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).cause).toBe(mkdirFailure);
+    expect((thrown as Error).message).toBe(
+      `writing ${join(groundworkDir, "inventory.json")} failed, so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+    );
   });
 });

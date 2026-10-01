@@ -17,12 +17,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   rmSync,
   writeFileSync,
   existsSync,
 } from "node:fs";
+import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import type * as FsModule from "node:fs";
 
 const { readdirSyncMock } = vi.hoisted(() => ({ readdirSyncMock: vi.fn() }));
@@ -147,5 +149,77 @@ describe("planBaselineStaging / stageBaselineAdditions(plan) (round-3 item 2)", 
     expect(existsSync(join(groundworkDir, "baseline", "solo.txt.staged"))).toBe(
       true,
     );
+  });
+
+  it("stageBaselineAdditions throws a plain Error naming both directories when given a plan built for a DIFFERENT groundworkDir, writing nothing (item 4: invariant-bound plan)", () => {
+    const groundworkDirB = mkdtempSync(
+      join(tmpdir(), "baseline-plan-mismatch-gw-b-"),
+    );
+    try {
+      writeFileSync(join(templateRoot, "mismatch.txt"), "x\n");
+      const conflicts = planConflicts(templateRoot, targetDir, {});
+      const plan = planBaselineStaging(
+        templateRoot,
+        conflicts,
+        groundworkDir,
+        {},
+      );
+
+      let thrown: unknown;
+      try {
+        stageBaselineAdditions(
+          templateRoot,
+          conflicts,
+          groundworkDirB,
+          {},
+          plan,
+        );
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown).not.toBeInstanceOf(assert.AssertionError);
+      expect((thrown as Error).message).toMatch(/plan was built for/);
+      expect((thrown as Error).message).toContain(groundworkDir);
+      expect((thrown as Error).message).toContain(groundworkDirB);
+
+      expect(existsSync(join(groundworkDir, "baseline"))).toBe(false);
+      expect(existsSync(join(groundworkDirB, "baseline"))).toBe(false);
+      expect(
+        readdirSync(groundworkDirB).some((name) =>
+          name.startsWith(".baseline-"),
+        ),
+      ).toBe(false);
+    } finally {
+      rmSync(groundworkDirB, { recursive: true, force: true });
+    }
+  });
+
+  it("stageBaselineAdditions does NOT throw when the plan's groundworkDir resolves to the SAME directory as the one passed (path.resolve comparison, not strict string equality)", () => {
+    writeFileSync(join(templateRoot, "resolve-eq.txt"), "y\n");
+    const conflicts = planConflicts(templateRoot, targetDir, {});
+    const plan = planBaselineStaging(
+      templateRoot,
+      conflicts,
+      groundworkDir,
+      {},
+    );
+
+    // Differs as a string (trailing "/.") but resolves to the same
+    // directory as groundworkDir.
+    const variant = `${groundworkDir}${sep}.`;
+    const staged = stageBaselineAdditions(
+      templateRoot,
+      conflicts,
+      variant,
+      {},
+      plan,
+    );
+
+    expect(staged.map((f) => f.path)).toContain("resolve-eq.txt");
+    expect(
+      existsSync(join(groundworkDir, "baseline", "resolve-eq.txt.staged")),
+    ).toBe(true);
   });
 });

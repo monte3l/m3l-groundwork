@@ -280,6 +280,34 @@ function swapInto(
 }
 
 /**
+ * Refuses a staging plan computed for a different `.groundwork/` than the
+ * one a stager was handed: the plan's scope-checked paths would otherwise
+ * not be the paths written. Directories are compared after `path.resolve`,
+ * so two spellings of one directory match. A caller defect, so a plain
+ * `Error` (never an `AssertionError`), thrown before anything is written.
+ *
+ * @throws `Error` naming both directories when they differ.
+ *
+ * @example
+ * ```ts
+ * assertPlanBuiltFor("stagePacks", plan.groundworkDir, groundworkDir);
+ * ```
+ */
+export function assertPlanBuiltFor(
+  caller: string,
+  planGroundworkDir: string,
+  groundworkDir: string,
+): void {
+  const planned = resolve(planGroundworkDir);
+  const actual = resolve(groundworkDir);
+  if (planned !== actual) {
+    throw new Error(
+      `${caller}: the plan was built for ${planned}, not ${actual} -- compute the plan for the same .groundwork/ directory it is staged into`,
+    );
+  }
+}
+
+/**
  * One staging area under `.groundwork/`: the directory `dirName` that
  * {@link stageAtomically} writes, and the `noun` its messages use.
  *

@@ -15,6 +15,7 @@ import type { FileConflict } from "./conflicts.js";
 import { isPathContained } from "./emit.js";
 import {
   STAGED_SUFFIX,
+  assertPlanBuiltFor,
   clearStaging,
   collectTemplateFiles,
   findStagedPathCollision,
@@ -66,10 +67,7 @@ export interface StagedBaselineFile {
 }
 
 /** One validated staging entry: the install path and its template source. */
-interface PlannedBaselineFile {
-  readonly path: string;
-  readonly sourcePath: string;
-}
+type PlannedBaselineFile = BaselineStagingPlan["files"][number];
 
 /**
  * Pairs every absent conflict with its template source. Four defects are
@@ -133,10 +131,15 @@ function absentConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
  * ```
  */
 export interface BaselineStagingPlan {
+  /** The `groundworkDir` the plan was computed for; {@link stageBaselineAdditions} refuses the plan for any other. */
+  readonly groundworkDir: string;
   /** Every path the run writes: one `<groundworkDir>/baseline/<path>.staged` per absent conflict, in `conflicts` order. */
   readonly paths: readonly string[];
   /** Each absent conflict's install path and template source, in the same order. */
-  readonly files: readonly PlannedBaselineFile[];
+  readonly files: readonly {
+    readonly path: string;
+    readonly sourcePath: string;
+  }[];
 }
 
 /**
@@ -170,12 +173,12 @@ export function planBaselineStaging(
 ): BaselineStagingPlan {
   const absent = absentConflicts(conflicts);
   if (absent.length === 0) {
-    return { paths: [], files: [] };
+    return { groundworkDir, paths: [], files: [] };
   }
   const destDir = join(groundworkDir, STAGED_BASELINE_DIR);
   const files = planStaging(templateRoot, absent, tokens, destDir);
   const paths = files.map(({ path }) => join(destDir, stagedNameFor(path)));
-  return { paths, files };
+  return { groundworkDir, paths, files };
 }
 
 /**
@@ -260,7 +263,9 @@ export function plannedBaselineStagingPaths(
  *
  * @param plan - The plan {@link planBaselineStaging} computed for these same
  * `templateRoot`, `conflicts`, `groundworkDir` and `tokens`; computed here
- * when omitted.
+ * when omitted. A plan whose `groundworkDir` resolves to a different
+ * directory throws a plain `Error` naming both ("the plan was built for …")
+ * before anything is deleted or written.
  *
  * @example
  * ```ts
@@ -285,6 +290,11 @@ export function stageBaselineAdditions(
     tokens,
   ),
 ): StagedBaselineFile[] {
+  assertPlanBuiltFor(
+    "stageBaselineAdditions",
+    plan.groundworkDir,
+    groundworkDir,
+  );
   const target: StagingTarget = {
     groundworkDir,
     dirName: STAGED_BASELINE_DIR,

@@ -24,12 +24,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   rmSync,
   writeFileSync,
   existsSync,
 } from "node:fs";
+import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import type * as FsModule from "node:fs";
 import type { CapCounts } from "../src/caps.js";
 import type { Pack, PackManifest } from "../src/packs.js";
@@ -176,6 +178,81 @@ describe("planPackStaging / stagePacks(plan) (round-3 item 2)", () => {
       expect(
         existsSync(
           join(groundworkDir, "packs", "no-plan-pack", "files", "a.txt.staged"),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(filesRoot, { recursive: true, force: true });
+      rmSync(groundworkDir, { recursive: true, force: true });
+    }
+  });
+
+  it("stagePacks throws a plain Error naming both directories when given a plan built for a DIFFERENT groundworkDir, writing nothing (item 4: invariant-bound plan)", () => {
+    const filesRoot = mkdtempSync(join(tmpdir(), "pack-plan-mismatch-files-"));
+    const groundworkDirA = mkdtempSync(
+      join(tmpdir(), "pack-plan-mismatch-gw-a-"),
+    );
+    const groundworkDirB = mkdtempSync(
+      join(tmpdir(), "pack-plan-mismatch-gw-b-"),
+    );
+    try {
+      writeFileSync(join(filesRoot, "a.txt"), "a\n");
+      const pack = makePack("mismatch-pack", filesRoot);
+      const plan = planPackStaging([pack], groundworkDirA, {});
+
+      let thrown: unknown;
+      try {
+        stagePacks([pack], groundworkDirB, {}, plan);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown).not.toBeInstanceOf(assert.AssertionError);
+      expect((thrown as Error).message).toMatch(/plan was built for/);
+      expect((thrown as Error).message).toContain(groundworkDirA);
+      expect((thrown as Error).message).toContain(groundworkDirB);
+
+      // Nothing was written under either groundworkDir's packs/, and no
+      // temporary work directory was left behind.
+      expect(existsSync(join(groundworkDirA, "packs"))).toBe(false);
+      expect(existsSync(join(groundworkDirB, "packs"))).toBe(false);
+      expect(
+        readdirSync(groundworkDirB).some((name) => name.startsWith(".packs-")),
+      ).toBe(false);
+    } finally {
+      rmSync(filesRoot, { recursive: true, force: true });
+      rmSync(groundworkDirA, { recursive: true, force: true });
+      rmSync(groundworkDirB, { recursive: true, force: true });
+    }
+  });
+
+  it("stagePacks does NOT throw when the plan's groundworkDir resolves to the SAME directory as the one passed, even if the strings differ (path.resolve comparison, not strict string equality)", () => {
+    const filesRoot = mkdtempSync(
+      join(tmpdir(), "pack-plan-resolve-eq-files-"),
+    );
+    const groundworkDir = mkdtempSync(
+      join(tmpdir(), "pack-plan-resolve-eq-gw-"),
+    );
+    try {
+      writeFileSync(join(filesRoot, "a.txt"), "a\n");
+      const pack = makePack("resolve-eq-pack", filesRoot);
+      const plan = planPackStaging([pack], groundworkDir, {});
+
+      // Differs as a string (trailing "/.") but resolves to the same
+      // directory as groundworkDir.
+      const variant = `${groundworkDir}${sep}.`;
+      const staged = stagePacks([pack], variant, {}, plan);
+
+      expect(staged[0]?.name).toBe("resolve-eq-pack");
+      expect(
+        existsSync(
+          join(
+            groundworkDir,
+            "packs",
+            "resolve-eq-pack",
+            "files",
+            "a.txt.staged",
+          ),
         ),
       ).toBe(true);
     } finally {

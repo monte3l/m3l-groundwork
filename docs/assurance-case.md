@@ -214,7 +214,7 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   not an attacker-controlled one. The staging writers add an `lstat`
   refusal on `.groundwork` and the staging directories (`fs-guard.ts`), but
   there is a time-of-check-to-time-of-use gap between that `lstat` and the
-  later write: a local attacker able to swap a directory for a symlink in
+  later `rmSync` calls and writes: a local attacker able to swap a directory for a symlink in
   that window is outside the threat model this tool accepts, which assumes
   the project directory is not concurrently modified by a hostile local
   process.
