@@ -48,11 +48,12 @@ stable `1.0.0` is the immediate goal, once the promotion checklist in
   `.bestpractices.json`; what's left is the maintainer action of logging
   into bestpractices.dev and entering those answers into the project's
   actual questionnaire, which currently shows most of them unanswered.
-- **`pnpm/setup` in CI**, once it supports reading Node's version from
-  `.node-version` (or an equivalent single-source-of-truth mechanism)
-  rather than only `package.json`'s `devEngines.runtime` (a field that
-  declares which JavaScript runtime and version a package expects,
-  separate from `.node-version`) -- see
+- **`pnpm/setup` in CI.** Its v3 (2026-09-20) now reads Node's version from
+  `.node-version` through a `node-version-file` input, so the original
+  blocker is gone. What is left is reliability and trust surface: v3 is days
+  old with open hang and network-failure issues, it provisions Node through
+  `pnpm runtime set` in the publish jobs that hold the OIDC token, and it
+  needs pnpm 11 or newer. Migration waits for those to settle -- see
   [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
 - Keeping `templates/core` and `templates/packs/` current against upstream
   TypeScript and Anthropic guidance is ongoing, ordinary maintenance, not a

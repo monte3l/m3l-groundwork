@@ -708,13 +708,18 @@ set for one file.
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is
   indirect -- a dedicated additive install mode is real future work.
-- **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it: it
-  has no version-file input and reads Node from `package.json`'s
-  `devEngines.runtime`, which would create a second Node pin beside
-  `.node-version`. Hardcoding `runtime: node@N` in YAML is worse -- it
-  evades `check-node-version.mjs`, whose regex only matches `node-version:`.
-  Adopting it means teaching that gate (and its `templates/core` twin) about
-  both forms first.
+- **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it.
+  Re-checked 2026-10-01: the original blocker is gone, since `pnpm/setup@v3`
+  (2026-09-20) has a `node-version-file` input and auto-detects
+  `.node-version`, so a migration needs no second Node pin and passes
+  `check-node-version.mjs` unchanged as long as it spells
+  `node-version-file: .node-version` (a `runtime: node@N` literal would
+  evade that gate's `node-version:` regex). It is deferred, not blocked:
+  v3 is days old with open reliability issues, it needs pnpm 11+, it changes
+  how Node is provisioned in the publishing jobs, and the org's actions
+  allowlist must add `pnpm/setup` first. `pnpm/action-setup` itself has no
+  such input. Re-check against issue #47 when `pnpm/setup` ships a v3.x
+  with no open hang or network-failure bug and the allowlist is settled.
 - **`.claude/` harness support for working _in this repo_ (as opposed to what
   it emits) is now installed** -- see "Agent Operating Model" above for what
   and why. It arrived by running this repo's own published CLI against
