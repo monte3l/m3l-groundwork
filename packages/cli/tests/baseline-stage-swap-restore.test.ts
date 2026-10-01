@@ -163,6 +163,13 @@ describe("stageBaselineAdditions -- atomic swap restore", () => {
     const aggregate = thrown as AggregateError;
     expect(aggregate.errors).toEqual([swapFailure, restoreFailure]);
     expect(aggregate.message).toContain("the previous baseline was parked at");
+    // The message must point at a concrete recovery path (re-running the CLI
+    // clears the parked copy on its own) rather than telling the user to
+    // move the parked directory back "by hand" -- there is nothing to move
+    // it back to once the swap and the restore have both failed.
+    expect(aggregate.message).toContain("re-run");
+    expect(aggregate.message).toContain("next run removes the parked copy");
+    expect(aggregate.message).not.toContain("by hand");
 
     // destDir (baseline/) itself never got the new content -- the previous
     // staging stays wherever it was parked rather than vanishing, and the

@@ -17,6 +17,7 @@ import {
   readdirSync,
   existsSync,
   symlinkSync,
+  lstatSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -567,7 +568,62 @@ describe("main", () => {
       expect(paths).not.toContain("package.json");
     });
 
-    it("deletes a stale inventory.json/adoption-report.md before staging, and writes the report before inventory.json (both absent, baseline/ untouched) when staging fails", () => {
+    it("does not follow a pre-existing symlinked adoption-report.md: the outside file stays untouched and the report ends up a regular file", () => {
+      const projectDir = join(targetDir, "existing-project-report-symlink");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
+
+      const outsideDir = mkdtempSync(
+        join(tmpdir(), "main-run-report-symlink-outside-"),
+      );
+      const outsidePath = join(outsideDir, "sensitive.txt");
+      writeFileSync(outsidePath, "do not touch\n");
+      const reportPath = join(projectDir, ".groundwork", "adoption-report.md");
+      symlinkSync(outsidePath, reportPath);
+
+      try {
+        main([projectDir]);
+
+        // rmSync on a symlink removes the link itself, never the target it
+        // points at -- this test pins that guarantee for adoption-report.md
+        // specifically (see the next test for adoption-decisions.json, a gap
+        // that is NOT yet guarded the same way).
+        expect(readFileSync(outsidePath, "utf8")).toBe("do not touch\n");
+        expect(lstatSync(reportPath).isSymbolicLink()).toBe(false);
+        expect(existsSync(reportPath)).toBe(true);
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("deletes a stale .groundwork/adoption-decisions.json before staging, the same as inventory.json/adoption-report.md", () => {
+      const projectDir = join(targetDir, "existing-project-decisions-stale");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
+      const decisionsPath = join(
+        projectDir,
+        ".groundwork",
+        "adoption-decisions.json",
+      );
+      writeFileSync(decisionsPath, JSON.stringify({ stale: true }));
+
+      main([projectDir]);
+
+      // A stale decisions file reflects decisions made against a now-replaced
+      // inventory/report; runAdopt must clear it the same way it clears
+      // inventory.json/adoption-report.md before staging.
+      expect(existsSync(decisionsPath)).toBe(false);
+    });
+
+    it("leaves neither the report nor inventory.json after a staging failure (both deleted up front, baseline/ untouched)", () => {
       const projectDir = join(targetDir, "existing-project-ordering");
       mkdirSync(projectDir);
       writeFileSync(

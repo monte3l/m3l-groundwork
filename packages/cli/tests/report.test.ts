@@ -213,8 +213,20 @@ describe("renderReport", () => {
     expect(report).toContain("/customize");
   });
 
+  function stagedFile(path: string) {
+    return { path, staged: `${path}.staged`, sha256: "a".repeat(64) };
+  }
+
   it("warns in the closing paragraph that .groundwork/baseline/'s inert .staged copies may trip a strict license-header check, and suggests a .gitignore line", () => {
-    const report = renderReport(baseInventory(templateRoot));
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          suffix: ".staged",
+          files: [stagedFile("eslint.config.js")],
+        },
+      }),
+    );
 
     expect(report).toContain(".groundwork/baseline/");
     expect(report).toContain(".staged");
@@ -473,10 +485,6 @@ describe("renderReport", () => {
     expect(report).toContain("No conflicts found.");
   });
 
-  function stagedFile(path: string) {
-    return { path, staged: `${path}.staged`, sha256: "a".repeat(64) };
-  }
-
   it("tells the reader where absent files are staged for /customize, counting stagedBaseline.files.length -- not absent.length", () => {
     const report = renderReport(
       baseInventory(templateRoot, {
@@ -567,8 +575,24 @@ describe("renderReport", () => {
   });
 
   it("mentions the staged copies are inert in the closing next-steps paragraph", () => {
-    const report = renderReport(baseInventory(templateRoot));
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          suffix: ".staged",
+          files: [stagedFile("eslint.config.js")],
+        },
+      }),
+    );
     expect(report).toContain("inert copies");
+  });
+
+  it("omits the closing staged-files paragraph entirely when stagedBaseline.files is empty (nothing to decide about)", () => {
+    // Default baseInventory's stagedBaseline.files is [] -- nothing was
+    // staged, so there is no .staged copy to commit or .gitignore.
+    const report = renderReport(baseInventory(templateRoot));
+    expect(report).not.toContain("Decide whether to commit or ignore");
+    expect(report).not.toContain("may flag them");
   });
 
   it("never leaves the could-not-determine section empty when undetermined entries exist", () => {

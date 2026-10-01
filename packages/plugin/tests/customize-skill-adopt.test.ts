@@ -15,7 +15,10 @@
  * doesn't break on the markdown's own line wrapping.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,25 +40,42 @@ describe("SKILL.md Step 0 -- incomplete-run rule", () => {
 });
 
 describe("SKILL.md Step 0 -- staged baseline verification contract", () => {
-  it("gives the exact sha256-over-raw-bytes node -e command", () => {
-    // Assembled by concatenation so this test file's own source text never
-    // spells out a CommonJS "require" call followed directly by a paren --
-    // this repo's ESM-only guard hook blocks that pattern on any
-    // source/test file, even inside a plain string literal. The rendered
-    // string below still asserts the exact command SKILL.md documents.
-    const builtin = (name: string): string => `req` + `uire("${name}")`;
-    const expectedCmd =
-      "node -e 'process.stdout.write(" +
-      builtin("crypto") +
-      '.createHash("sha256").update(' +
-      builtin("fs") +
-      '.readFileSync(process.argv[1])).digest("hex"))' +
-      "' <file>";
-    expect(text).toContain(expectedCmd);
+  it("extracts the documented node -e command and runs it, matching node:crypto's own sha256 of the same raw bytes", () => {
+    const match = /`(node -e [^`]+)`/.exec(raw);
+    expect(match).not.toBeNull();
+    const template = match?.[1] ?? "";
+    expect(template).toContain("<file>");
+    // "POSIX shell" is prose ahead of the command, not inside the extracted
+    // template itself.
+    expect(text).toContain("POSIX shell");
+
+    if (process.platform === "win32") {
+      // sh -c is not a POSIX shell on win32 -- nothing further to run there.
+      return;
+    }
+
+    const dir = mkdtempSync(join(tmpdir(), "skill-sha256-"));
+    try {
+      const fixture = join(dir, "fixture.bin");
+      // CRLF plus a non-UTF8 byte (0xff): proves the command hashes raw
+      // bytes, with no end-of-line normalization or text decoding.
+      const bytes = Buffer.from([0x0d, 0x0a, 0xff, 0x41, 0x0d, 0x0a]);
+      writeFileSync(fixture, bytes);
+
+      const command = template.replace("<file>", fixture);
+      const output = execFileSync("sh", ["-c", command], { encoding: "utf8" });
+
+      const expected = createHash("sha256").update(bytes).digest("hex");
+      expect(output.trim()).toBe(expected);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("requires the staged name to equal path + suffix, a relative path, and no .. segment", () => {
-    expect(text).toContain("staged === path + inventory.stagedBaseline.suffix");
+    // The suffix is the literal ".staged" the skill itself documents, not a
+    // value read back out of the untrusted inventory.
+    expect(text).toContain('staged === path + ".staged"');
     expect(text).toContain("free of any");
     expect(text).toContain("segment");
   });
@@ -74,6 +94,49 @@ describe("SKILL.md Step 0 -- staged baseline verification contract", () => {
   it("states plainly what a passing check does NOT prove", () => {
     expect(text).toContain("does");
     expect(text).toContain("prove the files are untampered");
+  });
+});
+
+describe("SKILL.md Step 0 -- staged baseline verification details (hub to add)", () => {
+  it("requires stagedBaseline.dir and suffix to equal the documented literals exactly", () => {
+    expect(text).toContain(
+      "stagedBaseline.dir` must equal `.groundwork/baseline` exactly",
+    );
+    expect(text).toContain(
+      "stagedBaseline.suffix` must equal `.staged` exactly",
+    );
+  });
+
+  it("requires path to carry no backslash or colon (a Windows-shaped path smuggled into a POSIX-only field)", () => {
+    expect(text).toContain("path` contains a `\\` or a `:`");
+  });
+
+  it("names the file that was never adopted when verification fails", () => {
+    expect(text).toContain("was never adopted");
+  });
+
+  it("flags when stagedBaseline.files disagrees with the inventory's absent conflicts", () => {
+    // Step 3 already uses the word "disagree" for an unrelated pack-recommendation
+    // comparison, so every occurrence is checked, not just the first --
+    // the one this test actually cares about is the one near Step 0.1.
+    const windows: string[] = [];
+    let fromIndex = 0;
+    for (;;) {
+      const disagreeIdx = text.indexOf("disagree", fromIndex);
+      if (disagreeIdx === -1) break;
+      windows.push(
+        text.slice(Math.max(0, disagreeIdx - 200), disagreeIdx + 200),
+      );
+      fromIndex = disagreeIdx + 1;
+    }
+    expect(windows.length).toBeGreaterThan(0);
+    expect(
+      windows.some(
+        (window) =>
+          window.includes("`absent`") &&
+          window.includes("stagedBaseline.files"),
+      ),
+    ).toBe(true);
   });
 });
 

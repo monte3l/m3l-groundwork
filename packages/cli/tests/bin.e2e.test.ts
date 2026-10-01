@@ -83,4 +83,52 @@ describe("bin/m3l-groundwork.mjs error reporting", () => {
       rmSync(outsideDir, { recursive: true, force: true });
     }
   });
+
+  // Exercises formatErrorChain end to end through the real bin script,
+  // rather than unit-testing it against a hand-built Error (format-error.test.ts
+  // already covers the formatting rules in isolation, including the
+  // dedupe rule this particular scenario doesn't happen to exercise -- its
+  // parent and cause messages here are never substrings of one another).
+  // Skipped on win32: fresh mode refuses Windows outright before git is ever
+  // invoked (see main.ts's runFresh), so this scenario has no equivalent
+  // there.
+  it.skipIf(process.platform === "win32")(
+    "prints a chained 'caused by:' line when git init fails during fresh mode, with the underlying system message appearing exactly once",
+    () => {
+      const targetDir = mkdtempSync(join(tmpdir(), "bin-chain-"));
+      try {
+        let result: RunResult;
+        try {
+          // process.execPath (an absolute path) is used for the outer spawn
+          // so resolving "node" itself doesn't depend on PATH -- only the
+          // CHILD process (the CLI, which looks up "git" by bare name) is
+          // starved of PATH, forcing gitInit's execFileSync to fail ENOENT.
+          execFileSync(
+            process.execPath,
+            [binPath, targetDir, "--skip-install"],
+            {
+              stdio: ["ignore", "ignore", "pipe"],
+              env: { ...process.env, PATH: "" },
+            },
+          );
+          result = { status: 0, stderr: "" };
+        } catch (error) {
+          const { status, stderr } = error as {
+            status: number | null;
+            stderr: Buffer;
+          };
+          result = { status, stderr: stderr.toString("utf8") };
+        }
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("caused by:");
+        // The underlying ENOENT system message is chained exactly once --
+        // never duplicated by the wrapping error's own message.
+        const occurrences = result.stderr.split("ENOENT").length - 1;
+        expect(occurrences).toBe(1);
+      } finally {
+        rmSync(targetDir, { recursive: true, force: true });
+      }
+    },
+  );
 });

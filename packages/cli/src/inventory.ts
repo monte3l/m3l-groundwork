@@ -182,7 +182,13 @@ export function writeInventory(
   const path = join(groundworkDir, "inventory.json");
   const tmpPath = `${path}.tmp`;
   try {
-    writeFileSync(tmpPath, `${JSON.stringify(inventory, null, 2)}\n`);
+    // Remove whatever already sits at the temp path (a crashed run's
+    // leftover, or a symlink planted there), then create it exclusively:
+    // "wx" fails rather than following a symlink raced in between.
+    rmSync(tmpPath, { force: true });
+    writeFileSync(tmpPath, `${JSON.stringify(inventory, null, 2)}\n`, {
+      flag: "wx",
+    });
     renameSync(tmpPath, path);
   } catch (cause) {
     try {

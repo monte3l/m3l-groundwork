@@ -18,7 +18,7 @@ import {
   existsSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, dirname } from "node:path";
+import { join, relative, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -282,10 +282,11 @@ describe("adopt mode end-to-end", () => {
             visitProject(absPath);
             continue;
           }
-          if (
-            relPath.startsWith(join(".groundwork", "baseline") + "/") &&
-            discoveryPattern.test(entry.name)
-          ) {
+          const baselineDirRel = join(".groundwork", "baseline");
+          const isUnderBaseline =
+            relPath === baselineDirRel ||
+            relPath.startsWith(baselineDirRel + sep);
+          if (isUnderBaseline && discoveryPattern.test(entry.name)) {
             discoveryMatchesUnderBaseline.push(relPath);
           }
         }

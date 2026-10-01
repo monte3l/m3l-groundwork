@@ -15,6 +15,8 @@ import {
   readFileSync,
   existsSync,
   writeFileSync,
+  symlinkSync,
+  lstatSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -362,6 +364,51 @@ describe("writeInventory writes atomically", () => {
   // node:fs's renameSync via vi.mock + vi.hoisted (vi.spyOn can't override
   // a named export of the real ESM node:fs module -- see that file's header
   // comment).
+});
+
+describe("writeInventory refuses to write through a pre-existing symlink at inventory.json.tmp", () => {
+  let groundworkDir: string;
+  let outsideDir: string;
+
+  beforeEach(() => {
+    groundworkDir = mkdtempSync(join(tmpdir(), "inventory-symlink-"));
+    outsideDir = mkdtempSync(join(tmpdir(), "inventory-symlink-outside-"));
+  });
+
+  afterEach(() => {
+    rmSync(groundworkDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it("does not follow a pre-existing inventory.json.tmp symlink: the outside file stays byte-identical and inventory.json ends up a regular file", () => {
+    const outsidePath = join(outsideDir, "sensitive.txt");
+    writeFileSync(outsidePath, "do not touch\n");
+    symlinkSync(outsidePath, join(groundworkDir, "inventory.json.tmp"));
+
+    const inventory = buildInventory({
+      detection: { mode: "adopt", signal: "found package.json" },
+      templateRoot: "/tmp/templates/core",
+      targetDir: "/tmp/project",
+      survey: EMPTY_SURVEY,
+      conflicts: [],
+      packs: [],
+      harnessGrade: EMPTY_GRADE,
+      toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
+      stagedBaseline: EMPTY_STAGED_BASELINE,
+    });
+
+    writeInventory(inventory, groundworkDir);
+
+    // The symlink's target must be untouched -- writeInventory must not
+    // follow a pre-existing inventory.json.tmp symlink when writing through
+    // it.
+    expect(readFileSync(outsidePath, "utf8")).toBe("do not touch\n");
+
+    const finalPath = join(groundworkDir, "inventory.json");
+    expect(lstatSync(finalPath).isSymbolicLink()).toBe(false);
+    const parsed = JSON.parse(readFileSync(finalPath, "utf8")) as Inventory;
+    expect(parsed.schemaVersion).toBe(INVENTORY_SCHEMA_VERSION);
+  });
 });
 
 describe("StagedBaseline / StagedBaselineFile shapes", () => {

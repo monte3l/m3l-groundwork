@@ -566,8 +566,8 @@ export function assertAdoptWriteScope(
  * `templates/packs/` is surveyed (`main` rejects `--pack` in this mode, see
  * `assertAdoptUsage`) and staged, unapplied, at `.groundwork/packs/<name>/`;
  * absent baseline files are staged as inert `<path>.staged` copies at
- * `.groundwork/baseline/`. A stale `inventory.json`/`adoption-report.md` is
- * deleted before any staging or install; then packs and the baseline are
+ * `.groundwork/baseline/`. A stale `inventory.json`/`adoption-report.md`/
+ * `adoption-decisions.json` is deleted before any staging or install; then packs and the baseline are
  * staged, the `/customize` skill is installed, `adoption-report.md` is
  * written, and `inventory.json` is written last (atomically, via a temp file
  * and rename). Only console output follows it, so `inventory.json`'s
@@ -585,14 +585,22 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   const stagedBaselineDir = `.groundwork/${STAGED_BASELINE_DIR}`;
   const inventoryPath = join(groundworkDir, "inventory.json");
   const reportPath = join(groundworkDir, "adoption-report.md");
-  assertAdoptWriteScope(options.targetDir, [inventoryPath, reportPath]);
+  const decisionsPath = join(groundworkDir, "adoption-decisions.json");
+  assertAdoptWriteScope(options.targetDir, [
+    inventoryPath,
+    reportPath,
+    decisionsPath,
+  ]);
 
-  // A previous run's inventory/report must not survive a run that fails
-  // part-way -- /customize would read them as describing the new staging.
-  // Both go before anything is staged and are rewritten only at the end.
+  // A previous run's inventory/report -- and the decisions /customize
+  // recorded against them -- must not survive a run that fails part-way:
+  // /customize would read them as describing the new staging. All three go
+  // before anything is staged; inventory/report are rewritten only at the
+  // end, and the decisions file only by /customize.
   assertNotSymlink(groundworkDir);
   rmSync(inventoryPath, { force: true });
   rmSync(reportPath, { force: true });
+  rmSync(decisionsPath, { force: true });
 
   const packs: PackSurvey[] = listPackNames().map((name) => {
     const pack = loadPack(name);
@@ -658,7 +666,9 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   // The report next, inventory.json last (written atomically): nothing that
   // can fail follows it, so its presence means the whole run completed.
   mkdirSync(groundworkDir, { recursive: true });
-  writeFileSync(reportPath, renderReport(inventory));
+  // "wx": the path was removed above, so anything there now (a symlink
+  // raced in mid-run) makes the write fail instead of being followed.
+  writeFileSync(reportPath, renderReport(inventory), { flag: "wx" });
   writeInventory(inventory, groundworkDir);
 
   console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);

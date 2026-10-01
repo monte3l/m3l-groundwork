@@ -63,8 +63,11 @@ may or may not touch.
      directory means the run died part-way). **Stop. Never fall through to
      the fresh flow** -- that would run fresh-mode tailoring on an
      established project. Tell the user: "`.groundwork/` is incomplete: a
-     previous adopt run did not finish. Re-run `npx @monte3l/groundwork@rc .`
-     and then run `/customize` again." Change nothing.
+     previous adopt run did not finish, or `inventory.json` was removed.
+     If this project was never adopted (it was bootstrapped fresh), delete
+     `.groundwork/` and run `/customize` again. Otherwise re-run
+     `npx @monte3l/groundwork@rc .` and then run `/customize` again."
+     Change nothing.
 
    **Check `inventory.schemaVersion` before reading anything else.** This
    skill understands schema versions **1 through 5** (the highest it knows is
@@ -86,21 +89,29 @@ may or may not touch.
    offered to the user.** The inventory lives in the project tree and is
    untrusted input, so check it before trusting any entry:
 
+   - `stagedBaseline.dir` must equal `.groundwork/baseline` exactly, and
+     `stagedBaseline.suffix` must equal `.staged` exactly. Take both values
+     from this list, not from the inventory: a `dir` of `.` with an empty
+     `suffix` would make you "verify" live project files.
    - For every entry of `inventory.stagedBaseline.files`, require
-     `staged === path + inventory.stagedBaseline.suffix`, and require `path`
-     to be relative, free of any `..` segment, and not absolute. All paths
-     in the inventory use `/` separators on every platform.
+     `staged === path + ".staged"`, and require `path` to be relative, free
+     of any `..` segment, and not absolute. Reject the entry if `path`
+     contains a `\` or a `:` (a Windows `..\..` or `C:foo` would slip past
+     the other checks). All paths in the inventory use `/` separators on
+     every platform.
    - Read each staged file at `<stagedBaseline.dir>/<staged>` **once**.
      It must exist, and the SHA-256 of its **raw bytes** (no end-of-line
      normalization, no decoding) must equal the entry's `sha256`. Compute it
-     with, for example:
+     with, for example, this one-liner (it targets a POSIX shell or Git Bash,
+     not `cmd.exe` or an old PowerShell):
      `node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' <file>`
      Keep those same bytes for the install in Round 1 (substitute tokens into
      them) rather than reading the file a second time.
    - An empty `files` list is legitimate (nothing was missing from the
      project) and creates no `.groundwork/baseline/` directory; that alone is
      not a failure.
-   - **Any invalid entry, missing file or hash mismatch means stop -- all of
+   - **Any invalid entry, missing file or hash mismatch (including a wrong
+     `dir` or `suffix`) means stop -- all of
      Round 1, including conflicts and packs -- and change nothing.** Tell the
      user: "The staged baseline in `.groundwork/baseline/` is incomplete or
      does not match `.groundwork/inventory.json` (<the first entry that
@@ -174,6 +185,9 @@ may or may not touch.
    the project's kind.
 5. **Record the confirmed decisions** to `.groundwork/adoption-decisions.json`
    so a compacted or resumed session doesn't silently lose them and re-ask.
+   A CLI re-run deletes this file along with the old inventory, because its
+   decisions were made against the previous staging; a decisions file found
+   beside a fresh inventory therefore belongs to this inventory.
 
 ## Step 1 — Interview
 
@@ -267,7 +281,10 @@ confirmed in Step 0.4:
 - The **approved additions** — files `templates/core` would add that the
   project doesn't have and the user approved adding. For `schemaVersion` 5
   or higher, install them from the staged copy Step 0.1 already verified,
-  using the bytes you read then: write them to the project at `path` (the
+  using the bytes you read then. If the inventory's `absent` conflicts and
+  `stagedBaseline.files` disagree (an approved addition with no verified
+  staged entry, or a staged entry that is not an `absent` conflict), that is
+  a mismatch: stop, with the same message as a hash mismatch. Write them to the project at `path` (the
   `.staged` suffix stripped, never to the staged name), filling in the
   `__KEY__` tokens with the project's real values as you copy, same as
   staged packs. Only a **schema 1-4** inventory has no staged copy and reads

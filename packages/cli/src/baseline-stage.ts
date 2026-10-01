@@ -180,6 +180,19 @@ function planStaging(
   });
 }
 
+/**
+ * The standard staging failure: `.groundwork/` is incomplete and the CLI
+ * should be re-run. The message embeds the cause's own message so it stands
+ * alone; `formatErrorChain` skips the then-redundant `caused by:` line.
+ */
+function incompleteStagingError(destDir: string, cause: unknown): Error {
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  return new Error(
+    `staging the baseline into ${destDir} failed (${reason}), so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
+    { cause },
+  );
+}
+
 /** The swap's final rename and the restore of the parked previous baseline both failed: the parked copy is the only one left. */
 class ParkedBaselineError extends AggregateError {}
 
@@ -187,7 +200,9 @@ class ParkedBaselineError extends AggregateError {}
  * Moves `newDir` into place at `destDir`, parking any previous `destDir` at
  * `parkedDir` first. If the final rename fails the parked copy is renamed
  * back; if that restore fails too, throws a {@link ParkedBaselineError}
- * carrying both errors and naming `parkedDir`.
+ * carrying both errors, naming `parkedDir`, and telling the user to re-run
+ * the CLI -- the staging is derived data, so the next run's stale-dir sweep
+ * removes the parked copy and regenerates `destDir` from the template.
  */
 function swapInto(newDir: string, destDir: string, parkedDir: string): void {
   const hadPrevious = existsSync(destDir);
@@ -205,7 +220,7 @@ function swapInto(newDir: string, destDir: string, parkedDir: string): void {
     } catch (restoreError) {
       throw new ParkedBaselineError(
         [error, restoreError],
-        `moving the new baseline into ${destDir} failed and restoring the previous one failed too; the previous baseline was parked at ${parkedDir} -- move it back by hand if you need it, or re-run the CLI to regenerate it`,
+        `moving the new baseline into ${destDir} failed and restoring the previous one failed too; the previous baseline was parked at ${parkedDir} -- fix the cause and re-run the CLI: the staging is derived data, regenerated from the template, and the next run removes the parked copy`,
       );
     }
     throw error;
@@ -272,7 +287,11 @@ export function stageBaselineAdditions(
 
   const absent = conflicts.filter((c) => c.status === "absent");
   if (absent.length === 0) {
-    rmSync(destDir, RM_DIR_OPTIONS);
+    try {
+      rmSync(destDir, RM_DIR_OPTIONS);
+    } catch (cause) {
+      throw incompleteStagingError(destDir, cause);
+    }
     return [];
   }
 
@@ -317,11 +336,7 @@ export function stageBaselineAdditions(
       keepWorkDir = true;
       throw cause;
     }
-    const reason = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(
-      `staging the baseline into ${destDir} failed (${reason}), so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
-      { cause },
-    );
+    throw incompleteStagingError(destDir, cause);
   } finally {
     if (workDir !== undefined && !keepWorkDir) {
       removeBestEffort(workDir);

@@ -77,4 +77,93 @@ describe("formatErrorChain", () => {
     expect(lines).toContain("  caused by: inner failure one");
     expect(lines).toContain("  caused by: inner failure two");
   });
+
+  it("does not throw when an AggregateError's errors property was reassigned to a non-array", () => {
+    const agg = new AggregateError([], "aggregate failure");
+    // Simulates a caller/collaborator that doesn't honor the errors: Error[]
+    // contract -- formatErrorChain must stay defensive about it rather than
+    // assume the type.
+    (agg as unknown as { errors: unknown }).errors = { not: "an array" };
+
+    let result = "";
+    expect(() => {
+      result = formatErrorChain(agg);
+    }).not.toThrow();
+    expect(result).toBe("aggregate failure");
+  });
+
+  describe("dedupes a cause whose message is already contained in its parent's", () => {
+    it("omits the 'caused by:' line when the cause's message is a substring of the parent's", () => {
+      const dupCause = new Error("disk full");
+      const top = new Error("write failed: disk full", { cause: dupCause });
+
+      const result = formatErrorChain(top);
+
+      expect(result).toBe("write failed: disk full");
+      expect(result).not.toContain("caused by:");
+    });
+
+    it("still prints a cause whose message is NOT a substring of its parent's", () => {
+      const distinctCause = new Error("ENOSPC");
+      const top = new Error("write failed", { cause: distinctCause });
+
+      const result = formatErrorChain(top);
+
+      expect(result).toBe(["write failed", "  caused by: ENOSPC"].join("\n"));
+    });
+  });
+
+  it("truncates a cause chain deeper than 32 links, ending with a line containing '...', rather than growing unbounded", () => {
+    let current = new Error("link 0");
+    const chainLength = 40;
+    for (let i = 1; i < chainLength; i++) {
+      current = new Error(`link ${i}`, { cause: current });
+    }
+
+    let result = "";
+    expect(() => {
+      result = formatErrorChain(current);
+    }).not.toThrow();
+
+    const lines = result.split("\n");
+    // Well short of 1 (top line) + 40 links -- the chain was cut off.
+    expect(lines.length).toBeLessThan(chainLength);
+    expect(lines.at(-1)).toContain("...");
+  });
+
+  describe("falls back to a placeholder instead of throwing on an unprintable value", () => {
+    const unprintableCases: [string, unknown][] = [
+      ["a null-prototype object", Object.create(null) as unknown],
+      [
+        "an object whose Symbol.toPrimitive throws",
+        {
+          [Symbol.toPrimitive]() {
+            throw new Error("cannot stringify");
+          },
+        },
+      ],
+    ];
+
+    it.each(unprintableCases)(
+      "as the top-level thrown value (%s)",
+      (_l, value) => {
+        let result = "";
+        expect(() => {
+          result = formatErrorChain(value);
+        }).not.toThrow();
+        expect(result).toBe("[unprintable value]");
+      },
+    );
+
+    it.each(unprintableCases)("as a chained cause (%s)", (_l, value) => {
+      const top = new Error("top failure", { cause: value });
+      let result = "";
+      expect(() => {
+        result = formatErrorChain(top);
+      }).not.toThrow();
+      expect(result).toBe(
+        ["top failure", "  caused by: [unprintable value]"].join("\n"),
+      );
+    });
+  });
 });

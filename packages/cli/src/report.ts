@@ -408,6 +408,25 @@ function renderUndeterminedSection(inventory: Inventory): string {
   return lines.join("\n");
 }
 
+/** The closing paragraph (plus its trailing blank line) about the inert staged copies, or nothing when no file was staged. */
+function renderStagedFilesNote(stagedBaseline: StagedBaseline): string[] {
+  const { dir, suffix, files } = stagedBaseline;
+  if (files.length === 0) {
+    return [];
+  }
+  return [
+    `The baseline files staged under \`${dir}/\` are inert copies, never ` +
+      `installed: each carries a \`${suffix}\` suffix so no tool in this ` +
+      "project picks one up, and `/customize` installs one only after you " +
+      `confirm it. Decide whether to commit or ignore those \`${suffix}\` ` +
+      "files before your next commit: they are verbatim template copies, so " +
+      "a strict license-header check, or any gate that runs over every " +
+      "tracked file, may flag them. To keep them out of git, add a " +
+      `\`${dir}/\` line to \`.gitignore\`.`,
+    "",
+  ];
+}
+
 /** Renders the full adoption report as Markdown. */
 export function renderReport(inventory: Inventory): string {
   const sections = [
@@ -445,17 +464,7 @@ export function renderReport(inventory: Inventory): string {
       "project? Say so when `/customize` asks -- that confirmation round " +
       "is the point where it's caught.",
     "",
-    `The baseline files staged under \`${inventory.stagedBaseline.dir}/\` ` +
-      `are inert copies, never installed: each carries a ` +
-      `\`${inventory.stagedBaseline.suffix}\` suffix so no tool in this ` +
-      "project picks one up, and `/customize` installs one only after you " +
-      "confirm it. Decide whether to commit or ignore those " +
-      `\`${inventory.stagedBaseline.suffix}\` files before your next ` +
-      "commit: they are verbatim template copies, so a strict " +
-      "license-header check, or any gate that runs over every tracked file, " +
-      "may flag them. To keep them out of git, add a " +
-      `\`${inventory.stagedBaseline.dir}/\` line to \`.gitignore\`.`,
-    "",
+    ...renderStagedFilesNote(inventory.stagedBaseline),
     "`.groundwork/` itself was not added to this project's `.gitignore` -- " +
       "that choice is yours. It's disposable (regenerate it any time by " +
       "re-running the CLI), so most projects gitignore it; some prefer to " +
