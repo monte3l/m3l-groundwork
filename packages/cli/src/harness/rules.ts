@@ -77,10 +77,12 @@ export interface HarnessRule {
 }
 
 /**
- * Model ids and aliases considered current. The ids follow Anthropic's models
- * overview and model-deprecations page (retrieved 2026-10-01); a legacy id
- * that is still Active there stays accepted until it is deprecated. Bump
- * alongside the `harness-guidance` refresh sweep;
+ * Model ids and aliases the rubric accepts: the current ids and aliases, plus
+ * ids that were once listed here, kept until Anthropic deprecates them. The
+ * ids follow Anthropic's models overview and model-deprecations pages
+ * (retrieved 2026-10-01). A legacy id that was never listed here is
+ * deliberately not added, so the rule keeps nudging pins toward current
+ * models. Bump alongside the `harness-guidance` refresh sweep;
  * `templates/core/bin/lib/harness-rules.mjs` carries the same list and the
  * parity test keeps the two equal.
  */
@@ -92,10 +94,8 @@ export const CURRENT_MODELS: readonly string[] = [
   "fable",
   "claude-opus-5",
   "claude-opus-5-5",
-  "claude-opus-4-8",
   "claude-sonnet-5",
   "claude-sonnet-5-5",
-  "claude-fable-5",
   "claude-fable-5-1",
   "claude-haiku-4-5",
   "claude-haiku-4-5-20251001",
