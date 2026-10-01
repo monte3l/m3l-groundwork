@@ -66,6 +66,49 @@ export function toPosixPath(p: string): string {
   return p.replaceAll("\\", "/");
 }
 
+/**
+ * Finds the first pair of staged paths that would land on the same file on
+ * some supported file system: two paths equal once case-folded (macOS and
+ * Windows default to case-insensitive), or one path a proper directory
+ * prefix of another once case-folded (`x.staged` as both a file and the
+ * directory holding `x.staged/y.staged`). Either collision makes the second
+ * exclusive (`wx`) write fail mid-staging; a plan checks for it first so the
+ * defect surfaces as its own error instead. Paths are compared as given --
+ * pass them `/`-separated ({@link toPosixPath}).
+ *
+ * @returns A description naming both colliding paths, or `undefined` when
+ * none collide.
+ *
+ * @example
+ * ```ts
+ * findStagedPathCollision(["README.md.staged", "readme.md.staged"]); // "README.md.staged and readme.md.staged …"
+ * findStagedPathCollision(["a.staged", "b.staged"]); // undefined
+ * ```
+ */
+export function findStagedPathCollision(
+  stagedPaths: readonly string[],
+): string | undefined {
+  const byFolded = new Map<string, string>();
+  for (const path of stagedPaths) {
+    const folded = path.toLowerCase();
+    const previous = byFolded.get(folded);
+    if (previous !== undefined) {
+      return `${previous} and ${path} differ only by letter case, so they are the same file on a case-insensitive file system`;
+    }
+    byFolded.set(folded, path);
+  }
+  for (const path of stagedPaths) {
+    const segments = path.toLowerCase().split("/");
+    for (let i = 1; i < segments.length; i++) {
+      const ancestor = byFolded.get(segments.slice(0, i).join("/"));
+      if (ancestor !== undefined) {
+        return `${ancestor} would be both a file and the directory holding ${path}`;
+      }
+    }
+  }
+  return undefined;
+}
+
 function collectInto(
   root: string,
   currentDir: string,
@@ -140,23 +183,6 @@ function removeBestEffort(path: string): void {
 }
 
 /**
- * Removes every entry of `groundworkDir` whose name starts with `prefix` --
- * work directories a crashed earlier run left behind -- best effort (a
- * failure only warns). Nothing else there is touched; a missing
- * `groundworkDir` is a no-op.
- */
-function removeStaleWorkDirs(groundworkDir: string, prefix: string): void {
-  if (!existsSync(groundworkDir)) {
-    return;
-  }
-  for (const name of readdirSync(groundworkDir)) {
-    if (name.startsWith(prefix)) {
-      removeBestEffort(join(groundworkDir, name));
-    }
-  }
-}
-
-/**
  * The swap's final rename and the restore of the parked previous staging
  * both failed: the parked copy is the only one left. Its `errors` are
  * `[swapError, restoreError]`.
@@ -181,6 +207,33 @@ function incompleteStagingError(
 }
 
 /**
+ * Removes every entry of `groundworkDir` whose name starts with
+ * `.<dirName>-` -- work directories a crashed earlier run left behind --
+ * best effort (a removal failure only warns). Any matching entry is removed,
+ * whatever made it: `.groundwork/` is CLI-owned. Nothing else there is
+ * touched; a missing `groundworkDir` is a no-op. Failing to list
+ * `groundworkDir` at all throws {@link incompleteStagingError}.
+ */
+function removeStaleWorkDirs(target: StagingTarget): void {
+  const { groundworkDir, dirName, noun } = target;
+  if (!existsSync(groundworkDir)) {
+    return;
+  }
+  let names: string[];
+  try {
+    names = readdirSync(groundworkDir);
+  } catch (cause) {
+    throw incompleteStagingError(noun, join(groundworkDir, dirName), cause);
+  }
+  const prefix = `.${dirName}-`;
+  for (const name of names) {
+    if (name.startsWith(prefix)) {
+      removeBestEffort(join(groundworkDir, name));
+    }
+  }
+}
+
+/**
  * Moves `newDir` into place at `destDir`, parking any previous `destDir` at
  * `parkedDir` first. If the final rename fails the parked copy is renamed
  * back and the rename failure rethrown; if that restore fails too, throws a
@@ -190,11 +243,13 @@ function incompleteStagingError(
  * `destDir`.
  */
 function swapInto(
-  noun: string,
+  target: StagingTarget,
   newDir: string,
   destDir: string,
   parkedDir: string,
 ): void {
+  const { noun } = target;
+  const was = target.plural ? "were" : "was";
   const hadPrevious = existsSync(destDir);
   if (hadPrevious) {
     renameSync(destDir, parkedDir);
@@ -210,7 +265,7 @@ function swapInto(
     } catch (restoreError) {
       throw new ParkedStagingError(
         [error, restoreError],
-        `moving the new ${noun} into ${destDir} failed and restoring the previous one failed too; the previous ${noun} was parked at ${parkedDir} -- fix the cause and re-run the CLI: the staging is derived data, regenerated from the template, and the next run removes the parked copy`,
+        `moving the new ${noun} into ${destDir} failed and restoring the previous one failed too; the previous ${noun} ${was} parked at ${parkedDir} -- fix the cause and re-run the CLI: the staging is derived data, regenerated from the template, and the next run removes the parked copy`,
       );
     }
     throw error;
@@ -227,6 +282,7 @@ function swapInto(
  *   groundworkDir: "/work/app/.groundwork",
  *   dirName: "packs",
  *   noun: "packs",
+ *   plural: true,
  * };
  * ```
  */
@@ -237,26 +293,32 @@ export interface StagingTarget {
   readonly dirName: string;
   /** What is being staged, for messages: `"baseline"`, `"packs"`. */
   readonly noun: string;
+  /** Whether `noun` takes a plural verb in messages ("the previous packs were", not "was"). */
+  readonly plural: boolean;
 }
 
 /**
  * The first step of every staging run: refuses a symlinked `groundworkDir`
  * or `<groundworkDir>/<dirName>` (before anything is deleted or written),
  * then sweeps the `.<dirName>-*` work directories a crashed earlier run
- * left (best effort). Returns the staging directory's path.
+ * left. The sweep removes **every** entry of the CLI-owned `.groundwork/`
+ * whose name matches `.<dirName>-*`, whatever created it; a failure to
+ * remove one only warns. Returns the staging directory's path.
  *
- * @throws `Error` naming the path when either directory is a symlink.
+ * @throws `Error` naming the path when either directory is a symlink; the
+ * standard `.groundwork/ is incomplete -- re-run` `Error`, with `cause`, when
+ * `groundworkDir` cannot be listed for the sweep.
  *
  * @example
  * ```ts
- * const destDir = prepareStaging({ groundworkDir, dirName: "packs", noun: "packs" });
+ * const destDir = prepareStaging({ groundworkDir, dirName: "packs", noun: "packs", plural: true });
  * ```
  */
 export function prepareStaging(target: StagingTarget): string {
   const destDir = join(target.groundworkDir, target.dirName);
   assertNotSymlink(target.groundworkDir);
   assertNotSymlink(destDir);
-  removeStaleWorkDirs(target.groundworkDir, `.${target.dirName}-`);
+  removeStaleWorkDirs(target);
   return destDir;
 }
 
@@ -351,7 +413,7 @@ export function stageAtomically<T>(
     const newDir = join(workDir, target.dirName);
     mkdirSync(newDir);
     const result = write(newDir);
-    swapInto(target.noun, newDir, destDir, join(workDir, "previous"));
+    swapInto(target, newDir, destDir, join(workDir, "previous"));
     return result;
   } catch (cause) {
     if (cause instanceof ParkedStagingError) {

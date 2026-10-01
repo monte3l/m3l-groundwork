@@ -257,7 +257,8 @@ examples. From 1.0.0, the public API is:
    `.groundwork/packs/<name>/pack.json.staged` and
    `.groundwork/packs/<name>/files/<path>.staged`, listed with their original
    path and a `sha256` in `inventory.json`'s `stagedPacks`. All packs are
-   staged together and swapped in atomically.
+   staged together: written to a temp sibling directory and swapped in by
+   rename, never half-written.
 5. **The `engines.node` floor** -- narrowing it is breaking; widening it
    isn't.
 6. **`/customize`'s invocation name**, and the promise that it reads every

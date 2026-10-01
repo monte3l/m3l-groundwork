@@ -7,9 +7,9 @@
  * every file under an inert `<path>.staged` name, so `/customize`'s Step 0
  * can install a pack from a self-contained copy -- after confirmation --
  * without any toolchain globbing the project ever picking a staged file up.
- * All packs are staged together and swapped into place in one rename, the
- * same atomic lifecycle `baseline-stage.ts` uses (both build on
- * `staging.ts`).
+ * All packs are written together to a temporary sibling directory and
+ * swapped in by rename, so `packs/` is never half-written -- the same
+ * lifecycle `baseline-stage.ts` uses (both build on `staging.ts`).
  */
 import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -19,6 +19,7 @@ import {
   STAGED_SUFFIX,
   clearStaging,
   collectTemplateFiles,
+  findStagedPathCollision,
   prepareStaging,
   stageAtomically,
   stagedNameFor,
@@ -118,6 +119,31 @@ function assertSingleSegmentName(name: string): void {
       `stagePacks: pack name ${JSON.stringify(name)} is not a single directory name`,
     );
   }
+  if (name.includes(":")) {
+    throw new Error(
+      `stagePacks: pack name ${JSON.stringify(name)} contains ":", which Windows reads as a drive letter or an alternate data stream`,
+    );
+  }
+}
+
+/**
+ * Whether `filesDir` is a directory. A missing path answers `false`; any
+ * other `statSync` failure (a permission error, say) becomes a plan-time
+ * `Error` naming the pack and the path, with the failure as `cause` -- seen
+ * before anything is written, it is a template defect or a permission
+ * problem to fix, not an "incomplete, re-run" staging failure.
+ */
+function isFilesDir(name: string, filesDir: string): boolean {
+  try {
+    return (
+      statSync(filesDir, { throwIfNoEntry: false })?.isDirectory() === true
+    );
+  } catch (cause) {
+    throw new Error(
+      `stagePacks: could not inspect pack "${name}"'s files directory ${filesDir}`,
+      { cause },
+    );
+  }
 }
 
 function serializeManifest(name: string, manifest: Pack["manifest"]): Buffer {
@@ -131,12 +157,17 @@ function serializeManifest(name: string, manifest: Pack["manifest"]): Buffer {
 }
 
 /**
- * Validates and projects every pack before anything is touched. Four
+ * Validates and projects every pack before anything is touched. These
  * defects are refused, each with its own `Error` (no `cause`): a pack name
- * that is not a single directory name or is shared by two packs, a missing
- * `filesDir`, two files in one pack installing to the same path, and a
- * tokenized install path whose staged name would land outside the pack's
- * `files/` staging directory (CWE-22, docs/assurance-case.md).
+ * that is not a single directory name, contains `:`, or is shared by two
+ * packs (also when the two differ only by letter case); a missing
+ * `filesDir`; two files in one pack installing to the same path; an install
+ * path containing `:` (a drive letter or alternate data stream on Windows);
+ * a tokenized install path whose staged name would land outside the pack's
+ * `files/` staging directory (CWE-22, docs/assurance-case.md); and two
+ * staged names in one pack that would land on the same file
+ * ({@link findStagedPathCollision}). A `filesDir` that cannot be inspected
+ * at all is refused with its failure as `cause` (see `isFilesDir`).
  */
 function planPacks(
   packs: readonly Pack[],
@@ -144,7 +175,7 @@ function planPacks(
   tokens: TokenTable,
 ): PlannedPack[] {
   const seen = new Set<string>();
-  return packs.map(({ manifest, filesDir }): PlannedPack => {
+  const plan = packs.map(({ manifest, filesDir }): PlannedPack => {
     const name = manifest.name;
     assertSingleSegmentName(name);
     if (seen.has(name)) {
@@ -153,7 +184,7 @@ function planPacks(
       );
     }
     seen.add(name);
-    if (statSync(filesDir, { throwIfNoEntry: false })?.isDirectory() !== true) {
+    if (!isFilesDir(name, filesDir)) {
       throw new Error(
         `stagePacks: pack "${name}"'s files directory ${filesDir} does not exist`,
       );
@@ -162,6 +193,11 @@ function planPacks(
     const files = [...collectTemplateFiles(filesDir, tokens)]
       .sort(([a], [b]) => (a < b ? -1 : 1))
       .map(([path, sourcePath]) => {
+        if (path.includes(":")) {
+          throw new Error(
+            `stagePacks: pack "${name}"'s file ${toPosixPath(path)} contains ":", which Windows reads as a drive letter or an alternate data stream`,
+          );
+        }
         const destPath = join(stagedFilesDir, stagedNameFor(path));
         if (!isPathContained(destPath, stagedFilesDir)) {
           throw new Error(
@@ -170,8 +206,23 @@ function planPacks(
         }
         return { path, sourcePath };
       });
+    const collision = findStagedPathCollision(
+      files.map(({ path }) => toPosixPath(stagedNameFor(path))),
+    );
+    if (collision !== undefined) {
+      throw new Error(
+        `stagePacks: two of pack "${name}"'s staged files collide: ${collision}; rename one of them under ${filesDir}`,
+      );
+    }
     return { name, manifestBytes: serializeManifest(name, manifest), files };
   });
+  const nameCollision = findStagedPathCollision(plan.map(({ name }) => name));
+  if (nameCollision !== undefined) {
+    throw new Error(
+      `stagePacks: two packs' staging directories collide: ${nameCollision}; pack names must be unique ignoring case`,
+    );
+  }
+  return plan;
 }
 
 /**
@@ -253,22 +304,34 @@ function writePack(plan: PlannedPack, newDir: string): StagedPack {
  *
  * What is guaranteed:
  * - The plan is validated first, before anything is deleted or written: a
- *   pack name that is not a single directory name or is used by two packs,
- *   a missing `filesDir`, two files in one pack installing to the same path,
- *   or a staged name that would escape its pack's staging directory throws
- *   its own `Error`, leaving `.groundwork/` exactly as it was.
+ *   pack name that is not a single directory name, contains `:`, or is used
+ *   by two packs (ignoring case), a missing `filesDir`, two files in one
+ *   pack installing to the same path, an install path containing `:`, a
+ *   staged name that would escape its pack's staging directory, or two
+ *   staged names in one pack landing on the same file (equal once
+ *   case-folded, or one a directory prefix of the other) throws its own
+ *   `Error`, leaving `.groundwork/` exactly as it was. A `filesDir` that
+ *   cannot be inspected (a permission error) throws a plan `Error` naming
+ *   the pack and path, with the failure as `cause`.
  * - Then, still before anything is deleted or written, `groundworkDir` and
- *   `<groundworkDir>/packs` are checked not to be symlinks, and any
- *   `.packs-*` work directory a crashed earlier run left is removed (best
- *   effort; a failure only warns). `.baseline-*` work directories are left
- *   alone.
+ *   `<groundworkDir>/packs` are checked not to be symlinks, and every
+ *   `.packs-*` entry of the CLI-owned `groundworkDir` -- work directories a
+ *   crashed earlier run left -- is removed (best effort; a failure to remove
+ *   one only warns, a failure to list `groundworkDir` throws). `.baseline-*`
+ *   entries are left alone.
  * - When `packs` is empty, any previous `packs/` is removed and nothing is
  *   created.
  * - Otherwise every pack is written into one temporary `.packs-*` sibling
- *   directory (each file created exclusively, `wx`) and swapped over
- *   `packs/` by rename only after every copy succeeded, so a failure leaves
- *   any previous `packs/` intact; a previous `packs/` is replaced wholesale
- *   (a pack no longer passed, or a file a pack dropped, does not linger).
+ *   directory (each file created exclusively, `wx`) and swapped in by rename
+ *   only after every copy succeeded, so `packs/` is never half-written and a
+ *   failure leaves any previous `packs/` intact; a previous `packs/` is
+ *   replaced wholesale (a pack no longer passed, or a file a pack dropped,
+ *   does not linger).
+ * - With a previous `packs/`, the swap is two renames: the previous one is
+ *   parked inside the temporary directory, then the new one moved into
+ *   place. A process killed between the two leaves `packs/` absent and the
+ *   previous copy at `.packs-XXXXXX/previous`; the next run's sweep removes
+ *   it and regenerates the staging.
  * - If the final swap rename fails, the previous `packs/` is renamed back.
  *   Only if that restore also fails is `packs/` left absent: the previous
  *   staging then survives, parked inside the temporary directory, which is
@@ -276,8 +339,9 @@ function writePack(plan: PlannedPack, newDir: string): StagedPack {
  * - The temporary directory is otherwise always removed; a failure to remove
  *   it only warns, naming its path.
  *
- * @throws `Error` (no `cause`, no re-run advice) for an invalid plan, as
- * above; `Error` before any delete or write when `groundworkDir` or
+ * @throws `Error` (no re-run advice; no `cause` except for an uninspectable
+ * `filesDir`) for an invalid plan, as above; `Error` before any delete or
+ * write when `groundworkDir` or
  * `<groundworkDir>/packs` is a symlink; `AggregateError` of the swap and
  * restore failures, naming where the previous `packs/` is parked, when both
  * renames fail; the `AssertionError` itself, unwrapped, if the staged-path
@@ -302,6 +366,7 @@ export function stagePacks(
     groundworkDir,
     dirName: PACKS_DIR_NAME,
     noun: "packs",
+    plural: true,
   };
   const plan = planPacks(packs, join(groundworkDir, PACKS_DIR_NAME), tokens);
   prepareStaging(target);

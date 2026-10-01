@@ -158,6 +158,10 @@ describe("stagePacks -- atomic swap restore", () => {
     expect(aggregate.errors).toEqual([swapFailure, restoreFailure]);
     expect(aggregate.message).toContain("re-run");
     expect(aggregate.message).not.toContain("by hand");
+    // "packs" is plural; the message must read grammatically ("were
+    // parked"), not baseline-stage.ts's singular-mass-noun phrasing ("the
+    // previous baseline was parked") copied verbatim onto a plural noun.
+    expect(aggregate.message).toMatch(/previous (staged )?packs were parked/);
 
     expect(existsSync(packsDir)).toBe(false);
     const parkedDirs = readdirSync(groundworkDir).filter(

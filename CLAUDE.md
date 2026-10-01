@@ -55,7 +55,8 @@ packages/cli/          Phase A: the offline bootstrapper CLI
                           that locates templates/ and the plugin payload),
                           baseline-stage.ts (stages absent baseline files as
                           inert .staged copies), pack-stage.ts (the same for
-                          every pack, atomically, all packs as one unit),
+                          every pack, all packs as one unit, written to a
+                          temp sibling and swapped in by rename),
                           staging.ts (the suffix, posix-path rule and swap/
                           sweep helpers both share), fs-guard.ts (the shared
                           symlink refusal), fatal.ts + format-error.ts (the
@@ -771,7 +772,7 @@ set for one file.
   inventory still reads additions from it, and Step 0 reports a vanished path
   and asks for a re-run rather than guessing. `report.ts`'s cap estimate reads
   `templateRoot` inside the CLI run itself, where it still exists. Staged
-  pack files are inert `.staged` copies and staged atomically, like
+  pack files are inert `.staged` copies, written to a temp sibling and swapped in by rename (never half-written), like
   `baseline/`; the staging refuses a symlinked `.groundwork` or `packs/`
   directory.
 - **Adopt mode's post-merge cap counts (in `report.ts`) are an estimate, not

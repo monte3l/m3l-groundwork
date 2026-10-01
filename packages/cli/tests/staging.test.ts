@@ -11,7 +11,12 @@
  * the re-export identity itself.
  */
 import { describe, expect, it } from "vitest";
-import { STAGED_SUFFIX, stagedNameFor, toPosixPath } from "../src/staging.js";
+import {
+  STAGED_SUFFIX,
+  findStagedPathCollision,
+  stagedNameFor,
+  toPosixPath,
+} from "../src/staging.js";
 import {
   STAGED_SUFFIX as baselineStagedSuffix,
   stagedNameFor as baselineStagedNameFor,
@@ -45,5 +50,52 @@ describe("staging.ts exports", () => {
 
   it("baseline-stage.ts re-exports the SAME toPosixPath function, not a reimplementation (reference identity)", () => {
     expect(baselineToPosixPath).toBe(toPosixPath);
+  });
+});
+
+describe("findStagedPathCollision (round-2 item 4)", () => {
+  it.each([
+    [
+      "two staged names equal after case-fold",
+      ["README.md.staged", "readme.md.staged"],
+      ["README.md.staged", "readme.md.staged"],
+    ],
+    [
+      "one staged name is a proper directory-prefix of another",
+      ["x.staged", "x.staged/y.staged"],
+      ["x.staged", "x.staged/y.staged"],
+    ],
+    [
+      "a directory-prefix collision that ALSO needs case-folding to match (ancestor segment 'X.staged' folds to 'x.staged')",
+      ["X.staged", "x.staged/y.staged"],
+      ["X.staged", "x.staged/y.staged"],
+    ],
+    [
+      "the same directory-prefix pair in reverse array order",
+      ["x.staged/y.staged", "x.staged"],
+      ["x.staged/y.staged", "x.staged"],
+    ],
+  ])("flags %s", (_label, paths, expectedMentions) => {
+    const collision = findStagedPathCollision(paths);
+    expect(collision).toBeDefined();
+    for (const mention of expectedMentions) {
+      expect(collision).toContain(mention);
+    }
+  });
+
+  it.each([
+    ["no paths at all", []],
+    ["a single path", ["only.staged"]],
+    ["two unrelated flat names", ["a.staged", "b.staged"]],
+    [
+      "two sibling files under the same directory (neither is a prefix of the other)",
+      ["x.staged/y.staged", "x.staged/z.staged"],
+    ],
+    [
+      "a mere string prefix without a path-segment boundary (must not false-positive)",
+      ["abc.staged", "abcd.staged"],
+    ],
+  ])("does not flag %s", (_label, paths) => {
+    expect(findStagedPathCollision(paths)).toBeUndefined();
   });
 });

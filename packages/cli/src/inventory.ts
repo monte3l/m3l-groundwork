@@ -19,9 +19,10 @@
  * of its staged bytes, so `/customize` can verify a copy before installing it.
  * Schema 5 also carries `stagedPacks`, added additively without a version
  * bump: every pack staged the same inert way under `.groundwork/packs/<name>/`
- * (`pack-stage.ts`), its manifest included. An inventory without
- * `stagedPacks` came from an earlier schema-5 CLI that staged packs
- * unsuffixed at the same location.
+ * (`pack-stage.ts`), its manifest included. No published release has
+ * written schema 5 yet; an inventory without `stagedPacks` came only from an
+ * unreleased development build, which staged packs unsuffixed at the same
+ * location.
  */
 import {
   existsSync,

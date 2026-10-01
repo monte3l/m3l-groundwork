@@ -137,7 +137,7 @@ dependency -- there isn't one (`packages/cli/package.json`'s
   writes are `.groundwork/inventory.json`, `.groundwork/adoption-report.md`,
   inert `.staged` copies under `.groundwork/baseline/`, the staged pack
   files under `.groundwork/packs/` (inert `.staged` copies too, `pack.json`
-  included, swapped in atomically), both refused if `.groundwork` or a staging directory is a
+  included, written to a temp sibling and swapped in by rename, never half-written), both refused if `.groundwork` or a staging directory is a
   symlink, and a
   guarded, additive `/customize` copy -- there is no code path by
   which surveying an arbitrary, untrusted project can reach the same

@@ -2,20 +2,23 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * `runAdopt`'s pack-staging ordering (issue #99): the pack surveys
- * (`planConflicts`/`observeWiring`) are computed first, then
- * `assertAdoptWriteScope(targetDir, plannedPackStagingPaths(...))` runs
- * BEFORE any pack file is written, and only then does `stagePacks` run. A
- * real escaping path can't be constructed through the CLI itself: `--name`
- * is validated against `NPM_NAME_PATTERN` (no `..` survives it) and adopt
- * mode's default project name is `basename(targetDir)`, which can never
- * contain a path separator either -- so this file proves the ordering by
- * mocking `../src/pack-stage.js`'s `plannedPackStagingPaths` to throw (the
- * same shape a real CWE-22 escape would produce) and spying on `stagePacks`
- * to prove it is never reached, the same isolation pattern
- * `main-pack-errors.test.ts` uses for `packs.js` and
- * `main-pack-wiring-keys.test.ts` uses for proving a failure happens before
- * `.groundwork/` is touched.
+ * `runAdopt`'s pack- and baseline-staging write-scope ordering (issue #99,
+ * extended by round-2 item 3 to the baseline planner too): both
+ * `plannedPackStagingPaths` and `plannedBaselineStagingPaths` must be
+ * computed, and `assertAdoptWriteScope` run against BOTH results, before any
+ * of the three stale `.groundwork/` files are deleted and before either
+ * stager writes anything.
+ *
+ * Unlike an earlier version of this file (which mocked a planner to THROW
+ * directly, a shape a real CWE-22 escape can't actually produce through the
+ * CLI's own input validation -- see the historical note this replaces),
+ * these tests mock a planner to RETURN a real, resolvable, but
+ * out-of-scope path: a project file outside `.groundwork/`.
+ * `assertAdoptWriteScope`'s own `AssertionError` must be the thing that
+ * stops the run -- if the `assertAdoptWriteScope` call wrapping either
+ * planner's result is ever dropped, these tests fail outright (the run
+ * would instead proceed to stage, and for the baseline case delete the
+ * previous `.groundwork/` files, despite the escaping path).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -23,12 +26,12 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type * as BaselineStageModule from "../src/baseline-stage.js";
 import type * as PackStageModule from "../src/pack-stage.js";
 
 const gitInitMock = vi.fn();
@@ -48,13 +51,19 @@ vi.mock("../src/plugin.js", () => ({
   installCustomizeSkillGuarded: installCustomizeSkillGuardedMock,
 }));
 
-const { plannedPackStagingPathsMock, stagePacksMock, callOrder } = vi.hoisted(
-  () => ({
-    plannedPackStagingPathsMock: vi.fn(),
-    stagePacksMock: vi.fn(),
-    callOrder: [] as string[],
-  }),
-);
+const {
+  plannedPackStagingPathsMock,
+  stagePacksMock,
+  plannedBaselineStagingPathsMock,
+  stageBaselineAdditionsMock,
+  callOrder,
+} = vi.hoisted(() => ({
+  plannedPackStagingPathsMock: vi.fn(),
+  stagePacksMock: vi.fn(),
+  plannedBaselineStagingPathsMock: vi.fn(),
+  stageBaselineAdditionsMock: vi.fn(),
+  callOrder: [] as string[],
+}));
 
 vi.mock("../src/pack-stage.js", async (importOriginal) => {
   const actual = await importOriginal<typeof PackStageModule>();
@@ -63,32 +72,64 @@ vi.mock("../src/pack-stage.js", async (importOriginal) => {
     plannedPackStagingPaths: (
       ...args: Parameters<typeof actual.plannedPackStagingPaths>
     ) => {
-      callOrder.push("planned");
+      callOrder.push("pack-planned");
       return plannedPackStagingPathsMock(...args) as ReturnType<
         typeof actual.plannedPackStagingPaths
       >;
     },
     stagePacks: (...args: Parameters<typeof actual.stagePacks>) => {
-      callOrder.push("staged");
+      callOrder.push("pack-staged");
       return stagePacksMock(...args) as ReturnType<typeof actual.stagePacks>;
+    },
+  };
+});
+
+vi.mock("../src/baseline-stage.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof BaselineStageModule>();
+  return {
+    ...actual,
+    plannedBaselineStagingPaths: (
+      ...args: Parameters<typeof actual.plannedBaselineStagingPaths>
+    ) => {
+      callOrder.push("baseline-planned");
+      return plannedBaselineStagingPathsMock(...args) as ReturnType<
+        typeof actual.plannedBaselineStagingPaths
+      >;
+    },
+    stageBaselineAdditions: (
+      ...args: Parameters<typeof actual.stageBaselineAdditions>
+    ) => {
+      callOrder.push("baseline-staged");
+      return stageBaselineAdditionsMock(...args) as ReturnType<
+        typeof actual.stageBaselineAdditions
+      >;
     },
   };
 });
 
 const { main } = await import("../src/main.js");
 
-describe("runAdopt pack-staging ordering (#99)", () => {
+describe("runAdopt pack/baseline-staging write-scope ordering (#99, round-2 item 3)", () => {
   let targetDir: string;
 
   beforeEach(() => {
-    targetDir = mkdtempSync(join(tmpdir(), "main-pack-order-"));
+    targetDir = mkdtempSync(join(tmpdir(), "main-stage-order-"));
     gitInitMock.mockClear();
     runInstallMock.mockClear();
     installCustomizeSkillMock.mockClear();
     installCustomizeSkillGuardedMock.mockClear();
     plannedPackStagingPathsMock.mockReset();
     stagePacksMock.mockReset();
+    plannedBaselineStagingPathsMock.mockReset();
+    stageBaselineAdditionsMock.mockReset();
     callOrder.length = 0;
+    // Safe defaults every test can rely on unless it overrides one: an
+    // empty plan/result never trips assertAdoptWriteScope and never writes
+    // anything real.
+    plannedPackStagingPathsMock.mockImplementation(() => []);
+    stagePacksMock.mockImplementation(() => []);
+    plannedBaselineStagingPathsMock.mockImplementation(() => []);
+    stageBaselineAdditionsMock.mockImplementation(() => []);
   });
 
   afterEach(() => {
@@ -103,28 +144,32 @@ describe("runAdopt pack-staging ordering (#99)", () => {
       JSON.stringify({ name: "acme", type: "module" }),
     );
 
-    plannedPackStagingPathsMock.mockImplementation(() => []);
-    stagePacksMock.mockImplementation(() => []);
-
     main([projectDir]);
 
     expect(plannedPackStagingPathsMock).toHaveBeenCalled();
     expect(stagePacksMock).toHaveBeenCalled();
-    const plannedIndex = callOrder.indexOf("planned");
-    const stagedIndex = callOrder.indexOf("staged");
+    const plannedIndex = callOrder.indexOf("pack-planned");
+    const stagedIndex = callOrder.indexOf("pack-staged");
     expect(plannedIndex).toBeGreaterThanOrEqual(0);
     expect(stagedIndex).toBeGreaterThan(plannedIndex);
   });
 
-  it("throws, calls stagePacks NEVER, and writes nothing under .groundwork/packs -- no .packs-* dir either -- when plannedPackStagingPaths (the write-scope check's input) throws an escape before any pack is written", () => {
-    const projectDir = join(targetDir, "project-escape");
+  it("throws 'adopt mode wrote outside its scope', calls stagePacks NEVER, and leaves the previous inventory.json/packs/ byte-for-byte intact when plannedPackStagingPaths returns a real but out-of-scope path (a project file, not under .groundwork/)", () => {
+    const projectDir = join(targetDir, "project-pack-escape");
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(
       join(projectDir, "package.json"),
       JSON.stringify({ name: "acme", type: "module" }),
     );
     const groundworkDir = join(projectDir, ".groundwork");
-    mkdirSync(groundworkDir, { recursive: true });
+    mkdirSync(join(groundworkDir, "packs", "old-pack"), { recursive: true });
+    const priorPackFile = join(
+      groundworkDir,
+      "packs",
+      "old-pack",
+      "pack.json.staged",
+    );
+    writeFileSync(priorPackFile, "{}");
     const inventoryPath = join(groundworkDir, "inventory.json");
     const priorInventory = JSON.stringify({
       schemaVersion: 0,
@@ -132,12 +177,12 @@ describe("runAdopt pack-staging ordering (#99)", () => {
     });
     writeFileSync(inventoryPath, priorInventory);
 
-    const escapeError = new Error(
-      "plannedPackStagingPaths: staged path escapes the staging directory",
-    );
-    plannedPackStagingPathsMock.mockImplementation(() => {
-      throw escapeError;
-    });
+    // A REAL, resolvable path -- not a contrived throw -- that is genuinely
+    // outside .groundwork/: assertAdoptWriteScope's own AssertionError must
+    // be what stops the run.
+    plannedPackStagingPathsMock.mockImplementation(() => [
+      join(projectDir, "package.json"),
+    ]);
 
     let thrown: unknown;
     try {
@@ -146,16 +191,61 @@ describe("runAdopt pack-staging ordering (#99)", () => {
       thrown = error;
     }
 
-    expect(thrown).toBe(escapeError);
+    expect((thrown as Error).message).toMatch(
+      /adopt mode wrote outside its scope/,
+    );
     expect(stagePacksMock).not.toHaveBeenCalled();
-    expect(existsSync(join(groundworkDir, "packs"))).toBe(false);
-    expect(
-      readdirSync(groundworkDir).some((name) => name.startsWith(".packs-")),
-    ).toBe(false);
-    // The pre-existing inventory.json survives the failed run byte-for-byte
-    // -- same discrimination main-pack-wiring-keys.test.ts's adopt-mode test
-    // uses for "fails before .groundwork/ is touched".
+    expect(stageBaselineAdditionsMock).not.toHaveBeenCalled();
+
     expect(existsSync(inventoryPath)).toBe(true);
     expect(readFileSync(inventoryPath, "utf8")).toBe(priorInventory);
+    expect(existsSync(priorPackFile)).toBe(true);
+    expect(readFileSync(priorPackFile, "utf8")).toBe("{}");
+  });
+
+  it("throws 'adopt mode wrote outside its scope', calls stageBaselineAdditions and stagePacks NEVER, and leaves the previous inventory.json/packs/ byte-for-byte intact when plannedBaselineStagingPaths returns a real but out-of-scope path", () => {
+    const projectDir = join(targetDir, "project-baseline-escape");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "package.json"),
+      JSON.stringify({ name: "acme", type: "module" }),
+    );
+    const groundworkDir = join(projectDir, ".groundwork");
+    mkdirSync(join(groundworkDir, "packs", "old-pack"), { recursive: true });
+    const priorPackFile = join(
+      groundworkDir,
+      "packs",
+      "old-pack",
+      "pack.json.staged",
+    );
+    writeFileSync(priorPackFile, "{}");
+    const inventoryPath = join(groundworkDir, "inventory.json");
+    const priorInventory = JSON.stringify({
+      schemaVersion: 0,
+      marker: "pre-existing",
+    });
+    writeFileSync(inventoryPath, priorInventory);
+
+    plannedBaselineStagingPathsMock.mockImplementation(() => [
+      join(projectDir, "package.json"),
+    ]);
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect((thrown as Error).message).toMatch(
+      /adopt mode wrote outside its scope/,
+    );
+    expect(stageBaselineAdditionsMock).not.toHaveBeenCalled();
+    expect(stagePacksMock).not.toHaveBeenCalled();
+
+    expect(existsSync(inventoryPath)).toBe(true);
+    expect(readFileSync(inventoryPath, "utf8")).toBe(priorInventory);
+    expect(existsSync(priorPackFile)).toBe(true);
+    expect(readFileSync(priorPackFile, "utf8")).toBe("{}");
   });
 });

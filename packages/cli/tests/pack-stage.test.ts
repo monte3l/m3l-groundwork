@@ -28,7 +28,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join, matchesGlob, relative } from "node:path";
+import { dirname, join, matchesGlob, relative } from "node:path";
 import type { CapCounts } from "../src/caps.js";
 import { listPackNames, loadPack } from "../src/packs.js";
 import type { Pack, PackManifest } from "../src/packs.js";
@@ -594,6 +594,55 @@ describe("stagePacks", () => {
       }
     });
 
+    it("throws its own distinct Error naming both pack names -- no 'incomplete'/'re-run' wording, no cause -- when two packs' names differ only by letter case ('Foo' vs 'foo'), leaving a previous staging intact", () => {
+      const rootA = mkdtempSync(join(tmpdir(), "pack-stage-casename-a-"));
+      const rootB = mkdtempSync(join(tmpdir(), "pack-stage-casename-b-"));
+      const groundworkDir = mkdtempSync(
+        join(tmpdir(), "pack-stage-casename-gw-"),
+      );
+      try {
+        // A previous, unrelated successful staging that must survive the
+        // failed run below untouched.
+        const previousRoot = mkdtempSync(
+          join(tmpdir(), "pack-stage-casename-prev-"),
+        );
+        writeFileSync(join(previousRoot, "ok.txt"), "ok\n");
+        stagePacks([makePack("previous", previousRoot)], groundworkDir, {});
+        const before = listFiles(join(groundworkDir, "packs"));
+        expect(before.length).toBeGreaterThan(0);
+
+        writeFileSync(join(rootA, "a.txt"), "a\n");
+        writeFileSync(join(rootB, "b.txt"), "b\n");
+        const packA = makePack("Foo", rootA);
+        const packB = makePack("foo", rootB);
+
+        let thrown: unknown;
+        try {
+          stagePacks([packA, packB], groundworkDir, {});
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).toContain("Foo");
+        expect(message).toContain("foo");
+        expect(message).not.toContain("incomplete");
+        expect(message).not.toContain("re-run");
+        expect((thrown as Error).cause).toBeUndefined();
+        expect(listFiles(join(groundworkDir, "packs"))).toEqual(before);
+        expect(
+          readdirSync(groundworkDir).some((n) => n.startsWith(".packs-")),
+        ).toBe(false);
+
+        rmSync(previousRoot, { recursive: true, force: true });
+      } finally {
+        rmSync(rootA, { recursive: true, force: true });
+        rmSync(rootB, { recursive: true, force: true });
+        rmSync(groundworkDir, { recursive: true, force: true });
+      }
+    });
+
     it.each([["a/b"], [".."], ["."], [""]])(
       "throws its own distinct Error naming the pack name -- no 'incomplete'/'re-run' wording, no cause -- when a pack's manifest.name %j is not a single directory name",
       (badName) => {
@@ -617,6 +666,76 @@ describe("stagePacks", () => {
           expect(thrown).toBeInstanceOf(Error);
           const message = (thrown as Error).message;
           expect(message).toContain(JSON.stringify(badName));
+          expect(message).not.toContain("incomplete");
+          expect(message).not.toContain("re-run");
+          expect((thrown as Error).cause).toBeUndefined();
+          expect(existsSync(join(groundworkDir, "packs"))).toBe(false);
+        } finally {
+          rmSync(filesRoot, { recursive: true, force: true });
+          rmSync(groundworkDir, { recursive: true, force: true });
+        }
+      },
+    );
+
+    it.each([["a:b"], ["C:x"]])(
+      "throws its own distinct Error naming the pack name -- no 'incomplete'/'re-run' wording, no cause -- when a pack's manifest.name %j contains a colon",
+      (badName) => {
+        const filesRoot = mkdtempSync(
+          join(tmpdir(), "pack-stage-colon-name-files-"),
+        );
+        const groundworkDir = mkdtempSync(
+          join(tmpdir(), "pack-stage-colon-name-gw-"),
+        );
+        try {
+          writeFileSync(join(filesRoot, "a.txt"), "a\n");
+          const pack = makePack(badName, filesRoot);
+
+          let thrown: unknown;
+          try {
+            stagePacks([pack], groundworkDir, {});
+          } catch (error) {
+            thrown = error;
+          }
+
+          expect(thrown).toBeInstanceOf(Error);
+          const message = (thrown as Error).message;
+          expect(message).toContain(JSON.stringify(badName));
+          expect(message).not.toContain("incomplete");
+          expect(message).not.toContain("re-run");
+          expect((thrown as Error).cause).toBeUndefined();
+          expect(existsSync(join(groundworkDir, "packs"))).toBe(false);
+        } finally {
+          rmSync(filesRoot, { recursive: true, force: true });
+          rmSync(groundworkDir, { recursive: true, force: true });
+        }
+      },
+    );
+
+    it.each([["dir/a:b.md"], ["c:foo"]])(
+      "throws its own distinct Error -- no 'incomplete'/'re-run' wording, no cause -- when a pack file's install path %j contains a colon",
+      (badPath) => {
+        const filesRoot = mkdtempSync(
+          join(tmpdir(), "pack-stage-colon-path-files-"),
+        );
+        const groundworkDir = mkdtempSync(
+          join(tmpdir(), "pack-stage-colon-path-gw-"),
+        );
+        try {
+          const fullPath = join(filesRoot, ...badPath.split("/"));
+          mkdirSync(dirname(fullPath), { recursive: true });
+          writeFileSync(fullPath, "colon path\n");
+          const pack = makePack("colon-pack", filesRoot);
+
+          let thrown: unknown;
+          try {
+            stagePacks([pack], groundworkDir, {});
+          } catch (error) {
+            thrown = error;
+          }
+
+          expect(thrown).toBeInstanceOf(Error);
+          const message = (thrown as Error).message;
+          expect(message).toContain(badPath);
           expect(message).not.toContain("incomplete");
           expect(message).not.toContain("re-run");
           expect((thrown as Error).cause).toBeUndefined();
@@ -696,6 +815,85 @@ describe("stagePacks", () => {
       rmSync(filesRoot, { recursive: true, force: true });
       rmSync(groundworkDir, { recursive: true, force: true });
     }
+  });
+
+  describe("staged-path collision detection (round-2 item 4)", () => {
+    it("throws its own distinct Error naming both paths -- no 'incomplete'/'re-run' wording, no cause -- when one file's staged name is a directory-prefix of another's (a top-level file 'x' beside a directory 'x.staged/' containing 'y')", () => {
+      const filesRoot = mkdtempSync(
+        join(tmpdir(), "pack-stage-dirprefix-files-"),
+      );
+      const groundworkDir = mkdtempSync(
+        join(tmpdir(), "pack-stage-dirprefix-gw-"),
+      );
+      try {
+        writeFileSync(join(filesRoot, "x"), "the file\n");
+        mkdirSync(join(filesRoot, "x.staged"), { recursive: true });
+        writeFileSync(join(filesRoot, "x.staged", "y"), "the nested file\n");
+
+        let thrown: unknown;
+        try {
+          stagePacks(
+            [makePack("dirprefix-pack", filesRoot)],
+            groundworkDir,
+            {},
+          );
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).toContain("x.staged");
+        expect(message).toContain("x.staged/y.staged");
+        expect(message).not.toContain("incomplete");
+        expect(message).not.toContain("re-run");
+        expect((thrown as Error).cause).toBeUndefined();
+        expect(existsSync(join(groundworkDir, "packs"))).toBe(false);
+      } finally {
+        rmSync(filesRoot, { recursive: true, force: true });
+        rmSync(groundworkDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws its own distinct Error naming both paths -- no 'incomplete'/'re-run' wording, no cause -- when two files' staged names collide only by case (a literal 'readme.md' beside a tokenized name substituting to 'README.md')", () => {
+      const filesRoot = mkdtempSync(
+        join(tmpdir(), "pack-stage-casefold-files-"),
+      );
+      const groundworkDir = mkdtempSync(
+        join(tmpdir(), "pack-stage-casefold-gw-"),
+      );
+      try {
+        writeFileSync(join(filesRoot, "readme.md"), "literal readme\n");
+        writeFileSync(
+          join(filesRoot, "__PROJECT_NAME__.md"),
+          "tokenized readme\n",
+        );
+        const tokens = { PROJECT_NAME: "README" };
+
+        let thrown: unknown;
+        try {
+          stagePacks(
+            [makePack("casefold-pack", filesRoot)],
+            groundworkDir,
+            tokens,
+          );
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).toContain("README.md");
+        expect(message).toContain("readme.md");
+        expect(message).not.toContain("incomplete");
+        expect(message).not.toContain("re-run");
+        expect((thrown as Error).cause).toBeUndefined();
+        expect(existsSync(join(groundworkDir, "packs"))).toBe(false);
+      } finally {
+        rmSync(filesRoot, { recursive: true, force: true });
+        rmSync(groundworkDir, { recursive: true, force: true });
+      }
+    });
   });
 });
 

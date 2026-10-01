@@ -43,8 +43,8 @@ import { planConflicts } from "./conflicts.js";
 import {
   STAGED_BASELINE_DIR,
   STAGED_SUFFIX,
+  plannedBaselineStagingPaths,
   stageBaselineAdditions,
-  stagedNameFor,
 } from "./baseline-stage.js";
 import { assertNotSymlink } from "./fs-guard.js";
 import {
@@ -571,21 +571,33 @@ export function assertAdoptWriteScope(
  * `templates/packs/` is surveyed (`main` rejects `--pack` in this mode, see
  * `assertAdoptUsage`) and staged, unapplied and inert, at
  * `.groundwork/packs/<name>/` -- its manifest as `pack.json.staged`, its
- * files as `files/<path>.staged` -- all packs swapped into place in one
- * atomic rename (`stagePacks`); absent baseline files are staged as inert
- * `<path>.staged` copies at `.groundwork/baseline/`. Every pack is loaded
- * and validated by `loadPack`, surveyed (`planConflicts`, `observeWiring`),
- * and its staging plan validated and scope-checked against
- * {@link assertAdoptWriteScope} (`plannedPackStagingPaths`) first, so an
- * invalid pack (a malformed manifest, a prototype-sensitive key in its
- * wiring, an unstageable file tree) or an out-of-scope staging path throws
- * before anything under `.groundwork/` is deleted or written. A stale
- * `inventory.json`/`adoption-report.md`/`adoption-decisions.json` is then
- * deleted before any staging or install; then packs and the baseline are
- * staged, the `/customize` skill is installed, `adoption-report.md` is
- * written, and `inventory.json` is written last (atomically, via a temp file
- * and rename). Only console output follows it, so `inventory.json`'s
- * presence means every step of the run completed.
+ * files as `files/<path>.staged` -- all packs written to a temporary
+ * sibling directory and swapped in by rename, so `packs/` is never
+ * half-written (`stagePacks`); absent baseline files are staged the same
+ * way as inert `<path>.staged` copies at `.groundwork/baseline/`. With a
+ * previous staging in place each swap is two renames (park the old
+ * directory, then move the new one in); a kill between them leaves that
+ * directory absent with the old copy under its `.packs-*`/`.baseline-*`
+ * work directory's `previous/` -- safe, because `inventory.json` was
+ * already deleted, so nothing reads the gap as a completed run.
+ *
+ * Checked before anything under `.groundwork/` is deleted or written, in
+ * this order: the three stale-file paths are scope-checked against
+ * {@link assertAdoptWriteScope}; every pack is loaded and validated by
+ * `loadPack` and surveyed (`planConflicts`, `observeWiring`); the pack
+ * staging plan (`plannedPackStagingPaths`) and the baseline staging plan
+ * (`plannedBaselineStagingPaths`) are each validated and every path they
+ * would write scope-checked. So an invalid pack (a malformed manifest, a
+ * prototype-sensitive key in its wiring, an unstageable file tree), an
+ * invalid baseline plan, or an out-of-scope staging path throws with the
+ * previous `.groundwork/` untouched. Only then is a stale
+ * `inventory.json`/`adoption-report.md`/`adoption-decisions.json` deleted;
+ * then packs and the baseline are staged, the `/customize` skill is
+ * installed, `adoption-report.md` is written, and `inventory.json` is
+ * written last (atomically, via a temp file and rename). If writing
+ * `inventory.json` fails, the just-written report is removed (best effort,
+ * never masking that failure). Only console output follows it, so
+ * `inventory.json`'s presence means every step of the run completed.
  */
 function runAdopt(options: CliOptions, detection: ModeDetection): void {
   console.log(`adopt mode: ${detection.signal}`);
@@ -607,10 +619,10 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   ]);
 
   // Every pack must pass loadPack's validation (including its
-  // prototype-sensitive wiring-key check), and its survey and staging plan
-  // must be computed and scope-checked, before anything under .groundwork/
-  // is touched, so an invalid pack fails the run with the previous
-  // inventory/report still intact rather than half-cleared.
+  // prototype-sensitive wiring-key check), and both staging plans (packs and
+  // baseline) must be computed and scope-checked, before anything under
+  // .groundwork/ is touched, so an invalid pack or plan fails the run with
+  // the previous inventory/report still intact rather than half-cleared.
   const loadedPacks: Pack[] = listPackNames().map((name) => loadPack(name));
   const packs: PackSurvey[] = loadedPacks.map((pack) => ({
     name: pack.manifest.name,
@@ -625,6 +637,10 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     options.targetDir,
     plannedPackStagingPaths(loadedPacks, groundworkDir, tokens),
   );
+  assertAdoptWriteScope(
+    options.targetDir,
+    plannedBaselineStagingPaths(templateRoot, conflicts, groundworkDir, tokens),
+  );
 
   // A previous run's inventory/report -- and the decisions /customize
   // recorded against them -- must not survive a run that fails part-way:
@@ -637,14 +653,6 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   rmSync(decisionsPath, { force: true });
 
   const stagedPacks = stagePacks(loadedPacks, groundworkDir, tokens);
-
-  // Scope-checked as planned, before any of them is written.
-  assertAdoptWriteScope(
-    options.targetDir,
-    conflicts
-      .filter((c) => c.status === "absent")
-      .map((c) => join(stagedBaselineDir, stagedNameFor(c.relPath))),
-  );
   const stagedBaselineFiles = stageBaselineAdditions(
     templateRoot,
     conflicts,
@@ -680,7 +688,21 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   // "wx": the path was removed above, so anything there now (a symlink
   // raced in mid-run) makes the write fail instead of being followed.
   writeFileSync(reportPath, renderReport(inventory), { flag: "wx" });
-  writeInventory(inventory, groundworkDir);
+  try {
+    writeInventory(inventory, groundworkDir);
+  } catch (error) {
+    // Without inventory.json the run did not complete; a report left behind
+    // would read as if it had. Best effort: a failed removal only warns, so
+    // it can never mask the write failure being rethrown.
+    try {
+      rmSync(reportPath, { force: true });
+    } catch (cleanupError) {
+      console.warn(
+        `warning: could not remove ${reportPath} after inventory.json failed to write -- delete it by hand (${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)})`,
+      );
+    }
+    throw error;
+  }
 
   console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);
   console.log(`wrote ${relative(options.targetDir, reportPath)}`);
