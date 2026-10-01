@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
 // SPDX-License-Identifier: MIT
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   isRecord,
   mergePackageScripts,
@@ -305,8 +305,15 @@ describe("mergeSettingsTopLevel", () => {
   });
 
   it("does not mistake an inherited property name for an existing key", () => {
-    const merged = mergeSettingsTopLevel({}, { constructor: "x" });
-    expect(Object.hasOwn(merged, "constructor")).toBe(true);
+    // `constructor` is excluded here: it is now one of the three keys the
+    // merge guard rejects outright (CWE-1321, see the dedicated
+    // "prototype-key guard" describe block below). `toString` is an
+    // inherited Object.prototype member that stays an ordinary, acceptable
+    // fragment key, so it is still the right fixture for this test's actual
+    // claim: Object.hasOwn, not inherited-property presence, decides
+    // whether a key already exists.
+    const merged = mergeSettingsTopLevel({}, { toString: "x" });
+    expect(Object.hasOwn(merged, "toString")).toBe(true);
   });
 
   it("rejects a fragment key of hooks, which mergeSettingsHooks owns", () => {
@@ -340,5 +347,87 @@ describe("mergeSettingsTopLevel", () => {
     const fragment = { config: { b: 2, a: 1 } };
     expect(() => mergeSettingsTopLevel(existing, fragment)).not.toThrow();
     expect(mergeSettingsTopLevel(existing, fragment)).toEqual(existing);
+  });
+});
+
+describe("prototype-key guard (CWE-1321)", () => {
+  const DANGEROUS_KEYS = ["__proto__", "constructor", "prototype"] as const;
+
+  /**
+   * Builds an object whose OWN key is literally `key`, via JSON.parse rather
+   * than object-literal syntax. `{ __proto__: value }` and
+   * `obj["__proto__"] = value` both invoke the Annex B exotic setter, which
+   * reassigns the target object's own [[Prototype]] internal slot rather
+   * than creating a data property -- JSON.parse (like the real
+   * pack-fragment files this module reads) does not, so this is the only
+   * way to reproduce an attacker-controlled fragment that actually carries
+   * a dangerous key as an own, enumerable property.
+   */
+  function buildOwnKeyFragment<T>(key: string, value: T): Record<string, T> {
+    return JSON.parse(`{"${key}":${JSON.stringify(value)}}`) as Record<
+      string,
+      T
+    >;
+  }
+
+  afterEach(() => {
+    // Unconditional, not gated on a prior failure: `not.toHaveProperty`
+    // can't prove own-key absence (it falls back to `in`, walking the
+    // prototype chain), so a leaked `polluted` property on Object.prototype
+    // from one test's probe would otherwise silently poison every later
+    // test's `({}).polluted` check in this file and any file run after it.
+    Reflect.deleteProperty(Object.prototype, "polluted");
+  });
+
+  // The toThrow(key) assertions are the proof; the Object.prototype checks
+  // are only a regression tripwire, since the old code swapped the merge
+  // result's own prototype rather than polluting Object.prototype.
+  it.each(DANGEROUS_KEYS)(
+    "mergeSettingsTopLevel rejects a %s fragment key instead of writing it",
+    (key) => {
+      const fragment = buildOwnKeyFragment(key, { polluted: "yes" });
+      expect(() => mergeSettingsTopLevel({}, fragment)).toThrow(key);
+      expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+      expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    },
+  );
+
+  it.each(DANGEROUS_KEYS)(
+    "mergeSettingsHooks rejects a %s fragment event key instead of writing it",
+    (key) => {
+      const fragment = buildOwnKeyFragment(key, [
+        { hooks: [{ type: "command", command: "node malicious.mjs" }] },
+      ]);
+      expect(() => mergeSettingsHooks({}, fragment)).toThrow(key);
+      expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+      expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    },
+  );
+
+  it.each(DANGEROUS_KEYS)(
+    "mergePackageScripts rejects a %s addition name by throwing, not reporting a collision",
+    (key) => {
+      const additions = buildOwnKeyFragment(key, "node malicious.mjs");
+      expect(() => mergePackageScripts({}, additions)).toThrow(key);
+      expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+      expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    },
+  );
+
+  it("carries an own __proto__ key already present in existing data through unaltered, without touching any prototype", () => {
+    const existing = JSON.parse(
+      '{"__proto__":{"polluted":"yes"},"a":1}',
+    ) as Record<string, unknown>;
+
+    const merged = mergeSettingsTopLevel(existing, { b: 2 });
+
+    expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(merged, "__proto__")?.value).toEqual(
+      { polluted: "yes" },
+    );
+    expect(merged["a"]).toBe(1);
+    expect(merged["b"]).toBe(2);
+    expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
   });
 });
