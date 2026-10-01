@@ -28,6 +28,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { toPosixPath } from "./baseline-stage.js";
 import type { StagedBaselineFile } from "./baseline-stage.js";
 import type { CapCounts } from "./caps.js";
 import type { FileConflict } from "./conflicts.js";
@@ -86,7 +87,9 @@ export interface Inventory {
   templateRoot: string;
   targetDir: string;
   survey: ProjectSurvey;
+  /** Baseline-vs-project file collisions; every `relPath` uses `/` on every platform (normalized by `buildInventory`). */
   conflicts: FileConflict[];
+  /** Per-pack surveys; every `fileConflicts[].relPath` uses `/` on every platform, like `conflicts`. */
   packs: PackSurvey[];
   /** Wiring integrity and rubric quality of the project's existing harness. Absent when schemaVersion is below 3. */
   harnessGrade: HarnessGrade;
@@ -140,8 +143,38 @@ export interface BuildInventoryParams {
   stagedBaseline: StagedBaseline;
 }
 
-/** Builds the inventory object. Does not write anything -- see `writeInventory`. */
+/**
+ * Returns new `FileConflict` objects whose `relPath` uses `/`, leaving the
+ * caller's array and objects untouched (main.ts keeps the native form for
+ * real file operations).
+ */
+function toPosixConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
+  return conflicts.map((c) => ({ ...c, relPath: toPosixPath(c.relPath) }));
+}
+
+/**
+ * Builds the inventory object. Does not write anything -- see `writeInventory`.
+ *
+ * Every serialized path uses `/` on every platform: each `conflicts[].relPath`
+ * and each `packs[].fileConflicts[].relPath` is normalized once with
+ * {@link toPosixPath} -- the same derivation `stagedBaseline.files[].path`
+ * uses, so the two agree -- and the harness/toolchain conformance summaries
+ * are computed from those normalized paths. The caller's `conflicts` and
+ * `packs` are never mutated; new objects are returned.
+ *
+ * @example
+ * ```ts
+ * const inventory = buildInventory({ detection, templateRoot, targetDir, survey,
+ *   conflicts, packs, harnessGrade, toolchainGrade, stagedBaseline });
+ * inventory.conflicts[0]?.relPath; // "src/index.ts", even on Windows
+ * ```
+ */
 export function buildInventory(params: BuildInventoryParams): Inventory {
+  const conflicts = toPosixConflicts(params.conflicts);
+  const packs = params.packs.map((pack): PackSurvey => ({
+    ...pack,
+    fileConflicts: toPosixConflicts(pack.fileConflicts),
+  }));
   return {
     schemaVersion: INVENTORY_SCHEMA_VERSION,
     cliVersion: resolveCliVersion(),
@@ -150,12 +183,12 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
     templateRoot: params.templateRoot,
     targetDir: params.targetDir,
     survey: params.survey,
-    conflicts: params.conflicts,
-    packs: params.packs,
+    conflicts,
+    packs,
     harnessGrade: params.harnessGrade,
-    harnessConformance: summarizeHarnessConformance(params.conflicts),
+    harnessConformance: summarizeHarnessConformance(conflicts),
     toolchainGrade: params.toolchainGrade,
-    toolchainConformance: summarizeToolchainConformance(params.conflicts),
+    toolchainConformance: summarizeToolchainConformance(conflicts),
     stagedBaseline: params.stagedBaseline,
   };
 }
