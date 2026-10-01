@@ -128,7 +128,7 @@ the baseline files it would add under `.groundwork/baseline/`);
 
 - **Node 24+**. `.node-version` is the authority.
 - **pnpm**. Fresh mode ends with a `pnpm install` in the new project (skip it
-  with `--skip-install`), and this repo pins 12.4.0 through `packageManager`.
+  with `--skip-install`), and this repo pins 12.8.1 through `packageManager`.
 - **git**.
 - **Claude Code**, for Phase B only. The CLI itself does not need it.
 
