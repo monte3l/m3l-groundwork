@@ -106,6 +106,13 @@
  *     write into src/tests
  *   - `mkdir`, `find -delete`, and `find -exec`/`xargs` without literal
  *     operands
+ *   - a write into an ANCESTOR of a guarded directory: only the operand
+ *     itself is tested, so `rsync -a /tmp/pkg/ packages/cli/`,
+ *     `cp -r /tmp/pkg/. packages/cli/`, `mv packages/cli /tmp`,
+ *     `rm -rf packages/cli` and a root-level `rm -rf ./*` all pass
+ *   - `php` is screened only for `rename(` (no `file_put_contents` or
+ *     `fopen`), and an interpreter's delete calls (`fs.rmSync`,
+ *     `os.remove`, `shutil.rmtree`, `Path.unlink`) are not write verbs here
  *   - `tar`/`unzip`/`curl -o`/`wget -O`, `git checkout`/`restore`/`stash`/
  *     `reset`, and editors (`vim -c ...`)
  *   - a redirect attached to a test expression (`[[ -f a ]] > file`): the

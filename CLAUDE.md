@@ -505,7 +505,9 @@ blocks output redirects, `tee`, `sed -i`/`perl -i`, `cp`/`mv`/`install`/
 files that both write and name a guarded path (issue #96). It can only
 produce false negatives, never prove a negative: an interpreter running a
 script that lives inside the project, an `eval` of a computed string, a
-build step or generator that writes `src/`, a formatter or fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/`git stash pop`, `find -exec`/`xargs` with no
+build step or generator that writes `src/`, a formatter or fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/`git stash pop`, a write into an ancestor of `src/`
+or `tests/` (`rsync -a /tmp/pkg/ packages/cli/`, `rm -rf packages/cli`), `php` file
+writes, `find -exec`/`xargs` with no
 literal operand, a target spelled through a variable, glob or command
 substitution, and `tar`/`curl -o`/`git checkout|restore` all pass. So
 hub-and-spoke stays a convention backed by a guard that raises the bar, not
