@@ -80,22 +80,23 @@ dependencies inside the pinned `npm` package (11.20.0, read from the lockfile's
 `node_modules/npm` entry). The advisories were published 2026-09-29 and
 2026-10-01.
 
-| Advisory            | Package               | Severity | Vulnerable range     | Patched | Reachable from our commands?                                                                                                             |
-| ------------------- | --------------------- | -------- | -------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| GHSA-3wwx-pv8p-q78v | undici 6.28.0         | medium   | >= 6.25.0, < 6.28.1  | 6.28.1  | No. undici is only required by node-gyp's header-download step, which runs only for install scripts; we install with `--ignore-scripts`. |
-| GHSA-rfgv-xxqx-mfg5 | undici 6.28.0         | high     | >= 6.7.0, < 6.28.1   | 6.28.1  | No. Same evidence as above.                                                                                                              |
-| GHSA-r53p-7pc4-xj5r | undici 6.28.0         | low      | < 6.28.1             | 6.28.1  | No. Same evidence as above.                                                                                                              |
-| GHSA-2vr4-cq9g-pvrc | ip-address 10.5.0     | medium   | >= 10.2.0, <= 10.5.0 | 10.5.1  | No. ip-address is only required through socks-proxy-agent, which needs a configured proxy; CI configures none.                           |
-| GHSA-rpw4-54j3-4h4q | ip-address 10.5.0     | medium   | <= 10.5.0            | 10.5.1  | No. Same evidence as above.                                                                                                              |
-| GHSA-h3mg-xc3c-68pw | ip-address 10.5.0     | medium   | <= 10.7.0            | 10.7.1  | No. Same evidence as above.                                                                                                              |
-| GHSA-j6r3-76f7-8jcv | ip-address 10.5.0     | medium   | <= 10.7.0            | 10.7.1  | No. Same evidence as above.                                                                                                              |
-| GHSA-6j4f-fj2g-mc7p | brace-expansion 5.0.9 | high     | >= 4.0.0, < 5.0.10   | 5.0.10  | No. brace-expansion is reached through minimatch globbing, and the only patterns are the `files` globs in our own `package.json`.        |
-| GHSA-qhr7-859c-m2p7 | brace-expansion 5.0.9 | high     | >= 4.0.0, < 5.0.11   | 5.0.11  | No. Same evidence as above.                                                                                                              |
-| GHSA-q2hr-2g5m-vwhr | brace-expansion 5.0.9 | medium   | >= 4.0.0, < 5.0.12   | 5.0.12  | No. Same evidence as above.                                                                                                              |
+| Advisory            | Package               | Severity | Vulnerable range     | Patched | Reachable from our commands?                                                                                                                                                                                                                                                                        |
+| ------------------- | --------------------- | -------- | -------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GHSA-3wwx-pv8p-q78v | undici 6.28.0         | medium   | >= 6.25.0, < 6.28.1  | 6.28.1  | No. undici is only required by node-gyp's header-download step, which runs only for install scripts; we install with `--ignore-scripts`.                                                                                                                                                            |
+| GHSA-rfgv-xxqx-mfg5 | undici 6.28.0         | high     | >= 6.7.0, < 6.28.1   | 6.28.1  | No. Same evidence as above.                                                                                                                                                                                                                                                                         |
+| GHSA-r53p-7pc4-xj5r | undici 6.28.0         | low      | < 6.28.1             | 6.28.1  | No. Same evidence as above.                                                                                                                                                                                                                                                                         |
+| GHSA-2vr4-cq9g-pvrc | ip-address 10.5.0     | medium   | >= 10.2.0, <= 10.5.0 | 10.5.1  | No. ip-address is only required through socks-proxy-agent, which needs a configured proxy; CI configures none.                                                                                                                                                                                      |
+| GHSA-rpw4-54j3-4h4q | ip-address 10.5.0     | medium   | <= 10.5.0            | 10.5.1  | No. Same evidence as above.                                                                                                                                                                                                                                                                         |
+| GHSA-h3mg-xc3c-68pw | ip-address 10.5.0     | medium   | <= 10.7.0            | 10.7.1  | No. Same evidence as above.                                                                                                                                                                                                                                                                         |
+| GHSA-j6r3-76f7-8jcv | ip-address 10.5.0     | medium   | <= 10.7.0            | 10.7.1  | No. Same evidence as above.                                                                                                                                                                                                                                                                         |
+| GHSA-6j4f-fj2g-mc7p | brace-expansion 5.0.9 | high     | >= 4.0.0, < 5.0.10   | 5.0.10  | No evidence of reach. brace-expansion is required by minimatch, which npm uses to glob files; the release flow gives `npm stage publish` a tarball that the `pack` job already built through pnpm, so npm is not asked to glob our `files`. Not shown: that no other npm code path calls minimatch. |
+| GHSA-qhr7-859c-m2p7 | brace-expansion 5.0.9 | high     | >= 4.0.0, < 5.0.11   | 5.0.11  | No. Same evidence as above.                                                                                                                                                                                                                                                                         |
+| GHSA-q2hr-2g5m-vwhr | brace-expansion 5.0.9 | medium   | >= 4.0.0, < 5.0.12   | 5.0.12  | No. Same evidence as above.                                                                                                                                                                                                                                                                         |
 
-The commands the release flow runs against npm are `npm ci --ignore-scripts`,
-`npm stage publish`, and `npm pack`-style globbing of this repository's own
-`package.json` `files`.
+The commands the release flow runs against npm are `npm ci --ignore-scripts`
+(installing the pinned npm), `npm stage publish <tarball> --provenance` (through
+the pnpm shim) and `npm stage list`. The tarball is packed earlier, in the `pack`
+job, by `changesets/action/pack` through pnpm; npm never packs it.
 
 **Why this cannot be fixed in the repo.** The vulnerable copies are bundled
 inside the npm tarball (`inBundle` in the lockfile). npm's `overrides` and
@@ -131,12 +132,16 @@ pin if a patched npm exists. Patched means undici >= 6.28.1, ip-address >=
 ```sh
 # 1. What is the newest npm, and is the current pin still the best choice?
 npm view npm dist-tags --json
-grep -A2 '"node_modules/npm"' .github/release-tools/package-lock.json
+grep -A2 '"node_modules/npm"' \
+  .github/release-tools/package-lock.json \
+  templates/packs/publishing/files/.github/release-tools/package-lock.json
 
-# 2. What does that release actually bundle?
+# 2. What does that release actually bundle? Check EVERY copy, not only the
+#    hoisted one: a nested copy could stay vulnerable beside a patched one.
 npm pack npm@<version> && tar xzf npm-<version>.tgz
 for p in undici ip-address brace-expansion; do
-  grep -m1 '"version"' package/node_modules/$p/package.json
+  find package/node_modules -path "*/node_modules/$p/package.json" \
+    -exec sh -c 'printf "%s " "$1"; grep -m1 "\"version\"" "$1"' _ {} \;
 done
 
 # 3. What is Dependabot still reporting?

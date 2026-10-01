@@ -44,6 +44,8 @@ updates:
   # a patched npm then arrives as a PR here instead of only as an alert. A
   # merge touches shipped template files, so it needs a patch changeset for
   # `@monte3l/groundwork` added to the PR by hand -- the bot cannot add one.
+  # The commit prefix is `fix(deps)`, not `ci`: unlike the root entry, a bump
+  # here changes shipped output.
   - package-ecosystem: "npm"
     directory: "/templates/packs/publishing/files/.github/release-tools"
     schedule:
@@ -51,7 +53,7 @@ updates:
     cooldown:
       default-days: 1
     commit-message:
-      prefix: "ci"
+      prefix: "fix(deps)"
     labels:
       - "dependencies"
 
