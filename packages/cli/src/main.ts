@@ -336,7 +336,10 @@ export function formatCapsSummary(
   return { text: lines.join("\n"), overCap: overCap.length > 0 };
 }
 
-function runFresh(options: CliOptions): void {
+function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
+  if (platform === "win32") {
+    throw new Error("Windows is not supported yet (Linux and macOS only)");
+  }
   if (!isEmptyOrMissing(options.targetDir) && !options.force) {
     throw new Error(
       `${options.targetDir} already exists and is not empty (pass --force to overwrite, or --adopt to survey it instead)`,
@@ -382,65 +385,96 @@ function runFresh(options: CliOptions): void {
     `installed the /customize skill (${pluginResult.filesWritten.length} files)`,
   );
 
-  gitInit(options.targetDir);
+  const { targetDir, skipInstall, projectName } = options;
+  try {
+    gitInit(targetDir);
+  } catch (error) {
+    throw new Error(
+      `git init failed, but the project was written to ${targetDir}; run \`git init\`${skipInstall ? "" : " and `pnpm install`"} there yourself`,
+      { cause: error },
+    );
+  }
   console.log("initialized git repository");
 
-  let installFailure: string | undefined;
-  if (!options.skipInstall) {
+  if (!skipInstall) {
     try {
-      runInstall(options.targetDir);
+      runInstall(targetDir);
     } catch (error) {
-      installFailure = describeInstallFailure(error);
+      console.log(
+        paint(
+          process.stdout,
+          "warning",
+          `\n${projectName} written to ${targetDir}, but dependencies are not installed`,
+        ),
+      );
+      throw new Error(
+        `${describeInstallFailure(error)}; the project was written to ${targetDir} -- run \`pnpm install\` there yourself to finish`,
+        { cause: error },
+      );
     }
-    if (installFailure === undefined) console.log("installed dependencies");
+    console.log("installed dependencies");
   }
 
   console.log(
     paint(
       process.stdout,
       "success",
-      `\n✓ ${options.projectName} is ready at ${options.targetDir}`,
+      `\n✓ ${projectName} is ready at ${targetDir}`,
     ),
   );
-
-  if (installFailure !== undefined) {
-    console.error(
-      `${installFailure}\nThe project was written; run \`pnpm install\` in ${options.targetDir} yourself to finish.`,
-    );
-    throw new Error(
-      "dependency install failed -- the project was written; run `pnpm install` yourself",
-    );
-  }
-}
-
-/** Explains why the post-emission `pnpm install` failed, naming a missing binary specifically. */
-function describeInstallFailure(error: unknown): string {
-  const code: unknown =
-    typeof error === "object" && error !== null && "code" in error
-      ? error.code
-      : undefined;
-  return code === "ENOENT"
-    ? "pnpm was not found on PATH, so dependencies were not installed."
-    : "`pnpm install` failed, so dependencies were not installed.";
 }
 
 /**
- * Loads one `--pack` for fresh mode, as a usage error (exit 2) when it is
- * unknown, malformed, or fresh-incompatible -- called for every pack before
- * any file is written.
+ * Explains why the post-emission `pnpm install` failed: a missing binary
+ * specifically, otherwise the exit status, killing signal, or error code
+ * when the thrown value carries one. Each property is read exactly once.
+ */
+function describeInstallFailure(error: unknown): string {
+  if (typeof error !== "object" || error === null) {
+    return "`pnpm install` failed";
+  }
+  const code: unknown = "code" in error ? error.code : undefined;
+  const status: unknown = "status" in error ? error.status : undefined;
+  const signal: unknown = "signal" in error ? error.signal : undefined;
+  if (code === "ENOENT") return "pnpm was not found on PATH";
+  if (typeof status === "number") {
+    return `\`pnpm install\` failed (exit status ${String(status)})`;
+  }
+  if (typeof signal === "string") {
+    return `\`pnpm install\` failed (killed by signal ${signal})`;
+  }
+  if (typeof code === "string") return `\`pnpm install\` failed (${code})`;
+  return "`pnpm install` failed";
+}
+
+// A pack that was renamed or folded into another, mapped to its successor so
+// an old `--pack` name gets a pointed hint rather than a bare "unknown pack".
+const RENAMED_PACKS: ReadonlyMap<string, string> = new Map([
+  ["statusline", "harness-extras"],
+]);
+
+/**
+ * Loads one `--pack` for fresh mode -- called for every pack before any file
+ * is written. An unknown name (with a rename hint when {@link RENAMED_PACKS}
+ * knows its successor) or a fresh-incompatible pack is a usage error (exit
+ * 2); a pack that exists but whose manifest fails to load propagates
+ * `loadPack`'s own error unchanged (exit 1), since that is a broken install,
+ * not a bad invocation.
  */
 function resolveFreshPack(name: string): Pack {
-  let pack: Pack;
-  try {
-    pack = loadPack(name);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+  const available = listPackNames();
+  if (!available.includes(name)) {
+    const successor = RENAMED_PACKS.get(name);
     const hint =
-      name === "statusline"
-        ? " -- the statusline pack was folded into harness-extras; use --pack harness-extras"
-        : "";
-    throw new CliUsageError(`${reason}${hint}\n\n${USAGE}`, { cause: error });
+      successor === undefined
+        ? ""
+        : ` -- it was renamed to "${successor}"; use --pack ${successor}`;
+    const list = available.length > 0 ? available.join(", ") : "none";
+    throw new CliUsageError(
+      `unknown pack "${name}"${hint} (available: ${list})\n\n${USAGE}`,
+    );
   }
+  const pack = loadPack(name);
   if (!pack.manifest.modes.includes("fresh")) {
     throw new CliUsageError(
       `pack "${name}" does not support fresh mode (modes: ${pack.manifest.modes.join(", ")})\n\n${USAGE}`,
@@ -605,8 +639,10 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
 }
 
 /**
- * Runs the CLI. `platform` is injectable so the Windows refusal is
- * unit-testable on any OS; it defaults to `process.platform`.
+ * Runs the CLI. `platform` is injectable so fresh mode's Windows refusal
+ * (a runtime error, exit 1, raised before anything is written) is
+ * unit-testable on any OS; it defaults to `process.platform`. Adopt mode and
+ * `--help`/`--version`/`--list-packs` run on every platform.
  */
 export function main(
   argv: string[],
@@ -637,12 +673,6 @@ export function main(
     return;
   }
 
-  if (platform === "win32") {
-    throw new CliUsageError(
-      "Windows is not supported yet (Linux and macOS only)",
-    );
-  }
-
   const detected = detectMode(options.targetDir);
   const resolved = resolveMode(detected, {
     adopt: options.adopt,
@@ -653,6 +683,6 @@ export function main(
     assertAdoptUsage(options);
     runAdopt(options, resolved);
   } else {
-    runFresh(options);
+    runFresh(options, platform);
   }
 }
