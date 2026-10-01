@@ -188,6 +188,47 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
     expect(validationList).toContain('"."');
     expect(validationList).toContain('""');
   });
+
+  it("stops for an inventory.json that is not valid JSON or a schemaVersion that is not an integer >= 1, naming the re-run command and changing nothing", () => {
+    expect(section).toContain("not valid JSON");
+    expect(section).toContain("integer");
+    expect(section).toContain("npx @monte3l/groundwork@rc .");
+
+    const idx = section.indexOf("not valid JSON");
+    expect(idx).toBeGreaterThan(-1);
+    expect(section.slice(idx, idx + 400)).toContain("change nothing");
+  });
+
+  it("says to change nothing in the same breath as the schemaVersion-higher-than-5 stop", () => {
+    const idx = section.indexOf("higher than 5");
+    expect(idx).toBeGreaterThan(-1);
+    expect(section.slice(idx, idx + 400)).toContain("change nothing");
+  });
+
+  it("names invalid entry, missing file, hash mismatch, a stagedBaseline.files set mismatch, and a duplicate staged/path entry in the single stop list", () => {
+    const bulletStart = section.indexOf("**Any invalid entry");
+    const bulletEnd = section.indexOf(
+      "What a passing check proves",
+      bulletStart,
+    );
+    expect(bulletStart).toBeGreaterThan(-1);
+    expect(bulletEnd).toBeGreaterThan(bulletStart);
+    const bullet = section.slice(bulletStart, bulletEnd);
+
+    expect(bullet).toContain("invalid entry");
+    expect(bullet).toContain("missing file");
+    expect(bullet).toContain("hash mismatch");
+    expect(bullet).toContain("do not name the same set");
+    expect(bullet).toContain("duplicate");
+  });
+
+  it("rejects a duplicate staged or path entry somewhere in the validation list", () => {
+    expect(section).toContain("duplicate");
+  });
+
+  it("tells the agent to pass the file to the hash one-liner as a single quoted argument", () => {
+    expect(section).toContain("single quoted argument");
+  });
 });
 
 describe("SKILL.md Round 1's approved-additions bullet", () => {

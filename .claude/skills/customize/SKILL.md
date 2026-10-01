@@ -68,14 +68,19 @@ may or may not touch.
      `.groundwork/` and run `/customize` again. Otherwise re-run
      `npx @monte3l/groundwork@rc .` and then run `/customize` again."
      Change nothing.
+   - **Present, but not valid JSON, or its `schemaVersion` is not an integer
+     of at least 1 → stop and change nothing.** Tell the user: "`.groundwork/inventory.json`
+     is not valid JSON or has no usable `schemaVersion`. Re-run
+     `npx @monte3l/groundwork@rc .` and then run `/customize` again."
 
    **Check `inventory.schemaVersion` before reading anything else.** This
    skill understands schema versions **1 through 5** (the highest it knows is
    5). If `schemaVersion` is **higher than 5**, the CLI that wrote it is newer
-   than this plugin: **stop**, do not interpret the inventory (a newer schema
-   may have renamed or repurposed fields, and a confident misreading is worse
-   than none), and tell the user to update the plugin (`/plugin update`) and
-   re-run `/customize`. What each version added:
+   than this plugin: **stop and change nothing**, do not interpret the
+   inventory (a newer schema may have renamed or repurposed fields, and a
+   confident misreading is worse than none), and tell the user to update the
+   plugin (`/plugin update`) and re-run `/customize`. What each version
+   added:
 
    | `schemaVersion` | Adds                                                                                                                                      | If absent                                                     |
    | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -97,8 +102,9 @@ may or may not touch.
      `staged === path + ".staged"`, and require `path` to be relative, free
      of any `..` segment, and not absolute. Reject the entry if `path` is
      `""` or `"."`. Reject it too if `path` contains a `\` or a `:` (a
-     Windows `..\..` or `C:foo` would slip past the other checks). All paths in the inventory
-     use `/` separators on every platform.
+     Windows `..\..` or `C:foo` would slip past the other checks). Reject a
+     duplicate `path` or a duplicate `staged` among the entries. All paths in
+     the inventory use `/` separators on every platform.
    - The `absent` conflicts in `inventory.conflicts` and the paths in
      `stagedBaseline.files` must name the same set of files. If they
      disagree (an `absent` conflict with no staged entry, or a staged entry
@@ -108,7 +114,8 @@ may or may not touch.
      It must exist, and the SHA-256 of its **raw bytes** (no end-of-line
      normalization, no decoding) must equal the entry's `sha256`. Compute it
      with, for example, this one-liner (it targets a POSIX shell or Git Bash,
-     not `cmd.exe` or an old PowerShell):
+     not `cmd.exe` or an old PowerShell), passing the file as a single quoted
+     argument in place of `<file>`:
      `node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' <file>`
      Keep those same bytes for the install in Round 1 (substitute tokens into
      them) rather than reading the file a second time.
@@ -116,8 +123,11 @@ may or may not touch.
      project) and creates no `.groundwork/baseline/` directory; that alone is
      not a failure.
    - **Any invalid entry, missing file or hash mismatch (including a wrong
-     `dir` or `suffix`) means stop -- all of
-     Round 1, including conflicts and packs -- and change nothing.** Tell the
+     `dir` or `suffix`), any duplicate `staged` or `path`, and any `absent`
+     conflicts and `stagedBaseline.files` that do not name the same set
+     means stop -- all of Round 1, including conflicts and packs -- and
+     change nothing.** This is the single stop list for the staged baseline.
+     Tell the
      user: "The staged baseline in `.groundwork/baseline/` is incomplete or
      does not match `.groundwork/inventory.json` (<the first entry that
      failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run

@@ -79,10 +79,10 @@ They stay two separate phases on purpose, rather than one -- see
 The mode is auto-detected from the target directory; `--fresh` and `--adopt`
 override it.
 
-| Mode      | When                                    | What it does                                                                                                 |
-| --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **Fresh** | The target is empty or missing          | Writes the full baseline, runs `git init`, installs any `--pack`, then `pnpm install`.                       |
-| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/` (an inventory and a report). It never touches a project file. |
+| Mode      | When                                    | What it does                                                                                                                                                                                                                              |
+| --------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fresh** | The target is empty or missing          | Writes the full baseline, runs `git init`, installs any `--pack`, then `pnpm install`.                                                                                                                                                    |
+| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and the staged packs (`.groundwork/packs/`). It never touches a project file. |
 
 Adopt mode also drops a guarded, purely additive copy of the `/customize`
 skill, which is where the real work happens: it reads the survey, confirms
