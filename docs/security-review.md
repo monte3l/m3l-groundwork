@@ -138,6 +138,7 @@ grep -A2 '"node_modules/npm"' \
 
 # 2. What does that release actually bundle? Check EVERY copy, not only the
 #    hoisted one: a nested copy could stay vulnerable beside a patched one.
+cd "$(mktemp -d)"  # a scratch directory: pack leaves a tarball and package/ behind
 npm pack npm@<version> && tar xzf npm-<version>.tgz
 for p in undici ip-address brace-expansion; do
   find package/node_modules -path "*/node_modules/$p/package.json" \
