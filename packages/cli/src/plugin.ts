@@ -384,18 +384,28 @@ function failureClauses(args: {
     leftBehind.length > 0
       ? ` (could not remove: ${leftBehind.map((l) => `${l.path} (${l.code})`).join(", ")})`
       : "";
-  const unknown = createdUnknown
-    ? `; ${dest} (unknown whether created) was left in place, origin unknown`
-    : "";
   const skillPath = join(destDir, CUSTOMIZE_SKILL_ENTRY_FILE);
-  const skillLeft = leftBehind.some((l) => l.path === skillPath)
+  const skillLeftBehind = leftBehind.some((l) => l.path === skillPath);
+  const unknownIsSkill = createdUnknown && dest === skillPath;
+  // Either way a possibly-truncated SKILL.md sits at the destination, and
+  // its own clause says what to do -- the generic "not loadable" clause
+  // would contradict it.
+  const skillMaybeLeft = skillLeftBehind || unknownIsSkill;
+  const unknown = createdUnknown
+    ? `; ${dest} (unknown whether created) was left in place; whether this run created it is unknown${
+        unknownIsSkill
+          ? " -- it may be a truncated copy; delete it by hand"
+          : ""
+      }`
+    : "";
+  const skillLeft = skillLeftBehind
     ? `; ${skillPath} was left behind -- delete it by hand; ${
         policy === "cli-owned"
           ? "it is a truncated copy"
           : "Claude Code will load a truncated skill"
       }`
     : "";
-  return `${notRemoved}${unknown}${skillLeft}${replacedClause(policy, args.skillRemoved, args.replaced)}`;
+  return `${notRemoved}${unknown}${skillLeft}${replacedClause(policy, args.skillRemoved, args.replaced, skillMaybeLeft)}`;
 }
 
 /** The "removed and not restored" clause for a replacing policy's pre-existing entries; `""` when none were removed. */
@@ -403,6 +413,7 @@ function replacedClause(
   policy: WritePolicy,
   skillRemoved: string | undefined,
   replaced: readonly string[],
+  skillMaybeLeft: boolean,
 ): string {
   const others =
     replaced.length > 0
@@ -413,13 +424,21 @@ function replacedClause(
       if (skillRemoved === undefined && others === "") {
         return "";
       }
-      const skill =
-        skillRemoved === undefined
-          ? ""
-          : `the existing SKILL.md (${skillRemoved}) was removed before any data file was rewritten`;
-      const joined = [skill, others].filter((part) => part !== "").join(", ");
-      const restored = others === "" ? " and NOT restored" : "";
-      return `; ${joined}${restored} -- the skill is not loadable until a successful re-run`;
+      // One sentence for SKILL.md and the data files alike: every one of
+      // them was removed and none is restored.
+      const removedPaths = [
+        ...(skillRemoved === undefined
+          ? []
+          : [
+              `the existing SKILL.md (${skillRemoved}, removed before any data file was rewritten)`,
+            ]),
+        ...(replaced.length > 0 ? [`the previous ${replaced.join(", ")}`] : []),
+      ];
+      const count = (skillRemoved === undefined ? 0 : 1) + replaced.length;
+      const notLoadable = skillMaybeLeft
+        ? ""
+        : " -- the skill is not loadable until a successful re-run";
+      return `; ${removedPaths.join(" and ")} ${count === 1 ? "was" : "were"} removed and NOT restored${notLoadable}`;
     }
     case "cli-owned": {
       const stale =
@@ -455,8 +474,9 @@ function replacedClause(
  * Under `"overwrite"`, the destination is classified first
  * ({@link classifyExistingSkill}); when every payload file there is already
  * a byte-identical regular file, nothing is removed or written and
- * `filesWritten` is empty. A failing probe there throws before anything is
- * touched.
+ * `filesWritten` is empty. A failing `lstat` probe there throws before
+ * anything is touched; a regular file that cannot be read counts as not
+ * current, so it is removed and rewritten like any other stale copy.
  *
  * Before anything is removed or written, a directory at any payload name
  * this run writes is refused ({@link assertNoDirectoryAtPayloadNames}), as
@@ -473,13 +493,17 @@ function replacedClause(
  * write created it and then failed part-way -- is removed (best effort), and
  * the error names how many were, any it could not remove (with its errno
  * code; a left-behind `SKILL.md` additionally says to delete it by hand),
- * any whose creation could not be determined (in its own "left in place,
- * origin unknown" clause), and the pre-removed `SKILL.md` if there was one.
- * Rollback never removes an entry this call did not write, but under
- * `"overwrite"`/`"cli-owned"` the pre-existing entries this call replaced
- * before the failure (the `SKILL.md`, and each payload file removed ahead of
- * its own write) are not restored -- the error names each of them as
- * "removed and NOT restored". Every failure -- a symlink refusal, a
+ * any whose creation could not be determined (in its own "left in place;
+ * whether this run created it is unknown" clause -- for `SKILL.md`, also
+ * saying it may be a truncated copy to delete by hand), and the pre-removed
+ * `SKILL.md` if there was one. Rollback never removes an entry this call did
+ * not write, but under `"overwrite"`/`"cli-owned"` the pre-existing entries
+ * this call replaced before the failure (the `SKILL.md`, and each payload
+ * file removed ahead of its own write) are not restored -- the error names
+ * each of them as "removed and NOT restored". Under `"overwrite"` it adds
+ * that the skill is not loadable until a successful re-run, unless a
+ * possibly-truncated `SKILL.md` may still sit at the destination, whose own
+ * clause already says what to do. Every failure -- a symlink refusal, a
  * directory at a payload name, a raw `lstat`/`mkdir` error such as
  * `ENOTDIR`, a write error -- is thrown as one "could not install the
  * /customize skill" `Error` carrying the underlying message and the raw
@@ -508,7 +532,7 @@ function copyCustomizeSkillFiles(
   // Fresh mode's re-run over its own, still-current output touches nothing.
   if (
     policy === "overwrite" &&
-    classifyExistingSkill(destDir, payload).kind === "current"
+    classifyExistingSkill(destDir, payload, "not-current").kind === "current"
   ) {
     return { filesWritten: [] };
   }
@@ -657,6 +681,35 @@ function firstUnusableComponent(
 }
 
 /** What is already at `.claude/skills/customize/`, judged against the payload. */
+/**
+ * Whether the regular file at `path` holds exactly `bytes`. A read failure
+ * throws (wrapped) under `"refuse"`, and is a mismatch under `"not-current"`.
+ */
+function regularFileMatches(
+  path: string,
+  bytes: Buffer,
+  unreadable: "refuse" | "not-current",
+): boolean {
+  switch (unreadable) {
+    case "refuse":
+      return wrapFs(untouched("could not read", path), () =>
+        readFileSync(path),
+      ).equals(bytes);
+    case "not-current":
+      try {
+        return readFileSync(path).equals(bytes);
+      } catch {
+        // The entry is a known regular file the overwrite replaces anyway;
+        // an unreadable copy is simply not the current one.
+        return false;
+      }
+    default: {
+      const exhaustive: never = unreadable;
+      throw new Error(`unhandled unreadable policy: ${String(exhaustive)}`);
+    }
+  }
+}
+
 type ExistingSkill =
   | { readonly kind: "current" }
   | {
@@ -679,12 +732,17 @@ type ExistingSkill =
  *   directory, symlink or FIFO) under any payload name, `SKILL.md` included;
  *   `reason` names the first offending entry.
  *
- * Runs before anything is removed or written, so a failing `lstat` or read
- * throws (wrapped, raw error as `cause`) naming the path and saying so.
+ * Runs before anything is removed or written, so a failing `lstat` throws
+ * (wrapped, raw error as `cause`) naming the path and saying so. A failing
+ * read of an entry `lstat` already confirmed is a regular file throws the
+ * same way under `unreadable: "refuse"` (adopt mode, which must never guess
+ * at a project entry), but under `"not-current"` (fresh mode's overwrite,
+ * which replaces any non-current copy anyway) counts as a mismatch.
  */
 function classifyExistingSkill(
   existingDir: string,
   payload: readonly PayloadFile[],
+  unreadable: "refuse" | "not-current",
 ): ExistingSkill {
   const alreadyCurrent = new Set<string>();
   let entryLoadable = false;
@@ -697,10 +755,7 @@ function classifyExistingSkill(
       continue;
     }
     const matches =
-      stat.isFile() &&
-      wrapFs(untouched("could not read", installedPath), () =>
-        readFileSync(installedPath),
-      ).equals(bytes);
+      stat.isFile() && regularFileMatches(installedPath, bytes, unreadable);
     if (!matches) {
       return {
         kind: "foreign",
@@ -808,7 +863,7 @@ export function installCustomizeSkillGuarded(
   }
 
   // Throws its own wrapped error naming the path it could not probe.
-  const existing = classifyExistingSkill(existingDir, payload);
+  const existing = classifyExistingSkill(existingDir, payload, "refuse");
   switch (existing.kind) {
     case "current":
       return { filesWritten: [], location: "already-present" };

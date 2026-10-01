@@ -296,8 +296,28 @@ describe("main", () => {
       });
     });
 
-    describe("when the /customize skill install fails (item 2)", () => {
-      it("says the project was written, the skill install and git init/pnpm install did not run, and how to re-run, chaining the cause", () => {
+    describe("when the /customize skill install fails", () => {
+      /**
+       * The re-run instruction must be concrete enough to actually act on:
+       * name the exact flags to re-add (`--fresh --force`) and the exact
+       * flags to keep from the original invocation (`--name`/`--pack`/
+       * `--skip-install`, whichever the caller used) -- rather than a bare
+       * "re-run with --fresh --force" that silently drops a caller's
+       * `--pack`/`--name` choice on the retry. Shared by both tests below;
+       * the `--skip-install` wording itself differs per test, see each.
+       */
+      function expectReRunGuidance(message: string): void {
+        expect(message).toContain(
+          "re-run the same command with --fresh --force added",
+        );
+        expect(message).toContain("--name");
+        expect(message).toContain("--pack");
+        expect(message).toContain("--skip-install");
+        expect(message.toLowerCase()).toMatch(/keep/);
+        expect(message).toContain("a plain re-run adopts it");
+      }
+
+      it("without --skip-install: says pnpm install did not run, and how to re-run keeping the same flags, chaining the cause", () => {
         const target = join(targetDir, "skill-install-fails");
         const cause = new Error("simulated /customize skill install failure");
         installCustomizeSkillMock.mockImplementationOnce(() => {
@@ -321,10 +341,47 @@ describe("main", () => {
         expect(message).toContain(target);
         expect(message).toContain("git init");
         expect(message).toContain("pnpm install did not run");
-        expect(message).toContain("--fresh --force");
+        expectReRunGuidance(message);
 
         // The template itself was written; neither git nor the dependency
         // install ran.
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(gitInitMock).not.toHaveBeenCalled();
+        expect(runInstallMock).not.toHaveBeenCalled();
+      });
+
+      it("with --skip-install: does not claim pnpm install did not run (it was never going to), but still says how to re-run", () => {
+        const target = join(targetDir, "skill-install-fails-skip-install");
+        const cause = new Error("simulated /customize skill install failure");
+        installCustomizeSkillMock.mockImplementationOnce(() => {
+          throw cause;
+        });
+        vi.spyOn(console, "log").mockImplementation(() => {});
+        let thrown: unknown;
+        try {
+          main([target, "--skip-install"]);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          vi.restoreAllMocks();
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).cause).toBe(cause);
+        const message = (thrown as Error).message;
+        expect(message).toContain("was written to");
+        expect(message).toContain(target);
+        expect(message).toContain("git init");
+        // --skip-install means pnpm install was never going to run this
+        // invocation at all -- the failure did not "skip" it, and must not
+        // claim it did.
+        expect(message).not.toContain("pnpm install did not run");
+        expect(message.toLowerCase()).not.toMatch(
+          /pnpm install (?:was )?skipped/,
+        );
+        expectReRunGuidance(message);
+
         expect(existsSync(join(target, "package.json"))).toBe(true);
         expect(gitInitMock).not.toHaveBeenCalled();
         expect(runInstallMock).not.toHaveBeenCalled();

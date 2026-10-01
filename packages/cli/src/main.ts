@@ -405,9 +405,12 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
     pluginResult = installCustomizeSkill(targetDir);
   } catch (error) {
     // The target is no longer empty, so a plain re-run would auto-detect
-    // adopt mode; only --fresh --force repeats this run.
+    // adopt mode; only --fresh --force repeats this run. With
+    // --skip-install, pnpm install was never going to run, so don't claim
+    // the failure stopped it (same split as the git-init branch below).
+    const notRun = skipInstall ? "git init" : "git init / pnpm install";
     throw new Error(
-      `the project was written to ${targetDir}, but the /customize skill install failed and git init / pnpm install did not run -- fix the cause, then re-run with --fresh --force (a plain re-run adopts it)`,
+      `the project was written to ${targetDir}, but the /customize skill install failed and ${notRun} did not run -- fix the cause, then re-run the same command with --fresh --force added (keep the same --name/--pack/--skip-install flags; a plain re-run adopts it)`,
       { cause: error },
     );
   }

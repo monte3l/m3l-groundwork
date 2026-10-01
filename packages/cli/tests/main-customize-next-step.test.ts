@@ -24,7 +24,13 @@
  * a given result.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -180,14 +186,14 @@ describe("runAdopt's /customize next-step message distinguishes fallbackCause 'c
     );
   });
 
-  // [item 6c] `GuardedInstallResult`'s own TSDoc says `fallbackCause` is
-  // "Set on every 'groundwork' result, and only then" -- a 'groundwork'
-  // result with no `fallbackCause` at all is therefore a contract
-  // violation from the installer, not a real state `groundworkNextStep`
-  // should silently absorb via its exhaustive switch's `case undefined`
-  // arm (today's code treats it the same as "entry"). It must throw
-  // instead, the same way the switch's own `default` arm already throws on
-  // a genuinely unhandled value.
+  // `GuardedInstallResult`'s own TSDoc says `fallbackCause` is "Set on every
+  // 'groundwork' result, and only then" -- a 'groundwork' result with no
+  // `fallbackCause` at all is therefore a contract violation from the
+  // installer, not a real state `groundworkNextStep` should silently
+  // absorb. It throws instead (its own `case undefined` arm), the same way
+  // the switch's own `default` arm already throws on a genuinely unhandled
+  // value -- and that throw happens before `runAdopt` writes either
+  // `.groundwork` file, so neither exists afterward.
   it('throws when location is "groundwork" but fallbackCause is missing, rather than silently treating it as "entry"', () => {
     installCustomizeSkillGuardedMock.mockReturnValue({
       filesWritten: [join(".groundwork", "customize", "SKILL.md")],
@@ -197,5 +203,11 @@ describe("runAdopt's /customize next-step message distinguishes fallbackCause 'c
     });
 
     expect(() => main([projectDir])).toThrow(/unhandled fallback cause/);
+    expect(existsSync(join(projectDir, ".groundwork", "inventory.json"))).toBe(
+      false,
+    );
+    expect(
+      existsSync(join(projectDir, ".groundwork", "adoption-report.md")),
+    ).toBe(false);
   });
 });

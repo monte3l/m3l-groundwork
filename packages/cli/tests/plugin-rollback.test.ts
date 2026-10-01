@@ -1242,16 +1242,16 @@ describe("the fallback-install re-wrap does not duplicate the 'could not install
 });
 
 /**
- * [this round, nit] `createdByFailedWrite` (`../src/plugin.js`) silently
- * treats its OWN `lstat` call failing as "not created" -- a write failure
- * whose `createdByFailedWrite` probe itself throws is indistinguishable, in
+ * `createdByFailedWrite` (`../src/plugin.js`) silently treats its OWN
+ * `lstat` call failing as "not created" -- a write failure whose
+ * `createdByFailedWrite` probe itself throws is indistinguishable, in
  * today's rollback message, from a write that genuinely created nothing.
  * The fix this test is written against: that genuine uncertainty must be
  * surfaced in the thrown error's own message, naming the path and saying
  * plainly that whether it was created is unknown, rather than silently
  * asserting "not created".
  */
-describe("createdByFailedWrite surfaces its own lstat failure instead of silently assuming 'not created' (this round, nit)", () => {
+describe("createdByFailedWrite surfaces its own lstat failure instead of silently assuming 'not created'", () => {
   beforeEach(() => {
     rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
       real.rmSync(...args),
@@ -1315,13 +1315,15 @@ describe("createdByFailedWrite surfaces its own lstat failure instead of silentl
     const message = (thrown as Error).message;
     expect(message).toContain(domainMapDest);
     expect(message).toContain("(unknown whether created)");
-    // [item 6b] an "unknown whether created" entry gets its own clause --
-    // "left in place, origin unknown" -- rather than being folded into the
-    // "(could not remove: ...)" list alongside entries that genuinely
-    // failed removal. This is the ONLY leftBehind-like entry in this
-    // scenario, so the generic "could not remove:" clause must not appear
-    // at all.
-    expect(message).toContain("left in place, origin unknown");
+    // An "unknown whether created" entry gets its own clause -- "left in
+    // place; whether this run created it is unknown" -- rather than being
+    // folded into the "(could not remove: ...)" list alongside entries that
+    // genuinely failed removal. This is the ONLY leftBehind-like entry in
+    // this scenario, so the generic "could not remove:" clause must not
+    // appear at all.
+    expect(message).toContain(
+      "left in place; whether this run created it is unknown",
+    );
     expect(message).not.toContain("could not remove:");
 
     real.rmSync(sourceDir, { recursive: true, force: true });
@@ -1979,6 +1981,174 @@ describe("coverage: the cli-owned replaced-entries clause, singular wording (exa
     );
     // Singular: not the plural "were" phrasing.
     expect(message).not.toContain(`${kindFacetDest} were removed`);
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * [KNOWN BUG -- redundant "not loadable" clause] When SKILL.md itself is
+ * the payload file whose own write fails (either `createdByFailedWrite`
+ * surfacing its own lstat failure as "unknown whether created", or a
+ * genuinely left-behind SKILL.md after rollback's own removal fails), its
+ * own clause already explains SKILL.md's loadability precisely ("left in
+ * place; whether this run created it is unknown" / "delete it by hand ...
+ * Claude Code will load a truncated skill"). But when a pre-existing
+ * project SKILL.md was ALSO removed earlier in this same run
+ * (`removeStaleSkillEntry`, setting `skillRemoved`), `replacedClause`'s
+ * `"overwrite"` arm unconditionally appends its own GENERIC "-- the skill
+ * is not loadable until a successful re-run" clause on top -- redundant at
+ * best (both clauses describe the same SKILL.md) and confusing at worst
+ * (the generic clause talks about the file being "removed and NOT
+ * restored", which is not what happened to THIS write: it was attempted
+ * and failed, not merely removed). The fix this suite is written against:
+ * when the failing write IS SKILL.md itself, its own specific clause is
+ * the complete story and the generic "not loadable" clause must not also
+ * appear.
+ */
+describe("a SKILL.md write failure does not also append the generic 'not loadable' clause when SKILL.md's own clause already covers it", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  it("[unknown whether created] omits the 'not loadable' clause even though a pre-existing SKILL.md was removed first", () => {
+    const sourceDir = mkdtempSync(
+      join(tmpdir(), "plugin-notloadable-unknown-src-"),
+    );
+    const targetDir = mkdtempSync(
+      join(tmpdir(), "plugin-notloadable-unknown-tgt-"),
+    );
+    writeSourceFixture(sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    mkdirSync(destDir, { recursive: true });
+    const skillMdDest = join(destDir, "SKILL.md");
+    // A pre-existing, differing SKILL.md -- its removal sets `skillRemoved`,
+    // which is what currently makes the overwrite policy's generic "not
+    // loadable" clause fire alongside this write's own clause.
+    writeFileSync(skillMdDest, "---\nname: customize\n---\n# stale\n");
+
+    // SKILL.md's own write throws without physically creating it, and its
+    // own createdByFailedWrite lstat probe also fails -- "unknown whether
+    // created", same technique as the domain-map.ts test above, applied to
+    // SKILL.md itself instead.
+    let writeAttempted = false;
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) => {
+        const [target] = args;
+        if (String(target) === skillMdDest) {
+          writeAttempted = true;
+          throw new Error("EIO: some I/O error (simulated)");
+        }
+        return real.writeFileSync(...args);
+      },
+    );
+    lstatSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.lstatSync>) => {
+        const [target] = args;
+        if (String(target) === skillMdDest && writeAttempted) {
+          throw new Error("EIO: lstat itself failed (simulated)");
+        }
+        return real.lstatSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkill(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain(skillMdDest);
+    expect(message).toContain(
+      "left in place; whether this run created it is unknown",
+    );
+    expect(message).not.toContain(
+      "the skill is not loadable until a successful re-run",
+    );
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  it("[left behind] omits the 'not loadable' clause even though a pre-existing SKILL.md was removed first", () => {
+    const sourceDir = mkdtempSync(
+      join(tmpdir(), "plugin-notloadable-left-src-"),
+    );
+    const targetDir = mkdtempSync(
+      join(tmpdir(), "plugin-notloadable-left-tgt-"),
+    );
+    writeSourceFixture(sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    mkdirSync(destDir, { recursive: true });
+    const skillMdDest = join(destDir, "SKILL.md");
+    // A pre-existing, differing SKILL.md -- its removal sets `skillRemoved`,
+    // which is what currently makes the overwrite policy's generic "not
+    // loadable" clause fire alongside this write's own clause.
+    writeFileSync(skillMdDest, "---\nname: customize\n---\n# stale\n");
+
+    // SKILL.md's own "wx" write physically creates it, then fails mid-way;
+    // rollback's later removal of it also fails -- genuinely left behind.
+    // Same technique as the "a left-behind SKILL.md after a failed
+    // rollback" suite above, with a pre-existing SKILL.md added so
+    // `skillRemoved` is set this time.
+    let writeAttempted = false;
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) => {
+        const [target] = args;
+        if (String(target) === skillMdDest) {
+          writeAttempted = true;
+          real.writeFileSync(target, "PARTIAL CONTENT", { flag: "wx" });
+          throw new Error("ENOSPC: no space left on device (simulated)");
+        }
+        return real.writeFileSync(...args);
+      },
+    );
+    rmSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.rmSync>) => {
+        const [target] = args;
+        if (String(target) === skillMdDest && writeAttempted) {
+          const failure = new Error(
+            "EBUSY: resource busy or locked, unlink (simulated)",
+          ) as NodeJS.ErrnoException;
+          failure.code = "EBUSY";
+          throw failure;
+        }
+        return real.rmSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkill(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain(skillMdDest);
+    expect(message).toContain("delete it by hand");
+    expect(message).toContain("Claude Code will load a truncated skill");
+    expect(message).not.toContain(
+      "the skill is not loadable until a successful re-run",
+    );
+    // Genuinely left behind: rollback's own removal failed.
+    expect(existsSync(skillMdDest)).toBe(true);
 
     real.rmSync(sourceDir, { recursive: true, force: true });
     real.rmSync(targetDir, { recursive: true, force: true });
