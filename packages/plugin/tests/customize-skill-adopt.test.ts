@@ -467,15 +467,23 @@ describe("SKILL.md Step 0.4(c) Confirm -- prototype-key check before offering a 
   }
   const section = text.slice(sectionStart, sectionEnd);
 
-  it("tells the agent to check each staged pack.json for a prototype-sensitive wiring key before offering it", () => {
+  it("tells the agent to check each staged pack.json.staged for a prototype-sensitive wiring key before offering it", () => {
     expect(section).toContain(
-      "Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json`",
+      "Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json.staged`",
     );
+  });
+
+  it("says the pack.json.staged bytes checked here are the ones Step 0.1 already verified, not a fresh read", () => {
+    const idx = section.indexOf("`.groundwork/packs/<name>/pack.json.staged`");
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(idx, idx + 200);
+    expect(window).toContain("Step 0.1");
+    expect(window).toContain("verified");
   });
 
   it("names __proto__, constructor and prototype, and the three wiring fields to check, in document order after the check text", () => {
     const needles = [
-      "Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json`",
+      "Before offering any pack, check each staged `.groundwork/packs/<name>/pack.json.staged`",
       "__proto__",
       "constructor",
       "prototype",
@@ -525,15 +533,15 @@ describe("SKILL.md Round 1's approved-packs bullet -- prototype-key check before
   }
   const section = text.slice(sectionStart, sectionEnd);
 
-  it("tells the agent to repeat the Step 0.4(c) prototype-key check before merging any staged pack.json wiring", () => {
+  it("tells the agent to repeat the Step 0.4(c) prototype-key check before merging any staged pack.json.staged wiring", () => {
     expect(section).toContain(
-      "Before merging any staged `pack.json` wiring, repeat the prototype-key check from Step 0.4(c)",
+      "Before merging any staged `pack.json.staged` wiring, repeat the prototype-key check from Step 0.4(c)",
     );
   });
 
   it("puts the repeated prototype-key check before the hand-translation instruction it guards", () => {
     const checkIndex = section.indexOf(
-      "Before merging any staged `pack.json` wiring, repeat the prototype-key check from Step 0.4(c)",
+      "Before merging any staged `pack.json.staged` wiring, repeat the prototype-key check from Step 0.4(c)",
     );
     const handTranslateIndex = section.indexOf(
       "then translate `pack.json`'s `wiring` by hand",
@@ -557,5 +565,190 @@ describe("SKILL.md -- the Step 0.4(c) prototype-key check text is not duplicated
     const needle = "Before offering any pack, check each staged";
     const occurrences = text.split(needle).length - 1;
     expect(occurrences).toBe(1);
+  });
+});
+
+/*
+ * The CLI now stages packs the same inert way it stages the baseline
+ * (`pack-stage.ts`): `.groundwork/packs/<name>/pack.json.staged` and
+ * `.groundwork/packs/<name>/files/<path>.staged`, recorded in
+ * `inventory.stagedPacks` (schema 5, additive -- `packages/cli/src/inventory.ts`).
+ * The tests below pin the SKILL.md contract for verifying and installing
+ * from that staged copy, mirroring the staged-baseline contract already
+ * pinned above. Same heading-scoped-slice discipline as the rest of this
+ * file: a shared helper recomputes the Step 0.1 slice per describe block
+ * rather than sharing a module-level binding.
+ */
+function step01Section(): string {
+  const sectionStart = text.indexOf("1. Look for");
+  const sectionEnd = text.indexOf("2. **The deep read.**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.1 section markers ('1. Look for' / '2. **The deep read.**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  return text.slice(sectionStart, sectionEnd);
+}
+
+describe("SKILL.md Step 0.1 schema table -- row 5 documents stagedPacks", () => {
+  it("mentions stagedPacks in the schemaVersion 5 table row", () => {
+    const rowIndex = text.indexOf("| 5 |");
+    expect(rowIndex).toBeGreaterThan(-1);
+    const rowEnd = text.indexOf("For a schema 5 inventory only", rowIndex);
+    expect(rowEnd).toBeGreaterThan(rowIndex);
+    const row = text.slice(rowIndex, rowEnd);
+    expect(row).toContain("stagedPacks");
+  });
+});
+
+describe("SKILL.md Step 0.1 -- staged packs verification (schema 5)", () => {
+  const section = step01Section();
+  const headerPhrase = "For a schema 5 inventory only";
+
+  it("places the stagedPacks verification after the schema-5-only scope statement", () => {
+    const headerIndex = section.indexOf(headerPhrase);
+    const dirIndex = section.indexOf("`.groundwork/packs/<name>`");
+    expect(headerIndex).toBeGreaterThan(-1);
+    expect(dirIndex).toBeGreaterThan(-1);
+    expect(headerIndex).toBeLessThan(dirIndex);
+  });
+
+  it("requires each stagedPacks entry's dir/suffix to equal the documented literals, built from the entry's own name, taken from the skill not the inventory", () => {
+    expect(section).toContain("`.groundwork/packs/<name>`");
+    expect(section).toContain("own `name`");
+    expect(section).toContain("not from the inventory");
+  });
+
+  it("requires name to be a single path segment: not empty, not '.' or '..', and free of a slash, backslash or colon", () => {
+    expect(section).toContain("single path segment");
+    expect(section).toContain("`..`");
+    expect(section).toContain("empty");
+  });
+
+  it("requires manifest.path and manifest.staged to equal the documented literals exactly", () => {
+    expect(section).toContain("manifest.path` must equal `pack.json`");
+    expect(section).toContain("manifest.staged` must equal `pack.json.staged`");
+  });
+
+  it("requires every pack file's staged name to equal path + '.staged', applying the same path validation as the staged baseline's own files", () => {
+    const occurrences = (section.match(/staged === path \+ "\.staged"/g) ?? [])
+      .length;
+    // One occurrence for stagedBaseline.files (already asserted above),
+    // a second for stagedPacks' own files -- proves a new instance was
+    // added for packs rather than only reusing the baseline's.
+    expect(occurrences).toBeGreaterThanOrEqual(2);
+  });
+
+  it("rejects a duplicate pack name among stagedPacks entries, and a duplicate path/staged within one pack's files", () => {
+    expect(section).toContain("duplicate pack `name`");
+    const stagedDuplicateOccurrences = (
+      section.match(/duplicate `staged`/g) ?? []
+    ).length;
+    // One occurrence from the staged-baseline rule, a second from the
+    // staged-packs rule.
+    expect(stagedDuplicateOccurrences).toBeGreaterThanOrEqual(2);
+  });
+
+  it("reads the staged manifest and files once each, applying the SHA-256 check above rather than restating the node -e command", () => {
+    expect(section).toContain("<dir>/pack.json.staged");
+    expect(section).toContain("<dir>/files/<staged>");
+    expect(section).toContain("the SHA-256 check above");
+  });
+
+  it("states the node -e one-liner exactly once in the whole file (the packs check reuses it rather than repeating it)", () => {
+    const needle = "node -e 'process.stdout.write";
+    const occurrences = text.split(needle).length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it("requires the set of pack names in inventory.packs to equal stagedPacks, and fileConflicts[].relPath to equal files[].path per pack", () => {
+    expect(section).toContain("`inventory.packs`");
+    expect(section).toContain("`inventory.stagedPacks`");
+    expect(section).toContain("`fileConflicts[].relPath`");
+    expect(section).toContain("`files[].path`");
+  });
+
+  it("keeps the verified bytes for Round 1's install and for the prototype-key check, instead of reading twice", () => {
+    const idx = section.indexOf("the SHA-256 check above");
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(idx, idx + 400);
+    expect(window).toContain("Round 1");
+    expect(window).toContain("prototype-key check");
+  });
+});
+
+describe("SKILL.md Step 0.1 -- the single stop list also covers staged packs", () => {
+  const section = step01Section();
+
+  it("still describes exactly one 'single stop list' in the whole file", () => {
+    const occurrences = text.split("single stop list").length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it("names a missing or non-array stagedPacks as stopping the run for schema 5, in the same stop-list description", () => {
+    expect(section).toContain("`stagedPacks`");
+    expect(section).toContain("not an array");
+    expect(section).toContain("missing");
+  });
+
+  it("extends the fixed user message to mention both staged directories and the re-run command", () => {
+    const idx = section.indexOf(
+      "is incomplete or does not match `.groundwork/inventory.json`",
+    );
+    expect(idx).toBeGreaterThan(-1);
+    const window = section.slice(Math.max(0, idx - 200), idx + 400);
+    expect(window).toContain(".groundwork/baseline/");
+    expect(window).toContain(".groundwork/packs/");
+    expect(window).toContain("npx @monte3l/groundwork@rc .");
+  });
+
+  it("never falls back to inventory.templateRoot for packs either", () => {
+    expect(section).toContain("Never fall back to");
+    expect(section).toContain("for packs either");
+  });
+});
+
+describe("SKILL.md Step 0.1 -- the staged-packs verify block stays scoped to schema 5, same as the staged baseline", () => {
+  const section = step01Section();
+
+  it("keeps the schema 1-4 skip statement for the whole block (stagedPacks included, no separate 1-4 handling)", () => {
+    expect(section).toContain(
+      "A schema 1-4 inventory has no `stagedBaseline`: skip this whole block",
+    );
+  });
+});
+
+describe("SKILL.md Round 1's approved-packs bullet -- installs from the staged, verified, token-substituted copy", () => {
+  // Same heading-scoped slice as the "prototype-key check before the hand
+  // merge" describe block above.
+  const sectionStart = text.indexOf("The **approved packs**");
+  const sectionEnd = text.indexOf("**Plugins (both modes)");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Round 1 approved-packs section markers ('The **approved packs**' / '**Plugins (both modes)') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  it("installs each file from the staged, suffixed path", () => {
+    expect(section).toContain("`.groundwork/packs/<name>/files/<path>.staged`");
+  });
+
+  it("writes to the project at path with the .staged suffix stripped, never to the staged name", () => {
+    expect(section).toContain("the `.staged` suffix stripped");
+    expect(section).toContain("never to the staged name");
+  });
+
+  it("applies token substitution to the verified bytes as it copies", () => {
+    expect(section).toContain("`__KEY__`");
+    expect(section).toContain("verified bytes");
+  });
+
+  it("tells the agent to strip the .staged suffix for the manual-install pointer too (a non-adopt-capable pack, e.g. publishing)", () => {
+    const pointerIdx = section.indexOf("point at `.groundwork/packs/<name>/`");
+    expect(pointerIdx).toBeGreaterThan(-1);
+    const window = section.slice(pointerIdx, pointerIdx + 250);
+    expect(window).toContain("strip");
+    expect(window).toContain("`.staged`");
   });
 });
