@@ -16,8 +16,10 @@ import { join, relative } from "node:path";
 import { fieldList, fieldText, parseFrontmatter } from "./frontmatter.mjs";
 
 /**
- * Model ids and aliases considered current. Bump alongside a harness-guidance
- * refresh sweep.
+ * Model ids and aliases considered current. The ids follow Anthropic's models
+ * overview and model-deprecations page (retrieved 2026-10-01); a legacy id
+ * that is still Active there stays accepted until it is deprecated. Bump
+ * alongside a harness-guidance refresh sweep.
  * @public Not imported anywhere else in this project -- exported only for
  * m3l-groundwork's own upstream parity check (see the file header above).
  */
@@ -29,7 +31,10 @@ export const CURRENT_MODELS = [
   "fable",
   "claude-opus-5",
   "claude-opus-5-5",
+  "claude-opus-4-8",
   "claude-sonnet-5",
+  "claude-sonnet-5-5",
+  "claude-fable-5",
   "claude-fable-5-1",
   "claude-haiku-4-5",
   "claude-haiku-4-5-20251001",
