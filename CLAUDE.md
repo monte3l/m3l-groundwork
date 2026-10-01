@@ -94,7 +94,7 @@ packages/plugin/        Phase B: the /customize skill
                          `/plugin marketplace add`.
 
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
-                         verify lanes + e2e + node-current + the `verify`
+                         verify lanes + e2e + e2e-macos + node-current + the `verify`
                          aggregator), release.yml (see "Releases"), docs.yml
                          (builds the docs site and deploys it to Cloudflare
                          Workers Static Assets -- see .claude/rules/docs-site.md
@@ -355,7 +355,7 @@ steps) before considering any task here done.
   gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
   bespoke script invocation in either YAML file.
 - **Continuous integration (`.github/`) and the two Claude Code Actions
-  workflows.** `ci.yml` runs five verify lanes plus `e2e`/`node-current`
+  workflows.** `ci.yml` runs five verify lanes plus `e2e`/`e2e-macos`/`node-current`
   behind a `verify` aggregator (the check `main`'s ruleset gates on --
   see "Git Workflow"); `claude.yml`/`claude-pr-review.yml` run Anthropic's
   official action, model-pinned and scoped to read-only PR comments. Full
