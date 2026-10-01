@@ -559,3 +559,102 @@ describe("SKILL.md -- the Step 0.4(c) prototype-key check text is not duplicated
     expect(occurrences).toBe(1);
   });
 });
+
+describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline hash check", () => {
+  // Same heading-scoped slice as the other Step 0.1 describe blocks above (a
+  // module-level `section` would leak scope across describe blocks, so this
+  // is recomputed locally per the test-author instructions).
+  const sectionStart = text.indexOf("1. Look for");
+  const sectionEnd = text.indexOf("2. **The deep read.**");
+  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
+    throw new Error(
+      "Step 0.1 section markers ('1. Look for' / '2. **The deep read.**') were not both found in SKILL.md -- update these markers if the heading text changed",
+    );
+  }
+  const section = text.slice(sectionStart, sectionEnd);
+
+  const keepBytesIndex = section.indexOf("Keep those same bytes");
+  const noShellIndex = section.indexOf("No shell tool available.");
+  const emptyFilesIndex = section.indexOf("An empty `files` list");
+
+  it("adds a 'No shell tool available.' bullet after the node -e / 'Keep those same bytes' bullet and before the 'An empty files list' bullet", () => {
+    expect(keepBytesIndex).toBeGreaterThan(-1);
+    expect(emptyFilesIndex).toBeGreaterThan(-1);
+    expect(noShellIndex).toBeGreaterThan(keepBytesIndex);
+    expect(noShellIndex).toBeLessThan(emptyFilesIndex);
+  });
+
+  it("says the with-shell path still applies as documented above when a command-running tool is available", () => {
+    expect(section).toContain(
+      "If a Bash or other command-running tool is available, compute the hash as above.",
+    );
+  });
+
+  it("tells the agent not to work around a missing command-running tool", () => {
+    expect(section).toContain(
+      "If you cannot run a command, do not work around it",
+    );
+  });
+
+  it.each([
+    "write no scratch script",
+    "make no `Write` or `Edit` outside `.groundwork/`",
+    "dispatch no subagent",
+    "search for a command tool at most once",
+  ])("forbids the workaround: %s", (forbidden) => {
+    expect(section).toContain(forbidden);
+  });
+
+  it("limits the skip to the SHA-256 comparison and still requires the structural checks with file tools", () => {
+    expect(section).toContain("Skip only the SHA-256 comparison");
+    expect(section).toContain("(`Read`, `Glob`, `Grep`)");
+  });
+
+  it("says to spend no further turns on verification once the tool search comes up empty", () => {
+    expect(section).toContain("spend no further turns on verification");
+  });
+
+  it("tells the user the SHA-256 check was skipped, what a passing check would have proven, and which structural checks were verified instead, at the top of the Step 0.4 summary with continue-or-stop asked in the same confirmation", () => {
+    expect(section).toContain(
+      "the SHA-256 check was skipped because no command could be run",
+    );
+    expect(section).toContain(
+      "is complete and matches the inventory, not that the files are untampered",
+    );
+    expect(section).toContain("which structural checks you did verify instead");
+    expect(section).toContain("your first message to the user");
+    expect(section).toContain("the Step 0.4 summary");
+    expect(section).toContain("continue or stop");
+
+    const noticeIndex = section.indexOf("your first message to the user");
+    expect(noticeIndex).toBeGreaterThan(-1);
+    const window = section.slice(noticeIndex, noticeIndex + 700);
+    expect(window).toContain("the Step 0.4 summary");
+    expect(window).toContain("continue or stop");
+    expect(window).toContain(
+      "the SHA-256 check was skipped because no command could be run",
+    );
+  });
+
+  it("says to record the skip in the adoption report", () => {
+    expect(section).toContain(
+      "record the skip in `.groundwork/adoption-report.md`",
+    );
+  });
+
+  it("still stops on a structural failure even when the hash check itself is skipped", () => {
+    expect(section).toContain("A structural failure still stops");
+  });
+
+  it("keeps the with-shell path's node -e one-liner, 'Keep those same bytes', and 'single quoted argument' wording unchanged", () => {
+    expect(section).toContain("node -e");
+    expect(section).toContain("Keep those same bytes");
+    expect(section).toContain("single quoted argument");
+  });
+
+  it("states the no-shell clause exactly once in the whole file", () => {
+    const needle = "No shell tool available.";
+    const occurrences = text.split(needle).length - 1;
+    expect(occurrences).toBe(1);
+  });
+});

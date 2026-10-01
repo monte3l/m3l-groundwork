@@ -134,6 +134,26 @@ may or may not touch.
      `node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' <file>`
      Keep those same bytes for the install in Round 1 (substitute tokens into
      them) rather than reading the file a second time.
+   - **No shell tool available.** If a Bash or other command-running tool is
+     available, compute the hash as above. If you cannot run a command, do
+     not work around it: write no scratch script, make no `Write` or `Edit`
+     outside `.groundwork/`, dispatch no subagent to look for a shell, and
+     search for a command tool at most once. Skip only the SHA-256
+     comparison. Run every other check in this block with the file tools
+     (`Read`, `Glob`, `Grep`): the files exist, `staged === path + ".staged"`,
+     the paths are relative with no `..`, `\` or `:`, no duplicates, `dir`
+     and `suffix` exact, the `absent` conflicts and `stagedBaseline.files`
+     name the same set, and the entry count matches. Then spend no further
+     turns on verification and go on to the deep read. State this plainly at
+     the top of your first message to the user (the Step 0.4 summary, not a
+     separate earlier stop), and ask whether to continue or stop in that
+     same confirmation: the SHA-256 check was skipped because no command
+     could be run; a passing check would only have proven that the staging
+     is complete and matches the inventory, not that the files are
+     untampered; and which structural checks you did verify instead. Also
+     record the skip in `.groundwork/adoption-report.md`, the one file this
+     step may write. A structural failure still stops, exactly as the stop
+     list below says.
    - An empty `files` list is legitimate (nothing was missing from the
      project) and creates no `.groundwork/baseline/` directory; that alone is
      not a failure.
