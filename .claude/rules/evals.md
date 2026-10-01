@@ -59,6 +59,11 @@ catch wrapped alone.
 `bin/make-harness-plugin.mjs --packs <dir>` writes this suite's wrapper for
 local inspection the same way the bare form does for `harness`.
 
+`evals/core-harness/triggers.json` deliberately has no "get it merged"
+phrasing for `creating-prs`: with no shell in the 2-turn sandbox the model
+went looking for one instead of firing the skill (0.33 over 3 runs). Don't
+re-add it.
+
 The interview is graded by an `llm` rubric rather than a
 `tool_used: AskUserQuestion` grader because that tool is not available in
 the eval sandbox (Claude falls back to plain-text questions). Under
