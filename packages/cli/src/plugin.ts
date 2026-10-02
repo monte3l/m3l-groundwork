@@ -755,26 +755,31 @@ function firstUnusableComponent(
   return undefined;
 }
 
+/** The outcome of comparing one existing regular file against the payload; `"unreadable"` carries the read failure's errno code (`"unknown"` when it has none). */
+type FileComparison =
+  | { readonly kind: "match" }
+  | { readonly kind: "mismatch" }
+  | { readonly kind: "unreadable"; readonly code: string };
+
 /**
  * Whether the regular file at `path` holds exactly `bytes`: `"match"`,
- * `"mismatch"`, or `"unreadable"` when the read itself fails. A read failure
- * is never thrown: every caller treats an entry it cannot compare as not
- * this CLI's current copy, and decides from there what to do with it.
+ * `"mismatch"`, or `"unreadable"` (with the errno code) when the read itself
+ * fails. A read failure is never thrown: every caller treats an entry it
+ * cannot compare as not this CLI's current copy, and decides from there what
+ * to do with it.
  */
-function regularFileMatches(
-  path: string,
-  bytes: Buffer,
-): "match" | "mismatch" | "unreadable" {
+function regularFileMatches(path: string, bytes: Buffer): FileComparison {
   let existing: Buffer;
   try {
     existing = readFileSync(path);
-  } catch {
+  } catch (error) {
     // Deliberately not rethrown: an entry this run cannot read is, by
     // definition, not one it can confirm as current -- fresh mode replaces it
-    // like any stale copy, adopt mode leaves it alone and falls back.
-    return "unreadable";
+    // like any stale copy, adopt mode leaves it alone and falls back. The
+    // code is kept so the fallback reason can say why.
+    return { kind: "unreadable", code: errnoField(error, "code") ?? "unknown" };
   }
-  return existing.equals(bytes) ? "match" : "mismatch";
+  return existing.equals(bytes) ? { kind: "match" } : { kind: "mismatch" };
 }
 
 /** What is already at `.claude/skills/customize/`, judged against the payload. */
@@ -800,12 +805,14 @@ type ExistingSkill =
  *   directory, symlink or FIFO) under any payload name, `SKILL.md` included;
  *   `reason` names the first offending entry.
  *
- * Runs before anything is removed or written, so a failing `lstat` throws
+ * Runs before anything is removed or written, and stops at the first foreign
+ * entry: a failing `lstat` on any entry reached before that point throws
  * (wrapped, raw error as `cause`) naming the path and saying so -- an entry
- * whose very nature is unknown is never classified. A regular file `lstat`
+ * whose very nature is unknown is never classified -- while an entry after
+ * the first foreign one is never `lstat`ed at all. A regular file `lstat`
  * already confirmed but that cannot be read is `"foreign"`, its `reason`
- * saying it could not be read: this never guesses that an entry it cannot
- * compare is current. Fresh mode's overwrite then replaces it like any stale
+ * saying it could not be read and naming the errno code: this never guesses
+ * that an entry it cannot compare is current. Fresh mode's overwrite then replaces it like any stale
  * copy; adopt mode leaves it untouched and falls back.
  */
 function classifyExistingSkill(
@@ -822,16 +829,17 @@ function classifyExistingSkill(
     if (stat === undefined) {
       continue;
     }
-    const verdict = stat.isFile()
+    const verdict: FileComparison = stat.isFile()
       ? regularFileMatches(installedPath, bytes)
-      : "mismatch";
-    if (verdict === "unreadable") {
+      : { kind: "mismatch" };
+    if (verdict.kind === "unreadable") {
+      // No ", so" clause here: installGuarded appends its own.
       return {
         kind: "foreign",
-        reason: `${installedPath} already exists and could not be read, so it cannot be confirmed as this CLI's current copy`,
+        reason: `${installedPath} already exists and could not be read (${verdict.code}); it cannot be confirmed as this CLI's current copy`,
       };
     }
-    if (verdict === "mismatch") {
+    if (verdict.kind === "mismatch") {
       return {
         kind: "foreign",
         reason: `${installedPath} already exists and is not this CLI's current copy`,

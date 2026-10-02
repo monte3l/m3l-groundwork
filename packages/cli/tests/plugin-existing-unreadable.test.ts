@@ -265,4 +265,73 @@ describe("an unreadable existing payload entry at the adopt-mode destination is 
       );
     },
   );
+
+  // `classifyExistingSkill`'s "unreadable" verdict (above) and
+  // `installToGroundwork`'s own combining wrap each append ", so ..." to a
+  // reason that may already end in one -- the combined text carries the
+  // read failure's errno code (e.g. "could not be read (EACCES)") and uses
+  // "so" exactly once.
+  it.skipIf(chmodIneffective)(
+    "the fallbackReason for an unreadable SKILL.md names the errno code and uses 'so' at most once (no doubled 'so ... so')",
+    () => {
+      const skillMdDest = join(destDir, "SKILL.md");
+      writeFileSync(
+        skillMdDest,
+        "---\nname: customize\n---\n# stale, unreadable\n",
+      );
+      chmodSync(skillMdDest, 0o000);
+
+      const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+      expect(result.location).toBe("groundwork");
+      expect(result.fallbackCause).toBe("entry");
+      const { fallbackReason } = result;
+      if (fallbackReason === undefined) {
+        throw new Error("expected a fallbackReason naming the unreadable path");
+      }
+      expect(fallbackReason).toContain("EACCES");
+      const soOccurrences = fallbackReason.match(/\bso\b/g) ?? [];
+      expect(soOccurrences.length).toBeLessThanOrEqual(1);
+    },
+  );
+
+  // Same errno + single-"so" contract, but on the OTHER combined text:
+  // installToGroundwork's catch clause, reached when the
+  // `.groundwork/customize/` fallback install ITSELF fails. Its wrapping
+  // embeds the same `reason` ahead of its own ", so it fell back to
+  // .groundwork/customize/, and that install failed too" -- this text
+  // independently carries the errno code and uses "so" exactly once.
+  it.skipIf(chmodIneffective)(
+    "the error thrown when the .groundwork/customize/ fallback install itself fails still names the errno code and uses 'so' at most once",
+    () => {
+      const skillMdDest = join(destDir, "SKILL.md");
+      writeFileSync(
+        skillMdDest,
+        "---\nname: customize\n---\n# stale, unreadable\n",
+      );
+      chmodSync(skillMdDest, 0o000);
+      // Make the fallback destination's own install fail: a directory
+      // sitting at one of the payload names there is refused -- before
+      // anything is removed or written -- by assertNoDirectoryAtPayloadNames.
+      mkdirSync(join(groundworkDir, "SKILL.md"), { recursive: true });
+
+      let thrown: unknown;
+      try {
+        installCustomizeSkillGuarded(targetDir, sourceDir);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain("EACCES");
+      const soOccurrences = message.match(/\bso\b/g) ?? [];
+      expect(soOccurrences.length).toBeLessThanOrEqual(1);
+
+      // Cleanup: the directory stand-in for SKILL.md at the fallback
+      // destination isn't covered by this describe's afterEach (which only
+      // restores read permission under .claude/skills/customize/).
+      rmSync(join(groundworkDir, "SKILL.md"), { recursive: true, force: true });
+    },
+  );
 });
