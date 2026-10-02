@@ -27,10 +27,13 @@ import type { Inventory } from "../src/inventory.js";
 import type * as InventoryModule from "../src/inventory.js";
 import type * as ReportModule from "../src/report.js";
 import type { StagedPack, StagedPackFile } from "../src/pack-stage.js";
+import type { InstallPluginResult } from "../src/plugin.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
-const installCustomizeSkillMock = vi.fn(() => ({ filesWritten: [] }));
+const installCustomizeSkillMock = vi.fn((): InstallPluginResult => ({
+  filesWritten: [],
+}));
 const installCustomizeSkillGuardedMock = vi.fn(() => ({
   filesWritten: [],
   location: "claude" as const,
@@ -140,6 +143,41 @@ describe("main", () => {
 
       expect(gitInitMock).toHaveBeenCalled();
       expect(installCustomizeSkillGuardedMock).not.toHaveBeenCalled();
+    });
+
+    it("prints 'the /customize skill was already up to date' when installCustomizeSkill reports a no-op (filesWritten: [])", () => {
+      const emptyTarget = join(targetDir, "sub-noop");
+      installCustomizeSkillMock.mockReturnValueOnce({ filesWritten: [] });
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      main([emptyTarget, "--skip-install"]);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        "the /customize skill was already up to date",
+      );
+      logSpy.mockRestore();
+    });
+
+    it("prints 'installed the /customize skill (N files)' when installCustomizeSkill actually wrote files", () => {
+      const emptyTarget = join(targetDir, "sub-installed");
+      installCustomizeSkillMock.mockReturnValueOnce({
+        filesWritten: [
+          join(".claude", "skills", "customize", "SKILL.md"),
+          join(".claude", "skills", "customize", "kind-facet-map.ts"),
+        ],
+      });
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      main([emptyTarget, "--skip-install"]);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        "installed the /customize skill (2 files)",
+      );
+      logSpy.mockRestore();
     });
 
     describe("fails early, before writing anything", () => {
@@ -256,6 +294,100 @@ describe("main", () => {
         expect((thrown as Error).message).toMatch(/project was written/);
         expect((thrown as Error).message).toMatch(/git init/);
         expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(runInstallMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("when the /customize skill install fails", () => {
+      /**
+       * [item 4] The re-run instruction must be concrete enough to actually
+       * act on: name the exact flags to re-add (`--fresh --force`) and say
+       * to keep the original invocation's own flags (`--name`/`--pack`/
+       * `--skip-install`) rather than silently dropping them on the retry.
+       * Shared by both tests below; the `--skip-install` wording itself
+       * differs per test, see each.
+       */
+      function expectReRunGuidance(message: string): void {
+        expect(message).toContain(
+          "re-run with --fresh --force (plus your original --name/--pack/--skip-install)",
+        );
+        expect(message).toContain("a plain re-run adopts it");
+        // [S3] main.ts's own top-level message is the ONLY place that states
+        // the "--fresh --force" instruction for a fresh-mode install
+        // failure -- it never interpolates the plugin's own cause.message
+        // into its text, so this count must stay at exactly one regardless
+        // of what the (here, mocked) cause says.
+        const occurrences = (message.match(/--fresh --force/g) ?? []).length;
+        expect(occurrences).toBe(1);
+      }
+
+      it("without --skip-install: says pnpm install did not run, and how to re-run keeping the same flags, chaining the cause", () => {
+        const target = join(targetDir, "skill-install-fails");
+        const cause = new Error("simulated /customize skill install failure");
+        installCustomizeSkillMock.mockImplementationOnce(() => {
+          throw cause;
+        });
+        vi.spyOn(console, "log").mockImplementation(() => {});
+        let thrown: unknown;
+        try {
+          main([target]);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          vi.restoreAllMocks();
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).cause).toBe(cause);
+        const message = (thrown as Error).message;
+        expect(message).toContain("was written to");
+        expect(message).toContain(target);
+        expect(message).toContain("git init");
+        expect(message).toContain("pnpm install did not run");
+        expectReRunGuidance(message);
+
+        // The template itself was written; neither git nor the dependency
+        // install ran.
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(gitInitMock).not.toHaveBeenCalled();
+        expect(runInstallMock).not.toHaveBeenCalled();
+      });
+
+      it("with --skip-install: does not claim pnpm install did not run (it was never going to), but still says how to re-run", () => {
+        const target = join(targetDir, "skill-install-fails-skip-install");
+        const cause = new Error("simulated /customize skill install failure");
+        installCustomizeSkillMock.mockImplementationOnce(() => {
+          throw cause;
+        });
+        vi.spyOn(console, "log").mockImplementation(() => {});
+        let thrown: unknown;
+        try {
+          main([target, "--skip-install"]);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          vi.restoreAllMocks();
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        expect((thrown as Error).cause).toBe(cause);
+        const message = (thrown as Error).message;
+        expect(message).toContain("was written to");
+        expect(message).toContain(target);
+        expect(message).toContain("git init");
+        // --skip-install means pnpm install was never going to run this
+        // invocation at all -- the failure did not "skip" it, and must not
+        // claim it did.
+        expect(message).not.toContain("pnpm install did not run");
+        expect(message.toLowerCase()).not.toMatch(
+          /pnpm install (?:was )?skipped/,
+        );
+        expectReRunGuidance(message);
+
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+        expect(gitInitMock).not.toHaveBeenCalled();
         expect(runInstallMock).not.toHaveBeenCalled();
       });
     });

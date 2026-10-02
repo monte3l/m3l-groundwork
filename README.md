@@ -191,6 +191,21 @@ useful beyond that ships as a pack instead.
 The skill lands at `.claude/skills/customize/` in the target project. Open it
 in Claude Code and run `/customize`.
 
+In adopt mode the CLI never removes or overwrites anything the project owns
+there. A `.claude/skills/customize/` that holds only files with none of the
+skill's names is used as is, and the skill is added beside them. If the
+project already owns an entry under one of the skill's names, the CLI writes
+the skill to `.groundwork/customize/` instead and says so; Claude Code does
+not load that copy, so run the plugin's `/customize` or replace the project's
+copy yourself. If `.claude`, `.claude/skills` or `.claude/skills/customize` is
+a symlink or not a directory, no project copy exists: fix that path, copy the
+staged skill into place, or run the plugin's `/customize`. Fresh mode with
+`--force` does replace an existing skill copy. The symlink protection above
+covers adopt mode. Fresh mode is meant for a directory you control: with
+`--force` it writes the baseline into a non-empty directory without a symlink
+check, so if `.claude` or `.claude/skills` there is a symlink, template files
+are written through it before the skill install refuses.
+
 - **Fresh project:** a short interview (project kind, runtime target, test
   strictness, CI depth) tailors the baseline, then a guidance sweep checks the
   result against current upstream sources.

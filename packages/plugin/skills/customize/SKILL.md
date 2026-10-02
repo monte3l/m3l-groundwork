@@ -83,8 +83,9 @@ may or may not touch.
    that is running. For the plugin install, run `/plugin update`. For a
    project-local copy in `.claude/skills/customize/`, `/plugin update` does
    not touch it, and re-running the CLI alone does not either: the CLI
-   never overwrites a copy that differs, it writes a fresh one to
-   `.groundwork/customize/`, which Claude Code does not load. So delete
+   never overwrites a copy that differs (nor removes any other entry the
+   project owns there, nor writes through a symlinked `.claude`), it writes a
+   fresh one to `.groundwork/customize/`, which Claude Code does not load. So delete
    that directory first (this discards any local edits the project made to
    its copy) and then re-run `npx @monte3l/groundwork@rc .`. A
    copy in `.groundwork/customize/` is refreshed by re-running the CLI. What

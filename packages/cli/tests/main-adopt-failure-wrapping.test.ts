@@ -470,4 +470,43 @@ describe("runAdopt -- failure wrapping after the point of no return (round-3 ite
     const occurrences = message.match(/re-run the CLI/g) ?? [];
     expect(occurrences).toHaveLength(1);
   });
+
+  // [S1] removedStaleFilesError's dedup check today is an EXACT suffix
+  // comparison against its own RERUN_ADVICE string ("fix the cause and
+  // re-run the CLI") -- but a real failure chained up from plugin.ts's
+  // installCustomizeSkillGuarded can end with a DIFFERENTLY-WORDED re-run
+  // marker that means the same thing: assertNotSymlink's own
+  // "... -- remove it and re-run the CLI" (reached when
+  // .groundwork/customize/ itself is a symlink, so the CLI-owned fallback
+  // destination's own directory-component guard fires). An exact-string
+  // suffix check misses that marker entirely and doubles the advice.
+  it("contains 're-run the CLI' exactly ONCE even when the wrapped cause ends with a DIFFERENTLY-WORDED but equivalent re-run marker (fs-guard's symlink wording), not just main.ts's own exact RERUN_ADVICE string (S1)", () => {
+    const projectDir = seedProject(targetDir, "dedupe-rerun-wording-fsguard");
+    seedStaleGroundwork(projectDir);
+
+    const groundworkCustomizeDir = join(projectDir, ".groundwork", "customize");
+    // The exact shape a real .groundwork/customize symlink failure takes,
+    // chained up through installGuarded's fallback re-wrap: it ends with
+    // assertNotSymlink's own generic advice, not main.ts's RERUN_ADVICE
+    // string.
+    const cause = new Error(
+      `could not install the /customize skill: some reason, so it fell back to .groundwork/customize/, and that install failed too: could not prepare ${groundworkCustomizeDir}; nothing was removed or written: refusing to write through a symlink: ${groundworkCustomizeDir} -- remove it and re-run the CLI`,
+    );
+    installCustomizeSkillGuardedMock.mockImplementationOnce(() => {
+      throw cause;
+    });
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).cause).toBe(cause);
+    const message = (thrown as Error).message;
+    const occurrences = message.match(/re-run the CLI/g) ?? [];
+    expect(occurrences).toHaveLength(1);
+  });
 });

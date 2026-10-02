@@ -236,7 +236,17 @@ steps) before considering any task here done.
   inert staged copies of the baseline additions and the packs
   (`.groundwork/baseline/`, `.groundwork/packs/`), plus one
   guarded, purely-additive copy of the `/customize` skill
-  (`installCustomizeSkillGuarded` in `plugin.ts`) -- never a project file.
+  (`installCustomizeSkillGuarded` in `plugin.ts`; `customize-paths.ts` owns
+  where it writes). It decides presence by `lstat`, never overwrites or
+  removes a project-owned entry under `.claude/skills/customize/` (anything
+  already there that is not an exact current copy sends the install to
+  `.groundwork/customize/`, as does a symlinked component under `.claude`),
+  lstat-guards every directory under `.groundwork/` it writes through,
+  writes `SKILL.md` last and rolls back the files it wrote if a later write
+  fails -- never a project file. The guard is an `lstat` check, so a
+  component swapped for a symlink after the check is not covered, and
+  `targetDir` itself and its ancestors are not checked; see the assurance
+  case's residual risks.
   Staged baseline files carry a `.staged` suffix so no project tool (vitest,
   tsc, eslint, Claude Code's skill loader) can discover them as live source;
   `inventory.stagedBaseline.files` records each one's original `path`, its
