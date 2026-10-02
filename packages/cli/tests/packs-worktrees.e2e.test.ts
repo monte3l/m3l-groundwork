@@ -3,14 +3,15 @@
 
 /**
  * The worktrees pack's acceptance test: bootstrap a throwaway project with
- * `--pack worktrees` using the built CLI and confirm the skill and both
- * hooks land byte-identical, the skill's frontmatter parses, settings.json
- * gains the SessionStart/PreToolUse wiring, `.worktreeinclude` is emitted at
- * the project root, and the emitted project's own real `pnpm install` +
- * `pnpm verify` both pass -- this pack has hooks and settings/`.claude`
- * wiring (closer to `packs.e2e.test.ts`'s harness-extras shape than
- * `packs-github.e2e.test.ts`'s pure file drop), so it follows that pattern:
- * one bootstrap, one real install, one real verify.
+ * `--pack worktrees` using the built CLI and confirm the skill and all
+ * three hooks land byte-identical, the skill's frontmatter parses,
+ * settings.json gains the SessionStart/PreToolUse/PostToolUse wiring,
+ * `.worktreeinclude` is emitted at the project root, and the emitted
+ * project's own real `pnpm install` + `pnpm verify` both pass -- this pack
+ * has hooks and settings/`.claude` wiring (closer to `packs.e2e.test.ts`'s
+ * harness-extras shape than `packs-github.e2e.test.ts`'s pure file drop), so
+ * it follows that pattern: one bootstrap, one real install, one real
+ * verify.
  */
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
@@ -47,7 +48,7 @@ function extractFrontmatter(content: string): string {
 }
 
 describe("worktrees pack end-to-end", () => {
-  it("installs the skill and both hooks byte-identical, wires SessionStart/PreToolUse, emits .worktreeinclude, and the emitted project's own pnpm verify passes", () => {
+  it("installs the skill and all three hooks byte-identical, wires SessionStart/PreToolUse/PostToolUse, emits .worktreeinclude, and the emitted project's own pnpm verify passes", () => {
     const targetDir = mkdtempSync(join(tmpdir(), "m3l-groundwork-wt-e2e-"));
     try {
       execFileSync(
@@ -87,10 +88,11 @@ describe("worktrees pack end-to-end", () => {
       expect(frontmatter).toMatch(/^name: working-in-worktrees$/mu);
       expect(frontmatter).toMatch(/^description:\s*\S/mu);
 
-      // Both hook files land byte-identical.
+      // All three hook files land byte-identical.
       for (const hookName of [
         "guard-worktree-only.mjs",
         "ensure-worktree-deps.mjs",
+        "repair-core-bare.mjs",
       ]) {
         const emittedHookPath = join(targetDir, ".claude", "hooks", hookName);
         const sourceHookPath = join(
@@ -112,9 +114,11 @@ describe("worktrees pack end-to-end", () => {
         readFileSync(join(packSourceRoot, ".worktreeinclude"), "utf8"),
       );
 
-      // settings.json gains a SessionStart[startup|resume] entry and a
-      // PreToolUse[Write|Edit] entry, alongside the baseline's own
-      // registrations.
+      // settings.json gains a SessionStart[startup|resume] entry (carrying
+      // both ensure-worktree-deps.mjs and repair-core-bare.mjs), a
+      // PreToolUse[Write|Edit] entry, and a
+      // PostToolUse[EnterWorktree|ExitWorktree|Agent] entry, alongside the
+      // baseline's own registrations.
       const settings = JSON.parse(
         readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
       ) as {
@@ -130,7 +134,8 @@ describe("worktrees pack end-to-end", () => {
             entry.matcher === "startup|resume" &&
             entry.hooks.some((h) =>
               h.command.includes("ensure-worktree-deps.mjs"),
-            ),
+            ) &&
+            entry.hooks.some((h) => h.command.includes("repair-core-bare.mjs")),
         ),
       ).toBe(true);
       const preToolUse = settings.hooks["PreToolUse"] ?? [];
@@ -141,6 +146,14 @@ describe("worktrees pack end-to-end", () => {
             entry.hooks.some((h) =>
               h.command.includes("guard-worktree-only.mjs"),
             ),
+        ),
+      ).toBe(true);
+      const postToolUse = settings.hooks["PostToolUse"] ?? [];
+      expect(
+        postToolUse.some(
+          (entry) =>
+            entry.matcher === "EnterWorktree|ExitWorktree|Agent" &&
+            entry.hooks.some((h) => h.command.includes("repair-core-bare.mjs")),
         ),
       ).toBe(true);
 
@@ -160,7 +173,7 @@ describe("worktrees pack end-to-end", () => {
       });
 
       // The emitted project's own full gate -- its ESLint and Prettier run
-      // over the two new hooks here, catching a syntax/lint mistake in the
+      // over the three new hooks here, catching a syntax/lint mistake in the
       // pack's own shipped hook source the same way it would for any other
       // baseline file.
       execFileSync("pnpm", ["verify"], { cwd: targetDir, stdio: "inherit" });

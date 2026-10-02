@@ -61,6 +61,11 @@ If a worktree has `headRefName` checked out:
   merely `cd`'d into a plain `git worktree add` checkout — no `EnterWorktree`
   involved — `ExitWorktree` has nothing to exit; just `cd` back to the main
   checkout instead.)
+  After `ExitWorktree`, run `git config core.bare`: Claude Code's worktree
+  tools have been reported to leave it `true` in a normal repository's shared
+  config (anthropics/claude-code#58345, #69802), which breaks `git status`
+  here. If it prints `true`, reset it with `git config --local core.bare
+false` before going on.
 - Otherwise, no action needed yet — just remember the worktree's path for
   Step 4.
 
