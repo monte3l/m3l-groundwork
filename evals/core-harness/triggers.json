@@ -95,6 +95,11 @@
     "should_trigger": false
   },
   {
+    "skill": "typescript-guidance",
+    "query": "Fix the TS2345 type error in src/http.ts where the retries option is passed as a string.",
+    "should_trigger": false
+  },
+  {
     "skill": "harness-guidance",
     "query": "What does Anthropic recommend for Claude Code hooks, and is our harness up to date?",
     "should_trigger": true
