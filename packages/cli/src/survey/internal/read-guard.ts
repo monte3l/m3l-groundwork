@@ -6,8 +6,9 @@
  * A permission failure (`EACCES`/`EPERM`) is a property of the project file
  * itself -- a `chmod 000` left behind, a root-owned file -- so it is recorded
  * in the survey's `undetermined` list and the survey carries on; so is a
- * dangling symlink (`ENOENT`), a symlink loop (`ELOOP`) or a directory where
- * a file was expected (`EISDIR`) met on a read. Anything
+ * dangling symlink (`ENOENT`), a symlink loop (`ELOOP`), a directory where
+ * a file was expected (`EISDIR`) or a file where a directory was expected
+ * (`ENOTDIR`) met on a read. Anything
  * else (`EIO`, `EMFILE`, ...) says something about the machine, not the
  * project, and is thrown with the path named and the original chained as
  * `cause`, never folded silently in beside a genuine permission problem.
@@ -232,7 +233,9 @@ export function guardedExists(path: string, undetermined: string[]): boolean {
 /**
  * The non-permission errnos a read of an already-discovered path records
  * rather than throws: the entry is a dangling symlink (`ENOENT`), a symlink
- * loop (`ELOOP`), or a directory where a file was expected (`EISDIR`). Each
+ * loop (`ELOOP`), a directory where a file was expected (`EISDIR`), or a
+ * file where a directory was expected (`ENOTDIR`, e.g. a `readdirSync` of a
+ * path a prior `stat` found present). Each
  * is a property of the project's own tree, like a permission failure -- not
  * of the machine, like `EIO`/`EMFILE`.
  */
@@ -240,12 +243,13 @@ const RECORDED_READ_CODES: ReadonlySet<string> = new Set([
   "ENOENT",
   UNRESOLVABLE_CODE,
   "EISDIR",
+  "ENOTDIR",
 ]);
 
 /**
  * The errno to record when a read of an already-discovered path failed for a
  * reason that is a property of the project's own tree -- `EACCES`/`EPERM`,
- * `ENOENT` (a dangling symlink), `ELOOP` or `EISDIR` -- or `undefined` for
+ * `ENOENT` (a dangling symlink), `ELOOP`, `EISDIR` or `ENOTDIR` -- or `undefined` for
  * anything else (`EIO`, `EMFILE`, ...), which the caller throws.
  *
  * @example
@@ -264,8 +268,9 @@ export function recordedReadCode(error: unknown): string | undefined {
 /**
  * Runs `read` against `path`. On a failure that is a property of the
  * project's own tree -- a permission failure (`EACCES`/`EPERM`), a dangling
- * symlink (`ENOENT`), a symlink loop (`ELOOP`), or a directory where a file
- * was expected (`EISDIR`) -- records the path and errno in `undetermined`
+ * symlink (`ENOENT`), a symlink loop (`ELOOP`), a directory where a file
+ * was expected (`EISDIR`), or a file where a directory was expected
+ * (`ENOTDIR`) -- records the path and errno in `undetermined`
  * and returns `undefined`. On any other failure (`EIO`, `EMFILE`, ...),
  * throws a {@link SurveyReadError} chaining the original as `cause`.
  *

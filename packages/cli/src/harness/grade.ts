@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readJsoncFile } from "../jsonc.js";
-import { walkBounded } from "../survey/fs-walk.js";
+import { walkBoundedForGrading } from "../survey/fs-walk.js";
 import { RULES } from "./rules.js";
 import type { HarnessSnapshot, SkillSnapshot } from "./rules.js";
 import { HARNESS_CATEGORIES } from "./types.js";
@@ -42,7 +42,7 @@ function readSettings(path: string): HarnessSnapshot["settings"] {
 }
 
 function loadSnapshot(root: string): HarnessSnapshot {
-  const entries = walkBounded(root, PROJECT_WALK_DEPTH);
+  const entries = walkBoundedForGrading(root, PROJECT_WALK_DEPTH);
   const claudeEntries = entries.filter((entry) =>
     entry.relPath.startsWith(".claude/"),
   );

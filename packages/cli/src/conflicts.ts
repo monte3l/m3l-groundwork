@@ -8,12 +8,13 @@
  * a whole-file conflict on `package.json` is a useless finding, since the
  * answer is always a merge, never "pick one file wholesale".
  */
-import { readFileSync, readdirSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import { restoreDotfilePath } from "./assets.js";
 import { parseJsonc } from "./jsonc.js";
 import { isRecord } from "./merge-json.js";
 import {
+  errnoCode,
   probePath,
   probeSubject,
   readFailure,
@@ -77,10 +78,59 @@ function recordOnce(undetermined: string[], note: string): void {
   if (!undetermined.includes(note)) undetermined.push(note);
 }
 
+/**
+ * The nearest ancestor of `path`, walking up no further than `targetDir`,
+ * that exists and is not a directory -- the component that made a
+ * `stat` of `path` fail with `ENOTDIR` -- or `undefined` if none can be
+ * established (the tree changed underneath, or the ancestor cannot itself be
+ * stat'd).
+ */
+function blockedAncestor(path: string, targetDir: string): string | undefined {
+  let current = dirname(path);
+  for (;;) {
+    try {
+      if (!statSync(current).isDirectory()) return current;
+    } catch {
+      // This component is itself absent or unreachable: it is not the file
+      // blocking the path, so keep walking up. Best effort -- the caller
+      // still reports the entry divergent with the errno on the path.
+    }
+    const parent = dirname(current);
+    if (current === targetDir || parent === current) return undefined;
+    current = parent;
+  }
+}
+
+/**
+ * Why a target path `probePath` reported `absent` is not really a clean add,
+ * or `undefined` when nothing is there at all. `probePath` folds two cases a
+ * plan must never read as absent into `ENOENT`/`ENOTDIR` (correctly, for the
+ * survey's own exists-probes): a dangling symlink at the path itself, and an
+ * enclosing component that is a regular file rather than a directory.
+ */
+function blockedAbsentNote(
+  targetPath: string,
+  targetDir: string,
+): string | undefined {
+  try {
+    if (lstatSync(targetPath).isSymbolicLink()) {
+      return `${targetPath} is a dangling symlink -- its target does not exist, so its contents are not in this survey`;
+    }
+    // lstat succeeded on a non-symlink after stat failed: the tree changed
+    // between the two calls. Treat the entry as present but unknown.
+    return unreadableNote(targetPath, "ENOENT");
+  } catch (error) {
+    if (errnoCode(error) !== "ENOTDIR") return undefined;
+    const ancestor = blockedAncestor(targetPath, targetDir) ?? targetPath;
+    return unreadableNote(ancestor, "ENOTDIR");
+  }
+}
+
 function compareFile(
   relPath: string,
   baselineContent: string,
   targetPath: string,
+  targetDir: string,
   undetermined: string[],
 ): FileConflict {
   // A real `stat`, never `existsSync`: a file under a directory this process
@@ -90,7 +140,16 @@ function compareFile(
   // overwrites -- with the errno recorded. Any other errno throws.
   const probe = probePath(targetPath);
   if (probe.kind === "absent") {
-    return { relPath, status: "absent", keyDiffs: undefined };
+    // `absent` also covers a dangling symlink at the path (`ENOENT`) and a
+    // regular file where an ancestor directory should be (`ENOTDIR`): both
+    // are something in the project's tree a write would have to go through,
+    // so they are divergent, recorded once, never a silent clean add.
+    const note = blockedAbsentNote(targetPath, targetDir);
+    if (note === undefined) {
+      return { relPath, status: "absent", keyDiffs: undefined };
+    }
+    recordOnce(undetermined, note);
+    return { relPath, status: "divergent", keyDiffs: undefined };
   }
   if (probe.kind === "unresolvable") {
     // A permission failure names the enclosing directory (the `stat` needed
@@ -165,6 +224,7 @@ function walkTemplate(
         relPath,
         baselineContent,
         join(targetDir, relPath),
+        targetDir,
         undetermined,
       ),
     );
@@ -179,8 +239,11 @@ function walkTemplate(
  * once (adopt mode passes the survey's own list, so the report shows it) --
  * naming the enclosing directory for a permission failure on the `stat`, the
  * path itself for a symlink loop, or for a permission failure or a
- * directory-where-a-file-was-expected (`EISDIR`) on the read.
- * `ENOENT`/`ENOTDIR` is `absent`; any other errno throws.
+ * directory-where-a-file-was-expected (`EISDIR`) on the read. A dangling
+ * symlink at the target path is `divergent` too, recorded naming the path; a
+ * regular file where an enclosing directory should be (`ENOTDIR`) is
+ * `divergent`, recorded once naming that blocking ancestor. A genuinely
+ * missing path is `absent`; any other errno throws.
  *
  * @example
  * ```ts

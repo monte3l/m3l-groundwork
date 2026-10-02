@@ -290,15 +290,15 @@ describe("the TypeScript grader and its emitted .mjs twin", () => {
     );
   });
 
-  // The TypeScript grader's `readJsoncFile` (jsonc.ts) now classifies an
+  // The TypeScript grader's `readJsoncFile` (jsonc.ts) classifies an
   // unreachable extends candidate by errno (EACCES/EPERM/ELOOP recorded as
   // "unreadable", never conflated with "does not exist"). The emitted .mjs
   // twin's `isFile`/`readJsonc` (templates/core/bin/lib/toolchain-rules.mjs)
-  // still use `existsSync`/a bare-catch `isFile` that cannot tell "nothing
-  // here" from "something here this process may not reach" -- both answer
-  // `false`/"does not exist" for a permission failure. These three describes
-  // prove the resulting grades diverge today (RED), not just the underlying
-  // chain's own fields (tsconfig-chain.test.ts already covers those).
+  // use the same real-`stat` classification, so neither side ever folds
+  // "something here this process may not reach" into "does not exist" for a
+  // permission failure. These three describes prove the resulting grades
+  // stay identical on both sides, not just the underlying chain's own fields
+  // (tsconfig-chain.test.ts already covers those).
   describe("an extends target this process cannot reach due to an unreadable errno", () => {
     describe("the extends target's own directory is unsearchable (ancestor chmod 000)", () => {
       let cfgDir: string;
@@ -376,11 +376,11 @@ describe("the TypeScript grader and its emitted .mjs twin", () => {
     // the read unconditionally on both sides, unlike "tsconfig.json" itself
     // (excluded from both twins' root-file scan before `loadTsconfigChain`
     // is ever called -- see tsconfig-chain.test.ts for that direct,
-    // non-parity-comparable contract instead). The TypeScript side's errno
-    // classification does not yet cover EISDIR, so it throws; the emitted
-    // twin's bare `catch` around the read swallows it and reports ok:false --
-    // a real, reachable "no throw" vs. "throws" divergence for the same
-    // unclassified-errno gap this describe block is about.
+    // non-parity-comparable contract instead). Both sides' errno
+    // classification covers EISDIR explicitly, so a directory at the
+    // expected file path is reported `ok: false` rather than thrown on
+    // either side -- the same reachable "no throw" this describe block
+    // pins against regression.
     describe("the path a JSONC read expects a file at is actually a directory (EISDIR)", () => {
       it("produce identical grades when package.json is a directory -- no throw on either side", () => {
         mkdirSync(join(root, "package.json"));

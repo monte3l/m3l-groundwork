@@ -854,7 +854,11 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       survey.undetermined,
     ),
     wiring: pack.manifest.wiring,
-    wiringObservations: observeWiring(options.targetDir, pack.manifest),
+    wiringObservations: observeWiring(
+      options.targetDir,
+      pack.manifest,
+      survey.undetermined,
+    ),
     adoptNotes: pack.manifest.adoptNotes,
   }));
   // Each plan is computed once, here, and handed to its stager below, so

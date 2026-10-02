@@ -9,6 +9,7 @@ import {
   writeFileSync,
   chmodSync,
   existsSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -396,5 +397,116 @@ describe("planConflicts", () => {
         expect(undetermined).toEqual([unreadableNote(targetPath(), "EACCES")]);
       },
     );
+  });
+});
+
+describe("planConflicts: a dangling symlink at a baseline target path", () => {
+  let templateRoot: string;
+  let targetDir: string;
+
+  beforeEach(() => {
+    templateRoot = mkdtempSync(join(tmpdir(), "conflicts-dangling-template-"));
+    targetDir = mkdtempSync(join(tmpdir(), "conflicts-dangling-target-"));
+  });
+
+  afterEach(() => {
+    rmSync(templateRoot, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  /**
+   * A `stat` on a dangling symlink resolves the link and fails with `ENOENT`
+   * -- the same errno a genuinely missing path raises -- so `probePath`
+   * cannot tell "nothing here at all" apart from "a symlink here that
+   * resolves to nothing" by errno alone. Reporting the latter `absent` would
+   * have `/customize` (or any future direct-write path) write straight over
+   * a real entry in the project's tree instead of surfacing the conflict.
+   * RED today: `compareFile` reports `absent` (a clean add) for this case,
+   * with nothing recorded.
+   */
+  it("is reported divergent (never absent/clean-add), with one note mentioning the dangling symlink", () => {
+    mkdirSync(join(templateRoot, ".claude"), { recursive: true });
+    writeFileSync(join(templateRoot, ".claude", "settings.json"), "{}");
+    mkdirSync(join(targetDir, ".claude"), { recursive: true });
+    const targetSettingsPath = join(targetDir, ".claude", "settings.json");
+    symlinkSync(
+      join(targetDir, ".claude", "does-not-exist-target"),
+      targetSettingsPath,
+    );
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: ReturnType<typeof planConflicts> | undefined;
+    try {
+      result = planConflicts(templateRoot, targetDir, {}, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    const entry = result?.find((r) => r.relPath === ".claude/settings.json");
+    expect(entry?.status).toBe("divergent");
+    expect(entry?.status).not.toBe("absent");
+    expect(undetermined).toHaveLength(1);
+    expect(
+      undetermined.some(
+        (note) =>
+          note.includes(targetSettingsPath) &&
+          note.toLowerCase().includes("dangling symlink"),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("planConflicts: an enclosing path component is a regular file, not a directory (ENOTDIR on the stat)", () => {
+  let templateRoot: string;
+  let targetDir: string;
+
+  beforeEach(() => {
+    templateRoot = mkdtempSync(join(tmpdir(), "conflicts-entdir-template-"));
+    targetDir = mkdtempSync(join(tmpdir(), "conflicts-entdir-target-"));
+  });
+
+  afterEach(() => {
+    rmSync(templateRoot, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  /**
+   * `.claude` sitting as a plain FILE in the target makes a `stat` of any
+   * baseline file nested under `.claude/` fail with `ENOTDIR`, the same
+   * errno a genuinely absent nested path raises -- `probePath` folds both
+   * into `absent` today (see `read-guard.ts`'s `ABSENT_CODES`, deliberately
+   * shared with `guardedExists`/`walkBounded`, where that folding is
+   * correct: there is nothing to read either way). For `planConflicts`
+   * specifically that folding is wrong: a baseline file whose target
+   * ancestor is a file, not a directory, cannot be written there without
+   * first resolving that conflict, so it must never read as a silent clean
+   * add. RED today: both baseline files under `.claude` report `absent`,
+   * with nothing recorded.
+   */
+  it("reports every baseline file under the blocked ancestor as divergent, with one note naming the ancestor and ENOTDIR", () => {
+    mkdirSync(join(templateRoot, ".claude"), { recursive: true });
+    writeFileSync(join(templateRoot, ".claude", "settings.json"), "{}");
+    writeFileSync(join(templateRoot, ".claude", "settings.local.json"), "{}");
+    const blockedAncestor = join(targetDir, ".claude");
+    writeFileSync(blockedAncestor, "not a directory");
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: ReturnType<typeof planConflicts> | undefined;
+    try {
+      result = planConflicts(templateRoot, targetDir, {}, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(result).toHaveLength(2);
+    for (const entry of result ?? []) {
+      expect(entry.status).toBe("divergent");
+      expect(entry.status).not.toBe("absent");
+    }
+    expect(undetermined).toEqual([unreadableNote(blockedAncestor, "ENOTDIR")]);
   });
 });

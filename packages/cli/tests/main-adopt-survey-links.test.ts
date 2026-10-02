@@ -124,3 +124,66 @@ describe("adopt mode (main()): a dangling symlink, a symlink loop and a director
     expect(reportText).toContain("EISDIR");
   });
 });
+
+/**
+ * `observeWiring` (`packs.ts`) is called once per pack (`main.ts`'s
+ * un-try/catch'd `.map` over `listPackNames()`), unguarded by any
+ * `recordedReadCode`-style discrimination -- it only recognizes
+ * `EACCES`/`EPERM`. A directory sitting at `.claude/settings.json` makes
+ * the prior `stat` (`existsOrObserve`) report `present`, and the
+ * subsequent `readFileSync` raise `EISDIR` -- a property of the project's
+ * own tree, exactly like the dangling-symlink/symlink-loop/EISDIR cases the
+ * sibling describe above already proves at the survey-collector level.
+ * RED today: `observeWiring` throws, which aborts the whole adopt-mode
+ * `packs` computation before `.groundwork/` is ever written -- the same
+ * "one unreadable project file takes down the entire run" failure mode
+ * `main-adopt-survey-links.test.ts`'s own header comment describes, just
+ * reached through `packs.ts` instead of a `survey-*.ts` collector.
+ */
+describe("adopt mode (main()): a directory sitting at .claude/settings.json does not abort the run (observeWiring's EISDIR)", () => {
+  let workDir: string;
+  let projectDir: string;
+  let groundworkDir: string;
+  let settingsDirPath: string;
+
+  beforeEach(() => {
+    workDir = mkdtempSync(join(tmpdir(), "adopt-settings-eisdir-"));
+    projectDir = join(workDir, "project");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "package.json"),
+      JSON.stringify({ name: "acme", type: "module" }, null, 2),
+    );
+
+    settingsDirPath = join(projectDir, ".claude", "settings.json");
+    mkdirSync(settingsDirPath, { recursive: true });
+
+    groundworkDir = join(projectDir, ".groundwork");
+  });
+
+  afterEach(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  it("completes the run without throwing, and records the settings path with EISDIR in undetermined", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(existsSync(join(groundworkDir, "inventory.json"))).toBe(true);
+
+    const undetermined = readInventoryUndetermined(groundworkDir);
+    expect(
+      undetermined.some(
+        (entry) => entry.includes(settingsDirPath) && entry.includes("EISDIR"),
+      ),
+    ).toBe(true);
+  });
+});

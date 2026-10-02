@@ -26,9 +26,10 @@ import type { CapCounts } from "./caps.js";
 import { emitTemplate } from "./emit.js";
 import { parseJsonc } from "./jsonc.js";
 import {
-  permissionCode,
   probePath,
   readFailure,
+  recordedReadCode,
+  unreadableNote,
 } from "./survey/internal/read-guard.js";
 import {
   isPrototypeSensitiveKey,
@@ -421,23 +422,31 @@ export function installPack(
 }
 
 /**
- * Reads `.claude/settings.json` for {@link observeWiring}. A permission
- * failure is a fact about the project file, recorded as an observation (and
- * `undefined` returned); any other errno is about the machine and throws,
- * naming the path with the original failure as `cause`.
+ * Reads `.claude/settings.json` for {@link observeWiring}. A failure that is
+ * a fact about the project's own tree -- a permission failure
+ * (`EACCES`/`EPERM`), a directory at the path (`EISDIR`), the file vanishing
+ * after the exists probe or a dangling symlink (`ENOENT`), a symlink loop
+ * (`ELOOP`) -- is recorded as an observation naming the path and errno, and
+ * once in `undetermined` (so the adoption report shows it), and `undefined`
+ * is returned; any other errno is about the machine and throws, naming the
+ * path with the original failure as `cause`.
  */
 function readSettingsOrObserve(
   settingsPath: string,
   observations: string[],
+  undetermined: string[],
 ): string | undefined {
   try {
     return readFileSync(settingsPath, "utf8");
   } catch (error) {
-    const code = permissionCode(error);
+    const code = recordedReadCode(error);
     if (code === undefined) throw readFailure(settingsPath, error);
     observations.push(
-      `.claude/settings.json exists but could not be read (${code})`,
+      `.claude/settings.json (${settingsPath}) exists but could not be read (${code})`,
     );
+    // Called once per pack against the same file: record the note once.
+    const note = unreadableNote(settingsPath, code);
+    if (!undetermined.includes(note)) undetermined.push(note);
     return undefined;
   }
 }
@@ -472,16 +481,22 @@ function existsOrObserve(
  * adopt-mode reconcile step in `/customize`) to make after reading the
  * project's real gate runner and hook config. A path this process cannot
  * reach (`EACCES`/`EPERM`/`ELOOP`) is observed with its errno, never as
- * "not found".
+ * "not found". A `.claude/settings.json` that exists but cannot be read for
+ * a reason that is a property of the project's tree (`EACCES`/`EPERM`,
+ * `EISDIR`, `ENOENT`, `ELOOP`) is observed with its errno and also recorded
+ * once in `undetermined` -- adopt mode passes the survey's own list, so the
+ * report shows it; any other errno throws.
  *
  * @example
  * ```ts
- * const observations = observeWiring(targetDir, pack.manifest);
+ * const undetermined: string[] = [];
+ * const observations = observeWiring(targetDir, pack.manifest, undetermined);
  * ```
  */
 export function observeWiring(
   targetDir: string,
   manifest: PackManifest,
+  undetermined: string[] = [],
 ): string[] {
   const observations: string[] = [];
 
@@ -490,7 +505,11 @@ export function observeWiring(
   if (settingsExists === false) {
     observations.push("no .claude/settings.json found");
   } else if (settingsExists) {
-    const content = readSettingsOrObserve(settingsPath, observations);
+    const content = readSettingsOrObserve(
+      settingsPath,
+      observations,
+      undetermined,
+    );
     const parsed = content === undefined ? undefined : parseJsonc(content);
     if (parsed === undefined) {
       // Unreadable -- already recorded as an observation.

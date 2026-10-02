@@ -25,6 +25,7 @@ import {
   symlinkSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
 } from "node:fs";
 import type * as FsModule from "node:fs";
 import { tmpdir } from "node:os";
@@ -232,6 +233,35 @@ describe("guardedRead -- ENOENT, ELOOP and EISDIR failures on the READ itself (n
     expect(undetermined).toHaveLength(1);
     expect(undetermined[0]).toContain(dirPath);
     expect(undetermined[0]).toContain("EISDIR");
+  });
+
+  /**
+   * A directory listing (`readdirSync`) on a regular file raises `ENOTDIR` --
+   * a property of the project's own tree (an ancestor a collector expected to
+   * be a directory turns out to be a file), exactly like `EISDIR` is for a
+   * single-file read. `recordedReadCode` does not recognize `ENOTDIR` today
+   * (`RECORDED_READ_CODES` only lists `ENOENT`/`ELOOP`/`EISDIR`), so this is
+   * RED: `guardedRead` currently throws a `SurveyReadError` instead of
+   * recording the failure and continuing.
+   */
+  it("a directory listing attempted on a regular file (ENOTDIR raised by readdirSync itself) is recorded in undetermined naming the path and ENOTDIR, answers undefined, and does not throw", () => {
+    const filePath = join(dir, "not-a-directory");
+    writeFileSync(filePath, "x");
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: string[] | undefined;
+    try {
+      result = guardedRead(filePath, () => readdirSync(filePath), undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(result).toBeUndefined();
+    expect(undetermined).toHaveLength(1);
+    expect(undetermined[0]).toContain(filePath);
+    expect(undetermined[0]).toContain("ENOTDIR");
   });
 });
 
