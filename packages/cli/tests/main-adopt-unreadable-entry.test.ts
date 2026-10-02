@@ -27,11 +27,6 @@
  * the guarantee this file exists to prove, NOTHING under the project
  * (`.claude/` included) is modified: same bytes, same mode, same mtime,
  * before and after.
- *
- * `fallbackReason` carries the unreadable entry's errno code (see
- * `plugin-existing-unreadable.test.ts`), so this file's assertion that the
- * console output contains "EACCES" holds against the current
- * implementation, same as every other assertion below.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

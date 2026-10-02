@@ -24,7 +24,11 @@ import {
   CUSTOMIZE_SKILL_WRITE_ORDER,
   GROUNDWORK_DEST_SEGMENTS,
 } from "./customize-paths.js";
-import { assertNotSymlink, endsWithRerunAdvice } from "./fs-guard.js";
+import {
+  assertNotSymlink,
+  endsWithRerunAdvice,
+  FIX_AND_RERUN_ADVICE,
+} from "./fs-guard.js";
 
 /** Resolves the plugin payload for a source checkout (`packages/plugin`) or a published tarball (`plugin/`). */
 function pluginDir(): string {
@@ -50,9 +54,12 @@ export interface InstallPluginResult {
 /**
  * Fresh mode's retry instruction. Its target is no longer empty after a
  * failed install, so a plain re-run would adopt it; only `--fresh --force`
- * repeats that run. Deliberately not worded "re-run": reached through
- * `main.ts`'s fresh mode, the outer error states the full re-run
- * instruction, and the chain should carry exactly one.
+ * repeats that run. Reached through `main.ts`'s fresh mode, the chain
+ * carries two compatible instructions: the outer error's "re-run with
+ * --fresh --force (plus your original --name/--pack/--skip-install)"
+ * restates this one with the flag list spelled out. Neither line is
+ * dropped -- the cause also stands alone for a direct caller -- and they
+ * never contradict, since neither gives adopt mode's bare "re-run the CLI".
  */
 const FRESH_RETRY = "retry the same command with --fresh --force added";
 
@@ -72,7 +79,7 @@ const FRESH_REMEDIATION: Remediation = {
   isAdvised: (message) => message.endsWith(FRESH_RETRY),
 };
 const ADOPT_REMEDIATION: Remediation = {
-  advice: "fix the cause and re-run the CLI",
+  advice: FIX_AND_RERUN_ADVICE,
   isAdvised: endsWithRerunAdvice,
 };
 
@@ -667,14 +674,16 @@ function copyCustomizeSkillFiles(
  *
  * @throws `Error` ("could not install the /customize skill ...", raw error
  * as `cause`) on a missing or unreadable source file, a directory at any
- * payload name, or a payload name or existing file that cannot be
- * `lstat`ed (all before anything is removed or written), a symlinked or
- * non-directory directory component, any fs failure, or a failed write --
- * after removing every file this call wrote. An existing regular file that
- * cannot be read is not a failure: it is replaced like any stale copy.
- * Entries it replaced before the failure are not restored; the error names
- * them. So is a failure to locate the default `sourceDir`. The message ends,
- * once, by saying to fix the cause (for a symlink: remove it), then retry
+ * payload name, a payload name or existing file that cannot be `lstat`ed,
+ * or an existing regular file whose read fails with anything other than
+ * `EACCES`/`EPERM` (all before anything is removed or written), a symlinked
+ * or non-directory directory component, any fs failure, or a failed write
+ * -- after removing every file this call wrote. An existing regular file
+ * whose read fails with `EACCES` or `EPERM` is not a failure: it is replaced
+ * like any stale copy. Entries it replaced before the failure are not
+ * restored; the error names them. A failure to locate the default
+ * `sourceDir` is thrown the same way. The message ends, once, by saying to
+ * fix the cause (for a symlink: remove it), then retry
  * the same command with `--fresh --force` added -- a plain re-run would
  * adopt the now-non-empty target -- and nowhere in the error chain gives
  * adopt mode's bare "re-run the CLI" advice.
@@ -755,7 +764,10 @@ function firstUnusableComponent(
   return undefined;
 }
 
-/** The outcome of comparing one existing regular file against the payload; `"unreadable"` carries the read failure's errno code (`"unknown"` when it has none). */
+/** The read-failure codes that mean "this entry is not ours to read" -- a permission refusal, not a fault. */
+const UNREADABLE_CODES: ReadonlySet<string> = new Set(["EACCES", "EPERM"]);
+
+/** The outcome of comparing one existing regular file against the payload; `"unreadable"` carries the permission refusal's errno code. */
 type FileComparison =
   | { readonly kind: "match" }
   | { readonly kind: "mismatch" }
@@ -763,21 +775,29 @@ type FileComparison =
 
 /**
  * Whether the regular file at `path` holds exactly `bytes`: `"match"`,
- * `"mismatch"`, or `"unreadable"` (with the errno code) when the read itself
- * fails. A read failure is never thrown: every caller treats an entry it
- * cannot compare as not this CLI's current copy, and decides from there what
- * to do with it.
+ * `"mismatch"`, or `"unreadable"` (with the errno code) when the read is
+ * refused with `EACCES` or `EPERM`. Every caller treats such an entry as not
+ * this CLI's current copy, and decides from there what to do with it.
+ *
+ * @throws `Error` ({@link installError}: "could not read <path>; nothing was
+ * removed or written", raw error as `cause`) on any other read failure
+ * (`EIO`, `EMFILE`, an `ENOENT`/`ELOOP` race after `lstat`, or a code-less
+ * error): a fault is not evidence about the entry, so it is never guessed
+ * to be foreign or stale.
  */
 function regularFileMatches(path: string, bytes: Buffer): FileComparison {
   let existing: Buffer;
   try {
     existing = readFileSync(path);
   } catch (error) {
-    // Deliberately not rethrown: an entry this run cannot read is, by
-    // definition, not one it can confirm as current -- fresh mode replaces it
-    // like any stale copy, adopt mode leaves it alone and falls back. The
-    // code is kept so the fallback reason can say why.
-    return { kind: "unreadable", code: errnoField(error, "code") ?? "unknown" };
+    const code = errnoField(error, "code");
+    // Only a permission refusal is a verdict about the entry: fresh mode
+    // replaces it like any stale copy, adopt mode leaves it alone and falls
+    // back, the code kept so the fallback reason can say why.
+    if (code !== undefined && UNREADABLE_CODES.has(code)) {
+      return { kind: "unreadable", code };
+    }
+    throw installError(untouched("could not read", path), error);
   }
   return existing.equals(bytes) ? { kind: "match" } : { kind: "mismatch" };
 }
@@ -810,10 +830,12 @@ type ExistingSkill =
  * (wrapped, raw error as `cause`) naming the path and saying so -- an entry
  * whose very nature is unknown is never classified -- while an entry after
  * the first foreign one is never `lstat`ed at all. A regular file `lstat`
- * already confirmed but that cannot be read is `"foreign"`, its `reason`
- * saying it could not be read and naming the errno code: this never guesses
- * that an entry it cannot compare is current. Fresh mode's overwrite then replaces it like any stale
- * copy; adopt mode leaves it untouched and falls back.
+ * already confirmed but whose read is refused with `EACCES`/`EPERM` is
+ * `"foreign"`, its `reason` saying it could not be read and naming the errno
+ * code: this never guesses that an entry it cannot compare is current.
+ * Fresh mode's overwrite then replaces it like any stale copy; adopt mode
+ * leaves it untouched and falls back. Any other read failure throws the
+ * same way a failing `lstat` does ({@link regularFileMatches}).
  */
 function classifyExistingSkill(
   existingDir: string,
@@ -901,8 +923,9 @@ function installGuarded(
     return installToGroundwork(unusable, "component");
   }
 
-  // Throws its own wrapped error naming a path it could not lstat; an
-  // unreadable regular file comes back "foreign" instead.
+  // Throws its own wrapped error naming a path it could not lstat or read;
+  // a regular file whose read is refused (EACCES/EPERM) comes back
+  // "foreign" instead.
   const existing = classifyExistingSkill(existingDir, payload);
   switch (existing.kind) {
     case "current":
@@ -961,12 +984,14 @@ function installGuarded(
  * @throws `Error` ("could not install the /customize skill ...", raw error
  * as `cause`) on a missing or unreadable source file (before anything is
  * written), a payload name under `.claude/skills/customize/` that cannot be
- * `lstat`ed (an unreadable regular file there falls back instead), any other
- * fs failure while probing or writing, a symlinked
- * `.groundwork`/`.groundwork/customize`, or a directory at a payload name
- * there -- after removing every file this call wrote. A failed
+ * `lstat`ed or read (a regular file there whose read is refused with
+ * `EACCES`/`EPERM` falls back instead; any other read failure throws before
+ * anything is written), any other fs failure while probing or writing, a
+ * symlinked `.groundwork`/`.groundwork/customize`, or a directory at a
+ * payload name there -- after removing every file this call wrote. A failed
  * `.groundwork/customize/` install also names why the fallback was taken.
- * So is a failure to locate the default `sourceDir`. The message ends by
+ * A failure to locate the default `sourceDir` is thrown the same way. The
+ * message ends by
  * saying to fix the cause (for a symlink: remove it) and re-run the CLI,
  * once.
  *

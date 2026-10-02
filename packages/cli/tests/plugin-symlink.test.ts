@@ -189,6 +189,15 @@ describe("copyCustomizeSkillFiles directory-component symlink guard", () => {
     for (const chainMessage of errorChainMessages(thrown)) {
       expect(chainMessage).not.toMatch(/\bre-run the CLI\b/);
     }
+
+    // Pins FRESH_SYMLINK_ADVICE's exact wording (ending with FRESH_RETRY):
+    // the CAUSE body alone -- not the outer wrapper, which also repeats
+    // "--fresh --force" via withRemediation's own appended advice -- carries
+    // the "--fresh --force" marker exactly once and never the bare "re-run
+    // the CLI" assertNotSymlink's generic default would use.
+    const causeMessage = ((thrown as Error).cause as Error).message;
+    expect(causeMessage.split("--fresh --force").length - 1).toBe(1);
+    expect(causeMessage).not.toMatch(/\bre-run the CLI\b/);
   });
 
   // [round-two review, item D] installCustomizeSkillGuarded no longer

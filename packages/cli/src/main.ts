@@ -52,7 +52,11 @@ import {
   planBaselineStaging,
   stageBaselineAdditions,
 } from "./baseline-stage.js";
-import { assertNotSymlink, endsWithRerunAdvice } from "./fs-guard.js";
+import {
+  assertNotSymlink,
+  endsWithRerunAdvice,
+  FIX_AND_RERUN_ADVICE,
+} from "./fs-guard.js";
 import {
   buildInventory,
   resolveCliVersion,
@@ -591,8 +595,6 @@ const STALE_FILE_NAMES = [
 ] as const;
 type StaleFileName = (typeof STALE_FILE_NAMES)[number];
 
-const RERUN_ADVICE = "fix the cause and re-run the CLI";
-
 /**
  * Which previous `.groundwork/` files a failed run actually removed, worded
  * for a message: only those in `removed` are named, and the decisions file
@@ -626,7 +628,7 @@ function removedStaleFilesError(
   removed: readonly StaleFileName[],
 ): Error {
   const reason = cause instanceof Error ? cause.message : String(cause);
-  const advice = endsWithRerunAdvice(reason) ? "" : `; ${RERUN_ADVICE}`;
+  const advice = endsWithRerunAdvice(reason) ? "" : `; ${FIX_AND_RERUN_ADVICE}`;
   return new Error(
     `adopt mode failed (${reason}); ${describeRemoved(removed)}${advice}`,
     { cause },

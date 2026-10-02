@@ -15,6 +15,22 @@ import { lstatSync } from "node:fs";
 const RERUN_TAIL = "re-run the CLI";
 
 /**
+ * Adopt mode's generic re-run instruction, stated once so every adopt-mode
+ * failure that appends it (`main.ts`'s post-point-of-no-return error, the
+ * guarded `/customize` install) words it identically. Ends with the tail
+ * {@link endsWithRerunAdvice} recognises.
+ *
+ * @example
+ * ```ts
+ * import { FIX_AND_RERUN_ADVICE, endsWithRerunAdvice } from "./fs-guard.js";
+ *
+ * const message = `could not write x: EACCES; ${FIX_AND_RERUN_ADVICE}`;
+ * endsWithRerunAdvice(message); // true
+ * ```
+ */
+export const FIX_AND_RERUN_ADVICE = `fix the cause and ${RERUN_TAIL}`;
+
+/**
  * Whether `message` already ENDS with "re-run the CLI" advice, in any
  * wording that ends that way (e.g. {@link assertNotSymlink}'s "remove it and
  * re-run the CLI", or "fix the cause and re-run the CLI"), so a caller about

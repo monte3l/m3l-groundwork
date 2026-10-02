@@ -31,6 +31,7 @@ import {
   mkdirSync,
   writeFileSync,
   readFileSync,
+  readdirSync,
   existsSync,
   lstatSync,
   statSync,
@@ -44,49 +45,58 @@ import { CUSTOMIZE_SKILL_FILE_NAMES } from "../src/customize-paths.js";
 // including a plain top-level `let` -- so the real implementations this
 // file's "passthrough" default needs are captured into a vi.hoisted() ref
 // object instead, mutated once from inside the mock factory below.
-const { rmSyncMock, writeFileSyncMock, lstatSyncMock, real } = vi.hoisted(
-  () => ({
+const { rmSyncMock, writeFileSyncMock, lstatSyncMock, readFileSyncMock, real } =
+  vi.hoisted(() => ({
     rmSyncMock: vi.fn(),
     writeFileSyncMock: vi.fn(),
     lstatSyncMock: vi.fn(),
+    readFileSyncMock: vi.fn(),
     real: {} as {
       rmSync: typeof NodeFs.rmSync;
       writeFileSync: typeof NodeFs.writeFileSync;
       lstatSync: typeof NodeFs.lstatSync;
+      readFileSync: typeof NodeFs.readFileSync;
     },
-  }),
-);
+  }));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFs>();
   real.rmSync = actual.rmSync;
   real.writeFileSync = actual.writeFileSync;
   real.lstatSync = actual.lstatSync;
+  real.readFileSync = actual.readFileSync;
   return {
     ...actual,
     rmSync: rmSyncMock,
     writeFileSync: writeFileSyncMock,
     lstatSync: lstatSyncMock,
+    readFileSync: readFileSyncMock,
   };
 });
 
 const { installCustomizeSkill, installCustomizeSkillGuarded } =
   await import("../src/plugin.js");
 
-// File-level default for lstatSyncMock: every test in this file delegates to
-// the real lstatSync unless it layers its own mockImplementation on top for
-// one specific path -- the same passthrough-by-default pattern each
-// describe below already uses for rmSyncMock/writeFileSyncMock. Registered
-// at file scope (not inside any one describe's own beforeEach) so it runs
-// for every test regardless of which describe it lives in.
+// File-level default for lstatSyncMock/readFileSyncMock: every test in this
+// file delegates to the real implementation unless it layers its own
+// mockImplementation on top for one specific path -- the same
+// passthrough-by-default pattern each describe below already uses for
+// rmSyncMock/writeFileSyncMock. Registered at file scope (not inside any one
+// describe's own beforeEach) so it runs for every test regardless of which
+// describe it lives in.
 beforeEach(() => {
   lstatSyncMock.mockImplementation(
     (...args: Parameters<typeof NodeFs.lstatSync>) => real.lstatSync(...args),
+  );
+  readFileSyncMock.mockImplementation(
+    (...args: Parameters<typeof NodeFs.readFileSync>) =>
+      real.readFileSync(...args),
   );
 });
 
 afterEach(() => {
   lstatSyncMock.mockReset();
+  readFileSyncMock.mockReset();
 });
 
 /** A pre-existing, differing `.claude/skills/customize/SKILL.md` -- forces `installCustomizeSkillGuarded` into its "groundwork" branch. */
@@ -752,15 +762,14 @@ describe("interrupted-install repair: the SKILL.md write itself fails (item 4, f
 });
 
 /**
- * [this round, item 1] The second half of fresh mode's `--force`
- * re-install coverage (the first, real-fs half lives in
- * `plugin-install.test.ts`): a re-run over an ALREADY-installed
- * `.claude/skills/customize/` whose own write fails mid-way (not via an
- * `EISDIR` obstacle, but a plain injected write failure) must still never
- * leave the PREVIOUS run's `SKILL.md` sitting there loadable beside
- * missing/stale data.
+ * The second half of fresh mode's `--force` re-install coverage (the first,
+ * real-fs half lives in `plugin-install.test.ts`): a re-run over an
+ * ALREADY-installed `.claude/skills/customize/` whose own write fails
+ * mid-way (not via an `EISDIR` obstacle, but a plain injected write failure)
+ * must still never leave the PREVIOUS run's `SKILL.md` sitting there
+ * loadable beside missing/stale data.
  */
-describe("fresh-mode --force over an existing install removes the old SKILL.md first, even when the re-run's own write fails mid-way (this round, item 1)", () => {
+describe("fresh-mode --force over an existing install removes the old SKILL.md first, even when the re-run's own write fails mid-way", () => {
   beforeEach(() => {
     rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
       real.rmSync(...args),
@@ -2304,6 +2313,254 @@ describe("[NIT] a pluginDir()/resolveAsset() failure (the sourceDir default) get
     expect((thrown as Error).cause).toBe(assetFailure);
     expect(message).toContain("--fresh --force");
 
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * `classifyExistingSkill` (`../src/plugin.js`, via `regularFileMatches`)
+ * reads an existing payload entry with `readFileSync` and today treats ANY
+ * read failure, regardless of its errno code, the same way: "unreadable" ->
+ * "foreign" (fresh mode then replaces it like any other stale copy; adopt
+ * mode falls back to `.groundwork/customize/`). Only `EACCES`/`EPERM` -- a
+ * genuine permission denial -- should keep that leave-it-alone-and-route-
+ * around treatment (see the regression-pin suite below). Every other code
+ * is not something either mode should guess past:
+ *
+ * - `EMFILE`/`EIO`: the entry is a plain regular file (its `lstat` already
+ *   confirmed that), but something about the environment or the file itself
+ *   makes it unreadable right now in a way no "stale project copy" story
+ *   explains.
+ * - `ENOENT`/`ELOOP` raised by the READ itself, after the preceding `lstat`
+ *   already confirmed a regular file: a race -- the entry vanished, or
+ *   became a symlink loop, in the window between the two calls.
+ *
+ * The fix this suite is written against: those codes throw the same "could
+ * not install the /customize skill: ... could not read <path>" shape every
+ * other failure in this module uses, with the raw errno error chained as
+ * `cause`, before anything is removed or written -- for BOTH
+ * `installCustomizeSkill` (fresh mode) and `installCustomizeSkillGuarded`
+ * (adopt mode).
+ */
+describe("a non-EACCES/EPERM read failure against an existing payload entry throws, rather than being treated as foreign/replaced", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  /** Makes `readFileSync` against exactly `path` throw an errno-coded failure, passing every other path through to the real implementation. */
+  function mockReadFailure(path: string, code: string): void {
+    readFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.readFileSync>) => {
+        const [target] = args;
+        if (String(target) === path) {
+          const failure = new Error(
+            `${code}: simulated read failure`,
+          ) as NodeJS.ErrnoException;
+          failure.code = code;
+          throw failure;
+        }
+        return real.readFileSync(...args);
+      },
+    );
+  }
+
+  describe.each([
+    ["EMFILE", "too many open files"],
+    ["EIO", "a hardware/filesystem fault"],
+    ["ENOENT", "the entry vanished after lstat (a race)"],
+    ["ELOOP", "the entry became a symlink loop after lstat (a race)"],
+  ])("%s (%s)", (code) => {
+    it(`[fresh mode] throws naming the path, chains the raw ${code} error, and leaves the destination untouched`, () => {
+      const sourceDir = mkdtempSync(
+        join(tmpdir(), `plugin-unreadable-fresh-${code}-src-`),
+      );
+      const targetDir = mkdtempSync(
+        join(tmpdir(), `plugin-unreadable-fresh-${code}-tgt-`),
+      );
+      writeSourceFixture(sourceDir);
+      const destDir = join(targetDir, ".claude", "skills", "customize");
+      mkdirSync(destDir, { recursive: true });
+      const domainMapDest = join(destDir, "domain-map.ts");
+      // A pre-existing entry, lstat-visible as a regular file; only its
+      // READ is made to fail.
+      writeFileSync(domainMapDest, "export const y = 2;\n");
+      const entriesBefore = readdirSync(destDir).toSorted();
+      mockReadFailure(domainMapDest, code);
+
+      let thrown: unknown;
+      try {
+        installCustomizeSkill(targetDir, sourceDir);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message.startsWith("could not install the /customize skill")).toBe(
+        true,
+      );
+      expect(message).toContain(`could not read ${domainMapDest}`);
+      const cause = (thrown as Error).cause;
+      expect(cause).toBeInstanceOf(Error);
+      expect((cause as NodeJS.ErrnoException).code).toBe(code);
+
+      // Nothing removed or written: the directory holds exactly what it
+      // did before the call, and the targeted entry's own bytes (read via
+      // the REAL implementation, bypassing the still-active mock override)
+      // are unchanged.
+      expect(readdirSync(destDir).toSorted()).toEqual(entriesBefore);
+      expect(real.readFileSync(domainMapDest, "utf8")).toBe(
+        "export const y = 2;\n",
+      );
+
+      real.rmSync(sourceDir, { recursive: true, force: true });
+      real.rmSync(targetDir, { recursive: true, force: true });
+    });
+
+    it(`[adopt mode] throws naming the path, chains the raw ${code} error, and installs nothing to .groundwork/`, () => {
+      const sourceDir = mkdtempSync(
+        join(tmpdir(), `plugin-unreadable-adopt-${code}-src-`),
+      );
+      const targetDir = mkdtempSync(
+        join(tmpdir(), `plugin-unreadable-adopt-${code}-tgt-`),
+      );
+      writeSourceFixture(sourceDir);
+      const destDir = join(targetDir, ".claude", "skills", "customize");
+      mkdirSync(destDir, { recursive: true });
+      const domainMapDest = join(destDir, "domain-map.ts");
+      writeFileSync(domainMapDest, "export const y = 2;\n");
+      const entriesBefore = readdirSync(destDir).toSorted();
+      mockReadFailure(domainMapDest, code);
+
+      let thrown: unknown;
+      try {
+        installCustomizeSkillGuarded(targetDir, sourceDir);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message.startsWith("could not install the /customize skill")).toBe(
+        true,
+      );
+      expect(message).toContain(`could not read ${domainMapDest}`);
+      const cause = (thrown as Error).cause;
+      expect(cause).toBeInstanceOf(Error);
+      expect((cause as NodeJS.ErrnoException).code).toBe(code);
+
+      expect(readdirSync(destDir).toSorted()).toEqual(entriesBefore);
+      expect(real.readFileSync(domainMapDest, "utf8")).toBe(
+        "export const y = 2;\n",
+      );
+      // Adopt mode's today's fallback (.groundwork/customize/, five files)
+      // must NOT have been taken: this failure refuses the whole install
+      // instead of routing around it.
+      expect(existsSync(join(targetDir, ".groundwork"))).toBe(false);
+
+      real.rmSync(sourceDir, { recursive: true, force: true });
+      real.rmSync(targetDir, { recursive: true, force: true });
+    });
+  });
+});
+
+/**
+ * Regression pin, using the same fs-mock seam as the suite above: `EACCES`
+ * and `EPERM` are the one pair of errno codes that must KEEP today's
+ * behaviour once the fix above lands -- fresh mode still replaces the
+ * unreadable entry like any other stale copy, and adopt mode still falls
+ * back to `.groundwork/customize/`, naming the errno code in
+ * `fallbackReason`. `EACCES` is already covered end-to-end via real `chmod`
+ * in `plugin-existing-unreadable.test.ts`; this covers `EPERM`
+ * specifically (which `chmod` alone cannot reliably reproduce) via the mock
+ * seam instead.
+ */
+describe("EACCES/EPERM keep today's behaviour: fresh mode replaces, adopt mode falls back (EPERM, mock-seam regression pin)", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  function mockEpermRead(path: string): void {
+    readFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.readFileSync>) => {
+        const [target] = args;
+        if (String(target) === path) {
+          const failure = new Error(
+            "EPERM: operation not permitted (simulated)",
+          ) as NodeJS.ErrnoException;
+          failure.code = "EPERM";
+          throw failure;
+        }
+        return real.readFileSync(...args);
+      },
+    );
+  }
+
+  it("[fresh mode] replaces the unreadable entry like any other stale copy, rather than throwing", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-eperm-fresh-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-eperm-fresh-tgt-"));
+    writeSourceFixture(sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    mkdirSync(destDir, { recursive: true });
+    const domainMapDest = join(destDir, "domain-map.ts");
+    writeFileSync(domainMapDest, "STALE\n");
+    mockEpermRead(domainMapDest);
+
+    const result = installCustomizeSkill(targetDir, sourceDir);
+
+    expect(result.filesWritten).toContain(
+      join(".claude", "skills", "customize", "domain-map.ts"),
+    );
+    expect(real.readFileSync(domainMapDest, "utf8")).toBe(
+      "export const y = 2;\n",
+    );
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  it("[adopt mode] falls back to .groundwork/customize/, naming the errno code in fallbackReason, rather than throwing", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-eperm-adopt-src-"));
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-eperm-adopt-tgt-"));
+    writeSourceFixture(sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    mkdirSync(destDir, { recursive: true });
+    const domainMapDest = join(destDir, "domain-map.ts");
+    writeFileSync(domainMapDest, "STALE\n");
+    mockEpermRead(domainMapDest);
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("groundwork");
+    expect(result.fallbackCause).toBe("entry");
+    expect(result.fallbackReason).toContain("EPERM");
+    // The project's own (unreadable) entry is left exactly as it was.
+    expect(readdirSync(destDir).toSorted()).toEqual(["domain-map.ts"]);
+    expect(real.readFileSync(domainMapDest, "utf8")).toBe("STALE\n");
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
     real.rmSync(targetDir, { recursive: true, force: true });
   });
 });
