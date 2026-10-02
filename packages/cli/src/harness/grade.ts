@@ -9,8 +9,9 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readJsoncFile } from "../jsonc.js";
-import { walkBounded } from "../survey/fs-walk.js";
+import { parseJsonc } from "../jsonc.js";
+import type { JsoncReadResult } from "../jsonc.js";
+import { walkBoundedForGrading } from "../survey/fs-walk.js";
 import { RULES } from "./rules.js";
 import type { HarnessSnapshot, SkillSnapshot } from "./rules.js";
 import { HARNESS_CATEGORIES } from "./types.js";
@@ -31,18 +32,41 @@ function readText(path: string): string | undefined {
   }
 }
 
+/**
+ * Reads and parses a JSONC file the way the emitted twin
+ * (`templates/core/bin/lib/harness-rules.mjs`'s `readJsonc`) does, so both
+ * graders agree finding for finding: any read failure -- a directory at the
+ * path, a permission failure, even `EIO` -- becomes the failure's own
+ * message, never a throw. Not `jsonc.ts`'s `readJsoncFile`, which throws on
+ * a machine-level errno and words its errors differently: a grade reports
+ * what it could not read rather than aborting the whole report.
+ */
+function readJsoncLenient(path: string): JsoncReadResult {
+  let content: string;
+  try {
+    content = readFileSync(path, "utf8");
+  } catch (error) {
+    return {
+      ok: false,
+      stage: "read",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  return parseJsonc(content);
+}
+
 function readSettings(path: string): HarnessSnapshot["settings"] {
   if (!existsSync(path)) {
     return { present: false, error: undefined, parsed: undefined };
   }
-  const result = readJsoncFile(path);
+  const result = readJsoncLenient(path);
   return result.ok
     ? { present: true, error: undefined, parsed: result.value }
     : { present: true, error: result.error, parsed: undefined };
 }
 
 function loadSnapshot(root: string): HarnessSnapshot {
-  const entries = walkBounded(root, PROJECT_WALK_DEPTH);
+  const entries = walkBoundedForGrading(root, PROJECT_WALK_DEPTH);
   const claudeEntries = entries.filter((entry) =>
     entry.relPath.startsWith(".claude/"),
   );
@@ -81,7 +105,7 @@ function loadSnapshot(root: string): HarnessSnapshot {
   const settingsLocal = readSettings(
     join(root, ".claude", "settings.local.json"),
   );
-  const mcpJsonResult = readJsoncFile(join(root, ".mcp.json"));
+  const mcpJsonResult = readJsoncLenient(join(root, ".mcp.json"));
 
   return {
     settings: readSettings(join(root, ".claude", "settings.json")),

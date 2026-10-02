@@ -7,9 +7,11 @@
  * verdict) for what kind of project this is. `/customize`'s interview step
  * does the inferring; this module only records what is literally on disk.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { walkBounded } from "./fs-walk.js";
+import { readPackageJson } from "./internal/package-json.js";
+import { guardedExists, guardedRead } from "./internal/read-guard.js";
 import type {
   KindEvidence,
   ModuleType,
@@ -35,29 +37,14 @@ const FRAMEWORK_DEP_NAMES = [
   "hono",
 ];
 
-function readPackageJson(
+function detectPackageManager(
   dir: string,
   undetermined: string[],
-): Record<string, unknown> | undefined {
-  const path = join(dir, "package.json");
-  if (!existsSync(path)) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch (error) {
-    undetermined.push(
-      `could not parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return undefined;
-  }
-}
-
-function detectPackageManager(dir: string): PackageManager {
-  if (existsSync(join(dir, "pnpm-lock.yaml"))) return "pnpm";
-  if (existsSync(join(dir, "yarn.lock"))) return "yarn";
-  if (existsSync(join(dir, "bun.lockb"))) return "bun";
-  if (existsSync(join(dir, "package-lock.json"))) return "npm";
+): PackageManager {
+  if (guardedExists(join(dir, "pnpm-lock.yaml"), undetermined)) return "pnpm";
+  if (guardedExists(join(dir, "yarn.lock"), undetermined)) return "yarn";
+  if (guardedExists(join(dir, "bun.lockb"), undetermined)) return "bun";
+  if (guardedExists(join(dir, "package-lock.json"), undetermined)) return "npm";
   return "unknown";
 }
 
@@ -81,22 +68,30 @@ function extractYamlStringListUnder(content: string, key: string): string[] {
 function detectMonorepo(
   dir: string,
   packageJson: Record<string, unknown> | undefined,
+  undetermined: string[],
 ): { tool: MonorepoTool; globs: string[] } {
   const pnpmWorkspacePath = join(dir, "pnpm-workspace.yaml");
-  if (existsSync(pnpmWorkspacePath)) {
-    const content = readFileSync(pnpmWorkspacePath, "utf8");
+  if (guardedExists(pnpmWorkspacePath, undetermined)) {
+    const content = guardedRead(
+      pnpmWorkspacePath,
+      () => readFileSync(pnpmWorkspacePath, "utf8"),
+      undetermined,
+    );
     return {
       tool: "pnpm-workspaces",
-      globs: extractYamlStringListUnder(content, "packages"),
+      globs:
+        content === undefined
+          ? []
+          : extractYamlStringListUnder(content, "packages"),
     };
   }
-  if (existsSync(join(dir, "turbo.json"))) {
+  if (guardedExists(join(dir, "turbo.json"), undetermined)) {
     return { tool: "turbo", globs: [] };
   }
-  if (existsSync(join(dir, "nx.json"))) {
+  if (guardedExists(join(dir, "nx.json"), undetermined)) {
     return { tool: "nx", globs: [] };
   }
-  if (existsSync(join(dir, "lerna.json"))) {
+  if (guardedExists(join(dir, "lerna.json"), undetermined)) {
     return { tool: "lerna", globs: [] };
   }
   const workspaces = packageJson?.["workspaces"];
@@ -138,15 +133,21 @@ function detectTypescriptVersion(
 function detectNodeVersionPin(
   dir: string,
   packageJson: Record<string, unknown> | undefined,
+  undetermined: string[],
 ): NodeVersionPin | undefined {
   for (const [source, filename] of [
     [".node-version", ".node-version"],
     [".nvmrc", ".nvmrc"],
   ] as const) {
     const path = join(dir, filename);
-    if (existsSync(path)) {
-      return { source, value: readFileSync(path, "utf8").trim() };
-    }
+    if (!guardedExists(path, undetermined)) continue;
+    // An unreadable pin file falls through to the next source.
+    const content = guardedRead(
+      path,
+      () => readFileSync(path, "utf8"),
+      undetermined,
+    );
+    if (content !== undefined) return { source, value: content.trim() };
   }
   const engines = packageJson?.["engines"];
   const nodeEngine =
@@ -159,28 +160,33 @@ function detectNodeVersionPin(
   return undefined;
 }
 
-function detectSourceLayout(dir: string): SourceLayout {
-  if (existsSync(join(dir, "src"))) return "src";
-  if (existsSync(join(dir, "lib"))) return "lib";
-  const rootEntries = readdirSync(dir).filter((name) =>
-    /\.(ts|tsx|js|mjs)$/.test(name),
-  );
+function detectSourceLayout(dir: string, undetermined: string[]): SourceLayout {
+  if (guardedExists(join(dir, "src"), undetermined)) return "src";
+  if (guardedExists(join(dir, "lib"), undetermined)) return "lib";
+  const names = guardedRead(dir, () => readdirSync(dir), undetermined) ?? [];
+  const rootEntries = names.filter((name) => /\.(ts|tsx|js|mjs)$/.test(name));
   if (rootEntries.length > 0) return "root";
   return "unknown";
 }
 
-function hasColocatedTests(dir: string): boolean {
-  return walkBounded(dir, 2).some(
+function hasColocatedTests(dir: string, undetermined: string[]): boolean {
+  return walkBounded(dir, 2, undetermined).some(
     (entry) =>
       !entry.isDirectory && /\.(test|spec)\.[jt]sx?$/.test(entry.relPath),
   );
 }
 
-function detectTestPlacement(dir: string): TestPlacement {
-  if (existsSync(join(dir, "tests")) || existsSync(join(dir, "test"))) {
+function detectTestPlacement(
+  dir: string,
+  undetermined: string[],
+): TestPlacement {
+  if (
+    guardedExists(join(dir, "tests"), undetermined) ||
+    guardedExists(join(dir, "test"), undetermined)
+  ) {
     return "tests-dir";
   }
-  if (hasColocatedTests(dir)) {
+  if (hasColocatedTests(dir, undetermined)) {
     return "colocated";
   }
   return "unknown";
@@ -209,21 +215,32 @@ function collectKindEvidence(
 /**
  * Surveys codebase shape at `dir`. Offline, read-only, records evidence
  * rather than verdicts. Appends anything it could not parse (a malformed
- * `package.json`) to `undetermined`; an absent file is not recorded.
+ * `package.json`) or could not read (`EACCES`/`EPERM`) to `undetermined`;
+ * an absent file is not recorded. Any other read failure throws, naming the
+ * path, with the original failure as `cause`.
+ *
+ * @example
+ * ```ts
+ * import { surveyShape } from "./survey-shape.js";
+ *
+ * const undetermined: string[] = [];
+ * const shape = surveyShape("/path/to/project", undetermined);
+ * console.log(shape.packageManager, undetermined);
+ * ```
  */
 export function surveyShape(dir: string, undetermined: string[]): ShapeSurvey {
   const packageJson = readPackageJson(dir, undetermined);
-  const monorepo = detectMonorepo(dir, packageJson);
+  const monorepo = detectMonorepo(dir, packageJson, undetermined);
 
   return {
-    packageManager: detectPackageManager(dir),
+    packageManager: detectPackageManager(dir, undetermined),
     monorepoTool: monorepo.tool,
     workspaceGlobs: monorepo.globs,
     moduleType: detectModuleType(packageJson),
     typescriptVersion: detectTypescriptVersion(packageJson),
-    nodeVersionPin: detectNodeVersionPin(dir, packageJson),
-    sourceLayout: detectSourceLayout(dir),
-    testPlacement: detectTestPlacement(dir),
+    nodeVersionPin: detectNodeVersionPin(dir, packageJson, undetermined),
+    sourceLayout: detectSourceLayout(dir, undetermined),
+    testPlacement: detectTestPlacement(dir, undetermined),
     kindEvidence: collectKindEvidence(packageJson),
   };
 }

@@ -9,6 +9,8 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
+  chmodSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -24,6 +26,7 @@ import type { PackManifest } from "../src/packs.js";
 import { stagePacks } from "../src/pack-stage.js";
 import { walkBounded } from "../src/survey/fs-walk.js";
 import { countPackBudget } from "../src/caps.js";
+import { chmodIneffective } from "./chmod-ineffective.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const realPacksRoot = join(here, "..", "..", "..", "templates", "packs");
@@ -987,6 +990,213 @@ describe("observeWiring", () => {
       withoutSteps.some((o) => o.includes("verify-steps.packs.json")),
     ).toBe(false);
   });
+
+  describe("settings.json exists but cannot be read (EACCES/EPERM)", () => {
+    let settingsPath: string;
+
+    beforeEach(() => {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      settingsPath = join(targetDir, ".claude", "settings.json");
+      writeFileSync(settingsPath, JSON.stringify({ hooks: {} }));
+      chmodSync(settingsPath, 0o000);
+    });
+
+    afterEach(() => {
+      if (existsSync(settingsPath)) {
+        chmodSync(settingsPath, 0o644);
+      }
+    });
+
+    it.skipIf(chmodIneffective)(
+      "records an observation that the file exists but could not be read, naming the errno, instead of throwing or reporting an unparseable file",
+      () => {
+        let thrown: unknown;
+        let observations: string[] = [];
+        try {
+          observations = observeWiring(targetDir, manifest());
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeUndefined();
+        expect(
+          observations.some(
+            (o) => o.includes("could not be read") && o.includes("EACCES"),
+          ),
+        ).toBe(true);
+        expect(
+          observations.some((o) => o.includes("could not be parsed")),
+        ).toBe(false);
+      },
+    );
+  });
+
+  /**
+   * GAP: `observeWiring`'s three `existsSync` probes (settings.json,
+   * settings.local.json, verify-steps.packs.json) all swallow an ancestor
+   * directory's permission failure the same way `existsSync` always does --
+   * a `chmod 000` on `.claude` itself makes a genuinely-present
+   * settings.json read as "no .claude/settings.json found", identical to a
+   * project that never had one. This describe's RED state: today that
+   * false "not found" observation fires, and nothing records the real
+   * reason (EACCES).
+   */
+  describe("a .claude directory this process cannot search (ancestor chmod 000)", () => {
+    let claudeDir: string;
+
+    beforeEach(() => {
+      claudeDir = join(targetDir, ".claude");
+      mkdirSync(claudeDir, { recursive: true });
+      writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({}));
+    });
+
+    afterEach(() => {
+      chmodSync(claudeDir, 0o755);
+    });
+
+    it.skipIf(chmodIneffective)(
+      "never reports 'no .claude/settings.json found' for a project that has one, and records the real EACCES reason",
+      () => {
+        chmodSync(claudeDir, 0o000);
+        let thrown: unknown;
+        let observations: string[] = [];
+        try {
+          observations = observeWiring(targetDir, manifest());
+        } catch (error) {
+          thrown = error;
+        } finally {
+          chmodSync(claudeDir, 0o755);
+        }
+
+        expect(thrown).toBeUndefined();
+        expect(observations).not.toContain("no .claude/settings.json found");
+        expect(
+          observations.some(
+            (o) => o.includes(claudeDir) && o.includes("EACCES"),
+          ),
+        ).toBe(true);
+      },
+    );
+  });
+
+  describe("a dangling symlink at .claude/settings.json itself", () => {
+    let settingsPath: string;
+
+    beforeEach(() => {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      settingsPath = join(targetDir, ".claude", "settings.json");
+      symlinkSync(
+        join(targetDir, ".claude", "does-not-exist-settings-target"),
+        settingsPath,
+      );
+    });
+
+    /**
+     * `existsOrObserve` goes through `probePath`, whose `stat` on a dangling
+     * symlink fails `ENOENT` -- folded into "absent" for the survey's own
+     * exists-probes, correctly. For `observeWiring` specifically that
+     * folding is wrong the same way it is for `conflicts.ts`'s
+     * `compareFile`: a project that genuinely has `.claude/settings.json`
+     * (as a broken symlink) must never be told "no .claude/settings.json
+     * found" -- that is indistinguishable from a project that never had one.
+     */
+    it("never reports 'no .claude/settings.json found' and records that it is a dangling symlink", () => {
+      const undetermined: string[] = [];
+      let thrown: unknown;
+      let observations: string[] = [];
+      try {
+        observations = observeWiring(targetDir, manifest(), undetermined);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeUndefined();
+      expect(observations).not.toContain("no .claude/settings.json found");
+      expect(
+        observations.some(
+          (o) =>
+            o.includes(settingsPath) &&
+            o.toLowerCase().includes("dangling symlink"),
+        ) ||
+          undetermined.some(
+            (n) =>
+              n.includes(settingsPath) &&
+              n.toLowerCase().includes("dangling symlink"),
+          ),
+      ).toBe(true);
+    });
+  });
+
+  describe("a dangling symlink at .claude/settings.local.json", () => {
+    let localPath: string;
+
+    beforeEach(() => {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      localPath = join(targetDir, ".claude", "settings.local.json");
+      symlinkSync(
+        join(targetDir, ".claude", "does-not-exist-local-target"),
+        localPath,
+      );
+    });
+
+    /**
+     * `observeWiring` only ever pushes an observation about
+     * `settings.local.json` when `existsOrObserve` answers `true` -- a
+     * dangling symlink answers `false` (folded into "absent" by
+     * `probePath`) and produces no observation and no `undetermined` note
+     * at all, silently indistinguishable from a project with no such file.
+     */
+    it("records that settings.local.json is a dangling symlink rather than staying silent", () => {
+      const undetermined: string[] = [];
+      const observations = observeWiring(targetDir, manifest(), undetermined);
+
+      expect(
+        observations.some(
+          (o) =>
+            o.includes(localPath) &&
+            o.toLowerCase().includes("dangling symlink"),
+        ) ||
+          undetermined.some(
+            (n) =>
+              n.includes(localPath) &&
+              n.toLowerCase().includes("dangling symlink"),
+          ),
+      ).toBe(true);
+    });
+  });
+
+  describe("a regular file sitting at .claude (ENOTDIR on the settings.json stat)", () => {
+    let claudePath: string;
+
+    beforeEach(() => {
+      claudePath = join(targetDir, ".claude");
+      writeFileSync(claudePath, "not a directory");
+    });
+
+    /**
+     * `probePath`'s `ABSENT_CODES` folds `ENOTDIR` into "absent" too (it is
+     * shared with the survey's own exists-probes, where that folding is
+     * correct). For `observeWiring` this is the same gap `conflicts.ts`
+     * already closes for `planConflicts`: a regular file blocking
+     * `.claude` must be recorded in `undetermined`, consistent across both
+     * modules, never silently reported as "no .claude/settings.json found".
+     */
+    it("records the blocked ancestor in undetermined instead of reporting 'no .claude/settings.json found'", () => {
+      const undetermined: string[] = [];
+      let thrown: unknown;
+      let observations: string[] = [];
+      try {
+        observations = observeWiring(targetDir, manifest(), undetermined);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeUndefined();
+      expect(observations).not.toContain("no .claude/settings.json found");
+      expect(undetermined.length).toBeGreaterThan(0);
+      expect(undetermined.some((n) => n.includes(claudePath))).toBe(true);
+    });
+  });
 });
 
 describe("the real harness-extras pack", () => {
@@ -1575,16 +1785,20 @@ describe("cross-pack and pack/templates-core path collisions", () => {
   it("emits no path collision between any two real packs, nor between a pack and templates/core", () => {
     const owners = new Map<string, string>();
     const coreDir = join(here, "..", "..", "..", "templates", "core");
-    for (const entry of walkBounded(coreDir, 30)) {
+    const coreUndetermined: string[] = [];
+    for (const entry of walkBounded(coreDir, 30, coreUndetermined)) {
       if (entry.isDirectory) continue;
       owners.set(entry.relPath, "templates/core");
     }
+    // A real, checked-in tree has nothing unreadable to report.
+    expect(coreUndetermined).toEqual([]);
 
     const packNames = listPackNames();
     expect(packNames.length).toBeGreaterThan(0);
     for (const name of packNames) {
       const pack = loadPack(name);
-      for (const entry of walkBounded(pack.filesDir, 30)) {
+      const packUndetermined: string[] = [];
+      for (const entry of walkBounded(pack.filesDir, 30, packUndetermined)) {
         if (entry.isDirectory) continue;
         const owner = owners.get(entry.relPath);
         expect(
@@ -1593,6 +1807,7 @@ describe("cross-pack and pack/templates-core path collisions", () => {
         ).toBeUndefined();
         owners.set(entry.relPath, name);
       }
+      expect(packUndetermined).toEqual([]);
     }
   });
 });

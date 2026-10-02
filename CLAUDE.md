@@ -519,17 +519,23 @@ hook, so the baseline's 10-hook cap is untouched) and applies the same
 writer-spoke allowlist to a conservative scan of `tool_input.command`: it
 blocks output redirects, `tee`, `sed -i`/`perl -i`, `cp`/`mv`/`install`/
 `rsync`/`ln` into a guarded path, `rm`/`unlink`/`touch`/`truncate`, `dd of=`,
-`patch`/`git apply` whose patch headers name a guarded path, and
-`python`/`node`/`ruby`/`perl` inline code, heredocs or out-of-project script
-files that both write and name a guarded path (issue #96). It can only
-produce false negatives, never prove a negative: an interpreter running a
-script that lives inside the project, an `eval` of a computed string, a
-build step or generator that writes `src/`, a formatter or fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/`git stash pop`, a write into an ancestor of `src/`
-or `tests/` (`rsync -a /tmp/pkg/ packages/cli/`, `rm -rf packages/cli`), `php` file
-writes, `find -exec`/`xargs` with no
-literal operand, a target spelled through a variable, glob or command
-substitution, and `tar`/`curl -o`/`git checkout|restore` all pass. So
-hub-and-spoke stays a convention backed by a guard that raises the bar, not
+`patch`/`git apply` whose patch headers name a guarded path, a copy into, move
+of, or removal of an ancestor of a guarded directory (the project root,
+`packages`, `packages/<pkg>`, or a glob over them: `rsync -a /tmp/pkg/
+packages/cli/`, `rm -rf packages/cli`, `rm -rf .`), and
+`python`/`node`/`ruby`/`perl`/`php`/`deno`/`bun` inline code, heredocs or
+out-of-project script files that write, delete or move a guarded path
+(issue #96). It can only produce false negatives, never prove a negative: an
+interpreter running a script that lives inside the project, an `eval` of a
+computed string, a build step or generator that writes `src/`, a formatter or
+fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/
+`git stash pop`, `find -exec`, `xargs` with no literal operand, a call whose argument list is
+longer than the scanner's size cap (allowed with a stderr note), a target
+spelled through a variable or command substitution, an ancestor spelled in a
+way the lexical check does not recognise (a container other than `packages`, `apps` or `libs`, a parent of the project root (`rm -rf ..`), a workspace container below the project root,
+a linked worktree's own root), and `tar`/`curl -o`/`git checkout|restore` all
+pass. So hub-and-spoke stays a convention backed by a guard that raises the
+bar, not
 a proof; the review spokes and the `main` ruleset remain the real backstop.
 The maintainer's override is to run the command yourself with the `!`
 prefix at the Claude Code prompt (not a tool call, so no hook sees it) or to

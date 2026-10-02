@@ -2,13 +2,21 @@
 // SPDX-License-Identifier: MIT
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseFrontmatter } from "../../src/harness/frontmatter.js";
 import { gradeHarness } from "../../src/harness/grade.js";
 import { CURRENT_MODELS, RULES } from "../../src/harness/rules.js";
+import { chmodIneffective } from "../chmod-ineffective.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const templatesCoreDir = join(
@@ -330,6 +338,64 @@ describe("the TypeScript grader and its emitted .mjs twin", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  /**
+   * `.claude/settings.json` is a DIRECTORY, not a file. `readJsoncFile`
+   * (`jsonc.ts`, used by `harness/grade.ts`'s `readSettings`) recognizes
+   * `EISDIR` and reports the friendly `"<path> is not a regular file"`,
+   * while the emitted twin's `readJsonc` (`harness-rules.mjs`) catches
+   * every `readFileSync` failure unconditionally and surfaces the raw
+   * Node error text instead. The two messages differ, which breaks this
+   * file's whole-grade parity (`settings-parses`'s finding message
+   * embeds `settings.error` verbatim) even though both sides agree the
+   * file doesn't parse. The twin is the reference: fix the TypeScript
+   * side's settings read to degrade exactly like it, not the other way
+   * around.
+   */
+  it("produce identical grades when .claude/settings.json is a directory, not a file", () => {
+    mkdirSync(join(root, ".claude", "settings.json"), { recursive: true });
+
+    const ts = gradeHarness(root);
+    expect(ts.findings.some((f) => f.ruleId === "settings-parses")).toBe(true);
+    expect(plain(emitted.gradeHarness(root))).toEqual(plain(ts));
+  });
+
+  /**
+   * Same parity gap as the directory fixture above, reached via a
+   * permission failure (`EACCES`) on the read instead of `EISDIR` on a
+   * directory -- the TypeScript side's friendly
+   * `"<path> is unreadable (EACCES)"` versus the twin's raw Node error
+   * text.
+   */
+  it.skipIf(chmodIneffective)(
+    "produce identical grades when .claude/settings.json cannot be read (EACCES)",
+    () => {
+      const settingsPath = join(root, ".claude", "settings.json");
+      write(".claude/settings.json", "{}");
+      chmodSync(settingsPath, 0o000);
+
+      // Both sides must read while the lock is still in effect -- restoring
+      // permissions between the two calls would have each grader read a
+      // different filesystem state and compare nothing meaningful.
+      let thrown: unknown;
+      let ts: ReturnType<typeof gradeHarness> | undefined;
+      let emittedGrade: unknown;
+      try {
+        ts = gradeHarness(root);
+        emittedGrade = emitted.gradeHarness(root);
+      } catch (error) {
+        thrown = error;
+      } finally {
+        if (existsSync(settingsPath)) chmodSync(settingsPath, 0o644);
+      }
+
+      expect(thrown).toBeUndefined();
+      expect(ts?.findings.some((f) => f.ruleId === "settings-parses")).toBe(
+        true,
+      );
+      expect(plain(emittedGrade)).toEqual(plain(ts));
+    },
+  );
 
   it("parse frontmatter identically across every scalar form", () => {
     const samples = [

@@ -24,8 +24,8 @@ export function surveyProject(dir: string): ProjectSurvey {
   return {
     shape: surveyShape(dir, undetermined),
     toolchain: surveyToolchain(dir, undetermined),
-    harness: surveyHarness(dir),
-    docs: surveyDocs(dir),
+    harness: surveyHarness(dir, undetermined),
+    docs: surveyDocs(dir, undetermined),
     undetermined: [...new Set(undetermined)],
   };
 }

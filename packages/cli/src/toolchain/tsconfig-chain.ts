@@ -10,12 +10,23 @@
  * Handles a relative target (`x`, `x.json`, `x/tsconfig.json`) and a bare
  * package specifier looked up under every ancestor `node_modules`. A package
  * `exports` map is out of scope -- such a specifier simply stays unresolved.
- * Nothing here throws: a file that cannot be read or parsed is recorded on
- * the chain, and the chain is marked incomplete.
+ * A file that is missing, unreadable (`EACCES`/`EPERM`, including under a
+ * directory this process cannot search), unresolvable (`ELOOP`) or
+ * unparseable is recorded on the chain, and the chain is marked incomplete;
+ * an unreachable `extends` target is followed and recorded as unreadable,
+ * never as missing. Any other failure (`EIO`, `EMFILE`, ...) on the
+ * existence check or the read throws an error naming the path, with the
+ * original as `cause`.
  */
 import { statSync } from "node:fs";
+import type { Stats } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { readJsoncFile } from "../jsonc.js";
+import {
+  SurveyReadError,
+  isAbsentError,
+  unresolvableCode,
+} from "../survey/internal/read-guard.js";
 
 interface ChainFile {
   /** Absolute path. */
@@ -24,6 +35,8 @@ interface ChainFile {
   rel: string;
   /** Why the file could not be used, or `undefined` when it parsed. */
   error: string | undefined;
+  /** True when `error` is a read failure (missing, unreadable, unresolvable, not a regular file) rather than a parse failure. */
+  readFailed: boolean;
   /** This file's own `compilerOptions`, unmerged. */
   options: Record<string, unknown>;
 }
@@ -55,12 +68,25 @@ export interface TsconfigChain {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-function isFile(path: string): boolean {
+/**
+ * Whether `path` is a candidate `extends` target: a regular file, or
+ * something this process cannot reach (`EACCES`/`EPERM`/`ELOOP`). The latter
+ * is taken as the target so `readJsoncFile` records it as unreadable with
+ * its errno -- never reported "does not exist" for a file that may well be
+ * there. `ENOENT`/`ENOTDIR` is not a candidate; any other errno throws.
+ */
+function isCandidateFile(path: string): boolean {
+  let stats: Stats;
   try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
+    stats = statSync(path);
+  } catch (error) {
+    if (isAbsentError(error)) return false;
+    if (unresolvableCode(error) !== undefined) return true;
+    throw new SurveyReadError(`could not check whether ${path} exists`, {
+      cause: error,
+    });
   }
+  return stats.isFile();
 }
 
 /** The `extends` value as a list: a string, or TypeScript 5.0+'s array form. */
@@ -88,14 +114,14 @@ function resolveExtends(specifier: string, fromAbs: string): Resolution {
     const base = resolve(dirname(fromAbs), specifier);
     return {
       kind: "relative",
-      abs: candidates(base).find(isFile),
+      abs: candidates(base).find(isCandidateFile),
       attempted: base.endsWith(".json") ? base : `${base}.json`,
     };
   }
   let dir = dirname(fromAbs);
   for (;;) {
     const base = join(dir, "node_modules", specifier);
-    const abs = candidates(base).find(isFile);
+    const abs = candidates(base).find(isCandidateFile);
     if (abs !== undefined) return { kind: "package", abs, attempted: base };
     const parent = dirname(dir);
     if (parent === dir)
@@ -129,6 +155,7 @@ export function loadTsconfigChain(root: string, entry: string): TsconfigChain {
           : read.ok
             ? "top level is not an object"
             : read.error,
+        readFailed: !read.ok && read.stage === "read",
         options: own,
       });
     }

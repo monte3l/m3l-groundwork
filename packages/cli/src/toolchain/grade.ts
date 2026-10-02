@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readJsoncFile, stripJsComments } from "../jsonc.js";
-import { walkBounded } from "../survey/fs-walk.js";
+import { walkBoundedForGrading } from "../survey/fs-walk.js";
 import { RULES } from "./rules.js";
 import type {
   GateStep,
@@ -140,7 +140,7 @@ function scrapeLaneInvocations(text: string): {
 }
 
 function loadSnapshot(root: string): ToolchainSnapshot {
-  const entries = walkBounded(root, PROJECT_WALK_DEPTH);
+  const entries = walkBoundedForGrading(root, PROJECT_WALK_DEPTH);
   const projectFiles = new Set(
     entries.filter((e) => !e.isDirectory).map((e) => e.relPath),
   );

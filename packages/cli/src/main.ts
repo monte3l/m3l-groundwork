@@ -30,7 +30,11 @@ import process from "node:process";
 import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
-import { emitTemplate, isPathContained } from "./emit.js";
+import {
+  assertSafeEmitDestinations,
+  emitTemplate,
+  isPathContained,
+} from "./emit.js";
 import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
@@ -38,6 +42,7 @@ import {
 import type { GuardedInstallResult, InstallPluginResult } from "./plugin.js";
 import {
   CLAUDE_DEST_SEGMENTS,
+  CUSTOMIZE_SKILL_FILE_NAMES,
   GROUNDWORK_DEST_SEGMENTS,
   plannedCustomizeSkillPaths,
 } from "./customize-paths.js";
@@ -53,9 +58,12 @@ import {
   stageBaselineAdditions,
 } from "./baseline-stage.js";
 import {
+  assertDirectoryComponent,
+  assertNotDirectory,
   assertNotSymlink,
   endsWithRerunAdvice,
   FIX_AND_RERUN_ADVICE,
+  FRESH_SYMLINK_ADVICE,
 } from "./fs-guard.js";
 import {
   buildInventory,
@@ -360,6 +368,26 @@ export function formatCapsSummary(
   return { text: lines.join("\n"), overCap: overCap.length > 0 };
 }
 
+/**
+ * Fresh mode's pre-flight over the `/customize` skill's own destination
+ * (`.claude/skills/customize/`): each directory component must be missing
+ * or a real directory, and no payload file name may be a directory. A
+ * symlink AT a payload name passes -- the install replaces it rather than
+ * writing through it. Nothing is written either way.
+ */
+function assertSafeSkillDestination(targetDir: string): void {
+  for (let depth = 1; depth <= CLAUDE_DEST_SEGMENTS.length; depth++) {
+    assertDirectoryComponent(
+      join(targetDir, ...CLAUDE_DEST_SEGMENTS.slice(0, depth)),
+      FRESH_SYMLINK_ADVICE,
+    );
+  }
+  const destDir = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
+  for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+    assertNotDirectory(join(destDir, name), FRESH_SYMLINK_ADVICE);
+  }
+}
+
 function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   if (platform === "win32") {
     throw new Error("Windows is not supported yet (Linux and macOS only)");
@@ -374,9 +402,24 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   // target exactly as it was found.
   const packs = options.packs.map((name) => resolveFreshPack(name));
 
-  mkdirSync(options.targetDir, { recursive: true });
-
   const tokens = buildTokens(options.projectName);
+
+  // Validate every destination the baseline AND each pack would write
+  // before the first write: a symlinked or non-directory component refuses
+  // the whole run with nothing written.
+  assertSafeEmitDestinations(
+    [templatesCoreDir(), ...packs.map((pack) => pack.filesDir)],
+    options.targetDir,
+    tokens,
+  );
+
+  // The /customize skill's destination too: its own install refuses a
+  // symlinked directory component or a directory at a payload name, but it
+  // runs only after the baseline is written -- too late to leave the target
+  // untouched.
+  assertSafeSkillDestination(options.targetDir);
+
+  mkdirSync(options.targetDir, { recursive: true });
 
   const result = emitTemplate(templatesCoreDir(), options.targetDir, tokens);
   console.log(
@@ -771,7 +814,15 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   const survey = surveyProject(options.targetDir);
   const templateRoot = templatesCoreDir();
   const tokens = buildTokens(options.projectName);
-  const conflicts = planConflicts(templateRoot, options.targetDir, tokens);
+  // The survey's own `undetermined` list: a baseline or pack target this
+  // process cannot reach is recorded there (and so in the report), never
+  // reported as a clean add.
+  const conflicts = planConflicts(
+    templateRoot,
+    options.targetDir,
+    tokens,
+    survey.undetermined,
+  );
 
   const groundworkDir = join(options.targetDir, ".groundwork");
   const stagedBaselineDir = `.groundwork/${STAGED_BASELINE_DIR}`;
@@ -796,9 +847,18 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     name: pack.manifest.name,
     modes: pack.manifest.modes,
     budget: pack.manifest.budget,
-    fileConflicts: planConflicts(pack.filesDir, options.targetDir, tokens),
+    fileConflicts: planConflicts(
+      pack.filesDir,
+      options.targetDir,
+      tokens,
+      survey.undetermined,
+    ),
     wiring: pack.manifest.wiring,
-    wiringObservations: observeWiring(options.targetDir, pack.manifest),
+    wiringObservations: observeWiring(
+      options.targetDir,
+      pack.manifest,
+      survey.undetermined,
+    ),
     adoptNotes: pack.manifest.adoptNotes,
   }));
   // Each plan is computed once, here, and handed to its stager below, so

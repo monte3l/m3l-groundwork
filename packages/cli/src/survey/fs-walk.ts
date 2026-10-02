@@ -11,6 +11,12 @@
 import { readdirSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join, relative } from "node:path";
+import {
+  isAbsentError,
+  readFailure,
+  unreadableNote,
+  unresolvableCode,
+} from "./internal/read-guard.js";
 
 const SKIP_DIR_NAMES = new Set([
   "node_modules",
@@ -42,11 +48,14 @@ export interface WalkEntry {
 }
 
 /**
- * Recursively lists `root`, skipping known dependency/build directories and
- * stopping once a descendant is more than `maxDepth` directories below
- * `root`. Missing or unreadable directories are skipped, not thrown.
+ * The shared bounded walk. `onListFailure` decides what a failed directory
+ * listing means: it returns normally to skip the directory, or throws.
  */
-export function walkBounded(root: string, maxDepth: number): WalkEntry[] {
+function walk(
+  root: string,
+  maxDepth: number,
+  onListFailure: (dir: string, error: unknown) => void,
+): WalkEntry[] {
   const results: WalkEntry[] = [];
 
   const visit = (dir: string, depth: number): void => {
@@ -57,7 +66,8 @@ export function walkBounded(root: string, maxDepth: number): WalkEntry[] {
     let entries: Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      onListFailure(dir, error);
       return;
     }
 
@@ -86,4 +96,65 @@ export function walkBounded(root: string, maxDepth: number): WalkEntry[] {
 
   visit(root, 0);
   return results;
+}
+
+/**
+ * Recursively lists `root`, skipping known dependency/build directories and
+ * stopping once a descendant is more than `maxDepth` directories below
+ * `root`. A missing directory (`ENOENT`/`ENOTDIR`, the same absent set
+ * `guardedExists` uses) is skipped silently. An unreadable or unresolvable
+ * one (`EACCES`/`EPERM`, or a symlink loop's `ELOOP`) is skipped too, but
+ * recorded in `undetermined`. Any other listing
+ * failure (`EIO`, `EMFILE`, ...) throws an `Error` naming the directory, with
+ * the original as `cause`. For the survey collectors; the graders use
+ * {@link walkBoundedForGrading} instead.
+ *
+ * @example
+ * ```ts
+ * const undetermined: string[] = [];
+ * const markdown = walkBounded("/path/to/project", 2, undetermined).filter(
+ *   (entry) => !entry.isDirectory && entry.relPath.endsWith(".md"),
+ * );
+ * ```
+ */
+export function walkBounded(
+  root: string,
+  maxDepth: number,
+  undetermined: string[],
+): WalkEntry[] {
+  return walk(root, maxDepth, (dir, error) => {
+    const code = unresolvableCode(error);
+    if (code !== undefined) {
+      undetermined.push(unreadableNote(dir, code));
+      return;
+    }
+    if (isAbsentError(error)) return;
+    throw readFailure(dir, error);
+  });
+}
+
+/**
+ * The same bounded listing as {@link walkBounded}, but a directory whose
+ * listing fails for ANY reason is skipped silently, never thrown. For the
+ * harness and toolchain graders (`harness/grade.ts`, `toolchain/grade.ts`)
+ * only: a grader never throws, and its emitted `.mjs` twins
+ * (`templates/core/bin/lib/{harness,toolchain}-rules.mjs`) swallow every
+ * listing failure in their own `walkBounded` -- this keeps both sides' grades
+ * identical for the same tree. The survey keeps {@link walkBounded}'s errno
+ * discrimination.
+ *
+ * @example
+ * ```ts
+ * const files = walkBoundedForGrading("/path/to/project", 4).filter(
+ *   (entry) => !entry.isDirectory,
+ * );
+ * ```
+ */
+export function walkBoundedForGrading(
+  root: string,
+  maxDepth: number,
+): WalkEntry[] {
+  return walk(root, maxDepth, () => {
+    // Deliberately swallowed: parity with the emitted twins' bare `catch`.
+  });
 }

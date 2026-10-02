@@ -19,14 +19,14 @@ describe("surveyDocs", () => {
   });
 
   it("reports no files for a bare directory", () => {
-    expect(surveyDocs(dir)).toEqual({ files: [] });
+    expect(surveyDocs(dir, [])).toEqual({ files: [] });
   });
 
   it("indexes README.md and CONTRIBUTING.md at the root with their heading outline", () => {
     writeFileSync(join(dir, "README.md"), "# Title\n\n## Usage\n");
     writeFileSync(join(dir, "CONTRIBUTING.md"), "# Contributing\n");
 
-    const survey = surveyDocs(dir);
+    const survey = surveyDocs(dir, []);
     const paths = survey.files.map((f) => f.path).sort();
 
     expect(paths).toEqual(
@@ -39,7 +39,7 @@ describe("surveyDocs", () => {
 
   it("indexes a STYLE*.md file at the root", () => {
     writeFileSync(join(dir, "STYLE_GUIDE.md"), "# Style\n");
-    expect(surveyDocs(dir).files.map((f) => f.path)).toContain(
+    expect(surveyDocs(dir, []).files.map((f) => f.path)).toContain(
       join(dir, "STYLE_GUIDE.md"),
     );
   });
@@ -53,7 +53,7 @@ describe("surveyDocs", () => {
     );
     writeFileSync(join(dir, "docs", "adr", "0001-foo.md"), "# ADR 1\n");
 
-    const paths = surveyDocs(dir)
+    const paths = surveyDocs(dir, [])
       .files.map((f) => f.path)
       .sort();
     expect(paths).toEqual(
@@ -67,7 +67,7 @@ describe("surveyDocs", () => {
   it("indexes a top-level decisions/ or adr/ directory", () => {
     mkdirSync(join(dir, "adr"), { recursive: true });
     writeFileSync(join(dir, "adr", "0001.md"), "# ADR\n");
-    expect(surveyDocs(dir).files.map((f) => f.path)).toContain(
+    expect(surveyDocs(dir, []).files.map((f) => f.path)).toContain(
       join(dir, "adr", "0001.md"),
     );
   });

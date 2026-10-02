@@ -19,7 +19,7 @@ describe("surveyHarness", () => {
   });
 
   it("reports absent when there is no .claude/ directory and no CLAUDE.md", () => {
-    expect(surveyHarness(dir)).toEqual({
+    expect(surveyHarness(dir, [])).toEqual({
       present: false,
       settingsFile: undefined,
       agents: [],
@@ -38,7 +38,7 @@ describe("surveyHarness", () => {
       join(dir, "CLAUDE.md"),
       "# Title\n\n## Setup\n\nsome prose\n\n### Details\n",
     );
-    const survey = surveyHarness(dir);
+    const survey = surveyHarness(dir, []);
     expect(survey.hasClaudeMd).toBe(true);
     expect(survey.claudeMdHeadings).toEqual(["Title", "Setup", "Details"]);
   });
@@ -67,7 +67,7 @@ describe("surveyHarness", () => {
     );
     writeFileSync(join(dir, ".claude", "commands", "deploy.md"), "# deploy\n");
 
-    const survey = surveyHarness(dir);
+    const survey = surveyHarness(dir, []);
 
     expect(survey.present).toBe(true);
     expect(survey.settingsFile).toBe("settings.json");
@@ -87,7 +87,7 @@ describe("surveyHarness", () => {
       join(dir, ".claude", "skills", "folded", "SKILL.md"),
       "---\nname: folded\ndescription: >-\n  The pre-work decision gate: inspects\n  git state before any write.\n---\n# folded\n",
     );
-    expect(surveyHarness(dir).skills).toEqual([
+    expect(surveyHarness(dir, []).skills).toEqual([
       {
         name: "folded",
         description:
@@ -102,7 +102,7 @@ describe("surveyHarness", () => {
       join(dir, ".claude", "rules", "scoped.md"),
       '---\npaths:\n  - "src/**"\n  - "tests/**"\n---\nbody\n',
     );
-    expect(surveyHarness(dir).rules).toEqual([
+    expect(surveyHarness(dir, []).rules).toEqual([
       { name: "scoped", paths: "src/**, tests/**" },
     ]);
   });
@@ -113,14 +113,14 @@ describe("surveyHarness", () => {
       join(dir, ".claude", "skills", "untitled", "SKILL.md"),
       "# untitled\n",
     );
-    expect(surveyHarness(dir).skills).toEqual([
+    expect(surveyHarness(dir, []).skills).toEqual([
       { name: "untitled", description: undefined },
     ]);
   });
 
   it("reports empty collections when .claude/ exists but its subdirectories don't", () => {
     mkdirSync(join(dir, ".claude"));
-    const survey = surveyHarness(dir);
+    const survey = surveyHarness(dir, []);
     expect(survey.present).toBe(true);
     expect(survey.agents).toEqual([]);
     expect(survey.skills).toEqual([]);

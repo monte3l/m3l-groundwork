@@ -51,8 +51,30 @@
  * `isProtectedPath(abs, projectDir)` the Write|Edit path uses -- an absolute
  * path outside the project is never protected. Targets the lexer cannot
  * resolve statically (containing `$`, a backtick, a leading `~`) are
- * ignored; a glob is resolved to its literal directory prefix; anything
- * under `/dev/` (`/dev/null`, `/dev/stdout`, `/dev/fd/N`) is ignored.
+ * ignored; a glob is judged by its literal directory prefix and by its
+ * whole path with every globbed segment a placeholder (`packages/<glob>/src`);
+ * anything under `/dev/` (`/dev/null`, `/dev/stdout`, `/dev/fd/N`) is
+ * ignored.
+ *
+ * An ANCESTOR of a guarded directory is a path that contains one beneath
+ * it, judged lexically: the project root (a flat layout's own src/tests),
+ * a workspace container (`packages`, `apps`, `libs`), or a package
+ * directly inside one (`packages/cli`). A container only counts as the
+ * operand's own first segment (`docs/packages/old`, `packages/*\/dist` are
+ * not ancestors), and `node_modules` is never a package
+ * (`*\/node_modules`). A final glob segment is judged by
+ * its parent: directly under the project root it counts when it could
+ * expand to `src`, `tests` or a container (`rm -rf *`); directly under a
+ * container it always counts, as it may name a package (`packages/c*`,
+ * `packages/cl?`, `packages/[c]li`); directly under a package it counts
+ * when it could expand to `src` or `tests` (`packages/cli/*`), and that slot
+ * decides at any depth (`packages/cli/*\/*`, `*\/*\/*\/x`); anywhere else
+ * it never does (`dist/*`, `coverage/*`, `packages/cli/dist/*`).
+ * `packages/cli/dist`, `node_modules`, `coverage` and a linked worktree's
+ * own root (`.claude/worktrees/<name>`) are not ancestors. Known limit: an
+ * ancestor of a src/ nested below a non-container first segment
+ * (`.claude/worktrees/foo/packages/cli`) is knowingly not covered. A block
+ * on an ancestor says so in its message.
  * `[[ ... ]]`, `[ ... ]` and `(( ... ))` are lexed as one unit, so a `<`,
  * `>`, `&&` or `||` inside a test expression is never a redirect or a
  * command boundary; a `$(...)`/backtick substitution inside `[[ ]]`/`[ ]`
@@ -67,9 +89,18 @@
  *   - `perl -i` / `-pi` (every file operand)
  *   - `cp`, `install`, `rsync`, `ln` -- the destination only (last operand,
  *     or `-t`/`--target-directory`; `install -d` creates every operand);
- *     sources never count
- *   - `mv` -- any operand, source or destination
- *   - `rm`, `unlink`, `rmdir`, `touch`, `truncate` -- any operand
+ *     sources never count. An ancestor destination counts too, unless it
+ *     is a directory known to exist (the project root, a trailing `/`, a
+ *     `-t` target, several sources) and every source lands as a named
+ *     `dest/<basename>` that is neither guarded nor an ancestor -- a
+ *     source copying a directory's contents (`dir/`, `dir/.`), a glob or an
+ *     unresolvable name always counts
+ *   - `rsync --remove-source-files` -- additionally every source, guarded
+ *     or an ancestor, since rsync deletes what it copied
+ *   - `mv` -- any operand, source or destination; an ancestor source, and
+ *     an ancestor destination by the same rule as `cp`
+ *   - `rm`, `unlink`, `rmdir`, `touch`, `truncate` -- any operand; for `rm`
+ *     an ancestor operand too
  *   - `dd of=PATH`
  *   - `patch` (never with `--dry-run`, `--check` or `-C`) / `git apply`
  *     (never with `--check`, `--stat`, `--numstat` or `--summary`); blocked
@@ -82,14 +113,22 @@
  *     (`-`, heredoc, here-string) or script FILE located OUTSIDE the project
  *     calls a write verb with a string literal resolving to a guarded path
  *     in the WRITTEN position: the first argument of `writeFile(Sync)`,
- *     `appendFile(Sync)`, `createWriteStream`, `File.write`/`IO.write`/
- *     `Bun.write`; the destination (second) argument of `copyFile(Sync)`,
- *     `cp`/`cpSync`, `shutil.copy*`; either argument of `rename(Sync)`/
- *     `os.rename`; the path of a write-mode `open`/`openSync` (`'w'`,
- *     `'a'`, `'x'`, `'r+'`..., as the second argument or a `mode=` keyword
- *     anywhere; or perl's `open(F, ">path")`, `open(F, '>', 'path')` and
- *     paren-less `open F, ">path"`); and
- *     the receiver of `Path('...').write_text`/`write_bytes`. A guarded
+ *     `appendFile(Sync)`, `createWriteStream`, `file_put_contents`,
+ *     `File.write`/`IO.write`/`Bun.write`, `Deno.writeTextFile(Sync)`,
+ *     `truncate(Sync)`, and the delete verbs `Deno.remove(Sync)`, `rm(Sync)`, `rmdir(Sync)`, `unlink(Sync)`, `os.remove`,
+ *     `os.removedirs`, `shutil.rmtree`, `File.delete`, `FileUtils.rm*`; the
+ *     destination (second) argument of `copyFile(Sync)`, `cp`/`cpSync`,
+ *     `copy`, `shutil.copy*`; either argument of `rename(Sync)`/
+ *     `os.rename`/`os.replace`/`shutil.move`; the path of a write-mode
+ *     `open`/`openSync`/`fopen` (`'w'`, `'a'`, `'x'`, `'c'`, `'r+'`..., as
+ *     the second argument or a `mode=` keyword anywhere; or perl's
+ *     `open(F, ">path")`, `open(F, '>', 'path')` and paren-less
+ *     `open F, ">path"`); and the receiver of `Path('...').write_text`/
+ *     `write_bytes`/`touch`/`unlink`/`rmdir`/`rename`/`replace`. For the
+ *     tree-removing and moving verbs (`Deno.remove(Sync)`, `rm(Sync)`,
+ *     `rename(Sync)`,
+ *     `os.rename`/`os.replace`, `shutil.move`/`rmtree`, `FileUtils.rm*`,
+ *     `Path.rename`/`replace`) an ancestor literal counts too. A guarded
  *     path that is only read, or a write verb aimed elsewhere, does not
  *     count. A script inside the project is trusted and never read.
  * Every other `git` subcommand, every read, test runner, linter and
@@ -103,21 +142,26 @@
  *   - `eval` of a computed string, and any target or code assembled at run
  *     time: variable-, glob-from-variable-, `~`- or command-substitution-
  *     expanded paths, `python -c` building the path from pieces or holding
- *     it in a variable, an interpreter write verb outside the list above,
- *     and perl's paren-less 3-arg `open F, '>', 'path'`
- *   - build steps and generators (`pnpm <script>`, `make`, codegen) that
- *     write into src/tests
- *   - `mkdir`, `find -delete`, and `find -exec`/`xargs` without literal
- *     operands
- *   - a write into an ANCESTOR of a guarded directory: only the operand
- *     itself is tested, so `rsync -a /tmp/pkg/ packages/cli/`,
- *     `cp -r /tmp/pkg/. packages/cli/`, `mv packages/cli /tmp`,
- *     `rm -rf packages/cli` and a root-level `rm -rf ./*` all pass
- *   - `php` is screened only for `rename(` (no `file_put_contents` or
- *     `fopen`), and an interpreter's delete calls (`fs.rmSync`,
- *     `os.remove`, `shutil.rmtree`, `Path.unlink`) are not write verbs here
- *   - `tar`/`unzip`/`curl -o`/`wget -O`, `git checkout`/`restore`/`stash`/
- *     `reset`, and editors (`vim -c ...`)
+ *     it in a variable, an interpreter write verb outside the list above
+ *     (perl's `File::Path` `rmtree`/`remove_tree` among them), and perl's
+ *     paren-less 3-arg `open F, '>', 'path'`
+ *   - an interpreter write call whose argument list spans more than
+ *     MAX_CALL_CHARS (1000) characters: it is not split, so not screened
+ *     (reported as a note)
+ *   - build steps, generators and formatters (`pnpm <script>`, `make`,
+ *     codegen, `prettier --write`, `eslint --fix`) that write into src/tests
+ *   - `mkdir`, `find -delete`, and `find -exec` -- always, whatever its
+ *     operands, since `find`'s command line is never analysed; `xargs` is
+ *     a false negative only without literal operands (`xargs rm <guarded>`
+ *     is caught, the wrapper being stripped)
+ *   - an ancestor the lexical rule above does not recognise: a workspace
+ *     container under another name, a nested one (`packages/group/pkg`),
+ *     a parent of the project root (`rm -rf ..`), or the root of a linked
+ *     worktree (`.claude/worktrees/<name>`, so `rsync -a /tmp/x/ .` from
+ *     inside one passes); and a mid-path glob is read only as possibly
+ *     naming a workspace container, never `src`/`tests` (`<glob>/a.ts`)
+ *   - `tar`/`unzip`/`curl -o`/`wget -O`, `git checkout`/`restore`/`stash`
+ *     (`stash pop`)/`reset`/`rm`/`mv`/`clean` (`git clean -fdx`), and editors (`vim -c ...`)
  *   - a redirect attached to a test expression (`[[ -f a ]] > file`): the
  *     whole `[[`/`[` command is skipped for redirects
  *   - `$(...)`/backtick substitutions inside an UNQUOTED heredoc body: the
@@ -126,7 +170,8 @@
  *     resolves outside the project and so is never guarded
  *   - anything nested deeper than MAX_DEPTH, a path spelled through a
  *     symlinked alias of the project root, and a script or patch file larger
- *     than MAX_READ_BYTES (the depth and size cases are reported as notes)
+ *     than MAX_READ_BYTES (the depth and both size cases are reported as
+ *     notes)
  *   - a tool run through a channel that bypasses PreToolUse hooks entirely
  * Hub-and-spoke is therefore a convention backed by a guard that raises the
  * bar, not a proof.
@@ -137,9 +182,10 @@
  *
  * Visibility: when the detector gives up on part of a command -- the
  * nesting cap was hit (`nesting`), a script/patch exceeded MAX_READ_BYTES
- * (`size`), or a file exists but could not be read (`read`; a file that
- * simply does not exist is not noted) -- it still allows, but records a
- * note, and the entry point prints one `allowed, but not fully analysed`
+ * (`size`), an interpreter write call's argument list exceeded
+ * MAX_CALL_CHARS (`call size`), or a file exists but could not be read
+ * (`read`; a file that simply does not exist is not noted) -- it still
+ * allows, but records a note (a size cap is note-only: it never blocks), and the entry point prints one `allowed, but not fully analysed`
  * line to stderr. A fully analysed allowed command prints nothing.
  *
  * Fail-open: an unparseable payload, a Bash payload with no string command,
@@ -638,10 +684,21 @@ function protectedTarget(word, ctx, base = ctx.cwd) {
   if (!word || word.dynamic || word.tilde) return null;
   if (word.globAt === -1) return protectedPathString(word.value, ctx, base);
   // Every expansion of a glob lives under its literal directory prefix, so
-  // that prefix (plus a placeholder entry) decides; the glob is reported.
+  // that prefix (plus a placeholder entry) decides -- as does the whole
+  // path with each globbed segment a placeholder (`packages/*/src`). The
+  // glob is reported.
   const prefix = word.value.slice(0, word.globAt);
   const entry = `${prefix.slice(0, prefix.lastIndexOf("/") + 1)}__glob__`;
-  if (!protectedPathString(entry, ctx, base)) return null;
+  const placeholders = word.value
+    .split("/")
+    .map((segment) => (GLOB_CHAR.test(segment) ? "__glob__" : segment))
+    .join("/");
+  if (
+    !protectedPathString(entry, ctx, base) &&
+    !protectedPathString(placeholders, ctx, base)
+  ) {
+    return null;
+  }
   return resolveAgainst(base, word.value) ?? word.value;
 }
 
@@ -649,6 +706,176 @@ function firstProtected(words, ctx, rule, base = ctx.cwd) {
   for (const word of words) {
     const path = protectedTarget(word, ctx, base);
     if (path) return { path, rule };
+  }
+  return null;
+}
+
+// Workspace container directories: `<container>` and `<container>/<pkg>`
+// each hold a whole package's src/tests beneath them.
+const WORKSPACE_CONTAINERS = ["packages", "apps", "libs"];
+const GUARDED_DIRS = ["src", "tests"];
+// Never a workspace package: package managers skip node_modules when
+// expanding workspace globs, so `<container>/node_modules` holds no package.
+const NON_PACKAGE_DIRS = ["node_modules"];
+const GLOB_CHAR = /[*?[{]/;
+const MATCH_ANY = /^/;
+
+/**
+ * A matcher for one glob path segment. Brace expansion, and a character
+ * class the RegExp engine rejects, both match anything -- the conservative
+ * side for a guard.
+ */
+function globMatcher(pattern) {
+  if (pattern.includes("{")) return MATCH_ANY;
+  let source = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    const classEnd = c === "[" ? pattern.indexOf("]", i + 2) : -1;
+    if (c === "*") source += ".*";
+    else if (c === "?") source += ".";
+    else if (classEnd !== -1) {
+      const body = pattern.slice(i + 1, classEnd);
+      const negate = body.startsWith("!") || body.startsWith("^");
+      const members = (negate ? body.slice(1) : body).replace(
+        /[\\\]^]/g,
+        "\\$&",
+      );
+      source += `[${negate ? "^" : ""}${members}]`;
+      i = classEnd;
+    } else source += c.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  }
+  try {
+    return new RegExp(`^${source}$`);
+  } catch {
+    // An out-of-order range (`[z-a]`): unmatchable for the shell too, but
+    // matching anything here is the safe side.
+    return MATCH_ANY;
+  }
+}
+
+/** `resolved` relative to the project root; null when it lies outside it. */
+function projectRelative(resolved, ctx) {
+  if (isAbsoluteLike(resolved)) {
+    if (!isInsideProject(resolved, ctx.projectDir)) return null;
+    const root = ctx.projectDir.replace(/\\/g, "/").replace(/\/+$/, "");
+    return resolved.replace(/\\/g, "/").slice(root.length);
+  }
+  // Unknown cwd: a relative path is read as project-relative (conservative).
+  return resolved === ".." || resolved.startsWith("../") ? null : resolved;
+}
+
+/**
+ * True when project-relative `segments` name a directory that CONTAINS a
+ * guarded tree: the project root (a flat layout's own src/tests), a
+ * workspace container, or a package directly inside one. A container only
+ * ever counts as the operand's OWN first segment: a container-shaped name
+ * deeper down (`docs/packages/old`) is an ordinary nested directory, and
+ * `node_modules` is never a package (`*\/node_modules`). A glob in the
+ * first segment counts as a container when it could expand to one
+ * (`*\/cli`, `pack*\/*`), since at runtime it may name exactly that
+ * ancestor. A glob in the last segment is read by what its PARENT is:
+ * under the project root it counts when it
+ * could expand to `src`, `tests` or a container (`*`); under a workspace
+ * container it always counts, since it may name a package (`packages/c*`);
+ * under a package it counts when it could expand to `src` or `tests`
+ * (`packages/cli/*`). That same slot -- index 2, directly under a package --
+ * decides at any depth: when it is a glob that could expand to `src` or
+ * `tests`, the operand expands into a package's src/tests however many
+ * segments follow (`packages/cli/*\/*`, `*\/*\/*\/x`). A glob any deeper
+ * (`dist/*`, `packages/cli/dist/*`) never counts, and nor does a literal path
+ * below a package (`packages/*\/dist`).
+ *
+ * Known limit: this is anchored on the operand's own first segment, so an
+ * ancestor of a src/ nested below a NON-container first segment -- a linked
+ * worktree's package (`.claude/worktrees/foo/packages/cli`), or any other
+ * checkout or package tree further down -- is knowingly not covered.
+ */
+function containsGuardedTree(segments, globbed) {
+  const n = segments.length;
+  if (n === 0) return true;
+  const first = segments[0];
+  const last = segments[n - 1];
+  if (n === 1 && globbed && GLOB_CHAR.test(last)) {
+    const matcher = globMatcher(last);
+    return [...WORKSPACE_CONTAINERS, ...GUARDED_DIRS].some((name) =>
+      matcher.test(name),
+    );
+  }
+  const container =
+    WORKSPACE_CONTAINERS.includes(first) ||
+    (globbed &&
+      GLOB_CHAR.test(first) &&
+      WORKSPACE_CONTAINERS.some((name) => globMatcher(first).test(name)));
+  if (!container) return false;
+  if (n === 1) return true;
+  if (NON_PACKAGE_DIRS.includes(segments[1])) return false;
+  if (n === 2) return true;
+  // n >= 3: only a glob directly under a package (index 2) can name src/tests.
+  const slot = segments[2];
+  if (!globbed || !GLOB_CHAR.test(slot)) return false;
+  const matcher = globMatcher(slot);
+  return GUARDED_DIRS.some((name) => matcher.test(name));
+}
+
+/**
+ * The resolved path when `word` names an ANCESTOR of a guarded directory
+ * (see containsGuardedTree), else null. `root` reports the project root.
+ */
+function ancestorTarget(word, ctx, base = ctx.cwd) {
+  if (!word || word.dynamic || word.tilde || word.value === "") return null;
+  const resolved =
+    resolveAgainst(base, word.value) ?? posix.normalize(word.value);
+  if (resolved.startsWith("/dev/")) return null;
+  const relative = projectRelative(resolved, ctx);
+  if (relative === null) return null;
+  const segments = relative
+    .split("/")
+    .filter((segment) => segment !== "" && segment !== ".");
+  return containsGuardedTree(segments, word.globAt !== -1)
+    ? { path: resolved, root: segments.length === 0 }
+    : null;
+}
+
+function firstAncestor(words, ctx, rule) {
+  for (const word of words) {
+    const hit = ancestorTarget(word, ctx);
+    if (hit) return { path: hit.path, rule, ancestor: true };
+  }
+  return null;
+}
+
+/** A source operand that copies a directory's CONTENTS (`dir/`, `dir/.`) or an unknown name. */
+function copiedName(source) {
+  if (source.dynamic || source.tilde || source.globAt !== -1) return null;
+  if (source.value.endsWith("/")) return null;
+  const name = basenameOf(source.value);
+  return name === "" || name === "." || name === ".." ? null : name;
+}
+
+/**
+ * A cp/rsync/install/ln/mv destination that is an ancestor of a guarded
+ * directory. Into a directory known to exist (the project root, a trailing
+ * `/`, a `-t` target or several sources) each source lands as
+ * `dest/<basename>`, blocked when that is guarded or itself an ancestor, or
+ * when the source's name is unknown or it copies a directory's contents.
+ * Any other ancestor destination may be a rename that creates the whole
+ * tree, and is blocked.
+ */
+function ancestorDestination(name, sources, destination, into, ctx) {
+  const dest = ancestorTarget(destination, ctx);
+  if (!dest) return null;
+  const hit = { path: dest.path, rule: name, ancestor: true };
+  const knownDir =
+    into ||
+    dest.root ||
+    destination.value.endsWith("/") ||
+    destination.value.endsWith("/.");
+  if (!knownDir) return hit;
+  for (const source of sources) {
+    const copied = copiedName(source);
+    if (copied === null) return hit;
+    const child = { ...newWord(), value: `${dest.path}/${copied}` };
+    if (protectedTarget(child, ctx) || ancestorTarget(child, ctx)) return hit;
   }
   return null;
 }
@@ -1012,16 +1239,24 @@ const PHP_ARGS = new Set(["-r", "-f", "-c", "-d", "-z"]);
 
 // A write-verb CALL in interpreter code; the argument list after the `(`
 // is then split and only the written-position argument is checked.
+// Delete, move and truncate calls count as writes too.
 const WRITE_CALL =
-  /\b(writeFileSync|writeFile|appendFileSync|appendFile|createWriteStream|copyFileSync|copyFile|cpSync|cp|renameSync|rename|openSync|open|shutil\.copy\w*|os\.rename|(?:File|IO|Bun)\.write)\s*\(/g;
-// `Path('...').write_text(...)` / `.write_bytes(...)`: the receiver is written.
+  /\b(Deno\.writeTextFileSync|Deno\.writeTextFile|Deno\.removeSync|Deno\.remove|writeFileSync|writeFile|appendFileSync|appendFile|createWriteStream|file_put_contents|copyFileSync|copyFile|cpSync|cp|copy|renameSync|rename|openSync|open|fopen|truncateSync|truncate|rmSync|rm|rmdirSync|rmdir|unlinkSync|unlink|shutil\.copy\w*|shutil\.move|shutil\.rmtree|os\.rename|os\.replace|os\.remove|os\.removedirs|File\.delete|FileUtils\.rm\w*|(?:File|IO|Bun)\.write)\s*\(/g;
+// Verbs that remove or move a whole directory tree: an ANCESTOR of a
+// guarded directory as their target counts too (see containsGuardedTree).
+const TREE_VERB =
+  /^(?:Deno\.removeSync|Deno\.remove|rmSync|rm|renameSync|rename|shutil\.move|shutil\.rmtree|os\.rename|os\.replace|FileUtils\.rm\w*)$/;
+// `\b` keeps `remove` (os.remove, Deno.remove) from reading as a move.
+const MOVE_VERB = /rename|replace|\bmove/;
+// `Path('...').write_text(...)`, `.unlink()`, `.rename(...)`...: the
+// receiver is written, removed or moved.
 const PATH_RECEIVER_WRITE =
-  /\bPath\s*\(\s*[rRbBuU]?(['"])([^'"\n]{0,4096})\1\s*\)\s*\.write_(?:text|bytes)\s*\(/g;
+  /\bPath\s*\(\s*[rRbBuU]?(['"])([^'"\n]{0,4096})\1\s*\)\s*\.(write_text|write_bytes|touch|unlink|rmdir|rename|replace)\s*\(/g;
 // A whole argument that is one string literal (optionally a `kw=` keyword
 // argument, optionally a Python string prefix).
 const LITERAL_ARG = /^(?:\w+\s*=\s*)?[rRbBuU]{0,2}(['"`])([^'"`\n]*)\1$/;
-// An fopen-style mode that writes: contains w, a, x or +.
-const WRITE_MODE = /^[rbtU]*[wax+][rwaxbtU+]*$/;
+// An fopen-style mode that writes: contains w, a, x, c (php) or +.
+const WRITE_MODE = /^[rbtU]*[waxc+][rwaxcbtU+]*$/;
 // perl's open modes, alone (3-arg form) or prefixed to the path (2-arg form).
 const PERL_MODE_ONLY = /^(?:\+?>{1,2}|\+<)$/;
 const PERL_MODE_PATH = /^(?:\+?>{1,2}|\+<)\s*(\S.*)$/;
@@ -1032,6 +1267,7 @@ const KWARG = /^\s*\w+\s*=[^=]/;
 const MODE_KWARG = /^\s*mode\s*=[^=]/;
 // An argument list longer than this is not split (keeps the scan linear).
 const MAX_CALL_CHARS = 1000;
+const CALL_SIZE_NOTE = `call size cap (${MAX_CALL_CHARS} chars) exceeded; an interpreter write call's arguments were not analysed`;
 const SRC_OR_TESTS_SEGMENT = /(?:^|\/)(?:src|tests)(?:\/|$)/;
 const PATCH_HEADER = /^(?:\+\+\+ |--- |diff --git )(.*)$/gm;
 
@@ -1059,11 +1295,16 @@ function matchParens(code) {
 /**
  * Splits the top-level arguments of the call whose `(` is at `openAt`;
  * null when it never closes or spans more than MAX_CALL_CHARS (so a flood
- * of unclosed calls stays linear).
+ * of unclosed calls stays linear). A call past the cap is noted in `notes`
+ * -- it is allowed unscreened, but never silently.
  */
-function splitArgs(code, openAt, parens) {
+function splitArgs(code, openAt, parens, notes) {
   const closeAt = parens.get(openAt);
-  if (closeAt === undefined || closeAt - openAt > MAX_CALL_CHARS) return null;
+  if (closeAt === undefined) return null;
+  if (closeAt - openAt > MAX_CALL_CHARS) {
+    addNote(notes, CALL_SIZE_NOTE);
+    return null;
+  }
   const args = [];
   let depth = 0;
   let argStart = openAt + 1;
@@ -1090,7 +1331,7 @@ function literalOf(arg) {
 
 /** The literal path(s) a call writes, by verb and argument position. */
 function writtenLiterals(verb, args) {
-  if (verb === "open" || verb === "openSync") {
+  if (verb === "open" || verb === "openSync" || verb === "fopen") {
     // A `mode=` keyword argument wins wherever it sits; otherwise the
     // second argument, unless that is some other keyword argument.
     const modeArg =
@@ -1103,9 +1344,10 @@ function writtenLiterals(verb, args) {
     if (perlPath) return [perlPath[1]];
     return WRITE_MODE.test(mode) ? [literalOf(args[0])] : [];
   }
-  if (verb.includes("rename")) return [literalOf(args[0]), literalOf(args[1])];
-  if (/^(?:copyFile|cp|shutil\.copy)/.test(verb)) return [literalOf(args[1])];
-  // writeFile/appendFile/createWriteStream/File|IO|Bun.write: the first.
+  if (MOVE_VERB.test(verb)) return [literalOf(args[0]), literalOf(args[1])];
+  if (/^(?:copy|cp|shutil\.copy)/.test(verb)) return [literalOf(args[1])];
+  // writeFile/appendFile/file_put_contents/createWriteStream/File|IO|Bun.write
+  // and every delete/truncate verb: the first.
   return [literalOf(args[0])];
 }
 
@@ -1114,24 +1356,38 @@ function writtenLiterals(verb, args) {
  * any literal anywhere) is a string literal naming a guarded path.
  */
 function scanCode(code, ctx, rule) {
-  const check = (literal) => {
-    if (literal === null || !SRC_OR_TESTS_SEGMENT.test(literal)) return null;
-    const path = protectedPathString(literal.trim(), ctx, ctx.cwd);
-    return path ? { path, rule } : null;
-  };
-  for (const pattern of [PATH_RECEIVER_WRITE, PERL_BARE_OPEN]) {
-    for (const match of code.matchAll(pattern)) {
-      const hit = check(match[2]);
-      if (hit) return hit;
+  const check = (literal, tree) => {
+    if (literal === null) return null;
+    const text = literal.trim();
+    if (SRC_OR_TESTS_SEGMENT.test(text)) {
+      const path = protectedPathString(text, ctx, ctx.cwd);
+      if (path) return { path, rule };
     }
+    if (!tree) return null;
+    const ancestor = ancestorTarget({ ...newWord(), value: text }, ctx);
+    return ancestor ? { path: ancestor.path, rule, ancestor: true } : null;
+  };
+  for (const match of code.matchAll(PATH_RECEIVER_WRITE)) {
+    const hit = check(match[2], MOVE_VERB.test(match[3]));
+    if (hit) return hit;
+  }
+  for (const match of code.matchAll(PERL_BARE_OPEN)) {
+    const hit = check(match[2], false);
+    if (hit) return hit;
   }
   let parens = null;
   for (const match of code.matchAll(WRITE_CALL)) {
     parens ??= matchParens(code);
-    const args = splitArgs(code, match.index + match[0].length - 1, parens);
+    const args = splitArgs(
+      code,
+      match.index + match[0].length - 1,
+      parens,
+      ctx.notes,
+    );
     if (!args) continue;
+    const tree = TREE_VERB.test(match[1]);
     for (const literal of writtenLiterals(match[1], args)) {
-      const hit = check(literal);
+      const hit = check(literal, tree);
       if (hit) return hit;
     }
   }
@@ -1237,21 +1493,41 @@ function analyseSed(args, ctx) {
 
 function analyseCopy(name, args, ctx) {
   const { options, operands } = getopt(args, COPY_ARGS.get(name));
-  if (name === "mv") {
-    const targets = optionValues(options, "-t", "--target-directory");
-    return firstProtected([...operands, ...targets], ctx, name);
-  }
   const targets =
     name === "rsync" ? [] : optionValues(options, "-t", "--target-directory");
-  if (targets.length > 0) return firstProtected(targets, ctx, name);
-  if (name === "install" && hasOption(options, "-d", "--directory")) {
+  if (name === "mv") {
+    const hit = firstProtected([...operands, ...targets], ctx, name);
+    if (hit) return hit;
+  } else if (name === "install" && hasOption(options, "-d", "--directory")) {
     return firstProtected(operands, ctx, name);
   }
-  if (operands.length < 2) return null;
-  const destination = operands[operands.length - 1];
+  const into = targets.length > 0 || operands.length > 2;
+  const sources = targets.length > 0 ? operands : operands.slice(0, -1);
+  const destination =
+    targets.length > 0 ? targets[targets.length - 1] : operands.at(-1);
+  // A whole ancestor moved away takes its src/tests with it; so does
+  // `rsync --remove-source-files`, which deletes every file it copied.
+  const removesSources =
+    name === "mv" ||
+    (name === "rsync" && hasOption(options, "--remove-source-files"));
+  if (removesSources) {
+    const moved =
+      (name === "rsync" ? firstProtected(sources, ctx, name) : null) ??
+      firstAncestor(sources, ctx, name);
+    if (moved) return moved;
+  }
+  if (targets.length > 0) {
+    const hit = firstProtected(targets, ctx, name);
+    if (hit) return hit;
+  } else if (operands.length < 2) {
+    return null;
+  }
   // `host:path` is a remote rsync destination, never a local write.
   if (name === "rsync" && /^[^/]*:/.test(destination.value)) return null;
-  return firstProtected([destination], ctx, name);
+  return (
+    firstProtected([destination], ctx, name) ??
+    ancestorDestination(name, sources, destination, into, ctx)
+  );
 }
 
 function analysePatch(args, redirects, ctx) {
@@ -1359,10 +1635,10 @@ function analyseInvocation(name, args, redirects, ctx, depth) {
   if (SHELLS.has(name)) return analyseShell(args, redirects, ctx, depth);
   if (COPY_ARGS.has(name)) return analyseCopy(name, args, ctx);
   if (REMOVE_ARGS.has(name)) {
-    return firstProtected(
-      getopt(args, REMOVE_ARGS.get(name)).operands,
-      ctx,
-      name,
+    const { operands } = getopt(args, REMOVE_ARGS.get(name));
+    return (
+      firstProtected(operands, ctx, name) ??
+      (name === "rm" ? firstAncestor(operands, ctx, name) : null)
     );
   }
   switch (name) {
@@ -1472,9 +1748,11 @@ function analyseTokens(tokens, ctx, depth) {
  *   `cwd` resolves relative paths; `projectDir` scopes absolute ones (see
  *   isProtectedPath); `readFile` defaults to a size-capped real read;
  *   `notes`, when given, receives one line per part of the command the
- *   detector could not analyse (`nesting`, `size`, `read`).
- * @returns {{ path: string, rule: string } | null} The resolved path and the
- *   rule that matched (`redirect`, or the writing tool's name), or null.
+ *   detector could not analyse (`nesting`, `size`, `call size`, `read`).
+ * @returns {{ path: string, rule: string, ancestor?: true } | null} The
+ *   resolved path and the rule that matched (`redirect`, or the writing
+ *   tool's name), or null. `ancestor` is set when the path is not itself
+ *   guarded but CONTAINS a guarded tree (see containsGuardedTree).
  */
 export function findBashWriteToProtectedPath(command, opts) {
   if (typeof command !== "string" || command.trim() === "") return null;
@@ -1525,6 +1803,12 @@ function isEntryPoint() {
 
 function runWriteGuard(input) {
   const filePath = input.tool_input?.file_path ?? "";
+  if (typeof filePath !== "string") {
+    process.stderr.write(
+      `guard-hub-src-writes: ${input.tool_name} payload has no string tool_input.file_path (got ${typeof filePath}); allowing without analysis.\n`,
+    );
+    process.exit(0);
+  }
   const agentType = input.agent_type;
   // Canonicalized (case-correct, symlinks resolved) where the real
   // filesystem can confirm it -- isProtectedPath's own case-insensitive
@@ -1595,8 +1879,11 @@ function runBashGuard(input) {
     }
     process.exit(0);
   }
+  const what = hit.ancestor
+    ? "writes, removes or replaces an ancestor of a guarded path (a directory with a guarded src/tests tree beneath it)"
+    : "writes to a guarded path";
   process.stderr.write(
-    "guard-hub-src-writes: Hub-authored Bash command writes to a guarded path.\n" +
+    `guard-hub-src-writes: Hub-authored Bash command ${what}.\n` +
       `  Path: ${hit.path}\n` +
       `  Rule: ${hit.rule}\n` +
       "  Why: hub-and-spoke -- a Bash write into a guarded src/tests path is refused for every caller except the writer spokes, the same allowlist as Write/Edit.\n" +

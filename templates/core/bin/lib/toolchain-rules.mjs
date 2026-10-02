@@ -22,7 +22,7 @@
  * this file's behavior in sync with its source at
  * `packages/cli/src/toolchain/{rules,grade}.ts` there.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 /**
@@ -366,13 +366,60 @@ function stripJsComments(content) {
   return result;
 }
 
+// --- errno classification (twin of packages/cli/src/survey/internal/read-guard.ts) ---
+
+/** The `code` of a Node system error, or `undefined` for anything without a string `code`. */
+function errnoCode(error) {
+  if (typeof error !== "object" || error === null) return undefined;
+  const code = Reflect.get(error, "code");
+  return typeof code === "string" ? code : undefined;
+}
+
+/** "Nothing is at this path": nothing there, or an ancestor is a file. */
+const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR"]);
+
+/**
+ * "Something is at this path this process cannot read or resolve": a
+ * permission failure, or a symlink loop. Never folded into "absent".
+ */
+const UNRESOLVABLE_CODES = new Set(["EACCES", "EPERM", "ELOOP"]);
+
+const isAbsentError = (error) => ABSENT_CODES.has(errnoCode(error) ?? "");
+
+function unresolvableCode(error) {
+  const code = errnoCode(error);
+  return code !== undefined && UNRESOLVABLE_CODES.has(code) ? code : undefined;
+}
+
+/**
+ * Reads and parses a JSONC file. A missing (`ENOENT`/`ENOTDIR`), unreadable
+ * (`EACCES`/`EPERM`), unresolvable (`ELOOP`), not-a-regular-file (`EISDIR`)
+ * or unparseable file is reported, not thrown. The existence check is a real
+ * `stat`, never `existsSync`, so a file under a directory this process cannot
+ * search is reported with its errno rather than as absent. Any other failure
+ * (`EIO`, `EMFILE`, ...) throws an `Error` naming the path, with the original
+ * as `cause`.
+ */
 function readJsonc(path) {
-  if (!existsSync(path)) return { ok: false, error: `${path} does not exist` };
+  let content;
   try {
-    return {
-      ok: true,
-      value: JSON.parse(stripJsoncNoise(readFileSync(path, "utf8"))),
-    };
+    statSync(path);
+    content = readFileSync(path, "utf8");
+  } catch (error) {
+    if (isAbsentError(error)) {
+      return { ok: false, error: `${path} does not exist` };
+    }
+    if (errnoCode(error) === "EISDIR") {
+      return { ok: false, error: `${path} is not a regular file` };
+    }
+    const code = unresolvableCode(error);
+    if (code === undefined) {
+      throw new Error(`could not read ${path}`, { cause: error });
+    }
+    return { ok: false, error: `${path} is unreadable (${code})` };
+  }
+  try {
+    return { ok: true, value: JSON.parse(stripJsoncNoise(content)) };
   } catch (error) {
     return {
       ok: false,
@@ -399,12 +446,25 @@ function readRaw(path) {
   }
 }
 
+/**
+ * Whether `path` is a candidate `extends` target: a regular file, or
+ * something this process cannot reach (`EACCES`/`EPERM`/`ELOOP`). The latter
+ * is taken as the target so `readJsonc` records it as unreadable with its
+ * errno -- never reported as resolving to no file when it may well be there.
+ * `ENOENT`/`ENOTDIR` is not a candidate; any other errno throws.
+ */
 function isFile(path) {
+  let stats;
   try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
+    stats = statSync(path);
+  } catch (error) {
+    if (isAbsentError(error)) return false;
+    if (unresolvableCode(error) !== undefined) return true;
+    throw new Error(`could not check whether ${path} exists`, {
+      cause: error,
+    });
   }
+  return stats.isFile();
 }
 
 /** The `extends` value as a list: a string, or TypeScript 5.0+'s array form. */

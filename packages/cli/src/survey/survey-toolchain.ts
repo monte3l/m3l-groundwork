@@ -9,10 +9,12 @@
  * here, never parsed -- see `needsReading` on each -- because this package
  * carries no YAML dependency.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { STRICT_FLAGS } from "../toolchain/rules.js";
 import { loadTsconfigChain } from "../toolchain/tsconfig-chain.js";
+import { readPackageJson } from "./internal/package-json.js";
+import { guardedExists, guardedRead } from "./internal/read-guard.js";
 import type {
   EslintSurvey,
   FormatterSurvey,
@@ -29,26 +31,13 @@ const STRICT_FLAG_NAMES = [...STRICT_FLAGS, "allowUnreachableCode"];
 const ESLINT_PLUGIN_PATTERN =
   /["']((?:eslint-plugin-|@typescript-eslint\/)[a-z0-9-]+)["']/gi;
 
-function readPackageJson(
+function findTsconfigPath(
   dir: string,
   undetermined: string[],
-): Record<string, unknown> | undefined {
-  const path = join(dir, "package.json");
-  if (!existsSync(path)) return undefined;
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch (error) {
-    undetermined.push(
-      `could not parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return undefined;
-  }
-}
-
-function findTsconfigPath(dir: string): string | undefined {
+): string | undefined {
   for (const name of ["tsconfig.json"]) {
     const path = join(dir, name);
-    if (existsSync(path)) return path;
+    if (guardedExists(path, undetermined)) return path;
   }
   return undefined;
 }
@@ -58,11 +47,12 @@ function findTsconfigPath(dir: string): string | undefined {
  * shares, so the survey and the grade cannot disagree about a project's
  * effective flags. `files` are absolute and child-first. A file that fails to
  * parse, or a relative `extends` that points at nothing, is a parse failure; a
- * bare package specifier that is not installed is only a note -- the flags it
+ * file in the chain that exists but cannot be read is noted "could not read",
+ * never "could not parse"; a bare package specifier that is not installed is only a note -- the flags it
  * would contribute are simply absent.
  */
 function surveyTsconfig(dir: string, undetermined: string[]): TsconfigSurvey {
-  const entryPath = findTsconfigPath(dir);
+  const entryPath = findTsconfigPath(dir, undetermined);
   if (entryPath === undefined) {
     return { files: [], effectiveFlags: {}, parsed: false };
   }
@@ -71,7 +61,8 @@ function surveyTsconfig(dir: string, undetermined: string[]): TsconfigSurvey {
   let parsed = chain.parsed;
   for (const file of chain.files) {
     if (file.error !== undefined) {
-      undetermined.push(`could not parse ${file.abs}: ${file.error}`);
+      const verb = file.readFailed ? "could not read" : "could not parse";
+      undetermined.push(`${verb} ${file.abs}: ${file.error}`);
     }
   }
   for (const link of chain.links) {
@@ -96,40 +87,35 @@ function surveyTsconfig(dir: string, undetermined: string[]): TsconfigSurvey {
   return { files: chain.files.map((file) => file.abs), effectiveFlags, parsed };
 }
 
-function surveyEslint(dir: string): EslintSurvey {
-  const flatCandidates = [
-    "eslint.config.js",
-    "eslint.config.mjs",
-    "eslint.config.ts",
-  ];
-  const legacyCandidates = [
-    ".eslintrc.js",
-    ".eslintrc.cjs",
-    ".eslintrc.json",
-    ".eslintrc",
-  ];
+const ESLINT_CANDIDATES: readonly (readonly [name: string, flat: boolean])[] = [
+  ["eslint.config.js", true],
+  ["eslint.config.mjs", true],
+  ["eslint.config.ts", true],
+  [".eslintrc.js", false],
+  [".eslintrc.cjs", false],
+  [".eslintrc.json", false],
+  [".eslintrc", false],
+];
 
-  for (const name of flatCandidates) {
+/**
+ * The first ESLint config present, flat configs first. An unreadable config
+ * is still reported (its presence is known) with no plugins, and recorded.
+ */
+function surveyEslint(dir: string, undetermined: string[]): EslintSurvey {
+  for (const [name, flat] of ESLINT_CANDIDATES) {
     const path = join(dir, name);
-    if (existsSync(path)) {
-      const content = readFileSync(path, "utf8");
-      return {
-        configFile: name,
-        flat: true,
-        referencedPlugins: extractPluginNames(content),
-      };
-    }
-  }
-  for (const name of legacyCandidates) {
-    const path = join(dir, name);
-    if (existsSync(path)) {
-      const content = readFileSync(path, "utf8");
-      return {
-        configFile: name,
-        flat: false,
-        referencedPlugins: extractPluginNames(content),
-      };
-    }
+    if (!guardedExists(path, undetermined)) continue;
+    const content = guardedRead(
+      path,
+      () => readFileSync(path, "utf8"),
+      undetermined,
+    );
+    return {
+      configFile: name,
+      flat,
+      referencedPlugins:
+        content === undefined ? [] : extractPluginNames(content),
+    };
   }
   return { configFile: undefined, flat: false, referencedPlugins: [] };
 }
@@ -146,6 +132,7 @@ function extractPluginNames(content: string): string[] {
 function surveyTestRunner(
   dir: string,
   scripts: Record<string, string>,
+  undetermined: string[],
 ): TestRunnerSurvey {
   const candidates: [string, TestRunnerSurvey["tool"]][] = [
     ["vitest.config.ts", "vitest"],
@@ -158,7 +145,7 @@ function surveyTestRunner(
     [".mocharc.js", "mocha"],
   ];
   for (const [name, tool] of candidates) {
-    if (existsSync(join(dir, name))) {
+    if (guardedExists(join(dir, name), undetermined)) {
       return { tool, configFile: name };
     }
   }
@@ -169,7 +156,7 @@ function surveyTestRunner(
   return { tool: "unknown", configFile: undefined };
 }
 
-function surveyFormatter(dir: string): FormatterSurvey {
+function surveyFormatter(dir: string, undetermined: string[]): FormatterSurvey {
   const prettierCandidates = [
     ".prettierrc.json",
     ".prettierrc.js",
@@ -178,11 +165,11 @@ function surveyFormatter(dir: string): FormatterSurvey {
     ".prettierrc.yml",
   ];
   for (const name of prettierCandidates) {
-    if (existsSync(join(dir, name))) {
+    if (guardedExists(join(dir, name), undetermined)) {
       return { tool: "prettier", configFile: name };
     }
   }
-  if (existsSync(join(dir, "biome.json"))) {
+  if (guardedExists(join(dir, "biome.json"), undetermined)) {
     return { tool: "biome", configFile: "biome.json" };
   }
   return { tool: "unknown", configFile: undefined };
@@ -190,10 +177,10 @@ function surveyFormatter(dir: string): FormatterSurvey {
 
 function surveyGitHooks(dir: string, undetermined: string[]): GitHooksSurvey {
   if (
-    existsSync(join(dir, "lefthook.yml")) ||
-    existsSync(join(dir, "lefthook.yaml"))
+    guardedExists(join(dir, "lefthook.yml"), undetermined) ||
+    guardedExists(join(dir, "lefthook.yaml"), undetermined)
   ) {
-    const configFile = existsSync(join(dir, "lefthook.yml"))
+    const configFile = guardedExists(join(dir, "lefthook.yml"), undetermined)
       ? "lefthook.yml"
       : "lefthook.yaml";
     undetermined.push(
@@ -201,13 +188,13 @@ function surveyGitHooks(dir: string, undetermined: string[]): GitHooksSurvey {
     );
     return { manager: "lefthook", configFile, needsReading: true };
   }
-  if (existsSync(join(dir, ".husky"))) {
+  if (guardedExists(join(dir, ".husky"), undetermined)) {
     undetermined.push(
       ".husky/ found -- its hook scripts need reading, not parsing",
     );
     return { manager: "husky", configFile: ".husky", needsReading: true };
   }
-  if (existsSync(join(dir, "simple-git-hooks.json"))) {
+  if (guardedExists(join(dir, "simple-git-hooks.json"), undetermined)) {
     return {
       manager: "simple-git-hooks",
       configFile: "simple-git-hooks.json",
@@ -219,12 +206,13 @@ function surveyGitHooks(dir: string, undetermined: string[]): GitHooksSurvey {
 
 function surveyWorkflows(dir: string, undetermined: string[]): WorkflowsSurvey {
   const workflowsDir = join(dir, ".github", "workflows");
-  if (!existsSync(workflowsDir)) {
+  if (!guardedExists(workflowsDir, undetermined)) {
     return { files: [], needsReading: false };
   }
-  const files = readdirSync(workflowsDir).filter((name) =>
-    /\.ya?ml$/.test(name),
-  );
+  const names =
+    guardedRead(workflowsDir, () => readdirSync(workflowsDir), undetermined) ??
+    [];
+  const files = names.filter((name) => /\.ya?ml$/.test(name));
   if (files.length > 0) {
     undetermined.push(
       `${files.length} workflow file(s) under .github/workflows -- their job steps need reading, not parsing`,
@@ -245,7 +233,22 @@ function surveyScripts(
   return result;
 }
 
-/** Surveys toolchain enforcement at `dir`. Appends anything it could not parse to `undetermined`. */
+/**
+ * Surveys toolchain enforcement at `dir`. Appends anything it could not
+ * parse, or could not read (`EACCES`/`EPERM`, a dangling symlink, a symlink
+ * loop, a directory where a file was expected), to `undetermined`; any other
+ * read failure throws, naming the path, with the original failure as
+ * `cause`.
+ *
+ * @example
+ * ```ts
+ * import { surveyToolchain } from "./survey-toolchain.js";
+ *
+ * const undetermined: string[] = [];
+ * const toolchain = surveyToolchain("/path/to/project", undetermined);
+ * console.log(toolchain.tsconfig.effectiveFlags, undetermined);
+ * ```
+ */
 export function surveyToolchain(
   dir: string,
   undetermined: string[],
@@ -255,9 +258,9 @@ export function surveyToolchain(
 
   return {
     tsconfig: surveyTsconfig(dir, undetermined),
-    eslint: surveyEslint(dir),
-    testRunner: surveyTestRunner(dir, scripts),
-    formatter: surveyFormatter(dir),
+    eslint: surveyEslint(dir, undetermined),
+    testRunner: surveyTestRunner(dir, scripts, undetermined),
+    formatter: surveyFormatter(dir, undetermined),
     gitHooks: surveyGitHooks(dir, undetermined),
     workflows: surveyWorkflows(dir, undetermined),
     scripts,

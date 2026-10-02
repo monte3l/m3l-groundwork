@@ -76,7 +76,8 @@ vi.mock("../src/inventory.js", async (importOriginal) => {
   };
 });
 
-const { main, CliUsageError } = await import("../src/main.js");
+const { main, CliUsageError, templatesCoreDir } =
+  await import("../src/main.js");
 
 describe("main", () => {
   let targetDir: string;
@@ -223,6 +224,36 @@ describe("main", () => {
           main([target, "--pack", "harness-extras", "--pack", "nope"]),
         ).toThrow(CliUsageError);
         expect(readdirSync(target)).toEqual([]);
+      });
+
+      it("[GAP 1] refuses fresh mode (with --force) when a real directory sits where the baseline's tsconfig.json file is needed, writing nothing beyond what was already there", () => {
+        const occupied = join(targetDir, "occupied-dir-conflict");
+        mkdirSync(occupied);
+        writeFileSync(join(occupied, "existing.txt"), "hi");
+        // The real baseline (templatesCoreDir()) has a root-level
+        // tsconfig.json file; pre-occupy that destination with a directory.
+        expect(existsSync(join(templatesCoreDir(), "tsconfig.json"))).toBe(
+          true,
+        );
+        mkdirSync(join(occupied, "tsconfig.json"));
+
+        let thrown: unknown;
+        try {
+          main([occupied, "--skip-install", "--force"]);
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect((thrown as Error).message).toContain(
+          join(occupied, "tsconfig.json"),
+        );
+        expect(existsSync(join(occupied, "package.json"))).toBe(false);
+        expect(gitInitMock).not.toHaveBeenCalled();
+        // The pre-existing directory conflict itself is left exactly as found.
+        expect(lstatSync(join(occupied, "tsconfig.json")).isDirectory()).toBe(
+          true,
+        );
       });
 
       it("rejects Windows in fresh mode with a plain Error (exit 1), before writing anything", () => {
