@@ -3,21 +3,32 @@
 
 /**
  * `classifyExistingSkill` (`../src/plugin.js`) treats a payload name it
- * cannot `lstat` and one it cannot READ differently, depending on which
- * policy is asking:
+ * cannot `lstat` and one it cannot READ differently, and the READ case
+ * itself differs by which policy is asking:
  *
- * - `unreadable: "not-current"` (fresh mode's `installCustomizeSkill`,
- *   `"overwrite"` policy): an existing `SKILL.md` that `lstat` already
- *   confirmed is a plain regular file, but cannot actually be read
- *   (`EACCES` and similar), is treated as "not current" -- the same as a
- *   byte-for-byte mismatch -- rather than refusing the install. Fresh mode
- *   proceeds to remove and rewrite it, same as any other stale copy, since
- *   "overwrite" already owns replacing whatever sits there.
- * - `unreadable: "refuse"` (adopt mode's `installCustomizeSkillGuarded`,
- *   `"additive"` policy): the same unreadable regular file instead refuses
- *   the whole install ("could not read ...", the raw error as `cause`,
- *   nothing removed or written) -- adopt mode never guesses at a project
- *   entry it cannot actually compare.
+ * - Fresh mode (`installCustomizeSkill`, `"overwrite"` policy): an existing
+ *   `SKILL.md` that `lstat` already confirmed is a plain regular file, but
+ *   cannot actually be read (`EACCES` and similar), is replaced anyway --
+ *   only a byte-identical "current" result skips the write, and an
+ *   unreadable file can never produce one. Fresh mode proceeds to remove
+ *   and rewrite it, same as any other stale copy, since "overwrite" already
+ *   owns replacing whatever sits there.
+ * - Adopt mode (`installCustomizeSkillGuarded`, `"additive"` policy, via
+ *   `regularFileMatches`): the same unreadable regular file is classified
+ *   FOREIGN, same as any other project-owned entry `classifyExistingSkill`
+ *   cannot reconcile with the payload -- it does NOT throw.
+ *   `installCustomizeSkillGuarded` falls back to
+ *   `.groundwork/customize/` the same way it does for any other foreign
+ *   entry: the result's `location` is `"groundwork"`, `fallbackCause` is
+ *   `"entry"`, and `fallbackReason` names the unreadable path. Nothing
+ *   under `.claude/skills/customize/` is written, removed, or modified --
+ *   the directory's entries, and the unreadable file's own bytes and mode,
+ *   are exactly as they were before the call. Adopt mode never guesses at a
+ *   project entry it cannot actually compare, but it also never refuses the
+ *   whole install over one it can safely leave alone and route around.
+ *   Covered for both the entry file (`SKILL.md`) and a data file
+ *   (`pack-map.ts`), since `classifyExistingSkill` walks the payload in
+ *   write order and returns on the first non-matching entry it finds.
  *
  * An `lstat` failure against the same entry (its very nature unknown, not
  * just its content) is a separate concern and refuses the install under
@@ -35,6 +46,7 @@ import {
   readdirSync,
   chmodSync,
   existsSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -130,11 +142,11 @@ describe("an unreadable existing SKILL.md at the fresh-mode destination is treat
   );
 });
 
-describe("an unreadable existing SKILL.md at the adopt-mode destination refuses the install, not guesses", () => {
+describe("an unreadable existing payload entry at the adopt-mode destination is FOREIGN, not refused: falls back to .groundwork/customize/", () => {
   let sourceDir: string;
   let targetDir: string;
   let destDir: string;
-  let skillMdDest: string;
+  let groundworkDir: string;
 
   beforeEach(() => {
     sourceDir = mkdtempSync(
@@ -145,50 +157,112 @@ describe("an unreadable existing SKILL.md at the adopt-mode destination refuses 
     );
     writeSourceFixture(sourceDir);
     destDir = join(targetDir, ".claude", "skills", "customize");
+    groundworkDir = join(targetDir, ".groundwork", "customize");
     mkdirSync(destDir, { recursive: true });
-    skillMdDest = join(destDir, "SKILL.md");
-    writeFileSync(
-      skillMdDest,
-      "---\nname: customize\n---\n# stale, unreadable\n",
-    );
   });
 
   afterEach(() => {
-    // Restore read permission before cleanup -- only if it's still there: a
-    // refused install must leave it exactly as it was.
-    if (existsSync(skillMdDest)) {
-      chmodSync(skillMdDest, 0o644);
+    // Restore read permission on any still-unreadable entry before cleanup,
+    // for hygiene -- a refused OR foreign-fallback install must leave the
+    // project's own entry exactly as it was, so this must never be load
+    // bearing for the assertions above it.
+    for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+      const entry = join(destDir, name);
+      if (existsSync(entry)) {
+        chmodSync(entry, 0o644);
+      }
     }
     rmSync(sourceDir, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
 
   it.skipIf(chmodIneffective)(
-    "refuses with 'could not read ...' and a cause, writing and removing nothing",
+    "an unreadable SKILL.md (no data files installed yet) falls back with fallbackCause 'entry', leaving .claude untouched",
     () => {
+      const skillMdDest = join(destDir, "SKILL.md");
+      writeFileSync(
+        skillMdDest,
+        "---\nname: customize\n---\n# stale, unreadable\n",
+      );
       chmodSync(skillMdDest, 0o000);
 
-      let thrown: unknown;
-      try {
-        installCustomizeSkillGuarded(targetDir, sourceDir);
-      } catch (error) {
-        thrown = error;
+      const entriesBefore = readdirSync(destDir).toSorted();
+      const modeBefore = statSync(skillMdDest).mode;
+
+      const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+      expect(result.location).toBe("groundwork");
+      expect(result.fallbackCause).toBe("entry");
+      const { fallbackReason } = result;
+      if (fallbackReason === undefined) {
+        throw new Error("expected a fallbackReason naming the unreadable path");
       }
+      expect(fallbackReason).toContain(skillMdDest);
+      expect(result.filesWritten.toSorted()).toEqual(
+        CUSTOMIZE_SKILL_FILE_NAMES.map((name) =>
+          join(".groundwork", "customize", name),
+        ).toSorted(),
+      );
 
-      expect(thrown).toBeInstanceOf(Error);
-      const message = (thrown as Error).message;
-      expect(message).toContain("could not read");
-      expect(message).toContain(skillMdDest);
-      expect((thrown as Error).cause).toBeInstanceOf(Error);
-
-      // Nothing was written or removed: the directory holds exactly the one
-      // (still unreadable) SKILL.md it started with, byte-for-byte.
-      expect(readdirSync(destDir)).toEqual(["SKILL.md"]);
+      // Nothing under .claude/skills/customize/ was written, removed, or
+      // modified: same entries, same mode, same bytes once readable again.
+      expect(readdirSync(destDir).toSorted()).toEqual(entriesBefore);
+      expect(statSync(skillMdDest).mode).toBe(modeBefore);
       chmodSync(skillMdDest, 0o644);
       expect(readFileSync(skillMdDest, "utf8")).toBe(
         "---\nname: customize\n---\n# stale, unreadable\n",
       );
       chmodSync(skillMdDest, 0o000);
+
+      // .groundwork/customize/ holds this CLI's five current files.
+      expect(readdirSync(groundworkDir).toSorted()).toEqual(
+        [...CUSTOMIZE_SKILL_FILE_NAMES].toSorted(),
+      );
+      expect(readFileSync(join(groundworkDir, "SKILL.md"), "utf8")).toBe(
+        "---\nname: customize\n---\n# customize\n",
+      );
+    },
+  );
+
+  it.skipIf(chmodIneffective)(
+    "an unreadable data file (pack-map.ts) among otherwise-current entries falls back with fallbackCause 'entry', leaving .claude untouched",
+    () => {
+      writeFileSync(
+        join(destDir, "kind-facet-map.ts"),
+        "export const x = 1;\n",
+      );
+      writeFileSync(join(destDir, "domain-map.ts"), "export const y = 2;\n");
+      const packMapDest = join(destDir, "pack-map.ts");
+      writeFileSync(packMapDest, "export const z = 3;\n");
+      writeFileSync(join(destDir, "plugin-map.ts"), "export const w = 4;\n");
+      writeFileSync(
+        join(destDir, "SKILL.md"),
+        "---\nname: customize\n---\n# customize\n",
+      );
+      chmodSync(packMapDest, 0o000);
+
+      const entriesBefore = readdirSync(destDir).toSorted();
+      const modeBefore = statSync(packMapDest).mode;
+
+      const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+      expect(result.location).toBe("groundwork");
+      expect(result.fallbackCause).toBe("entry");
+      const { fallbackReason } = result;
+      if (fallbackReason === undefined) {
+        throw new Error("expected a fallbackReason naming the unreadable path");
+      }
+      expect(fallbackReason).toContain(packMapDest);
+
+      expect(readdirSync(destDir).toSorted()).toEqual(entriesBefore);
+      expect(statSync(packMapDest).mode).toBe(modeBefore);
+      chmodSync(packMapDest, 0o644);
+      expect(readFileSync(packMapDest, "utf8")).toBe("export const z = 3;\n");
+      chmodSync(packMapDest, 0o000);
+
+      expect(readdirSync(groundworkDir).toSorted()).toEqual(
+        [...CUSTOMIZE_SKILL_FILE_NAMES].toSorted(),
+      );
     },
   );
 });

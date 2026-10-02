@@ -599,7 +599,7 @@ function copyCustomizeSkillFiles(
   // Fresh mode's re-run over its own, still-current output touches nothing.
   if (
     policy === "overwrite" &&
-    classifyExistingSkill(destDir, payload, "not-current").kind === "current"
+    classifyExistingSkill(destDir, payload).kind === "current"
   ) {
     return { filesWritten: [] };
   }
@@ -756,32 +756,25 @@ function firstUnusableComponent(
 }
 
 /**
- * Whether the regular file at `path` holds exactly `bytes`. A read failure
- * throws (wrapped) under `"refuse"`, and is a mismatch under `"not-current"`.
+ * Whether the regular file at `path` holds exactly `bytes`: `"match"`,
+ * `"mismatch"`, or `"unreadable"` when the read itself fails. A read failure
+ * is never thrown: every caller treats an entry it cannot compare as not
+ * this CLI's current copy, and decides from there what to do with it.
  */
 function regularFileMatches(
   path: string,
   bytes: Buffer,
-  unreadable: "refuse" | "not-current",
-): boolean {
-  switch (unreadable) {
-    case "refuse":
-      return wrapFs(untouched("could not read", path), () =>
-        readFileSync(path),
-      ).equals(bytes);
-    case "not-current":
-      try {
-        return readFileSync(path).equals(bytes);
-      } catch {
-        // The entry is a known regular file the overwrite replaces anyway;
-        // an unreadable copy is simply not the current one.
-        return false;
-      }
-    default: {
-      const exhaustive: never = unreadable;
-      throw new Error(`unhandled unreadable policy: ${String(exhaustive)}`);
-    }
+): "match" | "mismatch" | "unreadable" {
+  let existing: Buffer;
+  try {
+    existing = readFileSync(path);
+  } catch {
+    // Deliberately not rethrown: an entry this run cannot read is, by
+    // definition, not one it can confirm as current -- fresh mode replaces it
+    // like any stale copy, adopt mode leaves it alone and falls back.
+    return "unreadable";
   }
+  return existing.equals(bytes) ? "match" : "mismatch";
 }
 
 /** What is already at `.claude/skills/customize/`, judged against the payload. */
@@ -808,16 +801,16 @@ type ExistingSkill =
  *   `reason` names the first offending entry.
  *
  * Runs before anything is removed or written, so a failing `lstat` throws
- * (wrapped, raw error as `cause`) naming the path and saying so. A failing
- * read of an entry `lstat` already confirmed is a regular file throws the
- * same way under `unreadable: "refuse"` (adopt mode, which must never guess
- * at a project entry), but under `"not-current"` (fresh mode's overwrite,
- * which replaces any non-current copy anyway) counts as a mismatch.
+ * (wrapped, raw error as `cause`) naming the path and saying so -- an entry
+ * whose very nature is unknown is never classified. A regular file `lstat`
+ * already confirmed but that cannot be read is `"foreign"`, its `reason`
+ * saying it could not be read: this never guesses that an entry it cannot
+ * compare is current. Fresh mode's overwrite then replaces it like any stale
+ * copy; adopt mode leaves it untouched and falls back.
  */
 function classifyExistingSkill(
   existingDir: string,
   payload: readonly PayloadFile[],
-  unreadable: "refuse" | "not-current",
 ): ExistingSkill {
   const alreadyCurrent = new Set<string>();
   let entryLoadable = false;
@@ -829,9 +822,16 @@ function classifyExistingSkill(
     if (stat === undefined) {
       continue;
     }
-    const matches =
-      stat.isFile() && regularFileMatches(installedPath, bytes, unreadable);
-    if (!matches) {
+    const verdict = stat.isFile()
+      ? regularFileMatches(installedPath, bytes)
+      : "mismatch";
+    if (verdict === "unreadable") {
+      return {
+        kind: "foreign",
+        reason: `${installedPath} already exists and could not be read, so it cannot be confirmed as this CLI's current copy`,
+      };
+    }
+    if (verdict === "mismatch") {
       return {
         kind: "foreign",
         reason: `${installedPath} already exists and is not this CLI's current copy`,
@@ -893,8 +893,9 @@ function installGuarded(
     return installToGroundwork(unusable, "component");
   }
 
-  // Throws its own wrapped error naming the path it could not probe.
-  const existing = classifyExistingSkill(existingDir, payload, "refuse");
+  // Throws its own wrapped error naming a path it could not lstat; an
+  // unreadable regular file comes back "foreign" instead.
+  const existing = classifyExistingSkill(existingDir, payload);
   switch (existing.kind) {
     case "current":
       return { filesWritten: [], location: "already-present" };
@@ -931,12 +932,15 @@ function installGuarded(
  *   (none at all, or an install interrupted before writing it) the missing
  *   files are written into `.claude/skills/customize/`, `SKILL.md` last,
  *   never rewriting or removing the correct ones.
- * - Anything else under a payload name (a differing file, a symlink --
- *   dangling or not -- a directory, a `SKILL.md` without its data; detected
- *   by `lstat`) is kept as the project's own: the skill is written to
- *   `.groundwork/customize/` instead, `fallbackReason` names that entry and
- *   `fallbackCause` is `"entry"`. Claude Code does not load a skill from
- *   there; the caller must say so.
+ * - Anything else under a payload name (a differing file, a regular file
+ *   that cannot be read, a symlink -- dangling or not -- a directory, a
+ *   `SKILL.md` without its data; detected by `lstat`) is kept as the
+ *   project's own: the skill is written to `.groundwork/customize/` instead,
+ *   `fallbackReason` names that entry (saying so when it could not be read)
+ *   and `fallbackCause` is `"entry"`. Adopt mode never guesses at a project
+ *   entry it cannot compare, and the fallback does not guess either: it
+ *   leaves that entry exactly as it was. Claude Code does not load a skill
+ *   from there; the caller must say so.
  *
  * Writes into `.claude/skills/customize/` use `"wx"` only, so an entry that
  * appears there mid-install fails the run (rolled back) rather than being
@@ -948,7 +952,9 @@ function installGuarded(
  *
  * @throws `Error` ("could not install the /customize skill ...", raw error
  * as `cause`) on a missing or unreadable source file (before anything is
- * written), any fs failure while probing or writing, a symlinked
+ * written), a payload name under `.claude/skills/customize/` that cannot be
+ * `lstat`ed (an unreadable regular file there falls back instead), any other
+ * fs failure while probing or writing, a symlinked
  * `.groundwork`/`.groundwork/customize`, or a directory at a payload name
  * there -- after removing every file this call wrote. A failed
  * `.groundwork/customize/` install also names why the fallback was taken.
