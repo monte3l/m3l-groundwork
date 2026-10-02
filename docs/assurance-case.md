@@ -260,9 +260,11 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   An unreadable `.claude` directory (permission denied) still stops adopt mode
   in the `/customize` skill install, which reports the path and cause; making
   that install fall back to `.groundwork/customize/` is not done here.
-  The harness and toolchain grades are computed from a separate read that
-  treats an unreadable file as missing, so for such a file the grade can report a
-  defect the survey correctly lists as undetermined.
+  The harness and toolchain grades are computed from a separate read whose
+  directory walks skip a directory they cannot list, so a file in such a
+  directory is not graded even though the survey lists it as undetermined. A
+  file that exists but cannot be read is graded as present with its read error,
+  not as missing.
 - **`merge-json.ts`'s three merge functions write via plain `record[key] = value`**
   with no rejection of the literal key `__proto__` -- a narrow,
   CWE-1321-shaped gap found during the 2026-09 security review (see

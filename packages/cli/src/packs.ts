@@ -495,11 +495,12 @@ function existsOrObserve(
  * project's real gate runner and hook config. A path this process cannot
  * reach (`EACCES`/`EPERM`/`ELOOP`) is observed with its errno, never as
  * "not found"; nor is a dangling symlink or a file blocking an ancestor
- * directory, which is also recorded once in `undetermined`. A `.claude/settings.json` that exists but cannot be read for
- * a reason that is a property of the project's tree (`EACCES`/`EPERM`,
- * `EISDIR`, `ENOENT`, `ELOOP`) is observed with its errno and also recorded
- * once in `undetermined` -- adopt mode passes the survey's own list, so the
- * report shows it; any other errno throws.
+ * directory, which is also recorded once in `undetermined`. A
+ * `.claude/settings.json` that exists but cannot be read for a reason that
+ * is a property of the project's tree (`EACCES`/`EPERM`, `EISDIR`, `ENOENT`,
+ * `ELOOP`) is observed with its errno and also recorded once in
+ * `undetermined` -- adopt mode passes the survey's own list, so the report
+ * shows it; any other errno throws.
  *
  * @example
  * ```ts

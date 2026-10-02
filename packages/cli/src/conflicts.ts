@@ -94,9 +94,9 @@ function compareFile(
   if (probe.kind === "absent") {
     // `absent` also covers a dangling symlink at the path or an ancestor
     // (`ENOENT`) and a regular file where an ancestor directory should be
-    // (`ENOTDIR`): both
-    // are something in the project's tree a write would have to go through,
-    // so they are divergent, recorded once, never a silent clean add.
+    // (`ENOTDIR`): both are something in the project's tree a write would
+    // have to go through, so they are divergent, recorded once, never a
+    // silent clean add.
     const note = blockedAbsentNote(targetPath, targetDir);
     if (note === undefined) {
       return { relPath, status: "absent", keyDiffs: undefined };
@@ -193,10 +193,12 @@ function walkTemplate(
  * naming the enclosing directory for a permission failure on the `stat`, the
  * path itself for a symlink loop, or for a permission failure or a
  * directory-where-a-file-was-expected (`EISDIR`) on the read. A dangling
- * symlink at the target path is `divergent` too, recorded naming the path; a
- * regular file where an enclosing directory should be (`ENOTDIR`) is
- * `divergent`, recorded once naming that blocking ancestor. A genuinely
- * missing path is `absent`; any other errno throws.
+ * symlink at the target path is `divergent` too, recorded naming the path;
+ * so is a dangling symlink at one of its ancestors below `targetDir`,
+ * recorded once naming that ancestor. A regular file where an enclosing
+ * directory should be (`ENOTDIR`) is `divergent`, recorded once naming that
+ * blocking ancestor. A genuinely missing path is `absent`; any other errno
+ * throws.
  *
  * @example
  * ```ts

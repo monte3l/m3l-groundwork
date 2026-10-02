@@ -15,6 +15,10 @@ import { lstatSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { errnoCode, readFailure, unreadableNote } from "./read-guard.js";
 
+// "its target does not exist" reads loosely for a link at the path itself
+// whose target resolves through a regular file (`ENOTDIR`) -- that target
+// does not exist as a reachable path either. Wording kept as-is: tests
+// match on "dangling symlink".
 function danglingNote(path: string): string {
   return `${path} is a dangling symlink -- its target does not exist, so its contents are not in this survey`;
 }
@@ -82,8 +86,14 @@ function isDanglingSymlink(path: string): boolean {
 
 /**
  * Why a path `probePath` reported `absent` is not really absent, or
- * `undefined` when nothing is there at all. A dangling symlink at the path or
- * at an ancestor below `root` is named as such; a regular file blocking an
+ * `undefined` when nothing is there at all. A symlink at the path itself is
+ * named as dangling whenever `stat` through it failed -- its target missing
+ * (`ENOENT`) or resolving through a regular file (`ENOTDIR`) alike, since
+ * `lstat` finding a link is all this checks. A dangling symlink at an
+ * ancestor below `root` is named the same way, but only for a missing target
+ * (`ENOENT`); an ancestor link resolving through a regular file surfaces as
+ * `ENOTDIR` instead, named by the nearest non-directory ancestor that can be
+ * established, else the path itself. A regular file blocking an
  * ancestor is named with `ENOTDIR`; an `lstat` that succeeds on a
  * non-symlink right after `stat` said absent means the tree changed during
  * the survey, and the path is recorded unreadable (`ENOENT`). Any other
@@ -115,7 +125,8 @@ export function blockedAbsentNote(
     const ancestor = danglingAncestor(path, root);
     return ancestor === undefined ? undefined : danglingNote(ancestor);
   }
-  // `lstat` succeeded on a non-symlink after `stat` said absent: the tree
-  // changed during the survey. Present, but its contents are unknown.
+  // `lstat` succeeded after `stat` said absent. A symlink means `stat` could
+  // not resolve through it (`ENOENT` or `ENOTDIR`): dangling. A non-symlink
+  // means the tree changed during the survey: present, contents unknown.
   return isSymlink ? danglingNote(path) : unreadableNote(path, "ENOENT");
 }
