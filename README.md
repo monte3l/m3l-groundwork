@@ -208,7 +208,9 @@ staged skill into place, or run the plugin's `/customize`. Fresh mode with
 it writes anything, that no directory below the target directory and no existing
 file the baseline or a `--pack` would write is a symlink (or a non-directory
 where a directory is needed); if one is, it refuses and writes nothing (the skill copy keeps its own check, which runs after the baseline is written). The
-target directory itself and its ancestors are not checked.
+target directory itself and its ancestors are not checked, and neither are
+the `.git` directory `git init` creates and the `node_modules` the install step
+fills: a symlink there is followed.
 
 - **Fresh project:** a short interview (project kind, runtime target, test
   strictness, CI depth) tailors the baseline, then a guidance sweep checks the

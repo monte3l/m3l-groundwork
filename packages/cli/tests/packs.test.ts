@@ -1029,6 +1029,54 @@ describe("observeWiring", () => {
       },
     );
   });
+
+  /**
+   * GAP: `observeWiring`'s three `existsSync` probes (settings.json,
+   * settings.local.json, verify-steps.packs.json) all swallow an ancestor
+   * directory's permission failure the same way `existsSync` always does --
+   * a `chmod 000` on `.claude` itself makes a genuinely-present
+   * settings.json read as "no .claude/settings.json found", identical to a
+   * project that never had one. This describe's RED state: today that
+   * false "not found" observation fires, and nothing records the real
+   * reason (EACCES).
+   */
+  describe("a .claude directory this process cannot search (ancestor chmod 000)", () => {
+    let claudeDir: string;
+
+    beforeEach(() => {
+      claudeDir = join(targetDir, ".claude");
+      mkdirSync(claudeDir, { recursive: true });
+      writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({}));
+    });
+
+    afterEach(() => {
+      chmodSync(claudeDir, 0o755);
+    });
+
+    it.skipIf(chmodIneffective)(
+      "never reports 'no .claude/settings.json found' for a project that has one, and records the real EACCES reason",
+      () => {
+        chmodSync(claudeDir, 0o000);
+        let thrown: unknown;
+        let observations: string[] = [];
+        try {
+          observations = observeWiring(targetDir, manifest());
+        } catch (error) {
+          thrown = error;
+        } finally {
+          chmodSync(claudeDir, 0o755);
+        }
+
+        expect(thrown).toBeUndefined();
+        expect(observations).not.toContain("no .claude/settings.json found");
+        expect(
+          observations.some(
+            (o) => o.includes(claudeDir) && o.includes("EACCES"),
+          ),
+        ).toBe(true);
+      },
+    );
+  });
 });
 
 describe("the real harness-extras pack", () => {

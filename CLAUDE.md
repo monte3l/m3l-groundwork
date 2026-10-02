@@ -529,7 +529,8 @@ out-of-project script files that write, delete or move a guarded path
 interpreter running a script that lives inside the project, an `eval` of a
 computed string, a build step or generator that writes `src/`, a formatter or
 fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/
-`git stash pop`, `find -exec`/`xargs` with no literal operand, a target
+`git stash pop`, `find -exec`, `xargs` with no literal operand, a call whose argument list is
+longer than the scanner's size cap (allowed with a stderr note), a target
 spelled through a variable or command substitution, an ancestor spelled in a
 way the lexical check does not recognise (a container other than `packages`,
 a linked worktree's own root), and `tar`/`curl -o`/`git checkout|restore` all

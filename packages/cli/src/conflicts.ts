@@ -8,12 +8,17 @@
  * a whole-file conflict on `package.json` is a useless finding, since the
  * answer is always a merge, never "pick one file wholesale".
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { restoreDotfilePath } from "./assets.js";
 import { parseJsonc } from "./jsonc.js";
 import { isRecord } from "./merge-json.js";
-import { permissionCode, readFailure } from "./survey/internal/read-guard.js";
+import {
+  permissionCode,
+  probePath,
+  readFailure,
+  unreadableNote,
+} from "./survey/internal/read-guard.js";
 import { applyTokens } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
 
@@ -67,14 +72,29 @@ function compareFile(
   relPath: string,
   baselineContent: string,
   targetPath: string,
+  undetermined: string[],
 ): FileConflict {
-  if (!existsSync(targetPath)) {
+  // A real `stat`, never `existsSync`: a file under a directory this process
+  // cannot search must not read as "absent" (a clean add `/customize` would
+  // then write straight over). Something there this process cannot reach is
+  // divergent -- it cannot be shown identical, and adopt mode never
+  // overwrites -- with the errno recorded. Any other errno throws.
+  const probe = probePath(targetPath);
+  if (probe.kind === "absent") {
     return { relPath, status: "absent", keyDiffs: undefined };
   }
+  if (probe.kind === "unresolvable") {
+    // Once only: adopt mode passes the survey's own list, and a pack and the
+    // baseline can name the same path.
+    const note = unreadableNote(targetPath, probe.code);
+    if (!undetermined.includes(note)) undetermined.push(note);
+    return { relPath, status: "divergent", keyDiffs: undefined };
+  }
 
-  // A permission failure is a property of the project file itself: it cannot
-  // be shown identical, and adopt mode never overwrites, so it is divergent
-  // with no key-level detail. Any other errno is about the machine and throws.
+  // A permission failure on the read itself is divergent too. Its existence
+  // is established, so nothing is recorded: the survey already reports any
+  // file whose contents it needed, and a status of "divergent" is not a
+  // false claim.
   let targetContent: string;
   try {
     targetContent = readFileSync(targetPath, "utf8");
@@ -110,6 +130,7 @@ function walkTemplate(
   targetDir: string,
   tokens: TokenTable,
   results: FileConflict[],
+  undetermined: string[],
 ): void {
   for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
     const sourcePath = join(currentDir, entry.name);
@@ -118,7 +139,7 @@ function walkTemplate(
     );
 
     if (entry.isDirectory()) {
-      walkTemplate(root, sourcePath, targetDir, tokens, results);
+      walkTemplate(root, sourcePath, targetDir, tokens, results, undetermined);
       continue;
     }
 
@@ -127,18 +148,44 @@ function walkTemplate(
       tokens,
     );
     results.push(
-      compareFile(relPath, baselineContent, join(targetDir, relPath)),
+      compareFile(
+        relPath,
+        baselineContent,
+        join(targetDir, relPath),
+        undetermined,
+      ),
     );
   }
 }
 
-/** Compares every file `templates/core` would emit against what `targetDir` already has. */
+/**
+ * Compares every file `templates/core` (or a pack's `files/`) would emit
+ * against what `targetDir` already has. A target path this process cannot
+ * reach (`EACCES`/`EPERM`/`ELOOP`) is never reported `absent`: it is
+ * `divergent`, and a note naming the path and errno is appended to
+ * `undetermined` (adopt mode passes the survey's own list, so the report
+ * shows it). `ENOENT`/`ENOTDIR` is `absent`; any other errno throws.
+ *
+ * @example
+ * ```ts
+ * const undetermined: string[] = [];
+ * const conflicts = planConflicts(templateRoot, targetDir, tokens, undetermined);
+ * ```
+ */
 export function planConflicts(
   templateRoot: string,
   targetDir: string,
   tokens: TokenTable,
+  undetermined: string[] = [],
 ): FileConflict[] {
   const results: FileConflict[] = [];
-  walkTemplate(templateRoot, templateRoot, targetDir, tokens, results);
+  walkTemplate(
+    templateRoot,
+    templateRoot,
+    targetDir,
+    tokens,
+    results,
+    undetermined,
+  );
   return results;
 }

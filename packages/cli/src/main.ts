@@ -784,7 +784,15 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   const survey = surveyProject(options.targetDir);
   const templateRoot = templatesCoreDir();
   const tokens = buildTokens(options.projectName);
-  const conflicts = planConflicts(templateRoot, options.targetDir, tokens);
+  // The survey's own `undetermined` list: a baseline or pack target this
+  // process cannot reach is recorded there (and so in the report), never
+  // reported as a clean add.
+  const conflicts = planConflicts(
+    templateRoot,
+    options.targetDir,
+    tokens,
+    survey.undetermined,
+  );
 
   const groundworkDir = join(options.targetDir, ".groundwork");
   const stagedBaselineDir = `.groundwork/${STAGED_BASELINE_DIR}`;
@@ -809,7 +817,12 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     name: pack.manifest.name,
     modes: pack.manifest.modes,
     budget: pack.manifest.budget,
-    fileConflicts: planConflicts(pack.filesDir, options.targetDir, tokens),
+    fileConflicts: planConflicts(
+      pack.filesDir,
+      options.targetDir,
+      tokens,
+      survey.undetermined,
+    ),
     wiring: pack.manifest.wiring,
     wiringObservations: observeWiring(options.targetDir, pack.manifest),
     adoptNotes: pack.manifest.adoptNotes,

@@ -95,10 +95,90 @@ export function readFailure(path: string, cause: unknown): SurveyReadError {
 
 /**
  * The errno codes that mean "nothing is at this path": nothing there
- * (`ENOENT`), an ancestor is a file (`ENOTDIR`), or a symlink that never
- * resolves (`ELOOP`) -- each of which `existsSync` already answered `false`.
+ * (`ENOENT`) or an ancestor is a file (`ENOTDIR`). The one definition every
+ * survey probe (`guardedExists`, `fs-walk.ts`'s `walkBounded`) and
+ * `jsonc.ts`'s `readJsoncFile` share, so they cannot disagree on what
+ * "absent" means. `ELOOP` is deliberately NOT here: a symlink loop is
+ * something at the path this process cannot resolve, not an absence -- see
+ * {@link UNRESOLVABLE_CODE}.
  */
-const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR", "ELOOP"]);
+const ABSENT_CODES: ReadonlySet<string> = new Set(["ENOENT", "ENOTDIR"]);
+
+/**
+ * The errno a symlink loop raises: an entry exists at the path, but it never
+ * resolves. Recorded like a permission failure, never folded into "absent".
+ */
+const UNRESOLVABLE_CODE = "ELOOP";
+
+/**
+ * Whether `error` carries an errno that means "nothing is at this path"
+ * (`ENOENT`/`ENOTDIR`).
+ *
+ * @example
+ * ```ts
+ * isAbsentError(Object.assign(new Error("x"), { code: "ENOENT" })); // true
+ * isAbsentError(Object.assign(new Error("x"), { code: "ELOOP" })); // false
+ * ```
+ */
+export function isAbsentError(error: unknown): boolean {
+  const code = errnoCode(error);
+  return code !== undefined && ABSENT_CODES.has(code);
+}
+
+/**
+ * The errno to record when `error` says the path holds something this
+ * process cannot read or resolve -- a permission code (`EACCES`/`EPERM`) or
+ * a symlink loop (`ELOOP`) -- or `undefined` for anything else.
+ *
+ * @example
+ * ```ts
+ * unresolvableCode(Object.assign(new Error("x"), { code: "ELOOP" })); // "ELOOP"
+ * unresolvableCode(Object.assign(new Error("x"), { code: "EIO" })); // undefined
+ * ```
+ */
+export function unresolvableCode(error: unknown): string | undefined {
+  const permission = permissionCode(error);
+  if (permission !== undefined) return permission;
+  return errnoCode(error) === UNRESOLVABLE_CODE ? UNRESOLVABLE_CODE : undefined;
+}
+
+/**
+ * What a `stat` on a path established: something is there, nothing is there,
+ * or something is there (or may be) that this process cannot reach --
+ * carrying the errno that says why.
+ */
+export type PathProbe =
+  | { readonly kind: "present" }
+  | { readonly kind: "absent" }
+  | { readonly kind: "unresolvable"; readonly code: string };
+
+/**
+ * Probes `path` with a real `stat`, never `existsSync` (which answers
+ * `false` for ANY failure, so a file under a `chmod 000` directory reads as
+ * absent). `ENOENT`/`ENOTDIR` is `absent`; `EACCES`/`EPERM`/`ELOOP` is
+ * `unresolvable` with the errno -- never folded into `absent`. Any other
+ * failure throws a {@link SurveyReadError} naming `path`, with the original
+ * as `cause`.
+ *
+ * @example
+ * ```ts
+ * const probe = probePath(targetPath);
+ * if (probe.kind === "unresolvable") undetermined.push(unreadableNote(targetPath, probe.code));
+ * ```
+ */
+export function probePath(path: string): PathProbe {
+  try {
+    statSync(path);
+    return { kind: "present" };
+  } catch (error) {
+    if (isAbsentError(error)) return { kind: "absent" };
+    const code = unresolvableCode(error);
+    if (code !== undefined) return { kind: "unresolvable", code };
+    throw new SurveyReadError(`could not check whether ${path} exists`, {
+      cause: error,
+    });
+  }
+}
 
 /**
  * Whether `path` exists, without `existsSync`'s blind spot: `existsSync`
@@ -108,7 +188,9 @@ const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR", "ELOOP"]);
  * itself, so a permission failure here is recorded in `undetermined` naming
  * the enclosing directory (one entry for every probe under it once the
  * aggregate de-duplicates) and answers `false`; the survey carries on. A
- * genuinely absent path answers `false` with nothing recorded. Any other
+ * symlink loop (`ELOOP`) is a property of the path itself, so it is
+ * recorded naming `path` and answers `false`. A genuinely absent path
+ * (`ENOENT`/`ENOTDIR`) answers `false` with nothing recorded. Any other
  * failure throws a {@link SurveyReadError} naming `path`, with the original
  * as `cause`.
  *
@@ -118,21 +200,12 @@ const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR", "ELOOP"]);
  * ```
  */
 export function guardedExists(path: string, undetermined: string[]): boolean {
-  try {
-    statSync(path);
-    return true;
-  } catch (error) {
-    const code = permissionCode(error);
-    if (code !== undefined) {
-      undetermined.push(unreadableNote(dirname(path), code));
-      return false;
-    }
-    const other = errnoCode(error);
-    if (other !== undefined && ABSENT_CODES.has(other)) return false;
-    throw new SurveyReadError(`could not check whether ${path} exists`, {
-      cause: error,
-    });
-  }
+  const probe = probePath(path);
+  if (probe.kind === "present") return true;
+  if (probe.kind === "absent") return false;
+  const named = probe.code === UNRESOLVABLE_CODE ? path : dirname(path);
+  undetermined.push(unreadableNote(named, probe.code));
+  return false;
 }
 
 /**

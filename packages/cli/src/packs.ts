@@ -25,7 +25,11 @@ import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { emitTemplate } from "./emit.js";
 import { parseJsonc } from "./jsonc.js";
-import { permissionCode, readFailure } from "./survey/internal/read-guard.js";
+import {
+  permissionCode,
+  probePath,
+  readFailure,
+} from "./survey/internal/read-guard.js";
 import {
   isPrototypeSensitiveKey,
   isRecord,
@@ -439,12 +443,41 @@ function readSettingsOrObserve(
 }
 
 /**
+ * Whether `path` exists, for {@link observeWiring}. A real `stat`, never
+ * `existsSync`, so a file under a directory this process cannot search is
+ * not observed as missing: an `EACCES`/`EPERM`/`ELOOP` is recorded as an
+ * observation naming the path and errno, and `undefined` is returned so the
+ * caller states neither "found" nor "not found". `ENOENT`/`ENOTDIR` answers
+ * `false`; any other errno throws (see `probePath`).
+ */
+function existsOrObserve(
+  path: string,
+  observations: string[],
+): boolean | undefined {
+  const probe = probePath(path);
+  if (probe.kind === "unresolvable") {
+    observations.push(
+      `could not check whether ${path} exists (${probe.code}) -- left undetermined, not reported missing`,
+    );
+    return undefined;
+  }
+  return probe.kind === "present";
+}
+
+/**
  * Index-level, adopt-mode-only facts about how a pack's wiring would land
  * against a real project's current `.claude/settings.json` and
  * `bin/lib/verify-steps.packs.json` -- never a verdict on whether it will
  * work. That verdict is a judgment call for `/customize`'s Step 0 (the
  * adopt-mode reconcile step in `/customize`) to make after reading the
- * project's real gate runner and hook config.
+ * project's real gate runner and hook config. A path this process cannot
+ * reach (`EACCES`/`EPERM`/`ELOOP`) is observed with its errno, never as
+ * "not found".
+ *
+ * @example
+ * ```ts
+ * const observations = observeWiring(targetDir, pack.manifest);
+ * ```
  */
 export function observeWiring(
   targetDir: string,
@@ -453,9 +486,10 @@ export function observeWiring(
   const observations: string[] = [];
 
   const settingsPath = join(targetDir, ".claude", "settings.json");
-  if (!existsSync(settingsPath)) {
+  const settingsExists = existsOrObserve(settingsPath, observations);
+  if (settingsExists === false) {
     observations.push("no .claude/settings.json found");
-  } else {
+  } else if (settingsExists) {
     const content = readSettingsOrObserve(settingsPath, observations);
     const parsed = content === undefined ? undefined : parseJsonc(content);
     if (parsed === undefined) {
@@ -482,7 +516,12 @@ export function observeWiring(
     }
   }
 
-  if (existsSync(join(targetDir, ".claude", "settings.local.json"))) {
+  if (
+    existsOrObserve(
+      join(targetDir, ".claude", "settings.local.json"),
+      observations,
+    ) === true
+  ) {
     observations.push(
       ".claude/settings.local.json is present and may shadow a merged hook entry",
     );
@@ -490,11 +529,14 @@ export function observeWiring(
 
   if (manifest.wiring.verifySteps.length > 0) {
     const stepsPath = join(targetDir, "bin", "lib", "verify-steps.packs.json");
-    observations.push(
-      existsSync(stepsPath)
-        ? "bin/lib/verify-steps.packs.json exists"
-        : "no bin/lib/verify-steps.packs.json found -- no bin/verify.mjs-shaped gate runner detected",
-    );
+    const stepsExist = existsOrObserve(stepsPath, observations);
+    if (stepsExist !== undefined) {
+      observations.push(
+        stepsExist
+          ? "bin/lib/verify-steps.packs.json exists"
+          : "no bin/lib/verify-steps.packs.json found -- no bin/verify.mjs-shaped gate runner detected",
+      );
+    }
   }
 
   return observations;

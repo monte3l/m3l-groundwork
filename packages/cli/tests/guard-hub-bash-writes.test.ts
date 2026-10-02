@@ -184,6 +184,17 @@ const NESTED_PAST_DEPTH_CAP = (() => {
   return body;
 })();
 
+/**
+ * A `writeFileSync(...)` call whose argument list is well past
+ * `MAX_CALL_CHARS` (1000) -- `splitArgs` gives up on a call this long
+ * (`closeAt - openAt > MAX_CALL_CHARS`), so the detector must still fail
+ * open (allow) rather than throw or hang, but it must say so: a long call
+ * silently skipped with no trace is the gap `GAP 5` below closes.
+ */
+const LONG_CALL_COMMAND = `node -e "${NODE_LOAD_FS_CALL}'fs').writeFileSync('packages/cli/src/a.ts', '${"x".repeat(1200)}')"`;
+/** Same shape, short enough to analyse -- must still be blocked either way. */
+const SHORT_CALL_COMMAND = `node -e "${NODE_LOAD_FS_CALL}'fs').writeFileSync('packages/cli/src/a.ts', 'x')"`;
+
 describe("findBashWriteToProtectedPath -- MUST BLOCK for a hub caller", () => {
   const BLOCKED_SIMPLE: [string, string, string][] = [
     // redirects
@@ -782,6 +793,104 @@ describe("findBashWriteToProtectedPath -- GAP 3(a): ancestor-of-guarded-director
 });
 
 /**
+ * GAP 4(a) contract tests: `containsGuardedTree`'s glob branch today only
+ * recognises a trailing glob that could itself literally BE a workspace
+ * container or guarded-dir name (`packages/*`). It misses the more common
+ * shape -- a glob standing for a PACKAGE NAME directly inside a workspace
+ * container (`packages/c*`, `packages/cli*`, `packages/cl?`,
+ * `packages/[c]li`) -- which also removes/moves that package's whole
+ * src/tests tree and must be blocked the same way `packages/cli` (no glob)
+ * already is. Conversely, today's bare-`*`-matches-anything rule
+ * over-blocks a build/scratch directory's OWN glob clear
+ * (`dist/*`, `coverage/*`, `tmp/*`, a package's own `dist/*`) purely because
+ * `*` can match any literal name -- those must become ALLOW. Every
+ * MUST-BLOCK row below is expected to presently return ALLOW (null) and
+ * every "now allowed" row is expected to presently return a BLOCK (not
+ * null) -- this describe's RED state; `code-implementer` closes the gap on
+ * `containsGuardedTree`'s glob branch without reopening GAP 3(a)'s rows
+ * above (kept passing by the MUST-BLOCK rows already there).
+ */
+describe("findBashWriteToProtectedPath -- GAP 4(a): ancestor glob matches a package NAME, and the bare-`*` over-block is fixed", () => {
+  const BLOCKED_PACKAGE_NAME_GLOB: [string, string, string][] = [
+    [
+      "rm -rf packages/c* removes every package whose name starts with c",
+      "rm -rf packages/c*",
+      "rm",
+    ],
+    [
+      "rm -rf packages/cli* removes the package via a trailing wildcard",
+      "rm -rf packages/cli*",
+      "rm",
+    ],
+    [
+      "rm -rf packages/cl? removes the package via a single-char wildcard",
+      "rm -rf packages/cl?",
+      "rm",
+    ],
+    [
+      "rm -rf packages/[c]li removes the package via a character class",
+      "rm -rf packages/[c]li",
+      "rm",
+    ],
+    [
+      "mv packages/c* /tmp moves a whole package dir out of the tree via a wildcard",
+      "mv packages/c* /tmp",
+      "mv",
+    ],
+  ];
+
+  it.each(BLOCKED_PACKAGE_NAME_GLOB)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+
+  const ALLOWED_OWN_GLOB_CLEAR: [string, string][] = [
+    [
+      "rm -rf dist/* clears a build artifact directory, not an ancestor of src/tests",
+      "rm -rf dist/*",
+    ],
+    [
+      "rm -rf coverage/* clears a build artifact directory, not an ancestor of src/tests",
+      "rm -rf coverage/*",
+    ],
+    [
+      "rm -rf tmp/* clears a scratch directory, not an ancestor of src/tests",
+      "rm -rf tmp/*",
+    ],
+    [
+      "rm -rf packages/cli/dist/* clears a package's own build artifact, not an ancestor of its src/tests",
+      "rm -rf packages/cli/dist/*",
+    ],
+    [
+      "cp -r into a package's own dist/ directory is not an ancestor write",
+      "cp -r /tmp/x packages/cli/dist/",
+    ],
+  ];
+
+  it.each(ALLOWED_OWN_GLOB_CLEAR)("%s", (_name, command) => {
+    expectAllowed(command);
+  });
+});
+
+/**
+ * GAP 4(b): `rsync --remove-source-files` deletes every file it copies out
+ * of the SOURCE tree once the transfer succeeds -- unlike a bare `rsync`,
+ * the source operand is itself a write (a deletion) target, the same as an
+ * `mv` source, and must be blocked when that source is (or contains) a
+ * guarded path. Today `analyseCopy`'s rsync branch never inspects
+ * `--remove-source-files` and only ever checks the destination, so this is
+ * expected to presently return ALLOW (null) -- this describe's RED state.
+ */
+describe("findBashWriteToProtectedPath -- GAP 4(b): rsync --remove-source-files deletes its source", () => {
+  it("blocks rsync --remove-source-files whose source is a guarded path", () => {
+    expectBlocked("rsync --remove-source-files packages/cli/ /tmp/x/", "rsync");
+  });
+
+  it("still allows a plain rsync (no --remove-source-files) copying the same source", () => {
+    expectAllowed("rsync -a packages/cli/ /tmp/x/");
+  });
+});
+
+/**
  * GAP 3(b) contract tests: two more documented FALSE NEGATIVES close here --
  * "`php` is screened only for `rename(` (no `file_put_contents` or
  * `fopen`)" and "an interpreter's delete calls (`fs.rmSync`, `os.remove`,
@@ -998,6 +1107,68 @@ describe("findBashWriteToProtectedPath -- GAP 3(c): php/deno/bun interpreter bra
   );
 });
 
+/**
+ * GAP 4(c): `WRITE_CALL` screens for the generic `writeFileSync`/`rmSync`/...
+ * verb family shared across node/python-fs-compat/deno/bun, but Deno's OWN
+ * namespace calls (`Deno.writeTextFile(Sync)`, `Deno.remove(Sync)`) are a
+ * different spelling entirely and are not in that list -- so deno's own API,
+ * not just its node:fs compatibility shim, passes through unscreened today.
+ * Every MUST-BLOCK row below is expected to presently return ALLOW (null)
+ * -- this describe's RED state.
+ */
+describe("findBashWriteToProtectedPath -- GAP 4(c): Deno's own namespace calls (not just node:fs compat)", () => {
+  const BLOCKED_DENO_OWN_API: [string, string, string][] = [
+    [
+      "deno eval inline Deno.remove (recursive) against a guarded path",
+      "deno eval 'await Deno.remove(\"packages/cli/src\",{recursive:true})'",
+      "deno",
+    ],
+    [
+      "deno eval inline Deno.removeSync against a guarded path",
+      "deno eval 'Deno.removeSync(\"packages/cli/src/a.ts\")'",
+      "deno",
+    ],
+    [
+      "deno eval inline Deno.writeTextFileSync against a guarded path",
+      'deno eval \'Deno.writeTextFileSync("packages/cli/src/a.ts","x")\'',
+      "deno",
+    ],
+    [
+      "deno eval inline Deno.writeTextFile against a guarded path",
+      'deno eval \'Deno.writeTextFile("packages/cli/src/a.ts","x")\'',
+      "deno",
+    ],
+  ];
+
+  it.each(BLOCKED_DENO_OWN_API)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+
+  it("blocks a deno run -A - heredoc stdin script calling Deno.writeTextFileSync against a guarded path", () => {
+    const command = [
+      "deno run -A - <<EOF",
+      'Deno.writeTextFileSync("packages/cli/src/a.ts","x")',
+      "EOF",
+    ].join("\n");
+    expectBlocked(command, "deno");
+  });
+
+  const ALLOWED_DENO_OWN_API: [string, string][] = [
+    [
+      "deno eval inline Deno.readTextFileSync (a read) is not a write",
+      "deno eval 'Deno.readTextFileSync(\"packages/cli/src/a.ts\")'",
+    ],
+    [
+      "deno eval inline Deno.removeSync against an unguarded path",
+      "deno eval 'Deno.removeSync(\"/tmp/x\")'",
+    ],
+  ];
+
+  it.each(ALLOWED_DENO_OWN_API)("%s", (_name, command) => {
+    expectAllowed(command);
+  });
+});
+
 describe("findBashWriteToProtectedPath never throws, however malformed the command text", () => {
   it.each([
     ["empty string", ""],
@@ -1103,6 +1274,29 @@ describe("findBashWriteToProtectedPath -- visibility notes (opts.notes)", () => 
     });
     expect(result).toBeNull();
     expect(notes.size).toBe(0);
+  });
+
+  /**
+   * GAP 5: `scanCode`'s `splitArgs` silently gives up (`if (!args) continue`,
+   * no `addNote`) on a write-call whose argument list exceeds
+   * `MAX_CALL_CHARS` -- the call is never screened AND nothing records that
+   * it wasn't. This describe's RED state: the long call allows with zero
+   * notes today; it must instead allow WITH a note mentioning the cap.
+   */
+  it("reports a note mentioning the size cap for a write-call argument list past MAX_CALL_CHARS, and still allows", () => {
+    const notes = new Set<string>();
+    const result = hook.findBashWriteToProtectedPath(LONG_CALL_COMMAND, {
+      cwd: PROJECT_DIR,
+      projectDir: PROJECT_DIR,
+      notes,
+    });
+    expect(result).toBeNull();
+    expect(notes.size).toBeGreaterThan(0);
+    expect([...notes].some((note) => /cap/i.test(note))).toBe(true);
+  });
+
+  it("still blocks the same write call when its argument list is short", () => {
+    expectBlocked(SHORT_CALL_COMMAND, "node");
   });
 });
 
@@ -1389,6 +1583,60 @@ describe.each([
       });
       expect(result.status).toBe(0);
       expect(result.stderr.trim().length).toBeGreaterThan(0);
+    });
+  });
+
+  // GAP 5 (entry point, both hook copies): a write-call argument list past
+  // MAX_CALL_CHARS must still fail open (exit 0) but say so on stderr.
+  it("exits 0 but warns on stderr (mentioning the size cap) for a write-call argument list past MAX_CALL_CHARS", () => {
+    withFakeProject((fakeProject) => {
+      const { status, stderr } = runHook(
+        scriptPath,
+        {
+          tool_name: "Bash",
+          tool_input: { command: LONG_CALL_COMMAND },
+          cwd: fakeProject,
+        },
+        { cwd: fakeProject, projectDir: fakeProject },
+      );
+      expect(status).toBe(0);
+      expect(stderr.trim().length).toBeGreaterThan(0);
+      expect(stderr).toMatch(/cap/i);
+    });
+  });
+
+  it("exits 2 (still blocked) for the same write call when its argument list is short", () => {
+    withFakeProject((fakeProject) => {
+      const { status } = runHook(
+        scriptPath,
+        {
+          tool_name: "Bash",
+          tool_input: { command: SHORT_CALL_COMMAND },
+          cwd: fakeProject,
+        },
+        { cwd: fakeProject, projectDir: fakeProject },
+      );
+      expect(status).toBe(2);
+    });
+  });
+
+  // GAP 6 (entry point, both hook copies): the block message for an
+  // ANCESTOR target (a whole package dir, not a direct src/tests file) must
+  // say so -- "ancestor" -- rather than reading identically to a direct hit,
+  // so a maintainer reading stderr can tell the two cases apart.
+  it("block message for an ancestor target explicitly names it an ANCESTOR of a guarded path", () => {
+    withFakeProject((fakeProject) => {
+      const { status, stderr } = runHook(
+        scriptPath,
+        {
+          tool_name: "Bash",
+          tool_input: { command: "rm -rf packages/cli" },
+          cwd: fakeProject,
+        },
+        { cwd: fakeProject, projectDir: fakeProject },
+      );
+      expect(status).toBe(2);
+      expect(stderr).toContain("ancestor");
     });
   });
 });

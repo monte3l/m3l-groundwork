@@ -244,4 +244,75 @@ describe("planConflicts", () => {
       },
     );
   });
+
+  /**
+   * GAP: `compareFile`'s existence probe is a raw `existsSync(targetPath)`
+   * -- `existsSync` swallows EVERY `stat` failure, including an ancestor
+   * directory's search permission denied, and answers `false` identically
+   * to a genuine miss. A file that actually exists under a `chmod 000`
+   * directory is therefore reported `status: "absent"` today -- adopt
+   * mode's report would then call it a "clean add" and `/customize` would
+   * try to write straight over a file it never saw. This describe's RED
+   * state: today's status is `"absent"`, with nothing recorded anywhere
+   * naming the real reason.
+   *
+   * `planConflicts` is called with a 4th, optional `undetermined: string[]`
+   * argument below -- the same convention every other survey/compare
+   * collector in this package already uses (`guardedExists`, `walkBounded`)
+   * -- so adopt mode can thread the SAME array `inventory.survey.undetermined`
+   * already surfaces in the report (`report.ts`), rather than inventing a
+   * new `ConflictStatus` value that the rest of the report doesn't know how
+   * to render.
+   */
+  describe("a target file that exists under a directory this process cannot search (ancestor chmod 000)", () => {
+    let lockedDir: string;
+
+    beforeEach(() => {
+      lockedDir = join(targetDir, "locked");
+      mkdirSync(lockedDir);
+      writeFileSync(join(lockedDir, "a.ts"), "# acme\n");
+      mkdirSync(join(templateRoot, "locked"));
+      writeFileSync(
+        join(templateRoot, "locked", "a.ts"),
+        "# __PROJECT_NAME__\n",
+      );
+    });
+
+    afterEach(() => {
+      chmodSync(lockedDir, 0o755);
+    });
+
+    it.skipIf(chmodIneffective)(
+      "never reports 'absent' for a file that genuinely exists, and records the real EACCES reason",
+      () => {
+        chmodSync(lockedDir, 0o000);
+        const undetermined: string[] = [];
+        let thrown: unknown;
+        let result: ReturnType<typeof planConflicts> | undefined;
+        try {
+          result = (
+            planConflicts as unknown as (
+              root: string,
+              target: string,
+              tokens: Record<string, string>,
+              undetermined: string[],
+            ) => ReturnType<typeof planConflicts>
+          )(templateRoot, targetDir, { PROJECT_NAME: "acme" }, undetermined);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          chmodSync(lockedDir, 0o755);
+        }
+
+        expect(thrown).toBeUndefined();
+        const entry = result?.find((r) => r.relPath === "locked/a.ts");
+        expect(entry?.status).not.toBe("absent");
+        expect(
+          undetermined.some(
+            (note) => note.includes(lockedDir) && note.includes("EACCES"),
+          ),
+        ).toBe(true);
+      },
+    );
+  });
 });

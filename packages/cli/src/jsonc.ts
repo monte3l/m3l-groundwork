@@ -9,8 +9,12 @@
  * to `JSON.parse`. It is not a full JSON5 parser -- no unquoted keys, no
  * single-quoted strings -- tsconfig-shaped input is the only intended use.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { permissionCode, readFailure } from "./survey/internal/read-guard.js";
+import { readFileSync, statSync } from "node:fs";
+import {
+  isAbsentError,
+  readFailure,
+  unresolvableCode,
+} from "./survey/internal/read-guard.js";
 
 export type JsoncReadResult =
   { ok: true; value: unknown } | { ok: false; error: string };
@@ -191,10 +195,14 @@ export function parseJsonc(content: string): JsoncReadResult {
 }
 
 /**
- * Reads and parses a JSONC file. A missing, unreadable (`EACCES`/`EPERM`)
- * or unparseable file is reported, not thrown -- each is a property of the
- * file. Any other read failure (`EIO`, `EMFILE`, ...) throws an `Error`
- * naming the path, with the original failure as `cause`.
+ * Reads and parses a JSONC file. A missing (`ENOENT`/`ENOTDIR`), unreadable
+ * (`EACCES`/`EPERM`), unresolvable (a symlink loop's `ELOOP`) or
+ * unparseable file is reported, not thrown -- each is a property of the
+ * file. The existence check is a real `stat`, never `existsSync`, so a file
+ * under a directory this process cannot search is reported with its errno
+ * rather than as absent. Any other failure, on the check or the read
+ * (`EIO`, `EMFILE`, ...), throws an `Error` naming the path, with the
+ * original failure as `cause`.
  *
  * @example
  * ```ts
@@ -203,14 +211,15 @@ export function parseJsonc(content: string): JsoncReadResult {
  * ```
  */
 export function readJsoncFile(path: string): JsoncReadResult {
-  if (!existsSync(path)) {
-    return { ok: false, error: `${path} does not exist` };
-  }
   let content: string;
   try {
+    statSync(path);
     content = readFileSync(path, "utf8");
   } catch (error) {
-    const code = permissionCode(error);
+    if (isAbsentError(error)) {
+      return { ok: false, error: `${path} does not exist` };
+    }
+    const code = unresolvableCode(error);
     if (code === undefined) throw readFailure(path, error);
     return { ok: false, error: `${path} is unreadable (${code})` };
   }

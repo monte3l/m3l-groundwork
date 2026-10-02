@@ -2,10 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadTsconfigChain } from "../../src/toolchain/tsconfig-chain.js";
+import { chmodIneffective } from "../chmod-ineffective.js";
 
 let root: string;
 
@@ -149,6 +156,53 @@ describe("loadTsconfigChain", () => {
     const chain = loadTsconfigChain(root, "tsconfig.json");
     expect(chain.files.filter((f) => f.rel === "base.json")).toHaveLength(1);
     expect(chain.links.filter((l) => l.from === "a.json")).toHaveLength(1);
+  });
+
+  /**
+   * GAP: `isFile`'s bare `catch { return false; }` cannot tell "nothing
+   * here" from "something here this process may not even `stat`" (an
+   * ancestor directory `chmod 000`) -- both answer `false`, so
+   * `resolveExtends` reports the candidate unresolved the same as a
+   * genuinely missing file, and `survey-toolchain.ts`'s link loop then
+   * states `<path> does not exist` for a file that is actually sitting
+   * right there, unreadable. This describe's RED state: today `base.json`
+   * under a locked `cfg/` is reported exactly like a missing file, with
+   * nothing anywhere naming the real reason (EACCES).
+   */
+  describe("extends a file under a directory this process cannot search (ancestor chmod 000)", () => {
+    let cfgDir: string;
+
+    beforeEach(() => {
+      cfgDir = join(root, "cfg");
+      mkdirSync(cfgDir);
+      write("cfg/base.json", { compilerOptions: { strict: true } });
+      write("tsconfig.json", { extends: "./cfg/base.json" });
+    });
+
+    afterEach(() => {
+      chmodSync(cfgDir, 0o755);
+    });
+
+    it.skipIf(chmodIneffective)(
+      "never reports the extended file as missing ('does not exist') -- it is unreadable (EACCES), not absent, and only the unreadable reason is recorded (no contradictory pair)",
+      () => {
+        chmodSync(cfgDir, 0o000);
+        let thrown: unknown;
+        let chain: ReturnType<typeof loadTsconfigChain> | undefined;
+        try {
+          chain = loadTsconfigChain(root, "tsconfig.json");
+        } catch (error) {
+          thrown = error;
+        } finally {
+          chmodSync(cfgDir, 0o755);
+        }
+
+        expect(thrown).toBeUndefined();
+        const allText = JSON.stringify(chain);
+        expect(allText).not.toContain("does not exist");
+        expect(allText).toContain("EACCES");
+      },
+    );
   });
 
   it("ignores extends entries that are not strings", () => {

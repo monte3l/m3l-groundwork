@@ -13,7 +13,13 @@
  * matching the isolation pattern other mocked-`node:fs` siblings use.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+} from "node:fs";
 import type * as FsModule from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -80,5 +86,52 @@ describe("walkBounded -- a non-permission readdirSync failure propagates, not sw
     expect((thrown as Error).message).toContain(targetDir);
     expect((thrown as Error).cause).toBe(ioFailure);
     expect(undetermined).toEqual([]);
+  });
+});
+
+/**
+ * `walkBounded` and `guardedExists` (`internal/read-guard.ts`) must agree on
+ * which errno codes mean "absent" -- today they each keep their own
+ * `ABSENT_CODES` set, and `walkBounded`'s does not include `ELOOP`, so a
+ * symlink loop it walks INTO throws a hard `Error` instead of being
+ * recorded in `undetermined` and skipped the way `read-guard.test.ts` now
+ * requires of `guardedExists` for the exact same errno. This describe's RED
+ * state: today the loop below makes `walkBounded` throw.
+ */
+describe("walkBounded -- a symlink loop (ELOOP) matches guardedExists's contract: recorded in undetermined, not thrown", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof FsModule>("node:fs");
+    readdirSyncMock.mockReset();
+    readdirSyncMock.mockImplementation(actual.readdirSync);
+    dir = mkdtempSync(join(tmpdir(), "walk-eloop-"));
+  });
+
+  afterEach(() => {
+    readdirSyncMock.mockReset();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("records the loop directory and ELOOP in undetermined, skips it, and does not throw", () => {
+    const loopA = join(dir, "loop-a");
+    const loopB = join(dir, "loop-b");
+    symlinkSync(loopB, loopA);
+    symlinkSync(loopA, loopB);
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: ReturnType<typeof walkBounded> | undefined;
+    try {
+      result = walkBounded(loopA, 3, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(result).toEqual([]);
+    expect(undetermined).toHaveLength(1);
+    expect(undetermined[0]).toContain(loopA);
+    expect(undetermined[0]).toContain("ELOOP");
   });
 });

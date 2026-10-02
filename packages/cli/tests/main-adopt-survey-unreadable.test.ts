@@ -152,15 +152,34 @@ describe("adopt mode (main()): .claude/skills/customize/SKILL.md unreadable -- s
 
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       let thrown: unknown;
+      let printedLines: string[];
       try {
         main([projectDir]);
+        printedLines = logSpy.mock.calls.map((call) => String(call[0]));
       } catch (error) {
         thrown = error;
+        // Captured BEFORE mockRestore(), which (like mockReset()) clears
+        // mock.calls -- reading it after restore would always see [].
+        printedLines = logSpy.mock.calls.map((call) => String(call[0]));
       } finally {
         logSpy.mockRestore();
       }
 
       expect(thrown).toBeUndefined();
+
+      // The console output itself (not just the two .groundwork/ artifacts)
+      // must surface the SAME fact: a maintainer watching the run scroll by,
+      // never opening the report, should still see which file was unreadable
+      // and why. `installGuarded`'s own fallback-reason line (`plugin.ts`,
+      // printed by `main.ts` right after "installed the /customize skill
+      // into ...") already names the path and errno -- this asserts that
+      // printed line actually reaches console.log for this exact scenario,
+      // not just that the lower-level plugin.ts unit tests cover the text.
+      expect(
+        printedLines.some(
+          (line) => line.includes(skillMdDest) && line.includes("EACCES"),
+        ),
+      ).toBe(true);
 
       const groundworkCustomizeDir = join(groundworkDir, "customize");
       expect(readdirSync(groundworkCustomizeDir).toSorted()).toEqual(

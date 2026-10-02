@@ -12,6 +12,8 @@
  * fresh mode's own single retry instruction ({@link FRESH_RETRY}) instead.
  */
 import { lstatSync } from "node:fs";
+import type { Stats } from "node:fs";
+import { isAbsentError } from "./survey/internal/read-guard.js";
 
 /** The tail every adopt-mode re-run instruction ends with, {@link assertNotSymlink}'s default advice included. */
 const RERUN_TAIL = "re-run the CLI";
@@ -53,6 +55,24 @@ export function endsWithRerunAdvice(message: string): boolean {
 }
 
 /**
+ * `lstat` without its one blind spot: `throwIfNoEntry: false` only answers a
+ * missing path with `undefined`, so any other failure (most realistically
+ * `EACCES` on a search-permission-denied ancestor) would escape raw -- no
+ * path in a readable message, no retry advice. An absent path (`ENOENT`, or
+ * `ENOTDIR` below a regular file) answers `undefined`, leaving the write
+ * that follows to raise its own error; anything else is wrapped here once,
+ * naming `path` and ending with `advice`, with the original as `cause`.
+ */
+function inspect(path: string, advice: string): Stats | undefined {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false });
+  } catch (cause) {
+    if (isAbsentError(cause)) return undefined;
+    throw new Error(`could not inspect ${path} -- ${advice}`, { cause });
+  }
+}
+
+/**
  * Throws when `path` exists and is a symbolic link; a missing path passes.
  * Uses `lstat`, so the link itself is inspected, never its target. Call it
  * on every staging directory before the first `rm` or write under it.
@@ -61,7 +81,9 @@ export function endsWithRerunAdvice(message: string): boolean {
  *   "remove it and re-run the CLI". A caller whose run needs a different
  *   retry (fresh mode's `--fresh --force`) passes its own, so the error
  *   never carries a second, contradicting instruction.
- * @throws `Error` naming `path` when it is a symlink.
+ * @throws `Error` naming `path` when it is a symlink, or when it cannot be
+ *   inspected at all (any `lstat` failure but `ENOENT`/`ENOTDIR`, chained
+ *   as `cause`).
  *
  * @example
  * ```ts
@@ -76,7 +98,7 @@ export function assertNotSymlink(
   path: string,
   advice = `remove it and ${RERUN_TAIL}`,
 ): void {
-  const stat = lstatSync(path, { throwIfNoEntry: false });
+  const stat = inspect(path, advice);
   if (stat?.isSymbolicLink() === true) {
     throw new Error(
       `refusing to write through a symlink: ${path} -- ${advice}`,
@@ -92,7 +114,8 @@ export function assertNotSymlink(
  *
  * @param advice - What the message ends with after `--`, same convention as
  *   {@link assertNotSymlink}'s.
- * @throws `Error` naming `path` when it is a symlink or a non-directory.
+ * @throws `Error` naming `path` when it is a symlink or a non-directory, or
+ *   when it cannot be inspected (the original chained as `cause`).
  *
  * @example
  * ```ts
@@ -103,7 +126,7 @@ export function assertNotSymlink(
  */
 export function assertDirectoryComponent(path: string, advice: string): void {
   assertNotSymlink(path, advice);
-  const stat = lstatSync(path, { throwIfNoEntry: false });
+  const stat = inspect(path, advice);
   if (stat !== undefined && !stat.isDirectory()) {
     throw new Error(
       `refusing to write under a non-directory: ${path} -- ${advice}`,
@@ -120,7 +143,8 @@ export function assertDirectoryComponent(path: string, advice: string): void {
  *
  * @param advice - What the message ends with after `--`, same convention as
  *   {@link assertNotSymlink}'s.
- * @throws `Error` naming `path` when it is a symlink or a directory.
+ * @throws `Error` naming `path` when it is a symlink or a directory, or
+ *   when it cannot be inspected (the original chained as `cause`).
  *
  * @example
  * ```ts
@@ -131,7 +155,7 @@ export function assertDirectoryComponent(path: string, advice: string): void {
  */
 export function assertFileDestination(path: string, advice: string): void {
   assertNotSymlink(path, advice);
-  const stat = lstatSync(path, { throwIfNoEntry: false });
+  const stat = inspect(path, advice);
   if (stat?.isDirectory() === true) {
     throw new Error(
       `refusing to write a file over a directory: ${path} -- ${advice}`,

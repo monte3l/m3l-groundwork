@@ -12,10 +12,10 @@ import { readdirSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join, relative } from "node:path";
 import {
-  errnoCode,
-  permissionCode,
+  isAbsentError,
   readFailure,
   unreadableNote,
+  unresolvableCode,
 } from "./internal/read-guard.js";
 
 const SKIP_DIR_NAMES = new Set([
@@ -47,15 +47,13 @@ export interface WalkEntry {
   isDirectory: boolean;
 }
 
-// A directory that vanished (or was never one) is simply absent from the walk.
-const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR"]);
-
 /**
  * Recursively lists `root`, skipping known dependency/build directories and
  * stopping once a descendant is more than `maxDepth` directories below
- * `root`. A missing directory is skipped silently. An unreadable one
- * (`EACCES`/`EPERM`) is skipped too, but recorded in `undetermined` when the
- * caller passes one. Any other listing failure (`EIO`, `EMFILE`, ...) throws
+ * `root`. A missing directory (`ENOENT`/`ENOTDIR`, the same absent set
+ * `guardedExists` uses) is skipped silently. An unreadable or unresolvable
+ * one (`EACCES`/`EPERM`, or a symlink loop's `ELOOP`) is skipped too, but
+ * recorded in `undetermined` when the caller passes one. Any other listing failure (`EIO`, `EMFILE`, ...) throws
  * an `Error` naming the directory, with the original as `cause`.
  *
  * @example
@@ -82,13 +80,12 @@ export function walkBounded(
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch (error) {
-      const code = permissionCode(error);
+      const code = unresolvableCode(error);
       if (code !== undefined) {
         undetermined?.push(unreadableNote(dir, code));
         return;
       }
-      const absent = ABSENT_CODES.has(errnoCode(error) ?? "");
-      if (absent) return;
+      if (isAbsentError(error)) return;
       throw readFailure(dir, error);
     }
 
