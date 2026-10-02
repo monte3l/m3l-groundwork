@@ -35,6 +35,12 @@ import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
 } from "./plugin.js";
+import type { GuardedInstallResult, InstallPluginResult } from "./plugin.js";
+import {
+  CLAUDE_DEST_SEGMENTS,
+  GROUNDWORK_DEST_SEGMENTS,
+  plannedCustomizeSkillPaths,
+} from "./customize-paths.js";
 import { gitInit, runInstall } from "./git.js";
 import { gradeHarness } from "./harness/grade.js";
 import { detectMode, resolveMode } from "./mode.js";
@@ -46,7 +52,11 @@ import {
   planBaselineStaging,
   stageBaselineAdditions,
 } from "./baseline-stage.js";
-import { assertNotSymlink } from "./fs-guard.js";
+import {
+  assertNotSymlink,
+  endsWithRerunAdvice,
+  FIX_AND_RERUN_ADVICE,
+} from "./fs-guard.js";
 import {
   buildInventory,
   resolveCliVersion,
@@ -54,7 +64,6 @@ import {
 } from "./inventory.js";
 import type { Inventory, PackSurvey } from "./inventory.js";
 import type { Pack } from "./packs.js";
-import type { GuardedInstallResult } from "./plugin.js";
 import {
   listPackNames,
   loadPack,
@@ -395,12 +404,27 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
     );
   }
 
-  const pluginResult = installCustomizeSkill(options.targetDir);
+  const { targetDir, skipInstall, projectName } = options;
+  let pluginResult: InstallPluginResult;
+  try {
+    pluginResult = installCustomizeSkill(targetDir);
+  } catch (error) {
+    // The target is no longer empty, so a plain re-run would auto-detect
+    // adopt mode; only --fresh --force repeats this run. With
+    // --skip-install, pnpm install was never going to run, so don't claim
+    // the failure stopped it (same split as the git-init branch below).
+    const notRun = skipInstall ? "git init" : "git init / pnpm install";
+    throw new Error(
+      `the project was written to ${targetDir}, but the /customize skill install failed and ${notRun} did not run -- fix the cause, then re-run with --fresh --force (plus your original --name/--pack/--skip-install); a plain re-run adopts it`,
+      { cause: error },
+    );
+  }
   console.log(
-    `installed the /customize skill (${pluginResult.filesWritten.length} files)`,
+    pluginResult.filesWritten.length === 0
+      ? "the /customize skill was already up to date"
+      : `installed the /customize skill (${pluginResult.filesWritten.length} files)`,
   );
 
-  const { targetDir, skipInstall, projectName } = options;
   try {
     gitInit(targetDir);
   } catch (error) {
@@ -529,7 +553,11 @@ function assertAdoptUsage(options: CliOptions): void {
  * `<targetDir>/.claude/skills/customize/` -- never an existing project file.
  * `paths` may be absolute or relative to `targetDir`. Containment is
  * {@link isPathContained}'s, so a sibling that merely shares a root's name
- * as a prefix (`.groundwork-evil/`) is rejected.
+ * as a prefix (`.groundwork-evil/`) is rejected. Both roots are derived from
+ * `customize-paths.ts`'s segment constants, so they cannot drift from where
+ * the install actually writes. The check is lexical -- it never touches the
+ * filesystem, so it does not detect a symlinked directory component; that
+ * refusal lives in the writers themselves (`fs-guard.ts`).
  *
  * @throws `AssertionError` (from `node:assert/strict`) naming the first path
  * that escapes both allowed roots.
@@ -547,8 +575,8 @@ export function assertAdoptWriteScope(
   paths: readonly string[],
 ): void {
   const allowedRoots = [
-    resolve(targetDir, ".groundwork"),
-    resolve(targetDir, ".claude", "skills", "customize"),
+    resolve(targetDir, GROUNDWORK_DEST_SEGMENTS[0]),
+    resolve(targetDir, ...CLAUDE_DEST_SEGMENTS),
   ];
   for (const path of paths) {
     const resolved = resolve(targetDir, path);
@@ -566,8 +594,6 @@ const STALE_FILE_NAMES = [
   "adoption-decisions.json",
 ] as const;
 type StaleFileName = (typeof STALE_FILE_NAMES)[number];
-
-const RERUN_ADVICE = "fix the cause and re-run the CLI";
 
 /**
  * Which previous `.groundwork/` files a failed run actually removed, worded
@@ -595,14 +621,14 @@ function describeRemoved(removed: readonly StaleFileName[]): string {
  * cause's own message so it stands alone (`formatErrorChain` then skips the
  * redundant `caused by:` line), names only the previous files actually
  * removed, and appends the re-run advice unless the cause already ends
- * with it.
+ * with equivalent advice in any wording ({@link endsWithRerunAdvice}).
  */
 function removedStaleFilesError(
   cause: unknown,
   removed: readonly StaleFileName[],
 ): Error {
   const reason = cause instanceof Error ? cause.message : String(cause);
-  const advice = reason.endsWith(RERUN_ADVICE) ? "" : `; ${RERUN_ADVICE}`;
+  const advice = endsWithRerunAdvice(reason) ? "" : `; ${FIX_AND_RERUN_ADVICE}`;
   return new Error(
     `adopt mode failed (${reason}); ${describeRemoved(removed)}${advice}`,
     { cause },
@@ -632,6 +658,34 @@ function rethrowAfterPointOfNoReturn(
 }
 
 /**
+ * The adopt-mode next step after a `.groundwork/customize/` fallback, chosen
+ * by why it was taken: only an `"entry"` fallback has a project-local copy
+ * of the skill to replace. `undefined` -- which the installer never returns
+ * alongside a `"groundwork"` location -- is a contract violation and throws
+ * rather than guessing.
+ */
+function groundworkNextStep(
+  cause: GuardedInstallResult["fallbackCause"],
+): string {
+  const staged =
+    "Next: the current /customize skill is staged at .groundwork/customize/, but Claude Code does not load skills from there";
+  switch (cause) {
+    case "component":
+      return `${staged}, and no project-local .claude/skills/customize/ copy exists -- fix or replace the .claude path named above so .claude/skills/customize/ is a real directory, copy the staged skill there and then run /customize, or run the m3l-groundwork plugin's own /customize.`;
+    case "entry":
+      return `${staged} -- run the m3l-groundwork plugin's own /customize, or replace the project-local .claude/skills/customize/ copy with the staged one and then run /customize.`;
+    case undefined:
+      throw new Error(
+        'unhandled fallback cause: undefined (a "groundwork" install result must carry fallbackCause)',
+      );
+    default: {
+      const exhaustive: never = cause;
+      throw new Error(`unhandled fallback cause: ${String(exhaustive)}`);
+    }
+  }
+}
+
+/**
  * Surveys an already-established project and writes `.groundwork/` --
  * `inventory.json` and `adoption-report.md`. Never touches a project file:
  * the one addition is a purely-additive, collision-guarded copy of the
@@ -656,12 +710,14 @@ function rethrowAfterPointOfNoReturn(
  * `loadPack` and surveyed (`planConflicts`, `observeWiring`); the pack
  * staging plan (`planPackStaging`) and the baseline staging plan
  * (`planBaselineStaging`) are each computed once, validated, and every path
- * they would write scope-checked; then `.groundwork/`, `.groundwork/packs`
+ * they would write scope-checked; the `/customize` skill's planned install
+ * paths (`plannedCustomizeSkillPaths`, a lexical check of its path
+ * constants) are scope-checked; then `.groundwork/`, `.groundwork/packs`
  * and `.groundwork/baseline` are each refused if they are a symlink. So an
  * invalid pack (a malformed manifest, a prototype-sensitive key in its
  * wiring, an unstageable file tree), an invalid baseline plan, an
- * out-of-scope staging path, or a symlinked staging directory throws with
- * the previous `.groundwork/` untouched.
+ * out-of-scope staging or skill-install path, or a symlinked staging
+ * directory throws with the previous `.groundwork/` untouched.
  *
  * **The point of no return** is the first deletion of a stale
  * `inventory.json`/`adoption-report.md`/`adoption-decisions.json` (in that
@@ -734,6 +790,14 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     tokens,
   );
   assertAdoptWriteScope(options.targetDir, baselinePlan.paths);
+  // A constant drift guard only: it lexically checks paths built from
+  // customize-paths.ts's constants, so it can catch one of those constants
+  // being edited to escape the project, and nothing else -- it reads no
+  // filesystem state, so it cannot detect a symlink or any other runtime
+  // condition. The installer lstat-checks every directory component itself
+  // (and falls back to .groundwork/customize/ when one under .claude/ is a
+  // symlink or not a directory -- see fallbackReason below).
+  assertAdoptWriteScope(options.targetDir, plannedCustomizeSkillPaths());
 
   // A symlinked .groundwork/ or staging directory would redirect a delete
   // or a write outside the project; refuse it before anything is deleted.
@@ -752,6 +816,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
 
   let inventory: Inventory;
   let pluginResult: GuardedInstallResult;
+  let nextStep: string;
   try {
     // The point of no return: the first deletion. A previous run's
     // inventory/report -- and the decisions /customize recorded against
@@ -800,10 +865,25 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       stagedPacks,
     });
 
-    // The /customize skill install is the last step that can fail before
-    // the two .groundwork/ files, so it runs (and is scope-checked) first.
+    // The /customize skill install runs before the two .groundwork/ files
+    // (the report's "wx" write below can still fail after it), so
+    // inventory.json's presence still means the install completed. Its
+    // planned paths were scope-checked before the deletions above.
     pluginResult = installCustomizeSkillGuarded(options.targetDir);
+    // Deliberately no rollback if this throws: what the installer reports it
+    // wrote must sit inside the planned scope, so a failure here means the
+    // installer and customize-paths.ts drifted apart -- a programming error
+    // to surface loudly, not a runtime condition to recover from.
     assertAdoptWriteScope(options.targetDir, pluginResult.filesWritten);
+    // Resolved before the report and inventory are written, so a contract
+    // violation in the result fails the run before inventory.json claims it
+    // completed.
+    nextStep =
+      pluginResult.location === "groundwork"
+        ? // The fresh copy is staged where Claude Code never loads a skill
+          // from, so the generic next step would be false here.
+          groundworkNextStep(pluginResult.fallbackCause)
+        : "Next: open this project in Claude Code and run /customize.";
 
     // The report next, inventory.json last (written atomically): nothing
     // that can fail follows it, so its presence means the run completed.
@@ -854,6 +934,9 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     console.log(
       `installed the /customize skill into ${where} (${pluginResult.filesWritten.length} files)`,
     );
+    if (pluginResult.fallbackReason !== undefined) {
+      console.log(`  ${pluginResult.fallbackReason}`);
+    }
   }
 
   console.log(
@@ -863,7 +946,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
       `\n✓ adoption report ready at ${reportPath}`,
     ),
   );
-  console.log("Next: open this project in Claude Code and run /customize.");
+  console.log(nextStep);
 }
 
 /**

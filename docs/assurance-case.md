@@ -211,13 +211,45 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   rather than fixed here -- adopt mode already never overwrites an existing
   project file (see "Fail-safe defaults" above), so the practical impact is
   a write escaping to a symlink target the project owner themselves created,
-  not an attacker-controlled one. The staging writers add an `lstat`
-  refusal on `.groundwork` and the staging directories (`fs-guard.ts`), but
-  there is a time-of-check-to-time-of-use gap between that `lstat` and the
+  not an attacker-controlled one. The staging writers and the `/customize`
+  skill copy (`plugin.ts`) add an `lstat`
+  refusal on `.groundwork` and the staging directories (`fs-guard.ts`); the
+  skill copy never writes through a symlinked or non-directory component
+  under `.claude` and instead installs into `.groundwork/customize/`, and in
+  adopt mode never removes or replaces an entry the project owns under
+  `.claude/skills/customize/`. It replaces files remove-then-`wx` only in the
+  CLI-owned `.groundwork/customize/` and, in fresh mode under `--force`, in
+  `.claude/skills/customize/`. There is,
+  however, a time-of-check-to-time-of-use gap between those `lstat` checks and the
   later `rmSync` calls and writes: a local attacker able to swap a directory for a symlink in
   that window is outside the threat model this tool accepts, which assumes
   the project directory is not concurrently modified by a hostile local
   process.
+- **The skill-copy symlink guard covers adopt mode, not fresh mode.** In fresh
+  mode `emit.ts` writes the baseline template tree (`mkdirSync` recursive plus
+  `writeFileSync`, with no symlink check) before the skill install runs, so under
+  `--fresh --force` into a non-empty directory whose `.claude` or `.claude/skills`
+  is a symlink, template files are written through the link before the skill
+  guard refuses. Fresh mode is meant for a directory the user controls, and
+  `--force` overwrites into it. Accepted as a documented limit; hardening
+  `emit.ts` is tracked separately.
+- **The skill install is not fully atomic.** A pre-flight refuses a directory
+  sitting at any of the skill's file names before anything is touched, and a
+  failed write removes the files that run created. A failure after the install
+  has begun still cannot restore what it had already replaced, in the CLI-owned
+  `.groundwork/customize/` and in fresh mode under `--force` in
+  `.claude/skills/customize/` (the previous copy's `SKILL.md` and each file
+  removed ahead of its own rewrite; after such a failure on a fresh `--force`
+  re-run the previously loadable skill is gone until a successful re-run, and
+  the error says so). An entry that appears after the pre-flight, for example a
+  directory created concurrently, fails the install part-way. The
+  `.claude/skills/customize/` location is never replaced in adopt mode.
+- **The adopt survey reads project files through symlinks** (for example
+  `survey-harness.ts` reading a skill's `SKILL.md`), so a symlinked skill or
+  agent file can put its frontmatter `name` and `description` from outside
+  the project into `inventory.json` and the report. The read is read-only and
+  limited to those frontmatter fields. Accepted as a documented limit and not
+  changed here.
 - **`merge-json.ts`'s three merge functions write via plain `record[key] = value`**
   with no rejection of the literal key `__proto__` -- a narrow,
   CWE-1321-shaped gap found during the 2026-09 security review (see
