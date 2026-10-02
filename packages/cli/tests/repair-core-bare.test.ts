@@ -184,6 +184,12 @@ describe("repairCoreBare", () => {
   });
 
   afterEach(() => {
+    // Also restores any `process.stderr.write` spy an assertion failure left
+    // installed above its own explicit `mockRestore()` call (see the
+    // EACCES and cleanup-failure tests below) -- without this, a failed
+    // assertion mid-test would leave later tests' own stderr output
+    // swallowed by the still-installed spy for the rest of the file.
+    vi.restoreAllMocks();
     for (const dir of scratchDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -834,6 +840,11 @@ describe("repair-core-bare (hook script)", () => {
   const scratchDirs: string[] = [];
 
   afterEach(() => {
+    // No test in this describe block spies on `process.stderr.write` today
+    // (they all exercise the hook as a real child process), but this keeps
+    // the same safety net as the sibling describe block above in case one
+    // is added here later.
+    vi.restoreAllMocks();
     for (const dir of scratchDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
