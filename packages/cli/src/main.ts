@@ -660,7 +660,8 @@ function rethrowAfterPointOfNoReturn(
 /**
  * The adopt-mode next step after a `.groundwork/customize/` fallback, chosen
  * by why it was taken: only an `"entry"` fallback has a project-local copy
- * of the skill to replace. `undefined` -- which the installer never returns
+ * of the skill to replace. Returned without a `Next: ` prefix and starting
+ * lower-case; each caller adds its own framing. `undefined` -- which the installer never returns
  * alongside a `"groundwork"` location -- is a contract violation and throws
  * rather than guessing.
  */
@@ -668,7 +669,7 @@ function groundworkNextStep(
   cause: GuardedInstallResult["fallbackCause"],
 ): string {
   const staged =
-    "Next: the current /customize skill is staged at .groundwork/customize/, but Claude Code does not load skills from there";
+    "the current /customize skill is staged at .groundwork/customize/, but Claude Code does not load skills from there";
   switch (cause) {
     case "component":
       return `${staged}, and no project-local .claude/skills/customize/ copy exists -- fix or replace the .claude path named above so .claude/skills/customize/ is a real directory, copy the staged skill there and then run /customize, or run the m3l-groundwork plugin's own /customize.`;
@@ -683,6 +684,25 @@ function groundworkNextStep(
       throw new Error(`unhandled fallback cause: ${String(exhaustive)}`);
     }
   }
+}
+
+/**
+ * The report's `## Next step` text for a `"groundwork"` install result: the
+ * fallback reason first, then {@link groundworkNextStep}'s sentence -- the
+ * same order the console prints them in, which the `"component"` text's
+ * "the .claude path named above" depends on. `renderReport` strips one
+ * leading `Next: ` and upper-cases only the text's first character, so the
+ * reason carries that prefix and the sentence after it is capitalized here.
+ * A missing reason keeps the sentence alone rather than printing `undefined`.
+ */
+function groundworkReportNextStep(result: GuardedInstallResult): string {
+  const sentence = groundworkNextStep(result.fallbackCause);
+  const reason = result.fallbackReason;
+  if (reason === undefined) {
+    return `Next: ${sentence}`;
+  }
+  const separator = /[.!?]$/.test(reason) ? " " : ". ";
+  return `Next: ${reason}${separator}${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`;
 }
 
 /**
@@ -725,7 +745,9 @@ function groundworkNextStep(
  * recorded just before. After the deletions, packs and the baseline are
  * staged from the plans already computed (their trees are not walked
  * again), the harness and toolchain are graded, the `/customize` skill is
- * installed and its writes scope-checked, `adoption-report.md` is written,
+ * installed and its writes scope-checked, `adoption-report.md` is written
+ * (its `## Next step` leading with the same sentence the console prints
+ * when the skill fell back to `.groundwork/customize/`),
  * and `inventory.json` is written last (atomically, via a temp file and
  * rename). A failure in any of those steps -- a failed deletion included --
  * is rethrown as an `Error` with the failure as `cause` and its message
@@ -878,19 +900,26 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     // Resolved before the report and inventory are written, so a contract
     // violation in the result fails the run before inventory.json claims it
     // completed.
-    nextStep =
-      pluginResult.location === "groundwork"
-        ? // The fresh copy is staged where Claude Code never loads a skill
-          // from, so the generic next step would be false here.
-          groundworkNextStep(pluginResult.fallbackCause)
-        : "Next: open this project in Claude Code and run /customize.";
+    // The fresh copy is staged where Claude Code never loads a skill from,
+    // so the generic next step would be false there; the report then names
+    // the fallback reason and the same sentence the console prints, in the
+    // console's order. Otherwise the report keeps its own generic sentence.
+    const isGroundwork = pluginResult.location === "groundwork";
+    nextStep = isGroundwork
+      ? `Next: ${groundworkNextStep(pluginResult.fallbackCause)}`
+      : "Next: open this project in Claude Code and run /customize.";
+    const reportNextStep: string | undefined = isGroundwork
+      ? groundworkReportNextStep(pluginResult)
+      : undefined;
 
     // The report next, inventory.json last (written atomically): nothing
     // that can fail follows it, so its presence means the run completed.
     mkdirSync(groundworkDir, { recursive: true });
     // "wx": the path was removed above, so anything there now (a symlink
     // raced in mid-run) makes the write fail instead of being followed.
-    writeFileSync(reportPath, renderReport(inventory), { flag: "wx" });
+    writeFileSync(reportPath, renderReport(inventory, reportNextStep), {
+      flag: "wx",
+    });
   } catch (cause) {
     rethrowAfterPointOfNoReturn(cause, removed);
   }
