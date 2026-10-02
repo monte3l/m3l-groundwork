@@ -78,7 +78,7 @@ runs on every `Bash` call and blocks a command that visibly writes into
 removal of a parent of `src/` such as `rsync -a /tmp/x/ ./` or `rm -rf .`, and
 similar) unless the caller is `test-author` or `code-implementer`. It cannot
 catch an indirect write -- an interpreter running a script from a project
-file, an `eval`, a computed path, a parent of the project root (`rm -rf ..`), a build step, a formatter or fixer
+file, an `eval`, a computed path, a parent of the project root (`rm -rf ..`), a workspace container below the project root (`tools/packages/foo`), a build step, a formatter or fixer
 (`prettier --write`, `eslint --fix`), `git rm`/`git mv`, `find -exec`, `xargs` with a computed operand, `tar`/`curl -o`, a very long
 interpreter call (allowed with a stderr note) -- so hub-and-spoke remains a convention backed by a guard that raises the bar,
 not a proof. To override it deliberately, run the command yourself with the

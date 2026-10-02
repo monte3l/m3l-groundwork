@@ -67,11 +67,14 @@
  * expand to `src`, `tests` or a container (`rm -rf *`); directly under a
  * container it always counts, as it may name a package (`packages/c*`,
  * `packages/cl?`, `packages/[c]li`); directly under a package it counts
- * when it could expand to `src` or `tests` (`packages/cli/*`); anywhere else
+ * when it could expand to `src` or `tests` (`packages/cli/*`), and that slot
+ * decides at any depth (`packages/cli/*\/*`, `*\/*\/*\/x`); anywhere else
  * it never does (`dist/*`, `coverage/*`, `packages/cli/dist/*`).
  * `packages/cli/dist`, `node_modules`, `coverage` and a linked worktree's
- * own root (`.claude/worktrees/<name>`) are not ancestors. A block on an
- * ancestor says so in its message.
+ * own root (`.claude/worktrees/<name>`) are not ancestors. Known limit: an
+ * ancestor of a src/ nested below a non-container first segment
+ * (`.claude/worktrees/foo/packages/cli`) is knowingly not covered. A block
+ * on an ancestor says so in its message.
  * `[[ ... ]]`, `[ ... ]` and `(( ... ))` are lexed as one unit, so a `<`,
  * `>`, `&&` or `||` inside a test expression is never a redirect or a
  * command boundary; a `$(...)`/backtick substitution inside `[[ ]]`/`[ ]`
@@ -775,32 +778,42 @@ function projectRelative(resolved, ctx) {
  * could expand to `src`, `tests` or a container (`*`); under a workspace
  * container it always counts, since it may name a package (`packages/c*`);
  * under a package it counts when it could expand to `src` or `tests`
- * (`packages/cli/*`). Under anything else (`dist/*`, `packages/cli/dist/*`)
- * it never does, and nor does a literal path below a package
- * (`packages/*\/dist`).
+ * (`packages/cli/*`). That same slot -- index 2, directly under a package --
+ * decides at any depth: when it is a glob that could expand to `src` or
+ * `tests`, the operand expands into a package's src/tests however many
+ * segments follow (`packages/cli/*\/*`, `*\/*\/*\/x`). A glob any deeper
+ * (`dist/*`, `packages/cli/dist/*`) never counts, and nor does a literal path
+ * below a package (`packages/*\/dist`).
+ *
+ * Known limit: this is anchored on the operand's own first segment, so an
+ * ancestor of a src/ nested below a NON-container first segment -- a linked
+ * worktree's package (`.claude/worktrees/foo/packages/cli`), or any other
+ * checkout or package tree further down -- is knowingly not covered.
  */
 function containsGuardedTree(segments, globbed) {
   const n = segments.length;
   if (n === 0) return true;
   const first = segments[0];
   const last = segments[n - 1];
-  const container =
-    WORKSPACE_CONTAINERS.includes(first) ||
-    (globbed &&
-      GLOB_CHAR.test(first) &&
-      WORKSPACE_CONTAINERS.some((name) => globMatcher(first).test(name)));
   if (n === 1 && globbed && GLOB_CHAR.test(last)) {
     const matcher = globMatcher(last);
     return [...WORKSPACE_CONTAINERS, ...GUARDED_DIRS].some((name) =>
       matcher.test(name),
     );
   }
-  if (!container || n > 3) return false;
-  if (n <= 2) return n === 1 || !NON_PACKAGE_DIRS.includes(segments[1]);
-  // n === 3: only a final glob directly under a package can name src/tests.
+  const container =
+    WORKSPACE_CONTAINERS.includes(first) ||
+    (globbed &&
+      GLOB_CHAR.test(first) &&
+      WORKSPACE_CONTAINERS.some((name) => globMatcher(first).test(name)));
+  if (!container) return false;
+  if (n === 1) return true;
   if (NON_PACKAGE_DIRS.includes(segments[1])) return false;
-  if (!globbed || !GLOB_CHAR.test(last)) return false;
-  const matcher = globMatcher(last);
+  if (n === 2) return true;
+  // n >= 3: only a glob directly under a package (index 2) can name src/tests.
+  const slot = segments[2];
+  if (!globbed || !GLOB_CHAR.test(slot)) return false;
+  const matcher = globMatcher(slot);
   return GUARDED_DIRS.some((name) => matcher.test(name));
 }
 

@@ -1308,6 +1308,134 @@ describe("findBashWriteToProtectedPath -- GAP 9: a workspace-container name coun
   });
 });
 
+/**
+ * GAP 10 contract tests: `containsGuardedTree`'s glob branch caps out at
+ * `if (!container || n > 3) return false;` -- an operand resolving to FOUR
+ * or more path segments is unconditionally read as allowed, regardless of
+ * whether its first segment is (or globs to) a workspace container and a
+ * later segment could expand to `src`/`tests`. This is a regression from
+ * the GAP 9 fix (commit anchoring the container check to the operand's own
+ * first segment): a 4-segment operand such as `packages/cli/*\/*` -- whose
+ * first segment literally IS the `packages` container and whose third
+ * segment (index 2) is a bare `*` that could expand to `src` or `tests` --
+ * is exactly the shape GAP 3(a)/4(a) already block at 3 segments
+ * (`packages/cli/*`), yet is allowed today purely because it is one segment
+ * longer. Every MUST-BLOCK row below is expected to presently return ALLOW
+ * (null) -- this describe's RED state; `code-implementer` closes the gap by
+ * extending the rule past the `n > 3` cutoff: when the first segment is (or
+ * globs to) a workspace container, a glob segment at index >= 2 that could
+ * expand to `src` or `tests` makes the operand an ancestor, at any depth --
+ * without reopening GAP 9's own fix (a container-shaped name that is not
+ * the operand's own first segment must stay unblocked, regression-locked
+ * below).
+ *
+ * `rm -rf *a` + two more globbed segments is deliberately NOT included as a
+ * MUST-BLOCK row: it is only 3 segments (`["*a", "*", "*"]`), not 4+, so it
+ * is outside this gap's `n > 3` cutoff entirely, and its first segment
+ * `*a` cannot glob-match any `WORKSPACE_CONTAINERS` name (none of
+ * `packages`/`apps`/`libs` end in `a`). Running the pre-GAP-9 hook (commit
+ * `77127ba^`) over it confirms it used to block this command only as a
+ * side effect of the SAME over-blocking bug GAP 9's commit fixed (that
+ * commit's own message cites a package's own build directory and
+ * `docs/packages/old` as the false positives it closed; this one was swept
+ * up in the identical "any segment can be the container" bug, not a
+ * targeted true positive). Its current ALLOW is therefore correct
+ * post-GAP-9 behavior, not a regression, and is locked in below instead.
+ */
+describe("findBashWriteToProtectedPath -- GAP 10: a glob operand of 4+ segments is unconditionally allowed today", () => {
+  const BLOCKED_DEEP_GLOB: [string, string, string][] = [
+    [
+      "rm -rf packages/cli/*/* -- a direct package, a glob at index 2 could expand to src/tests",
+      "rm -rf packages/cli/*/*",
+      "rm",
+    ],
+    [
+      "rm -rf packages/cli/*/*.ts -- same shape, a suffixed glob at index 2 could still expand to src/tests",
+      "rm -rf packages/cli/*/*.ts",
+      "rm",
+    ],
+    [
+      "rm -rf packages/*/*/* -- a glob package name, a glob at index 2 could expand to src/tests",
+      "rm -rf packages/*/*/*",
+      "rm",
+    ],
+    [
+      "rm -rf packages/*/*/*.ts -- same shape, suffixed glob at index 2",
+      "rm -rf packages/*/*/*.ts",
+      "rm",
+    ],
+    [
+      "rm -rf packages/*/[st]*/* -- a character-class glob at index 2 matches both src and tests",
+      "rm -rf packages/*/[st]*/*",
+      "rm",
+    ],
+    [
+      "rm -rf p*/*/*/* -- a globbed first segment could still expand to the packages container",
+      "rm -rf p*/*/*/*",
+      "rm",
+    ],
+    [
+      "rm -rf */*/*/* -- a bare-* first segment could expand to any container",
+      "rm -rf */*/*/*",
+      "rm",
+    ],
+    [
+      "rm -rf */*/*/*.ts -- same shape, suffixed glob at the last segment",
+      "rm -rf */*/*/*.ts",
+      "rm",
+    ],
+    [
+      "rm -rf */*/*/x -- a literal last segment, the blocking glob is at index 2",
+      "rm -rf */*/*/x",
+      "rm",
+    ],
+    [
+      "mv */*/*/* /tmp/ -- an mv SOURCE naming the same 4-segment ancestor shape",
+      "mv */*/*/* /tmp/",
+      "mv",
+    ],
+  ];
+
+  it.each(BLOCKED_DEEP_GLOB)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+
+  const ALLOWED_DEEP_GLOB_REGRESSION: [string, string][] = [
+    [
+      "rm -rf *a/*/* -- 3 segments, outside this gap; first segment '*a' cannot glob-match any workspace container (regression lock, see describe comment)",
+      "rm -rf *a/*/*",
+    ],
+    [
+      "rm -rf packages/*/dist -- GAP 9 regression lock: a package's own build artifact stays unblocked at 3 segments",
+      "rm -rf packages/*/dist",
+    ],
+    [
+      "rm -rf packages/*/coverage -- GAP 9 regression lock: a package's own coverage artifact stays unblocked",
+      "rm -rf packages/*/coverage",
+    ],
+    [
+      "rm -rf */node_modules -- GAP 9 regression lock: a top-level node_modules sweep stays unblocked",
+      "rm -rf */node_modules",
+    ],
+    [
+      "rm -rf docs/packages/old -- GAP 9 regression lock: 'packages' two levels deep is not the operand's own first segment",
+      "rm -rf docs/packages/old",
+    ],
+    [
+      "rm -rf packages/cli/dist -- GAP 9 regression lock: a package's own dist/ is not an ancestor of its src/tests",
+      "rm -rf packages/cli/dist",
+    ],
+    [
+      "rm -rf packages/node_modules -- GAP 9 regression lock: node_modules is never a package",
+      "rm -rf packages/node_modules",
+    ],
+  ];
+
+  it.each(ALLOWED_DEEP_GLOB_REGRESSION)("%s", (_name, command) => {
+    expectAllowed(command);
+  });
+});
+
 describe("findBashWriteToProtectedPath never throws, however malformed the command text", () => {
   it.each([
     ["empty string", ""],
