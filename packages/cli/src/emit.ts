@@ -25,7 +25,7 @@ import { join, relative, dirname, extname, resolve, sep } from "node:path";
 import { restoreDotfilePath } from "./assets.js";
 import {
   assertDirectoryComponent,
-  assertNotSymlink,
+  assertFileDestination,
   FRESH_SYMLINK_ADVICE,
 } from "./fs-guard.js";
 import { applyTokens } from "./tokens.js";
@@ -122,7 +122,7 @@ function assertPlanSafe(
       assertDirectoryComponent(dirPath, FRESH_SYMLINK_ADVICE);
     }
     if (!isDirectory) {
-      assertNotSymlink(join(targetRoot, relPath), FRESH_SYMLINK_ADVICE);
+      assertFileDestination(join(targetRoot, relPath), FRESH_SYMLINK_ADVICE);
     }
   }
 }

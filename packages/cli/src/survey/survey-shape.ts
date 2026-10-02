@@ -7,11 +7,11 @@
  * verdict) for what kind of project this is. `/customize`'s interview step
  * does the inferring; this module only records what is literally on disk.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { walkBounded } from "./fs-walk.js";
 import { readPackageJson } from "./internal/package-json.js";
-import { guardedRead } from "./internal/read-guard.js";
+import { guardedExists, guardedRead } from "./internal/read-guard.js";
 import type {
   KindEvidence,
   ModuleType,
@@ -37,11 +37,14 @@ const FRAMEWORK_DEP_NAMES = [
   "hono",
 ];
 
-function detectPackageManager(dir: string): PackageManager {
-  if (existsSync(join(dir, "pnpm-lock.yaml"))) return "pnpm";
-  if (existsSync(join(dir, "yarn.lock"))) return "yarn";
-  if (existsSync(join(dir, "bun.lockb"))) return "bun";
-  if (existsSync(join(dir, "package-lock.json"))) return "npm";
+function detectPackageManager(
+  dir: string,
+  undetermined: string[],
+): PackageManager {
+  if (guardedExists(join(dir, "pnpm-lock.yaml"), undetermined)) return "pnpm";
+  if (guardedExists(join(dir, "yarn.lock"), undetermined)) return "yarn";
+  if (guardedExists(join(dir, "bun.lockb"), undetermined)) return "bun";
+  if (guardedExists(join(dir, "package-lock.json"), undetermined)) return "npm";
   return "unknown";
 }
 
@@ -68,7 +71,7 @@ function detectMonorepo(
   undetermined: string[],
 ): { tool: MonorepoTool; globs: string[] } {
   const pnpmWorkspacePath = join(dir, "pnpm-workspace.yaml");
-  if (existsSync(pnpmWorkspacePath)) {
+  if (guardedExists(pnpmWorkspacePath, undetermined)) {
     const content = guardedRead(
       pnpmWorkspacePath,
       () => readFileSync(pnpmWorkspacePath, "utf8"),
@@ -82,13 +85,13 @@ function detectMonorepo(
           : extractYamlStringListUnder(content, "packages"),
     };
   }
-  if (existsSync(join(dir, "turbo.json"))) {
+  if (guardedExists(join(dir, "turbo.json"), undetermined)) {
     return { tool: "turbo", globs: [] };
   }
-  if (existsSync(join(dir, "nx.json"))) {
+  if (guardedExists(join(dir, "nx.json"), undetermined)) {
     return { tool: "nx", globs: [] };
   }
-  if (existsSync(join(dir, "lerna.json"))) {
+  if (guardedExists(join(dir, "lerna.json"), undetermined)) {
     return { tool: "lerna", globs: [] };
   }
   const workspaces = packageJson?.["workspaces"];
@@ -137,7 +140,7 @@ function detectNodeVersionPin(
     [".nvmrc", ".nvmrc"],
   ] as const) {
     const path = join(dir, filename);
-    if (!existsSync(path)) continue;
+    if (!guardedExists(path, undetermined)) continue;
     // An unreadable pin file falls through to the next source.
     const content = guardedRead(
       path,
@@ -158,8 +161,8 @@ function detectNodeVersionPin(
 }
 
 function detectSourceLayout(dir: string, undetermined: string[]): SourceLayout {
-  if (existsSync(join(dir, "src"))) return "src";
-  if (existsSync(join(dir, "lib"))) return "lib";
+  if (guardedExists(join(dir, "src"), undetermined)) return "src";
+  if (guardedExists(join(dir, "lib"), undetermined)) return "lib";
   const names = guardedRead(dir, () => readdirSync(dir), undetermined) ?? [];
   const rootEntries = names.filter((name) => /\.(ts|tsx|js|mjs)$/.test(name));
   if (rootEntries.length > 0) return "root";
@@ -177,7 +180,10 @@ function detectTestPlacement(
   dir: string,
   undetermined: string[],
 ): TestPlacement {
-  if (existsSync(join(dir, "tests")) || existsSync(join(dir, "test"))) {
+  if (
+    guardedExists(join(dir, "tests"), undetermined) ||
+    guardedExists(join(dir, "test"), undetermined)
+  ) {
     return "tests-dir";
   }
   if (hasColocatedTests(dir, undetermined)) {
@@ -227,7 +233,7 @@ export function surveyShape(dir: string, undetermined: string[]): ShapeSurvey {
   const monorepo = detectMonorepo(dir, packageJson, undetermined);
 
   return {
-    packageManager: detectPackageManager(dir),
+    packageManager: detectPackageManager(dir, undetermined),
     monorepoTool: monorepo.tool,
     workspaceGlobs: monorepo.globs,
     moduleType: detectModuleType(packageJson),

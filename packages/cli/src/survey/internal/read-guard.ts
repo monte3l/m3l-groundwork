@@ -10,6 +10,8 @@
  * project, and is thrown with the path named and the original chained as
  * `cause`, never folded silently in beside a genuine permission problem.
  */
+import { statSync } from "node:fs";
+import { dirname } from "node:path";
 
 /** The errno codes that mean "this entry exists but this process may not read it". */
 const PERMISSION_CODES = new Set(["EACCES", "EPERM"]);
@@ -89,6 +91,48 @@ export function unreadableNote(path: string, code: string): string {
  */
 export function readFailure(path: string, cause: unknown): SurveyReadError {
   return new SurveyReadError(`could not read ${path}`, { cause });
+}
+
+/**
+ * The errno codes that mean "nothing is at this path": nothing there
+ * (`ENOENT`), an ancestor is a file (`ENOTDIR`), or a symlink that never
+ * resolves (`ELOOP`) -- each of which `existsSync` already answered `false`.
+ */
+const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR", "ELOOP"]);
+
+/**
+ * Whether `path` exists, without `existsSync`'s blind spot: `existsSync`
+ * answers `false` for ANY `stat` failure, so a path under a directory this
+ * process may not enter (`chmod 000`) reads as silently absent. A `stat`
+ * needs search permission on the path's ancestors, never on the path
+ * itself, so a permission failure here is recorded in `undetermined` naming
+ * the enclosing directory (one entry for every probe under it once the
+ * aggregate de-duplicates) and answers `false`; the survey carries on. A
+ * genuinely absent path answers `false` with nothing recorded. Any other
+ * failure throws a {@link SurveyReadError} naming `path`, with the original
+ * as `cause`.
+ *
+ * @example
+ * ```ts
+ * if (!guardedExists(settingsPath, undetermined)) return undefined;
+ * ```
+ */
+export function guardedExists(path: string, undetermined: string[]): boolean {
+  try {
+    statSync(path);
+    return true;
+  } catch (error) {
+    const code = permissionCode(error);
+    if (code !== undefined) {
+      undetermined.push(unreadableNote(dirname(path), code));
+      return false;
+    }
+    const other = errnoCode(error);
+    if (other !== undefined && ABSENT_CODES.has(other)) return false;
+    throw new SurveyReadError(`could not check whether ${path} exists`, {
+      cause: error,
+    });
+  }
 }
 
 /**

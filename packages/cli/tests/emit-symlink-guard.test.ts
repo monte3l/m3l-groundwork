@@ -257,6 +257,56 @@ describe("emitTemplate symlink/non-directory guard (GAP 1)", () => {
     expect(lstatSync(destPath).isSymbolicLink()).toBe(true);
   });
 
+  it("[GAP 1] refuses when a real DIRECTORY (not a symlink) sits where a top-level destination FILE is needed, writing nothing", () => {
+    // "aaa-safe.txt" sorts (and so would be walked) before "tsconfig.json"
+    // under a naive depth-first copy-as-you-go -- same ordering-safety
+    // convention as the non-directory-where-dir-needed case above. Without
+    // the guard, emitTemplate writes "aaa-safe.txt" (and every other file
+    // ordered before the conflict) and only then hits a bare EISDIR from
+    // writeFileSync on "tsconfig.json".
+    writeFileSync(join(sourceDir, "aaa-safe.txt"), "safe\n");
+    writeFileSync(join(sourceDir, "tsconfig.json"), '{"compilerOptions":{}}');
+    const conflictPath = join(targetDir, "tsconfig.json");
+    mkdirSync(conflictPath, { recursive: true });
+    writeFileSync(join(conflictPath, "inner.txt"), "do not touch\n");
+
+    let thrown: unknown;
+    try {
+      emitTemplate(sourceDir, targetDir, {});
+    } catch (error) {
+      thrown = error;
+    }
+
+    expectFreshModeRefusal(thrown, conflictPath);
+    expect(existsSync(join(targetDir, "aaa-safe.txt"))).toBe(false);
+    expect(lstatSync(conflictPath).isDirectory()).toBe(true);
+    expect(readFileSync(join(conflictPath, "inner.txt"), "utf8")).toBe(
+      "do not touch\n",
+    );
+  });
+
+  it("[GAP 1] refuses when a real DIRECTORY sits where a nested destination FILE is needed, writing nothing", () => {
+    mkdirSync(join(sourceDir, "nested"), { recursive: true });
+    writeFileSync(join(sourceDir, "nested", "file.txt"), "hi\n");
+    mkdirSync(join(targetDir, "nested"), { recursive: true });
+    const conflictPath = join(targetDir, "nested", "file.txt");
+    mkdirSync(conflictPath, { recursive: true });
+    writeFileSync(join(conflictPath, "inner.txt"), "do not touch\n");
+
+    let thrown: unknown;
+    try {
+      emitTemplate(sourceDir, targetDir, {});
+    } catch (error) {
+      thrown = error;
+    }
+
+    expectFreshModeRefusal(thrown, conflictPath);
+    expect(lstatSync(conflictPath).isDirectory()).toBe(true);
+    expect(readFileSync(join(conflictPath, "inner.txt"), "utf8")).toBe(
+      "do not touch\n",
+    );
+  });
+
   it("does not guard targetDir itself: a symlinked targetDir still succeeds, writing through to its real location", () => {
     writeFileSync(join(sourceDir, "package.json"), '{"name":"acme"}');
     const realTarget = mkdtempSync(join(tmpdir(), "emit-guard-real-target-"));

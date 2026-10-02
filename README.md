@@ -207,7 +207,7 @@ staged skill into place, or run the plugin's `/customize`. Fresh mode with
 `--force` does replace an existing skill copy. Fresh mode also checks, before
 it writes anything, that no directory below the target directory and no existing
 file the baseline or a `--pack` would write is a symlink (or a non-directory
-where a directory is needed); if one is, it refuses and writes nothing. The
+where a directory is needed); if one is, it refuses and writes nothing (the skill copy keeps its own check, which runs after the baseline is written). The
 target directory itself and its ancestors are not checked.
 
 - **Fresh project:** a short interview (project kind, runtime target, test

@@ -6,9 +6,9 @@
  * so the two collectors cannot disagree about what an unreadable or
  * malformed manifest means.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { guardedRead } from "./read-guard.js";
+import { guardedExists, guardedRead } from "./read-guard.js";
 
 /**
  * Reads `dir/package.json` as an object. Absent is `undefined` with nothing
@@ -26,7 +26,7 @@ export function readPackageJson(
   undetermined: string[],
 ): Record<string, unknown> | undefined {
   const path = join(dir, "package.json");
-  if (!existsSync(path)) return undefined;
+  if (!guardedExists(path, undetermined)) return undefined;
   const content = guardedRead(
     path,
     () => readFileSync(path, "utf8"),

@@ -344,3 +344,65 @@ describe("surveyHarness: an unreadable project file is recorded in undetermined,
     },
   );
 });
+
+describe("[GAP 2a] surveyHarness: an unenterable `.claude` ITSELF (not a child) is a different failure mode than an unenterable child directory", () => {
+  // `existsSync(claudeDir)` succeeds even when `.claude` is chmod 000 (a
+  // `stat` on a path needs execute permission on its PARENT, not on itself),
+  // so `surveyHarness` takes its `present: true` branch -- but every
+  // existsSync-gated read of something INSIDE `.claude` (settings.json,
+  // agents/, skills/, hooks/, rules/, commands/) then needs execute
+  // permission ON `.claude`, which is denied. `existsSync` swallows ANY
+  // error (not just ENOENT) and returns `false`, so each of those silently
+  // reports "absent" with NOTHING recorded in `undetermined` -- unlike the
+  // sibling suite above, which chmods a CHILD directory/file and so still
+  // goes through a real `readdirSync`/`readFileSync` call that properly
+  // distinguishes EACCES.
+  let dir: string;
+  let undetermined: string[];
+  let claudeDir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "harness-unenterable-parent-"));
+    undetermined = [];
+    claudeDir = join(dir, ".claude");
+    mkdirSync(join(claudeDir, "agents"), { recursive: true });
+    writeFileSync(
+      join(claudeDir, "agents", "reviewer.md"),
+      "---\nname: reviewer\ndescription: x\n---\nbody\n",
+    );
+    writeFileSync(join(claudeDir, "settings.json"), "{}");
+  });
+
+  afterEach(() => {
+    try {
+      chmodSync(claudeDir, 0o755);
+    } catch {
+      // already gone or already readable.
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.skipIf(chmodIneffective)(
+    "records an undetermined entry naming `.claude` with EACCES, rather than silently reporting an empty harness (no settingsFile, no agents)",
+    () => {
+      chmodSync(claudeDir, 0o000);
+
+      let thrown: unknown;
+      let survey;
+      try {
+        survey = surveyHarness(dir, undetermined);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeUndefined();
+      expect(
+        undetermined.some(
+          (entry) => entry.includes(claudeDir) && entry.includes("EACCES"),
+        ),
+      ).toBe(true);
+      // Still present -- just unreadable -- never silently "no .claude/ at all".
+      expect(survey?.present).toBe(true);
+    },
+  );
+});

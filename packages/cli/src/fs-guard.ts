@@ -112,6 +112,34 @@ export function assertDirectoryComponent(path: string, advice: string): void {
 }
 
 /**
+ * Throws when `path` exists and cannot be written as a plain file -- a
+ * symlink (dangling or not), which a write would follow, or a directory,
+ * which a write would fail on only after earlier writes had landed. A
+ * missing path or an existing regular file passes. Uses `lstat`, so the
+ * entry itself is inspected, never a link's target.
+ *
+ * @param advice - What the message ends with after `--`, same convention as
+ *   {@link assertNotSymlink}'s.
+ * @throws `Error` naming `path` when it is a symlink or a directory.
+ *
+ * @example
+ * ```ts
+ * import { assertFileDestination, FRESH_SYMLINK_ADVICE } from "./fs-guard.js";
+ *
+ * assertFileDestination("/work/app/tsconfig.json", FRESH_SYMLINK_ADVICE);
+ * ```
+ */
+export function assertFileDestination(path: string, advice: string): void {
+  assertNotSymlink(path, advice);
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  if (stat?.isDirectory() === true) {
+    throw new Error(
+      `refusing to write a file over a directory: ${path} -- ${advice}`,
+    );
+  }
+}
+
+/**
  * Fresh mode's retry instruction. Its target is no longer empty after a
  * failed write, so a plain re-run would adopt it; only `--fresh --force`
  * repeats that run. Never contains adopt mode's bare "re-run the CLI".

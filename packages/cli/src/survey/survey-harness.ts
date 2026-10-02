@@ -7,10 +7,10 @@
  * outline -- so `/customize`'s harness sweep starts from what is actually
  * there instead of assuming the m3l-groundwork baseline.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fieldText, parseFrontmatter } from "../harness/frontmatter.js";
-import { guardedRead } from "./internal/read-guard.js";
+import { guardedExists, guardedRead } from "./internal/read-guard.js";
 import type {
   HarnessAgent,
   HarnessRule,
@@ -42,7 +42,7 @@ function readText(path: string, undetermined: string[]): string | undefined {
 
 /** Lists `dir`'s entry names: `[]` when it is absent, or unreadable (recorded). */
 function listNames(dir: string, undetermined: string[]): string[] {
-  if (!existsSync(dir)) return [];
+  if (!guardedExists(dir, undetermined)) return [];
   return guardedRead(dir, () => readdirSync(dir), undetermined) ?? [];
 }
 
@@ -72,7 +72,7 @@ function surveySkills(
   undetermined: string[],
 ): HarnessSkill[] {
   const skillsDir = join(claudeDir, "skills");
-  if (!existsSync(skillsDir)) return [];
+  if (!guardedExists(skillsDir, undetermined)) return [];
   const entries =
     guardedRead(
       skillsDir,
@@ -83,7 +83,7 @@ function surveySkills(
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const skillFile = join(skillsDir, entry.name, "SKILL.md");
-    if (!existsSync(skillFile)) continue;
+    if (!guardedExists(skillFile, undetermined)) continue;
     const content = readText(skillFile, undetermined);
     if (content === undefined) continue;
     results.push({
@@ -127,7 +127,7 @@ function extractHeadings(content: string): string[] {
 
 /** `CLAUDE.md`'s heading outline: `[]` when it is absent, or unreadable (recorded). */
 function claudeMdHeadings(path: string, undetermined: string[]): string[] {
-  if (!existsSync(path)) return [];
+  if (!guardedExists(path, undetermined)) return [];
   const content = readText(path, undetermined);
   return content === undefined ? [] : extractHeadings(content);
 }
@@ -137,7 +137,9 @@ function claudeMdHeadings(path: string, undetermined: string[]): string[] {
  * read-only. A file or directory that exists but cannot be read
  * (`EACCES`/`EPERM`) is left out of its collection and recorded in
  * `undetermined` -- an unreadable `CLAUDE.md` still counts as present, with
- * no headings. Any other read failure throws, naming the path, with the
+ * no headings. A `.claude/` this process may not enter is still `present`,
+ * with every collection empty and the directory recorded in `undetermined`
+ * -- never reported as an empty harness. Any other read failure throws, naming the path, with the
  * original failure as `cause`.
  *
  * @example
@@ -155,9 +157,9 @@ export function surveyHarness(
 ): HarnessSurvey {
   const claudeDir = join(dir, ".claude");
   const claudeMdPath = join(dir, "CLAUDE.md");
-  const hasClaudeMd = existsSync(claudeMdPath);
+  const hasClaudeMd = guardedExists(claudeMdPath, undetermined);
 
-  if (!existsSync(claudeDir)) {
+  if (!guardedExists(claudeDir, undetermined)) {
     return {
       present: false,
       settingsFile: undefined,
@@ -176,13 +178,18 @@ export function surveyHarness(
 
   return {
     present: true,
-    settingsFile: existsSync(settingsPath) ? "settings.json" : undefined,
+    settingsFile: guardedExists(settingsPath, undetermined)
+      ? "settings.json"
+      : undefined,
     agents: surveyAgents(claudeDir, undetermined),
     skills: surveySkills(claudeDir, undetermined),
     hooks: surveyHooks(claudeDir, undetermined),
     rules: surveyRules(claudeDir, undetermined),
     commands: surveyCommands(claudeDir, undetermined),
-    hasSettingsLocal: existsSync(join(claudeDir, "settings.local.json")),
+    hasSettingsLocal: guardedExists(
+      join(claudeDir, "settings.local.json"),
+      undetermined,
+    ),
     hasClaudeMd,
     claudeMdHeadings: claudeMdHeadings(claudeMdPath, undetermined),
   };

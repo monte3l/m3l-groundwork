@@ -10,10 +10,10 @@
  * it never inlines a doc's content itself, which would make the survey's
  * own output as large as the docs it's indexing.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { walkBounded } from "./fs-walk.js";
-import { guardedRead } from "./internal/read-guard.js";
+import { guardedExists, guardedRead } from "./internal/read-guard.js";
 import type { DocFile, DocsSurvey } from "./types.js";
 
 const NAMED_ROOT_CANDIDATES = ["README.md", "CONTRIBUTING.md"];
@@ -59,7 +59,7 @@ function collectRootMarkdown(dir: string, undetermined: string[]): DocFile[] {
   const paths: string[] = [];
   for (const name of NAMED_ROOT_CANDIDATES) {
     const path = join(dir, name);
-    if (existsSync(path)) paths.push(path);
+    if (guardedExists(path, undetermined)) paths.push(path);
   }
   for (const entry of walkBounded(dir, 0, undetermined)) {
     if (!entry.isDirectory && /^STYLE.*\.md$/i.test(entry.relPath)) {
@@ -76,7 +76,7 @@ function collectNamedDirectories(
   const paths: string[] = [];
   for (const relDir of NAMED_DIR_CANDIDATES) {
     const absDir = join(dir, relDir);
-    if (!existsSync(absDir)) continue;
+    if (!guardedExists(absDir, undetermined)) continue;
     for (const entry of walkBounded(absDir, 2, undetermined)) {
       if (!entry.isDirectory && entry.relPath.endsWith(".md")) {
         paths.push(entry.path);
