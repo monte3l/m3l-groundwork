@@ -32,6 +32,14 @@ name: Claude PR Review
 # the `post` job fails on any API error other than an inline comment
 # GitHub can't anchor (HTTP 422), which is folded into the summary instead.
 #
+# One run is deliberately skipped: claude-code-action will not run on a PR
+# that edits this very file (its copy must match the default branch's, a
+# guard against a PR rewriting its own reviewer). It logs a warning and exits
+# success with no outputs, so the `gate` step tells that case apart from a
+# real empty result -- no `conclusion` AND this file differs from the base --
+# and `post` is skipped with a notice. Any other empty result fails `review`.
+# A PR touching this file therefore gets no review until it merges.
+#
 # `--disallowedTools` keeps subagents and writes off in `review`, and the job
 # has no write token at all (contents/pull-requests read), so a prompt
 # injected through a PR's contents can at worst return a wrong review, not
@@ -71,6 +79,7 @@ jobs:
       id-token: write # see claude.yml for why this is needed regardless of auth method
     outputs:
       review: ${{ steps.claude.outputs.structured_output }}
+      skipped: ${{ steps.gate.outputs.skipped }}
     steps:
       # Full history, not depth 1: the prompt tells Claude to `git diff` the
       # base against the head, and a shallow clone has no base to diff.
@@ -183,9 +192,35 @@ jobs:
               earlier findings are already on the PR. Only use lines that
               appear in the diff, since GitHub rejects any other.
 
+      # claude-code-action refuses to run on a PR that edits its own workflow
+      # file (the file must match the default branch's copy), logs a warning
+      # and still exits success with no outputs -- a green job with no review.
+      # That one case is expected, so it is detected by two independent facts:
+      # the action set no `conclusion` AND this PR really changes this file.
+      # Any other empty result is a failure, never a quiet pass.
+      - id: gate
+        env:
+          CONCLUSION: ${{ steps.claude.outputs.conclusion }}
+          REVIEW: ${{ steps.claude.outputs.structured_output }}
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REVIEW" ]; then
+            echo "skipped=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$CONCLUSION" ] \
+            && ! git diff --quiet "$BASE" HEAD -- .github/workflows/claude-pr-review.yml; then
+            echo "::notice::Claude was skipped: this PR edits claude-pr-review.yml, so claude-code-action will not run it until it merges. No review is posted."
+            echo "skipped=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::error::Claude returned no structured review (conclusion: '${CONCLUSION:-none}')."
+          exit 1
+
   post:
     needs: review
-    if: needs.review.result == 'success'
+    if: needs.review.result == 'success' && needs.review.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

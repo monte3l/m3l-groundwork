@@ -136,6 +136,13 @@ diff`/`view`, `git diff`/`log`/`show`; the checkout is `fetch-depth: 0` so
   de-duplicated against earlier ones, folds any inline finding GitHub
   rejects with HTTP 422 into the summary, and fails on every other API
   error. Review JSON and comment text reach its script only through `env:`.
+  A PR that edits `claude-pr-review.yml` itself gets no review: the action
+  refuses to run a workflow that differs from the default branch's copy and
+  exits green with no outputs. `review`'s `gate` step recognizes exactly that
+  (no `conclusion` and the file differs from the base), emits a notice and
+  skips `post`; any other empty result fails the job. Don't treat that
+  skip as a regression, and verify a change to this file on the first PR
+  after it merges, not on its own PR.
   `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs (the
   changesets version-PR, Dependabot) and fork PRs explicitly, rather than
   relying on the action's own internal bot/permission checks, so a run
