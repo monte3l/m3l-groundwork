@@ -31,7 +31,6 @@ import {
   STAGED_SUFFIX,
   plannedBaselineStagingPaths,
   stageBaselineAdditions,
-  toPosixPath,
 } from "../src/baseline-stage.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -584,14 +583,6 @@ describe("stageBaselineAdditions", () => {
       expect(
         existsSync(join(groundworkDir, STAGED_BASELINE_DIR, "only.txt.staged")),
       ).toBe(true);
-    });
-  });
-
-  describe("toPosixPath", () => {
-    it("replaces every backslash with a forward slash", () => {
-      expect(toPosixPath("a\\b\\c.txt")).toBe("a/b/c.txt");
-      expect(toPosixPath("already/posix.txt")).toBe("already/posix.txt");
-      expect(toPosixPath("")).toBe("");
     });
   });
 

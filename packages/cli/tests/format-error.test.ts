@@ -9,7 +9,7 @@
  * `src/format-error.ts`.
  */
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { formatErrorChain } from "../src/format-error.js";
+import { escapeControls, formatErrorChain } from "../src/format-error.js";
 
 describe("formatErrorChain", () => {
   it("types as (error: unknown) => string", () => {
@@ -1010,5 +1010,107 @@ describe("formatErrorChain: terminal-injection hardening", () => {
     const message = "a\tb é 日本語 😀";
 
     expect(formatErrorChain(new Error(message))).toBe(message);
+  });
+});
+
+/**
+ * Bidi-override escaping: beyond the C0/DEL/C1 set above, every code point in
+ * U+202A-U+202E (the explicit directional-embedding/override controls: LRE,
+ * RLE, PDF, LRO, RLO) and U+2066-U+2069 (the explicit directional-isolate
+ * controls: LRI, RLI, FSI, PDI) is escaped as a 4-digit lowercase-hex
+ * `\uNNNN` literal, distinct from the 2-digit `\xNN` used for C0/C1 controls
+ * -- the same Trojan Source class of attack (CVE-2021-42574) applied to a
+ * rendered error message/file name instead of source code. U+2029 (PS)
+ * stays a line break (already covered above); U+200E/U+200F (LRM/RLM),
+ * U+2060 (word joiner), U+202F (narrow no-break space), U+2065 (unassigned)
+ * and U+206A (inhibit symmetric swapping, just past the isolate range) are
+ * deliberately left unescaped and must pass through unchanged.
+ */
+describe("escapeControls / formatErrorChain: bidi-override control escaping", () => {
+  /** Every code point in the two escaped ranges, each paired with its expected `\\uNNNN` literal. */
+  function escapedBidiCodepoints(): [code: number, literal: string][] {
+    const out: [number, string][] = [];
+    for (const [start, end] of [
+      [0x202a, 0x202e],
+      [0x2066, 0x2069],
+    ] as const) {
+      for (let c = start; c <= end; c++) {
+        out.push([c, `\\u${c.toString(16).padStart(4, "0")}`]);
+      }
+    }
+    return out;
+  }
+
+  const ESCAPED_BIDI = escapedBidiCodepoints();
+
+  it("escapes every U+202A-U+202E and U+2066-U+2069 code point as a 4-digit lowercase \\uNNNN via escapeControls", () => {
+    for (const [code, literal] of ESCAPED_BIDI) {
+      const ch = String.fromCodePoint(code);
+      expect(escapeControls(`a${ch}b`)).toBe(`a${literal}b`);
+    }
+  });
+
+  it.each(ESCAPED_BIDI)(
+    "escapes U+%s as %s inside a top-level Error message via formatErrorChain",
+    (code, literal) => {
+      const ch = String.fromCodePoint(code);
+      const result = formatErrorChain(new Error(`a${ch}b`));
+      expect(result).toBe(`a${literal}b`);
+      expect(result.includes(ch)).toBe(false);
+    },
+  );
+
+  it.each(ESCAPED_BIDI)(
+    "escapes U+%s as %s inside a chained cause's message",
+    (code, literal) => {
+      const ch = String.fromCodePoint(code);
+      const top = new Error("top failure", {
+        cause: new Error(`bad${ch}name`),
+      });
+      const result = formatErrorChain(top);
+      expect(result).toBe(
+        ["top failure", `  caused by: bad${literal}name`].join("\n"),
+      );
+    },
+  );
+
+  it("escapes an embedded RLO (U+202E) inside a file name in the top-level message, the classic bidi-spoofing shape", () => {
+    const malicious = 'cannot read file "bad\u202eexe.txt"';
+    const result = formatErrorChain(new Error(malicious));
+
+    expect(result).toBe('cannot read file "bad\\u202eexe.txt"');
+    expect(result.includes("\u202e")).toBe(false);
+  });
+
+  it("still treats U+2029 (PS) as a line break, not as a bidi-style \\u escape", () => {
+    const result = formatErrorChain(new Error("a b"));
+
+    expect(result.split("\n")).toEqual(["a", "  | b"]);
+    expect(result).not.toContain("\\u2029");
+  });
+
+  describe.each([
+    ["U+200E (LRM)", 0x200e],
+    ["U+200F (RLM)", 0x200f],
+    ["U+2060 (word joiner)", 0x2060],
+    [
+      "U+202F (narrow no-break space, just past the escaped 202A-202E range)",
+      0x202f,
+    ],
+    ["U+2065 (unassigned, inside the gap before the isolate range)", 0x2065],
+    [
+      "U+206A (inhibit symmetric swapping, just past the escaped isolate range)",
+      0x206a,
+    ],
+  ])("%s is deliberately left unescaped", (_label, code) => {
+    const ch = String.fromCodePoint(code);
+
+    it("passes through escapeControls unchanged", () => {
+      expect(escapeControls(`a${ch}b`)).toBe(`a${ch}b`);
+    });
+
+    it("passes through formatErrorChain unchanged", () => {
+      expect(formatErrorChain(new Error(`a${ch}b`))).toBe(`a${ch}b`);
+    });
   });
 });

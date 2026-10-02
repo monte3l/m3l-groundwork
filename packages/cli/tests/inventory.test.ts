@@ -31,7 +31,7 @@ import type {
   PackSurvey,
   StagedBaseline,
 } from "../src/inventory.js";
-import { toPosixPath } from "../src/baseline-stage.js";
+import { toPosixPath } from "../src/assets.js";
 import type { StagedBaselineFile } from "../src/baseline-stage.js";
 import type { StagedPack, StagedPackFile } from "../src/pack-stage.js";
 import type { FileConflict } from "../src/conflicts.js";

@@ -39,5 +39,6 @@ try {
       },
     },
     (e) => e instanceof CliUsageError,
+    (process.env["M3L_DEBUG"] ?? "") !== "",
   );
 }

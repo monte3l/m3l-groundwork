@@ -252,27 +252,49 @@ function splitLines(text: string): string[] {
 }
 
 /**
+ * Whether code unit `code` is a bidi embedding/override (U+202A-U+202E: LRE,
+ * RLE, PDF, LRO, RLO) or isolate (U+2066-U+2069: LRI, RLI, FSI, PDI) control
+ * -- the Trojan Source class (CVE-2021-42574), which can make a terminal
+ * display text in an order other than its bytes.
+ */
+function isBidiControl(code: number): boolean {
+  return (
+    (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)
+  );
+}
+
+/**
  * Whether code unit `code` is escaped: a C0 control other than TAB
- * (U+0000-U+001F except U+0009), DEL (U+007F), or a C1 control other than
- * NEL (U+0080-U+009F except U+0085). Every one of these is a single UTF-16
- * code unit, so a surrogate half never matches.
+ * (U+0000-U+001F except U+0009), DEL (U+007F), a C1 control other than
+ * NEL (U+0080-U+009F except U+0085), or an {@link isBidiControl} code unit.
+ * Every one of these is a single UTF-16 code unit, so a surrogate half never
+ * matches.
  */
 function isEscapedControl(code: number): boolean {
   return (
     (code <= 0x1f && code !== 0x09) ||
     code === 0x7f ||
-    (code >= 0x80 && code <= 0x9f && code !== 0x85)
+    (code >= 0x80 && code <= 0x9f && code !== 0x85) ||
+    isBidiControl(code)
   );
 }
 
-/** `line` with every {@link isEscapedControl} code unit replaced by the literal `\xNN` (lowercase hex). */
+/**
+ * `line` with every {@link isEscapedControl} code unit replaced by a literal
+ * escape in lowercase hex: `\uNNNN` (four digits) for a bidi control,
+ * `\xNN` (two digits) for every other one.
+ */
 function escapeLine(line: string): string {
   let out = "";
   let start = 0;
   for (let i = 0; i < line.length; i++) {
     const code = line.charCodeAt(i);
     if (isEscapedControl(code)) {
-      out += `${line.slice(start, i)}\\x${code.toString(16).padStart(2, "0")}`;
+      const hex = code.toString(16);
+      const escape = isBidiControl(code)
+        ? `\\u${hex.padStart(4, "0")}`
+        : `\\x${hex.padStart(2, "0")}`;
+      out += `${line.slice(start, i)}${escape}`;
       start = i + 1;
     }
   }
@@ -286,13 +308,18 @@ function escapeLine(line: string): string {
  * U+0009), DEL (U+007F) and every C1 control except NEL (U+0080-U+009F
  * except U+0085) is replaced by the literal text `\xNN`, lowercase two-digit
  * hex -- so an ESC renders as `\x1b` and cannot start an escape sequence.
- * TAB and every other character pass through unchanged.
+ * Every bidi embedding/override and isolate control (U+202A-U+202E,
+ * U+2066-U+2069) is replaced by the literal text `\uNNNN`, lowercase
+ * four-digit hex -- so an RLO renders as `\u202e` and cannot reorder what
+ * the terminal displays. TAB and every other character pass through
+ * unchanged.
  *
  * @example
  * ```ts
  * import { escapeControls } from "./format-error.js";
  *
  * escapeControls("bad\u001b[2J\rline two"); // "bad\\x1b[2J\nline two"
+ * escapeControls("bad\u202eexe.txt"); // "bad\\u202eexe.txt"
  * ```
  */
 export function escapeControls(text: string): string {
@@ -304,8 +331,8 @@ function isBlank(message: string): boolean {
   return splitLines(message).every((line) => line.trim() === "");
 }
 
-/** What the top line shows in place of a blank message: an `Error`'s non-blank `name` (read once, safely), otherwise `(empty message)`. */
-function blankLabel(node: Inspected): string {
+/** An `Error`'s `name` when it is a readable, non-blank string (read once, safely), otherwise `undefined`. */
+function readableName(node: Inspected): string | undefined {
   if (node.kind === "aggregate" || node.kind === "error") {
     try {
       const name: unknown = node.value.name;
@@ -316,7 +343,121 @@ function blankLabel(node: Inspected): string {
       // Same rationale as inspect(): never let the report itself throw.
     }
   }
-  return EMPTY_MESSAGE;
+  return undefined;
+}
+
+/** What the top line shows in place of a blank message: an `Error`'s {@link readableName}, otherwise `(empty message)`. */
+function blankLabel(node: Inspected): string {
+  return readableName(node) ?? EMPTY_MESSAGE;
+}
+
+/**
+ * The `Name: ` prefix {@link formatFatalError} gives the top line: an
+ * `Error`'s {@link readableName} other than the generic `Error` (which adds
+ * nothing), every line break in it rendered as a literal `\n` and every
+ * other control escaped as {@link escapeControls} describes, so the prefix
+ * stays on one line; `""` when there is no such name.
+ */
+function namePrefix(node: Inspected): string {
+  const name = readableName(node);
+  if (name === undefined || name === "Error") {
+    return "";
+  }
+  return `${splitLines(name).map(escapeLine).join("\\n")}: `;
+}
+
+/** Most `stack` lines {@link formatFatalError} prints before the rest collapse into one `... and N more` line. */
+const MAX_STACK_LINES = 50;
+
+/** Whether `line` looks like a V8 stack frame (`    at ...`). */
+function isFrameLine(line: string): boolean {
+  return /^\s*at /.test(line);
+}
+
+/**
+ * The header V8 puts on an `Error`'s `stack`, built the way
+ * `Error.prototype.toString` builds it (`Name: message`, just the name when
+ * the message is empty, just the message when the name is), or `undefined`
+ * when `name` or `message` cannot be read or is neither a string nor
+ * `undefined`.
+ */
+function stackHeader(error: Error): string | undefined {
+  let rawName: unknown;
+  let rawMessage: unknown;
+  try {
+    rawName = error.name;
+    rawMessage = error.message;
+  } catch {
+    // Same rationale as inspect(): never let the report itself throw.
+    return undefined;
+  }
+  const name = rawName === undefined ? "Error" : rawName;
+  const message = rawMessage === undefined ? "" : rawMessage;
+  if (typeof name !== "string" || typeof message !== "string") {
+    return undefined;
+  }
+  if (name === "") {
+    return message;
+  }
+  return message === "" ? name : `${name}: ${message}`;
+}
+
+/**
+ * `raw` (a stack's lines) without its header: as many leading lines as
+ * {@link stackHeader} occupies when the stack starts with exactly those
+ * lines -- so a message line shaped like a frame is still dropped --
+ * otherwise every line before the first {@link isFrameLine}, or none when
+ * there is no frame line.
+ */
+function withoutHeader(raw: readonly string[], error: Error): string[] {
+  const header = stackHeader(error);
+  if (header !== undefined) {
+    const headerLines = splitLines(header);
+    if (headerLines.every((line, i) => raw[i] === line)) {
+      return raw.slice(headerLines.length);
+    }
+  }
+  const firstFrame = raw.findIndex(isFrameLine);
+  return firstFrame === -1 ? [...raw] : raw.slice(firstFrame);
+}
+
+/**
+ * The top value's `stack` as printable lines: read once, only off an
+ * `Error`, and only when it is a string (a throwing getter or a non-string
+ * yields none). V8's `Name: message` header, already printed as the chain's
+ * top line, is dropped by position (see {@link withoutHeader}), falling
+ * back to dropping the lines before the first `at ` frame when the stack
+ * does not start with that header; a stack with neither is kept whole.
+ * Trailing empty lines are dropped, every line is control-escaped like a
+ * message, and at most {@link MAX_STACK_LINES} are kept, the rest
+ * collapsing into one `    ... and N more` line.
+ */
+function stackLines(node: Inspected): string[] {
+  if (node.kind !== "aggregate" && node.kind !== "error") {
+    return [];
+  }
+  let stack: unknown;
+  try {
+    stack = node.value.stack;
+  } catch {
+    // Same rationale as inspect(): never let the report itself throw.
+    return [];
+  }
+  if (typeof stack !== "string") {
+    return [];
+  }
+  const lines = withoutHeader(splitLines(stack), node.value).map(escapeLine);
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  if (lines.length <= MAX_STACK_LINES) {
+    return lines;
+  }
+  const omitted = lines.length - MAX_STACK_LINES;
+  return [
+    ...lines.slice(0, MAX_STACK_LINES),
+    `    ... and ${String(omitted)} more`,
+  ];
 }
 
 /**
@@ -358,13 +499,14 @@ function causedByLines(message: string, depth: number): string[] {
  * empty lines are dropped. Every line of every message -- the top message's
  * first line, any cause at any depth, a non-`Error`'s `String(value)` -- is
  * then control-escaped exactly as {@link escapeControls} describes (every C0
- * control but TAB, DEL, every C1 control but NEL become `\xNN`), so no
+ * control but TAB, DEL, every C1 control but NEL become `\xNN`; every bidi
+ * control in U+202A-U+202E and U+2066-U+2069 becomes `\uNNNN`), so no
  * message can emit a terminal escape sequence. A top message that is empty
  * or whitespace-only renders as the `Error`'s `name` instead (when that is
  * a readable, non-blank string), otherwise as `(empty message)`, so the
- * first line is never blank. An `AggregateError`'s `errors` are each listed as a
- * `caused by:` line at the next depth (after its own `cause`, if any); an
- * `errors` property that is not an array is ignored. At most 32 `errors`
+ * first line is never blank. An `AggregateError`'s `errors` are each listed
+ * as a `caused by:` line at the next depth (after its own `cause`, if any);
+ * an `errors` property that is not an array is ignored. At most 32 `errors`
  * members are printed per parent; the rest collapse into one
  * `... and N more` line at the children's indent. A `cause` never counts
  * against that cap, so it is always printed.
@@ -399,13 +541,59 @@ function causedByLines(message: string, depth: number): string[] {
  * ```
  */
 export function formatErrorChain(error: unknown): string {
+  return renderChain(error, false);
+}
+
+/**
+ * Formats `error` for the CLI's fatal-error report: exactly
+ * {@link formatErrorChain}'s text, with two optional additions.
+ *
+ * - `withName`: when `error` is an `Error` whose `name` is a readable,
+ *   non-blank string other than the generic `Error`, and its message is not
+ *   blank, the top line is prefixed `<name>: ` (`TypeError: boom`), the
+ *   name control-escaped like a message and any line break in it rendered
+ *   as a literal `\n`. A blank message already renders as the name alone,
+ *   so it gets no prefix; `caused by:` lines never do.
+ * - `withStack`: when `error` is an `Error` whose `stack` (read once) is a
+ *   string, its lines are appended after the chain -- minus V8's
+ *   `Name: message` header, which repeats the top line. The header is
+ *   dropped by position: as many leading lines as `Name: message` spans
+ *   when the stack starts with exactly those lines (so a message line
+ *   shaped like an `at ` frame never reappears), otherwise every line
+ *   before the first `at ` frame. Each line is control-escaped like a
+ *   message, at most {@link MAX_STACK_LINES} of them, the rest collapsing
+ *   into one `... and N more` line. A missing, non-string or throwing
+ *   `stack` appends nothing.
+ *
+ * Never throws, like {@link formatErrorChain}.
+ *
+ * @example
+ * ```ts
+ * import { formatFatalError } from "./format-error.js";
+ *
+ * formatFatalError(new TypeError("bad input"), { withName: true, withStack: false });
+ * // "TypeError: bad input"
+ * ```
+ */
+export function formatFatalError(
+  error: unknown,
+  options: { readonly withName: boolean; readonly withStack: boolean },
+): string {
+  const chain = renderChain(error, options.withName);
+  const stack = options.withStack ? stackLines(inspect(error)) : [];
+  return stack.length === 0 ? chain : `${chain}\n${stack.join("\n")}`;
+}
+
+/** {@link formatErrorChain}'s rendering, its top line prefixed with {@link namePrefix} when `withName` is set and the top message is not blank. */
+function renderChain(error: unknown, withName: boolean): string {
   const top = inspect(error);
   const topMessage = messageOf(top);
+  const blank = isBlank(topMessage);
   // Display only: suppression below still compares against the real message.
   const lines: string[] = messageLines(
-    isBlank(topMessage) ? blankLabel(top) : topMessage,
+    blank ? blankLabel(top) : topMessage,
     0,
-    "",
+    withName && !blank ? namePrefix(top) : "",
   );
   const seen = new Set<object>();
   if (isObjectLike(error)) {
