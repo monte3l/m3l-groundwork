@@ -664,6 +664,340 @@ describe("findBashWriteToProtectedPath -- test-expression opaque-unit regression
   });
 });
 
+/**
+ * GAP 3(a) contract tests: the hook's own documented FALSE NEGATIVES list
+ * (see this file's header comment) currently states "a write into an
+ * ANCESTOR of a guarded directory: only the operand itself is tested" and
+ * gives exactly these examples as passing today. That must close: a
+ * cp/rsync/install/mv DESTINATION, or an rm/mv operand, naming the project
+ * root, `packages`, `packages/<pkg>`, or any other path that itself
+ * CONTAINS a guarded directory beneath it (including a glob whose literal
+ * prefix is such an ancestor) must now be blocked the same way a direct
+ * `packages/cli/src/a.ts` operand already is.
+ *
+ * Every MUST-BLOCK row below is expected to presently return ALLOW (null)
+ * -- that is this suite's RED state; `code-implementer` closes the gap.
+ * The MUST-ALLOW rows lock in the surrounding behavior (source operands,
+ * reads, and removals genuinely outside any guarded tree) that the fix
+ * must not regress.
+ */
+describe("findBashWriteToProtectedPath -- GAP 3(a): ancestor-of-guarded-directory writes/removals", () => {
+  const BLOCKED_ANCESTOR: [string, string, string][] = [
+    [
+      "rsync -a from an external source into a package dir (nested layout)",
+      "rsync -a /tmp/pkg/ packages/cli/",
+      "rsync",
+    ],
+    [
+      "cp -r from an external source into a package dir (nested layout)",
+      "cp -r /tmp/pkg/. packages/cli/",
+      "cp",
+    ],
+    ["mv a whole package dir out of the tree", "mv packages/cli /tmp", "mv"],
+    ["rm -rf a whole package dir", "rm -rf packages/cli", "rm"],
+    ["rm -rf the project root via a glob", "rm -rf ./*", "rm"],
+    ["rm -rf the project root itself", "rm -rf .", "rm"],
+    ["rm -rf the project root via a bare glob", "rm -rf *", "rm"],
+    [
+      "mv the whole packages/ directory out of the tree",
+      "mv packages /tmp",
+      "mv",
+    ],
+    ["rm -r the whole packages/ directory", "rm -r packages", "rm"],
+    ["rm -rf every package via a glob", "rm -rf packages/*", "rm"],
+    [
+      "rm -rf everything inside one package via a glob",
+      "rm -rf packages/cli/*",
+      "rm",
+    ],
+  ];
+
+  it.each(BLOCKED_ANCESTOR)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+
+  // Flat-layout equivalents -- the emitted templates/core baseline guards
+  // src/** and tests/** directly under the project root, with no
+  // packages/<pkg> nesting, but it is the SAME pure function (isProtectedPath
+  // matches a bare "src/"/"tests/" segment too): the project root itself is
+  // the ancestor of its own src/tests there.
+  const BLOCKED_ANCESTOR_FLAT: [string, string, string][] = [
+    [
+      "rsync -a into the project root (flat layout)",
+      "rsync -a /tmp/x/ .",
+      "rsync",
+    ],
+    [
+      "rsync -a into the project root with a trailing slash (flat layout)",
+      "rsync -a /tmp/x/ ./",
+      "rsync",
+    ],
+    [
+      "cp -r into the project root by absolute path (flat layout)",
+      `cp -r /tmp/x/. ${PROJECT_DIR}`,
+      "cp",
+    ],
+  ];
+
+  it.each(BLOCKED_ANCESTOR_FLAT)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+
+  const ALLOWED_ANCESTOR: [string, string][] = [
+    [
+      "cp's SOURCE operand is an ancestor, never checked",
+      "cp -r packages/cli /tmp/x",
+    ],
+    [
+      "rsync's SOURCE operand is an ancestor, never checked",
+      "rsync -a packages/cli/ /tmp/backup/",
+    ],
+    ["a plain read (ls) of an ancestor path", "ls packages/cli"],
+    ["a plain read (cat) of an ancestor path", "cat packages/cli"],
+    [
+      "tar reading an ancestor path is not a recognised write tool",
+      "tar czf /tmp/x.tgz packages/cli",
+    ],
+    ["rm -rf outside any guarded tree (node_modules)", "rm -rf node_modules"],
+    ["rm -rf outside any guarded tree (dist)", "rm -rf dist"],
+    [
+      "rm -rf a package's own dist/ is not an ancestor of src/tests",
+      "rm -rf packages/cli/dist",
+    ],
+    [
+      "rm -rf a worktree directory is not an ancestor of src/tests",
+      "rm -rf .claude/worktrees/x",
+    ],
+    ["rm -rf outside any guarded tree (coverage)", "rm -rf coverage"],
+    [
+      "rm -rf a package's own node_modules/ is not an ancestor of src/tests",
+      "rm -rf packages/cli/node_modules",
+    ],
+    ["rm -rf a path entirely outside the project", "rm -rf /tmp/x"],
+  ];
+
+  it.each(ALLOWED_ANCESTOR)("%s", (_name, command) => {
+    expectAllowed(command);
+  });
+});
+
+/**
+ * GAP 3(b) contract tests: two more documented FALSE NEGATIVES close here --
+ * "`php` is screened only for `rename(` (no `file_put_contents` or
+ * `fopen`)" and "an interpreter's delete calls (`fs.rmSync`, `os.remove`,
+ * `shutil.rmtree`, `Path.unlink`) are not write verbs here". Each MUST-BLOCK
+ * row is expected to presently return ALLOW (null); the `os.rename`/
+ * `renameSync` rows are regression locks (already a recognised write verb
+ * today, kept green across the fix).
+ */
+describe("findBashWriteToProtectedPath -- GAP 3(b): php write verbs and interpreter delete verbs", () => {
+  const BLOCKED_DELETE_AND_PHP: [string, string, string][] = [
+    // php -- file_put_contents and a write-mode fopen are write calls.
+    [
+      "php -r inline file_put_contents against a guarded path",
+      "php -r \"file_put_contents('packages/cli/src/a.ts', 'x');\"",
+      "php",
+    ],
+    [
+      "php -r inline fopen in write mode against a guarded path",
+      "php -r \"fopen('packages/cli/tests/a.ts', 'w');\"",
+      "php",
+    ],
+    [
+      "php -r inline fopen in append mode against a guarded path",
+      "php -r \"fopen('packages/cli/src/a.ts', 'a');\"",
+      "php",
+    ],
+
+    // node -- fs's delete/rename verbs against a guarded path.
+    [
+      "node -e inline fs.rmSync against a guarded path",
+      `node -e "${NODE_LOAD_FS_CALL}'fs').rmSync('packages/cli/src/a.ts')"`,
+      "node",
+    ],
+    [
+      "node -e inline fs.unlinkSync against a guarded path",
+      `node -e "${NODE_LOAD_FS_CALL}'fs').unlinkSync('packages/cli/src/a.ts')"`,
+      "node",
+    ],
+    [
+      "node -e inline fs.rmdirSync against a guarded path",
+      `node -e "${NODE_LOAD_FS_CALL}'fs').rmdirSync('packages/cli/tests/fixtures')"`,
+      "node",
+    ],
+    [
+      "node -e inline fs.renameSync against a guarded path (already a write verb -- regression lock)",
+      `node -e "${NODE_LOAD_FS_CALL}'fs').renameSync('packages/cli/src/a.ts','/tmp/x')"`,
+      "node",
+    ],
+
+    // python -- os's and shutil's delete/rename/move verbs, and
+    // Path(...).unlink(), against a guarded path.
+    [
+      "python3 -c inline os.remove against a guarded path",
+      "python3 -c \"import os; os.remove('packages/cli/src/a.ts')\"",
+      "python",
+    ],
+    [
+      "python3 -c inline os.unlink against a guarded path",
+      "python3 -c \"import os; os.unlink('packages/cli/src/a.ts')\"",
+      "python",
+    ],
+    [
+      "python3 -c inline os.replace against a guarded path",
+      "python3 -c \"import os; os.replace('packages/cli/src/a.ts', '/tmp/x')\"",
+      "python",
+    ],
+    [
+      "python3 -c inline shutil.rmtree against a guarded path",
+      "python3 -c \"import shutil; shutil.rmtree('packages/cli/src')\"",
+      "python",
+    ],
+    [
+      "python3 -c inline shutil.move against a guarded path",
+      "python3 -c \"import shutil; shutil.move('packages/cli/src/a.ts', '/tmp/x')\"",
+      "python",
+    ],
+    [
+      "python3 -c inline Path(...).unlink() against a guarded path",
+      "python3 -c \"from pathlib import Path; Path('packages/cli/src/a.ts').unlink()\"",
+      "python",
+    ],
+    [
+      "python3 -c inline os.rename against a guarded path (already a write verb -- regression lock)",
+      "python3 -c \"import os; os.rename('packages/cli/src/a.ts', '/tmp/x')\"",
+      "python",
+    ],
+  ];
+
+  it.each(BLOCKED_DELETE_AND_PHP)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+
+  const ALLOWED_DELETE_AND_PHP: [string, string][] = [
+    [
+      "php -r inline fopen in read mode is never a write call",
+      "php -r \"fopen('packages/cli/src/a.ts', 'r');\"",
+    ],
+    [
+      "php -r inline file_put_contents against an unguarded path",
+      "php -r \"file_put_contents('/tmp/x', 'x');\"",
+    ],
+    [
+      "node -e inline fs.rmSync against an unguarded path",
+      `node -e "${NODE_LOAD_FS_CALL}'fs').rmSync('/tmp/x')"`,
+    ],
+    [
+      "node -e inline fs.unlinkSync against an unguarded path (dist/)",
+      `node -e "${NODE_LOAD_FS_CALL}'fs').unlinkSync('dist/a.js')"`,
+    ],
+    [
+      "node -e inline fs.rmdirSync against an unguarded path",
+      `node -e "${NODE_LOAD_FS_CALL}'fs').rmdirSync('/tmp/x')"`,
+    ],
+    [
+      "python3 -c inline os.remove against an unguarded path",
+      "python3 -c \"import os; os.remove('/tmp/x')\"",
+    ],
+    [
+      "python3 -c inline shutil.rmtree against an unguarded path (dist)",
+      "python3 -c \"import shutil; shutil.rmtree('dist')\"",
+    ],
+    [
+      "python3 -c inline Path(...).unlink() against an unguarded path",
+      "python3 -c \"from pathlib import Path; Path('/tmp/x').unlink()\"",
+    ],
+  ];
+
+  it.each(ALLOWED_DELETE_AND_PHP)("%s", (_name, command) => {
+    expectAllowed(command);
+  });
+});
+
+/**
+ * GAP 3(c): the php, deno and bun interpreter branches carried no dedicated
+ * test coverage at all. `deno`/`bun` write-verb detection already works
+ * today (they share the generic `scanCode`/`WRITE_CALL` path with
+ * node/python) -- these rows are new COVERAGE, not a RED gap, and are
+ * expected to pass immediately. The php rows duplicate (b)'s to confirm the
+ * php branch itself (not just the write-verb list) is exercised.
+ */
+describe("findBashWriteToProtectedPath -- GAP 3(c): php/deno/bun interpreter branch coverage", () => {
+  const BLOCKED_INTERPRETER_BRANCHES: [string, string, string][] = [
+    [
+      "deno eval inline writeFileSync (node:fs compat) against a guarded path",
+      `deno eval "const fs = ${NODE_LOAD_FS_CALL}'node:fs'); fs.writeFileSync('packages/cli/src/a.ts','x')"`,
+      "deno",
+    ],
+    [
+      "bun -e inline writeFileSync (node fs compat) against a guarded path",
+      `bun -e "${NODE_LOAD_FS_CALL}'fs').writeFileSync('packages/cli/src/a.ts','x')"`,
+      "bun",
+    ],
+    [
+      "bun -e inline Bun.write against a guarded path",
+      "bun -e \"Bun.write('packages/cli/src/a.ts','x')\"",
+      "bun",
+    ],
+    [
+      "php -r inline file_put_contents against a guarded path (branch coverage)",
+      "php -r \"file_put_contents('packages/cli/src/a.ts', 'x');\"",
+      "php",
+    ],
+  ];
+
+  it.each(BLOCKED_INTERPRETER_BRANCHES)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+
+  const ALLOWED_INTERPRETER_BRANCHES: [string, string][] = [
+    [
+      "deno eval reading (readFileSync via node:fs compat) a guarded path is not a write",
+      `deno eval "console.log(${NODE_LOAD_FS_CALL}'node:fs').readFileSync('packages/cli/src/a.ts','utf8'))"`,
+    ],
+    [
+      "bun -e reading (readFileSync via node fs compat) a guarded path is not a write",
+      `bun -e "console.log(${NODE_LOAD_FS_CALL}'fs').readFileSync('packages/cli/src/a.ts','utf8'))"`,
+    ],
+    [
+      "php -r inline fopen in read mode is not a write (branch coverage)",
+      "php -r \"fopen('packages/cli/src/a.ts', 'r');\"",
+    ],
+  ];
+
+  it.each(ALLOWED_INTERPRETER_BRANCHES)("%s", (_name, command) => {
+    expectAllowed(command);
+  });
+
+  interface SpecialInterpreterCase {
+    name: string;
+    command: string;
+    keyword: string;
+    opts?: Partial<FindOpts>;
+  }
+
+  const SPECIAL_BLOCKED_INTERPRETER: SpecialInterpreterCase[] = [
+    {
+      name: "deno run with an external script (outside projectDir) that writes a protected path",
+      command: "deno run /tmp/gen.ts",
+      keyword: "deno",
+      opts: {
+        readFile: fakeReader({
+          "/tmp/gen.ts":
+            "import { writeFileSync } from 'node:fs';\nwriteFileSync('packages/cli/src/a.ts', 'x');\n",
+        }),
+      },
+    },
+  ];
+
+  it.each(SPECIAL_BLOCKED_INTERPRETER)(
+    "$name",
+    ({ command, keyword, opts }) => {
+      expectBlocked(command, keyword, opts);
+    },
+  );
+});
+
 describe("findBashWriteToProtectedPath never throws, however malformed the command text", () => {
   it.each([
     ["empty string", ""],

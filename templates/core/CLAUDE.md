@@ -74,12 +74,13 @@ contract:
 **The guard also screens `Bash`, but only conservatively.** The same hook
 runs on every `Bash` call and blocks a command that visibly writes into
 `src/` or `tests/` (redirects, `tee`, `sed -i`, `cp`/`mv` into them, a
-`python`/`node` snippet that writes there, and similar) unless the caller is
-`test-author` or `code-implementer`. It cannot catch an indirect write -- an
-interpreter running a script from a project file, an `eval`, a build step, a
-formatter or fixer (`prettier --write`, `eslint --fix`), `git rm`/`git mv`, a
-write into a parent of `src/` (`rsync -a /tmp/x/ ./`, `rm -rf` of the package) --
-so hub-and-spoke remains a convention backed by a guard that raises the bar,
+`python`/`node`/`php` snippet that writes or deletes there, a copy, move or
+removal of a parent of `src/` such as `rsync -a /tmp/x/ ./` or `rm -rf .`, and
+similar) unless the caller is `test-author` or `code-implementer`. It cannot
+catch an indirect write -- an interpreter running a script from a project
+file, an `eval`, a computed path, a build step, a formatter or fixer
+(`prettier --write`, `eslint --fix`), `git rm`/`git mv`, `find -exec`/`xargs`,
+`tar`/`curl -o` -- so hub-and-spoke remains a convention backed by a guard that raises the bar,
 not a proof. To override it deliberately, run the command yourself with the
 `!` prefix at the Claude Code prompt, or edit the hook's registration in
 `.claude/settings.json`.
