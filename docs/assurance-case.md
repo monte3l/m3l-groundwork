@@ -253,8 +253,13 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   the project into `inventory.json` and the report. The read is read-only and
   limited to those frontmatter fields. Accepted as a documented limit and not
   changed here. A file the survey cannot read for lack of permission
-  (`EACCES`/`EPERM`) is recorded in `undetermined` with its error code and the
-  run continues; any other read error stops the run with the path and cause.
+  (`EACCES`/`EPERM`), or that vanished, loops or is a directory (`ENOENT`,
+  `ELOOP`, `EISDIR`), is recorded in `undetermined` with its error code and
+  the run continues; any other read error stops the run with the path and
+  cause.
+  An unreadable `.claude` directory (permission denied) still stops adopt mode
+  in the `/customize` skill install, which reports the path and cause; making
+  that install fall back to `.groundwork/customize/` is not done here.
   The harness and toolchain grades are computed from a separate read that
   treats an unreadable file as missing, so for such a file the grade can report a
   defect the survey correctly lists as undetermined.

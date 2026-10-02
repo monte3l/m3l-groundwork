@@ -532,7 +532,7 @@ fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/
 `git stash pop`, `find -exec`, `xargs` with no literal operand, a call whose argument list is
 longer than the scanner's size cap (allowed with a stderr note), a target
 spelled through a variable or command substitution, an ancestor spelled in a
-way the lexical check does not recognise (a container other than `packages`,
+way the lexical check does not recognise (a container other than `packages`, `apps` or `libs`, a parent of the project root (`rm -rf ..`),
 a linked worktree's own root), and `tar`/`curl -o`/`git checkout|restore` all
 pass. So hub-and-spoke stays a convention backed by a guard that raises the
 bar, not

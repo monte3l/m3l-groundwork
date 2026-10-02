@@ -205,9 +205,9 @@ copy yourself. If `.claude`, `.claude/skills` or `.claude/skills/customize` is
 a symlink or not a directory, no project copy exists: fix that path, copy the
 staged skill into place, or run the plugin's `/customize`. Fresh mode with
 `--force` does replace an existing skill copy. Fresh mode also checks, before
-it writes anything, that no directory below the target directory and no existing
+it writes anything, that no directory component of a destination below the target directory and no existing
 file the baseline or a `--pack` would write is a symlink (or a non-directory
-where a directory is needed); if one is, it refuses and writes nothing (the skill copy keeps its own check, which runs after the baseline is written). The
+where a directory is needed); the same check covers the `/customize` skill copy's destination. If one fails, it refuses and writes nothing. The
 target directory itself and its ancestors are not checked, and neither are
 the `.git` directory `git init` creates and the `node_modules` the install step
 fills: a symlink there is followed.
