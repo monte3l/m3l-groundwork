@@ -84,9 +84,12 @@ paths:
   `@claude`-mention mode: it never opens a PR itself (it commits to a
   branch and links back to a PR-creation page), so it never bypasses the
   human-opened-PR rule above. `claude-pr-review.yml` reviews every
-  opened/updated PR with `contents: read` only -- Claude posts a comment,
-  it cannot push code, submit a formal GitHub review, or approve a PR, so
-  it cannot satisfy or bypass `main`'s required checks or its 0-approval
+  opened/updated PR in two jobs: `review` (Claude, `contents: read` and
+  `pull-requests: read` only) returns its findings as schema-validated
+  structured output, and `post` (plain `gh` + `jq`, the only job with
+  `pull-requests: write`) posts them -- Claude has no write token and
+  cannot push code, submit a formal GitHub review, or approve a PR, so it
+  cannot satisfy or bypass `main`'s required checks or its 0-approval
   rule either way.
 - `claude-pr-review.yml` pins `claude_args: --model claude-opus-5-5
 --fallback-model claude-sonnet-5-5` (there is no `model:`/`fallback_model:`
@@ -112,15 +115,27 @@ paths:
   conversation from Opus 5.5 to any model other than Fable 5.1 or Mythos
   5.1 runs without Opus 5.5's thinking blocks, which is acceptable for an
   overload-only fallback.
-- `claude_args` also carries an explicit `--allowedTools` naming
-  `mcp__github_inline_comment__create_inline_comment` and `gh pr comment`/
-  `diff`/`view` -- load-bearing, not decorative: the action's automation
-  mode (a `prompt` input, no `track_progress`) only sends a review's
-  findings to the PR through a tool Claude is actually granted, per
-  Anthropic's own docs/en/github-actions, and omitting the allowlist fails
-  silently and green -- five runs of an earlier version of this workflow
-  each completed successfully with real turns and spend but left only a
-  placeholder comment on the PR, no review content at all.
+- **The model never posts the review -- keep it that way.** An earlier
+  version let Claude post through `gh pr comment` and the inline-comment MCP
+  tool, and it failed silently and green: five of six runs on one PR
+  concluded `success` with 5-9 permission denials and posted nothing, so a
+  push looked unreviewed until a close/reopen re-rolled the dice (the
+  trigger was never at fault -- `synchronize` and `reopened` both start
+  runs). Most likely the action loads this repo's own `.claude/` and
+  CLAUDE.md, whose hub-and-spoke rules make the model dispatch review
+  subagents that lack the MCP tool and `gh api`; background subagents also
+  end the action's run at its first result message
+  (anthropics/claude-code-action#1523, #1823, #1852, #1499, #1646, #1679).
+  No action input fails a run that posted nothing, and `use_sticky_comment`
+  does nothing in this mode. So `review` passes `--json-schema` (the action
+  fails the step when no `structured_output` comes back), `--disallowedTools`
+  drops subagents and every write, and `--allowedTools` is read-only (`gh pr
+diff`/`view`, `git diff`/`log`/`show`; the checkout is `fetch-depth: 0` so
+  the base exists to diff). The `post` job keeps one marked summary comment
+  per PR (edited on each push, created if absent) plus inline comments
+  de-duplicated against earlier ones, folds any inline finding GitHub
+  rejects with HTTP 422 into the summary, and fails on every other API
+  error. Review JSON and comment text reach its script only through `env:`.
   `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs (the
   changesets version-PR, Dependabot) and fork PRs explicitly, rather than
   relying on the action's own internal bot/permission checks, so a run
