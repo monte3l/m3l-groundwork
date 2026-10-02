@@ -32,6 +32,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -117,7 +118,12 @@ function coreSectionOf(content: string): string {
 }
 
 interface RepairCoreBareModule {
-  repairCoreBare: (cwd: string) => { repaired: boolean; configPath: string };
+  repairCoreBare: (cwd: string) => {
+    repaired: boolean;
+    configPath: string;
+    error?: string;
+    staleLock?: string;
+  };
 }
 
 describe("repairCoreBare", () => {
@@ -502,6 +508,62 @@ describe("repairCoreBare", () => {
     );
   });
 
+  it("reports a config.lock older than the 60s stale threshold as an error naming the lock path, without deleting it or touching the config", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-stalelock-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const lockPath = `${configPathOf(repoRoot)}.lock`;
+    writeFileSync(lockPath, "held by a crashed git process");
+    const staleTime = new Date(Date.now() - 5 * 60_000);
+    utimesSync(lockPath, staleTime, staleTime);
+    const configBefore = readFileSync(configPathOf(repoRoot), "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPathOf(repoRoot));
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(result.error).toContain(lockPath);
+    expect(result.staleLock).toBe(lockPath);
+    expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(configBefore);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+    expect(statSync(lockPath, { throwIfNoEntry: false })).not.toBeUndefined();
+    expect(readFileSync(lockPath, "utf8")).toBe(
+      "held by a crashed git process",
+    );
+  });
+
+  it("treats a config.lock just under the 60s stale threshold (30s old) as quiet, same as a fresh lock -- no error, no staleLock, config and lock both untouched", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-freshish-lock-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const lockPath = `${configPathOf(repoRoot)}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const recentTime = new Date(Date.now() - 30_000);
+    utimesSync(lockPath, recentTime, recentTime);
+    const configBefore = readFileSync(configPathOf(repoRoot), "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result).toEqual({
+      repaired: false,
+      configPath: configPathOf(repoRoot),
+    });
+    expect(Object.hasOwn(result, "error")).toBe(false);
+    expect(Object.hasOwn(result, "staleLock")).toBe(false);
+    expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(
+      "held by a concurrent git process",
+    );
+  });
+
   it("leaves no config.lock behind after a successful repair, and preserves the original file mode of .git/config", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-mode-"));
     scratchDirs.push(repoRoot);
@@ -659,6 +721,38 @@ describe("repair-core-bare (hook script)", () => {
       );
     },
   );
+
+  it("prints a systemMessage with both the rm-lock and git-config manual-fix commands, and a non-empty additionalContext, when config.lock is stale", () => {
+    const repoRoot = buildRepoNeedingRepair("repair-core-bare-hook-stalelock-");
+    const lockPath = `${configPathOf(repoRoot)}.lock`;
+    writeFileSync(lockPath, "held by a crashed git process");
+    const staleTime = new Date(Date.now() - 5 * 60_000);
+    utimesSync(lockPath, staleTime, staleTime);
+
+    const result = runHook(JSON.stringify({ cwd: repoRoot }));
+
+    expect(result.status).toBe(0);
+    const output = JSON.parse(result.stdout) as {
+      systemMessage: string;
+      hookSpecificOutput: {
+        hookEventName: string;
+        additionalContext: string;
+      };
+    };
+    expect(output.systemMessage).toContain(`rm ${lockPath}`);
+    expect(output.systemMessage).toContain(
+      `git config --file ${configPathOf(repoRoot)} core.bare false`,
+    );
+    expect(output.hookSpecificOutput.additionalContext).toBeTruthy();
+    expect(output.hookSpecificOutput.additionalContext.length).toBeGreaterThan(
+      0,
+    );
+    // The stale lock is reported, never deleted by the hook itself.
+    expect(statSync(lockPath, { throwIfNoEntry: false })).not.toBeUndefined();
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
 
   it("falls back to process.cwd() and stays fast when stdin is closed immediately with no payload at all", () => {
     const repoRoot = buildRepoNeedingRepair(

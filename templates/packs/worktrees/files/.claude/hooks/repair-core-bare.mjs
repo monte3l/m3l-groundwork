@@ -29,7 +29,10 @@
  * otherwise, and only when it reads literally `true`. The write follows
  * git's own protocol (`config.lock` created exclusively, then renamed, the
  * original file mode kept), so it can't clobber a concurrent `git config`; a
- * held lock is skipped quietly and retried on the next trigger.
+ * freshly held lock is skipped quietly and retried on the next trigger, but
+ * one older than a minute is a leftover from a crashed git, which would
+ * otherwise block the repair forever, so it is reported (never deleted: the
+ * hook can't know no git is running).
  *
  * Always exits 0 -- advisory infrastructure, never a gate. Stderr is not
  * shown on exit 0, so a repair that was attempted and FAILED is reported on
@@ -50,6 +53,9 @@ import {
   writeSync,
 } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+/** A `config.lock` older than this is treated as left behind by a crashed git. */
+const STALE_LOCK_MS = 60_000;
 
 /**
  * Walks up from `cwd` to the first `.git` and resolves the COMMON git dir:
@@ -123,7 +129,7 @@ function firstLine(cause) {
  * is still broken.
  *
  * @param {string} cwd
- * @returns {{ repaired: boolean; configPath: string; error?: string }}
+ * @returns {{ repaired: boolean; configPath: string; error?: string; staleLock?: string }}
  */
 export function repairCoreBare(cwd) {
   let configPath = "";
@@ -163,9 +169,20 @@ export function repairCoreBare(cwd) {
       fd = openSync(lock, "wx", mode);
     } catch (cause) {
       if (cause?.code === "EEXIST") {
-        // git (or another hook run) holds the lock right now; retry on the
-        // next trigger rather than racing it.
-        return { repaired: false, configPath };
+        // Usually git (or another hook run) holds the lock right now: retry
+        // on the next trigger rather than racing it. An old one is a crashed
+        // git's leftover that would block every future repair, so say so.
+        const held = statSync(lock, { throwIfNoEntry: false });
+        if (held === undefined || Date.now() - held.mtimeMs < STALE_LOCK_MS) {
+          return { repaired: false, configPath };
+        }
+        const minutes = Math.floor((Date.now() - held.mtimeMs) / 60_000);
+        return {
+          repaired: false,
+          configPath,
+          error: `${lock} has been held for ${minutes} min, so no git process is likely still using it`,
+          staleLock: lock,
+        };
       }
       throw cause;
     }
@@ -239,7 +256,7 @@ if (isEntryPoint()) {
     typeof input?.cwd === "string" && input.cwd !== ""
       ? input.cwd
       : process.cwd();
-  const { repaired, configPath, error } = repairCoreBare(cwd);
+  const { repaired, configPath, error, staleLock } = repairCoreBare(cwd);
   const eventName =
     typeof input?.hook_event_name === "string" && input.hook_event_name !== ""
       ? input.hook_event_name
@@ -257,15 +274,19 @@ if (isEntryPoint()) {
       }),
     );
   } else if (error !== undefined) {
-    const fix = `git config --file ${configPath} core.bare false`;
+    const reset = `\`git config --file ${configPath} core.bare false\``;
+    const fix =
+      staleLock === undefined
+        ? `run ${reset}`
+        : `first \`rm ${staleLock}\` (only if no git process is running), then run ${reset}`;
     process.stdout.write(
       JSON.stringify({
-        systemMessage: `repair-core-bare: core.bare is still true in ${configPath} (${error}); run \`${fix}\`.`,
+        systemMessage: `repair-core-bare: core.bare is still true in ${configPath} (${error}); ${fix}.`,
         hookSpecificOutput: {
           hookEventName: eventName,
           additionalContext:
             `repair-core-bare FAILED to reset core.bare in ${configPath} (${error}). ` +
-            `git commands in the main checkout will fail until it is fixed: run \`${fix}\`.`,
+            `git commands in the main checkout will fail until it is fixed: ${fix}.`,
         },
       }),
     );
