@@ -1660,14 +1660,14 @@ describe("the real supply-chain pack", () => {
 });
 
 describe("the real worktrees pack", () => {
-  it("loads cleanly with modes fresh+adopt, a 0/1/2/0/0 budget, and a requires.paths dependency on bin/lib/protected-paths.mjs", () => {
+  it("loads cleanly with modes fresh+adopt, a 0/1/3/0/0 budget, and a requires.paths dependency on bin/lib/protected-paths.mjs", () => {
     expect(listPackNames()).toContain("worktrees");
     const pack = loadPack("worktrees");
     expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
     expect(pack.manifest.budget).toEqual({
       agents: 0,
       skills: 1,
-      hooks: 2,
+      hooks: 3,
       workflows: 0,
       scripts: 0,
     });
@@ -1678,7 +1678,28 @@ describe("the real worktrees pack", () => {
     expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
   });
 
-  it("installs alone: settings.json gains a SessionStart[startup|resume] entry and a PreToolUse[Write|Edit] entry, and both hooks, the skill and .worktreeinclude land on disk", () => {
+  it("wires repair-core-bare.mjs under both SessionStart[startup|resume] and PostToolUse[EnterWorktree|ExitWorktree|Agent]", () => {
+    const pack = loadPack("worktrees");
+    const settings = pack.manifest.wiring.settings;
+    const sessionStart = settings["SessionStart"] ?? [];
+    expect(
+      sessionStart.some(
+        (entry) =>
+          entry.matcher === "startup|resume" &&
+          entry.hooks.some((h) => h.command.includes("repair-core-bare.mjs")),
+      ),
+    ).toBe(true);
+    const postToolUse = settings["PostToolUse"] ?? [];
+    expect(
+      postToolUse.some(
+        (entry) =>
+          entry.matcher === "EnterWorktree|ExitWorktree|Agent" &&
+          entry.hooks.some((h) => h.command.includes("repair-core-bare.mjs")),
+      ),
+    ).toBe(true);
+  });
+
+  it("installs alone: settings.json gains a SessionStart[startup|resume] entry and a PreToolUse[Write|Edit] entry, and all three hooks, the skill and .worktreeinclude land on disk", () => {
     const targetDir = mkdtempSync(join(tmpdir(), "packs-worktrees-alone-"));
     try {
       mkdirSync(join(targetDir, ".claude"), { recursive: true });
@@ -1715,6 +1736,9 @@ describe("the real worktrees pack", () => {
         existsSync(
           join(targetDir, ".claude", "hooks", "ensure-worktree-deps.mjs"),
         ),
+      ).toBe(true);
+      expect(
+        existsSync(join(targetDir, ".claude", "hooks", "repair-core-bare.mjs")),
       ).toBe(true);
       expect(
         existsSync(

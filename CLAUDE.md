@@ -743,7 +743,13 @@ set for one file.
   on `main` and only block the hub respectively), plus a
   `working-in-worktrees` skill (start/status/sync/finish/fan-out), an
   `ensure-worktree-deps.mjs` `SessionStart` backstop that installs
-  dependencies into a freshly created worktree, and a `.worktreeinclude`
+  dependencies into a freshly created worktree, a `repair-core-bare.mjs`
+  hook (`SessionStart`, and `PostToolUse` after `EnterWorktree`/
+  `ExitWorktree`/`Agent`) that resets the `core.bare = true` those Claude Code
+  tools are reported to leave in a normal repo's shared `.git/config`
+  (anthropics/claude-code#58345, #69802 -- it breaks `git status` in the main
+  checkout; this repo's own `.claude/` carries a copy of that hook though it
+  never installed the pack), and a `.worktreeinclude`
   copying `.env`/`.env.local`/`.env.*.local` into every worktree Claude Code creates. It's
   the pack this repo's
   own `.claude/hooks/post-edit-verify.mjs` and `finishing-work`/

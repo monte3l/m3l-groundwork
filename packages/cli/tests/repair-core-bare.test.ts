@@ -1,0 +1,1115 @@
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
+/**
+ * Unit + script-level tests for the worktrees pack's hook
+ * `templates/packs/worktrees/files/.claude/hooks/repair-core-bare.mjs`, a
+ * plain ESM script outside every tsconfig project -- loaded by URL, same
+ * pattern as `worktree-guards.test.ts`. Unlike that file's two hooks, this
+ * one has no relative import of its own (it never spawns git, see below),
+ * so it's imported directly from its real location rather than copied into
+ * a fixture tree first.
+ *
+ * Background (why this hook exists): Claude Code's EnterWorktree/
+ * ExitWorktree tools are documented
+ * (anthropics/claude-code#58345, anthropics/claude-code#69802) to write
+ * `core.bare = true` into the SHARED `.git/config` of a normal (non-bare)
+ * repo, which breaks `git status` in the MAIN checkout ("this operation
+ * must be run in a work tree") while linked worktrees keep working --
+ * reproduced for real below with actual `git` child processes, not an
+ * assumption. The hook repairs exactly that one line, in the `[core]`
+ * section only, and never touches a genuinely bare repository (identified
+ * by its common git dir's basename not being `.git`) even though a bare
+ * repo's own config legitimately says `bare = true`.
+ */
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  type Stats,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { chmodIneffective } from "./chmod-ineffective.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repoRootDir = join(here, "..", "..", "..");
+const hookPath = join(
+  repoRootDir,
+  "templates",
+  "packs",
+  "worktrees",
+  "files",
+  ".claude",
+  "hooks",
+  "repair-core-bare.mjs",
+);
+
+/**
+ * The parent environment minus the variables git itself calls
+ * repository-local -- same helper as `worktree-guards.test.ts`'s
+ * `envWithoutRepoLocals`, copied here rather than shared since neither file
+ * exports it.
+ */
+function envWithoutRepoLocals(): NodeJS.ProcessEnv {
+  const listed = spawnSync("git", ["rev-parse", "--local-env-vars"], {
+    encoding: "utf8",
+  });
+  const local = new Set(
+    listed.status === 0
+      ? listed.stdout.split("\n").filter(Boolean)
+      : ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"],
+  );
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !local.has(name)),
+  );
+}
+
+function git(cwd: string, ...args: string[]): SpawnSyncReturns<string> {
+  return spawnSync(
+    "git",
+    [
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.com",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd, encoding: "utf8", env: envWithoutRepoLocals() },
+  );
+}
+
+/** Runs `git` and asserts it succeeded -- for setup steps that must not fail. */
+function gitOk(cwd: string, ...args: string[]): void {
+  const result = git(cwd, ...args);
+  expect(result.status, result.stderr).toBe(0);
+}
+
+/** Initializes a fresh repo at `dir` on `main` with one empty commit. */
+function initRepo(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  gitOk(dir, "init", "-b", "main");
+  gitOk(dir, "commit", "--allow-empty", "-m", "init");
+}
+
+/** `git status`'s exit code -- 0 means it succeeded. */
+function gitStatusCode(cwd: string): number | null {
+  return git(cwd, "status").status;
+}
+
+function configPathOf(repoRoot: string): string {
+  return join(repoRoot, ".git", "config");
+}
+
+/** Extracts the `[core]` section's own text (up to the next section header or EOF). */
+function coreSectionOf(content: string): string {
+  const match = /\[core\]([\s\S]*?)(?=\n\[|$)/.exec(content);
+  return match?.[1] ?? "";
+}
+
+/**
+ * Builds a Node-style errno exception carrying `code`, for the io-seam fault
+ * injections below -- the deterministic, cross-OS replacement for the
+ * `chflags`/`chattr` immutable-flag tricks this file used to need.
+ */
+function errorWithCode(code: string, message: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(message), { code });
+}
+
+/**
+ * Delegates a `statSync` call to the real implementation, matching the two
+ * shapes the hook itself ever calls it with (`fsx.statSync(configPath)` and
+ * `fsx.statSync(lock, { throwIfNoEntry: false })`) -- used by the io-seam
+ * stubs below that only want to intercept ONE specific path.
+ */
+function realStatSyncPassthrough(
+  targetPath: string,
+  options?: { throwIfNoEntry: false },
+): Stats | undefined {
+  return options === undefined
+    ? statSync(targetPath)
+    : statSync(targetPath, options);
+}
+
+/**
+ * The write-phase fs overrides `repairCoreBare`'s test seam accepts --
+ * mirrors the hook's own `realFs` shape (see its header comment), loosely
+ * typed to the exact call shapes the hook uses rather than `node:fs`'s own
+ * overloaded signatures.
+ */
+interface RepairFsOverrides {
+  chmodSync?: (path: string, mode: number) => void;
+  closeSync?: (fd: number) => void;
+  openSync?: (path: string, flags: string, mode?: number) => number;
+  renameSync?: (oldPath: string, newPath: string) => void;
+  rmSync?: (path: string, options?: { force?: boolean }) => void;
+  statSync?: (
+    path: string,
+    options?: { throwIfNoEntry: false },
+  ) => Stats | undefined;
+  writeSync?: (fd: number, data: string) => number;
+}
+
+interface RepairCoreBareModule {
+  repairCoreBare: (
+    cwd: string,
+    io?: RepairFsOverrides,
+  ) => {
+    repaired: boolean;
+    configPath: string;
+    error?: string;
+    staleLock?: string;
+  };
+}
+
+describe("repairCoreBare", () => {
+  let hookModule: RepairCoreBareModule;
+  const scratchDirs: string[] = [];
+
+  beforeAll(async () => {
+    hookModule = (await import(
+      pathToFileURL(hookPath).href
+    )) as RepairCoreBareModule;
+  });
+
+  afterEach(() => {
+    // Also restores any `process.stderr.write` spy an assertion failure left
+    // installed above its own explicit `mockRestore()` call (see the
+    // EACCES and cleanup-failure tests below) -- without this, a failed
+    // assertion mid-test would leave later tests' own stderr output
+    // swallowed by the still-installed spy for the rest of the file.
+    vi.restoreAllMocks();
+    for (const dir of scratchDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs core.bare=true to false in the main checkout's own .git/config, restoring `git status` there", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-main-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    // Discriminate the fix: confirm the bug actually reproduces first.
+    expect(gitStatusCode(repoRoot)).not.toBe(0);
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result).toEqual({
+      repaired: true,
+      configPath: configPathOf(repoRoot),
+    });
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "false",
+    );
+    expect(gitStatusCode(repoRoot)).toBe(0);
+  });
+
+  it("repairs when cwd is a subdirectory of the main checkout, not just the checkout root itself", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-subdir-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const subdir = join(repoRoot, "nested", "deep");
+    mkdirSync(subdir, { recursive: true });
+
+    const result = hookModule.repairCoreBare(subdir);
+
+    expect(result).toEqual({
+      repaired: true,
+      configPath: configPathOf(repoRoot),
+    });
+    expect(gitStatusCode(repoRoot)).toBe(0);
+  });
+
+  it("repairs the SHARED config when cwd is a linked worktree's own root, fixing `git status` in the main checkout it points back to", () => {
+    // realpathSync-resolved: macOS's $TMPDIR is a symlink into /private, and
+    // git itself resolves the WORKTREE's `.git` gitdir pointer to the fully
+    // resolved absolute path when it creates it -- an un-resolved scratch
+    // dir would make the expected configPath below compare a symlinked path
+    // against the hook's canonical, already-resolved one.
+    const scratch = realpathSync(
+      mkdtempSync(join(tmpdir(), "repair-core-bare-linked-")),
+    );
+    scratchDirs.push(scratch);
+    const repoRoot = join(scratch, "repo");
+    initRepo(repoRoot);
+    const worktreeDir = join(scratch, "wt");
+    gitOk(repoRoot, "worktree", "add", worktreeDir, "-b", "feat/w");
+    gitOk(repoRoot, "config", "core.bare", "true");
+    // Discriminate the fix: the bug reproduces in the MAIN checkout while
+    // the linked worktree itself keeps working -- the exact asymmetry the
+    // upstream issue describes.
+    expect(gitStatusCode(repoRoot)).not.toBe(0);
+    expect(gitStatusCode(worktreeDir)).toBe(0);
+
+    const result = hookModule.repairCoreBare(worktreeDir);
+
+    expect(result).toEqual({
+      repaired: true,
+      configPath: configPathOf(repoRoot),
+    });
+    expect(gitStatusCode(repoRoot)).toBe(0);
+    expect(gitStatusCode(worktreeDir)).toBe(0);
+  });
+
+  it("[KNOWN-GUARANTEE] never touches a genuine bare repository reached through a worktree created off it, even though its config legitimately says bare=true (common dir basename is not `.git`)", () => {
+    const scratch = mkdtempSync(join(tmpdir(), "repair-core-bare-bare-"));
+    scratchDirs.push(scratch);
+    const normalRepo = join(scratch, "normal");
+    initRepo(normalRepo);
+    const bareRepo = join(scratch, "bare.git");
+    gitOk(scratch, "clone", "--bare", normalRepo, bareRepo);
+    const worktreeDir = join(scratch, "wt-from-bare");
+    gitOk(bareRepo, "worktree", "add", worktreeDir, "main");
+    const configBefore = readFileSync(join(bareRepo, "config"), "utf8");
+    expect(git(bareRepo, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+
+    const result = hookModule.repairCoreBare(worktreeDir);
+
+    expect(result.repaired).toBe(false);
+    expect(readFileSync(join(bareRepo, "config"), "utf8")).toBe(configBefore);
+    expect(git(bareRepo, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
+
+  it("fixes only the [core] section's own bare=true line, leaving an unrelated section's bare=true line (e.g. a [remote \"origin\"] entry) untouched", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-section-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    const crafted = [
+      "[core]",
+      "\trepositoryformatversion = 0",
+      "\tfilemode = true",
+      "\tbare = true",
+      "\tlogallrefupdates = true",
+      '[remote "origin"]',
+      "\turl = https://example.com/repo.git",
+      "\tbare = true",
+      "",
+    ].join("\n");
+    writeFileSync(configPathOf(repoRoot), crafted);
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result).toEqual({
+      repaired: true,
+      configPath: configPathOf(repoRoot),
+    });
+    const after = readFileSync(configPathOf(repoRoot), "utf8");
+    expect(coreSectionOf(after)).toMatch(/bare\s*=\s*false/i);
+    // Only the `bare` line itself is touched -- `filemode = true` (also
+    // literally containing "true") stays exactly as it was.
+    expect(coreSectionOf(after)).not.toMatch(/bare\s*=\s*true/i);
+    expect(coreSectionOf(after)).toContain("\tfilemode = true");
+    // The remote section's own `bare = true` line is byte-for-byte
+    // untouched -- not just "still says true somewhere".
+    expect(after).toContain(
+      '[remote "origin"]\n\turl = https://example.com/repo.git\n\tbare = true',
+    );
+  });
+
+  it.each([
+    ["bare = true" /* default git init formatting */],
+    ["bare=true"],
+    ["Bare = TRUE"],
+    // Tabs around `=` instead of spaces -- no extra LEADING whitespace of
+    // its own, since the substring replace below preserves the original
+    // line's own leading tab; adding another here would double it up.
+    ["bare\t=\ttrue"],
+  ])(
+    "recognizes the whitespace/case variant %j and rewrites it so `git config --bool core.bare` reads false",
+    (variantLine) => {
+      const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-variant-"));
+      scratchDirs.push(repoRoot);
+      initRepo(repoRoot);
+      const before = readFileSync(configPathOf(repoRoot), "utf8");
+      expect(before).toContain("bare = false");
+      const crafted = before.replace("bare = false", variantLine);
+      writeFileSync(configPathOf(repoRoot), crafted);
+
+      const result = hookModule.repairCoreBare(repoRoot);
+
+      expect(result.repaired).toBe(true);
+      expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+        "false",
+      );
+      // Every other line of the file is untouched -- replacing the target
+      // line (including whatever leading whitespace it carries, which the
+      // hook preserves verbatim) back with its original canonical form must
+      // reproduce `before` exactly.
+      const after = readFileSync(configPathOf(repoRoot), "utf8");
+      const restored = after.replace(
+        /^[ \t]*bare[ \t]*=[ \t]*false/im,
+        "\tbare = false",
+      );
+      expect(restored).toBe(before);
+    },
+  );
+
+  it("is a no-op (repaired:false, file byte-for-byte unchanged) when core.bare is already false", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-noop-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    const before = readFileSync(configPathOf(repoRoot), "utf8");
+    const statBefore = statSync(configPathOf(repoRoot));
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result).toEqual({
+      repaired: false,
+      configPath: configPathOf(repoRoot),
+    });
+    expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(before);
+    expect(statSync(configPathOf(repoRoot)).mtimeMs).toBe(statBefore.mtimeMs);
+  });
+
+  it("is idempotent: a second call after a real repair reports repaired:false and changes nothing further", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-idempotent-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+
+    const first = hookModule.repairCoreBare(repoRoot);
+    expect(first.repaired).toBe(true);
+    const afterFirst = readFileSync(configPathOf(repoRoot), "utf8");
+
+    const second = hookModule.repairCoreBare(repoRoot);
+
+    expect(second).toEqual({
+      repaired: false,
+      configPath: configPathOf(repoRoot),
+    });
+    expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(afterFirst);
+  });
+
+  it('returns repaired:false and configPath:"" for a cwd with no .git ancestor at all', () => {
+    const nonRepo = mkdtempSync(join(tmpdir(), "repair-core-bare-nonrepo-"));
+    scratchDirs.push(nonRepo);
+
+    const result = hookModule.repairCoreBare(nonRepo);
+
+    expect(result).toEqual({ repaired: false, configPath: "" });
+  });
+
+  it('returns repaired:false and configPath:"" for a malformed .git file (not a `gitdir: ...` line), without throwing', () => {
+    const scratch = mkdtempSync(join(tmpdir(), "repair-core-bare-malformed-"));
+    scratchDirs.push(scratch);
+    writeFileSync(join(scratch, ".git"), "this is not a gitdir line\n");
+
+    let result: { repaired: boolean; configPath: string } | undefined;
+    expect(() => {
+      result = hookModule.repairCoreBare(scratch);
+    }).not.toThrow();
+
+    expect(result).toEqual({ repaired: false, configPath: "" });
+  });
+
+  it.skipIf(chmodIneffective)(
+    "returns {repaired:false} with no `error` key, and prints a stderr hint, when the located config file can't be read (EACCES) -- a pre-detection failure",
+    () => {
+      const repoRoot = mkdtempSync(
+        join(tmpdir(), "repair-core-bare-unreadable-"),
+      );
+      scratchDirs.push(repoRoot);
+      initRepo(repoRoot);
+      gitOk(repoRoot, "config", "core.bare", "true");
+      chmodSync(configPathOf(repoRoot), 0o000);
+      const stderrSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      let result:
+        { repaired: boolean; configPath: string; error?: string } | undefined;
+      try {
+        expect(() => {
+          result = hookModule.repairCoreBare(repoRoot);
+        }).not.toThrow();
+      } finally {
+        // Restore the filesystem permission regardless of outcome, but defer
+        // `mockRestore()` until after the assertions below -- it also clears
+        // `.mock.calls`, which would erase the very history being asserted.
+        chmodSync(configPathOf(repoRoot), 0o644);
+      }
+
+      expect(result?.repaired).toBe(false);
+      expect(result?.configPath).toBe(configPathOf(repoRoot));
+      expect(result !== undefined && Object.hasOwn(result, "error")).toBe(
+        false,
+      );
+      expect(stderrSpy).toHaveBeenCalled();
+      expect(stderrSpy.mock.calls[0]?.[0]).toMatch(
+        /could not check core\.bare/i,
+      );
+      stderrSpy.mockRestore();
+    },
+  );
+
+  it("[KNOWN-GUARANTEE] never touches a bare clone stored in a directory literally named `.git`, even reached from a worktree created off it or from its own containing directory", () => {
+    const scratch = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-dotgit-clone-"),
+    );
+    scratchDirs.push(scratch);
+    const srcRepo = join(scratch, "src");
+    initRepo(srcRepo);
+    const projDir = join(scratch, "proj");
+    mkdirSync(projDir, { recursive: true });
+    const bareDir = join(projDir, ".git");
+    gitOk(scratch, "clone", "--bare", srcRepo, bareDir);
+    // `../wt`, run with cwd = proj/.git, resolves to proj/wt -- a worktree
+    // created as a sibling of the bare clone's own ".git"-named directory,
+    // the exact "proj/ as a phantom main worktree" layout the hook's own
+    // header comment warns about.
+    gitOk(bareDir, "worktree", "add", "../wt");
+    const worktreeDir = join(projDir, "wt");
+    expect(git(bareDir, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+    const configBefore = readFileSync(join(bareDir, "config"), "utf8");
+
+    const resultFromWorktree = hookModule.repairCoreBare(worktreeDir);
+    const resultFromProj = hookModule.repairCoreBare(projDir);
+
+    expect(resultFromWorktree.repaired).toBe(false);
+    expect(resultFromProj.repaired).toBe(false);
+    expect(readFileSync(join(bareDir, "config"), "utf8")).toBe(configBefore);
+    expect(git(bareDir, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
+
+  it("[ACCEPTED TRADE-OFF] leaves a freshly `git init`'d repo with no commit or index alone, even when core.bare is true", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-fresh-"));
+    scratchDirs.push(repoRoot);
+    mkdirSync(repoRoot, { recursive: true });
+    gitOk(repoRoot, "init", "-b", "main");
+    gitOk(repoRoot, "config", "core.bare", "true");
+    // Confirms the premise: a brand-new repo has no common-dir index yet.
+    expect(
+      statSync(join(repoRoot, ".git", "index"), { throwIfNoEntry: false }),
+    ).toBeUndefined();
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result).toEqual({ repaired: false, configPath: "" });
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
+
+  it.skipIf(chmodIneffective)(
+    "returns {repaired:false, configPath, error} when core.bare=true is confirmed but creating config.lock fails",
+    () => {
+      const repoRoot = mkdtempSync(
+        join(tmpdir(), "repair-core-bare-writefail-"),
+      );
+      scratchDirs.push(repoRoot);
+      initRepo(repoRoot);
+      gitOk(repoRoot, "config", "core.bare", "true");
+      const gitDir = join(repoRoot, ".git");
+      chmodSync(gitDir, 0o555);
+
+      let result:
+        { repaired: boolean; configPath: string; error?: string } | undefined;
+      try {
+        result = hookModule.repairCoreBare(repoRoot);
+      } finally {
+        chmodSync(gitDir, 0o755);
+      }
+
+      expect(result.repaired).toBe(false);
+      expect(result.configPath).toBe(configPathOf(repoRoot));
+      expect(typeof result.error).toBe("string");
+      expect(result.error).not.toBe("");
+    },
+  );
+
+  it("does not write when config.lock already exists, leaving both the config and the lock byte-for-byte untouched", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-lock-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const lockPath = `${configPathOf(repoRoot)}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const configBefore = readFileSync(configPathOf(repoRoot), "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result).toEqual({
+      repaired: false,
+      configPath: configPathOf(repoRoot),
+    });
+    expect(Object.hasOwn(result, "error")).toBe(false);
+    expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(
+      "held by a concurrent git process",
+    );
+  });
+
+  it("reports a config.lock older than the 60s stale threshold as an error naming the lock path, without deleting it or touching the config", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-stalelock-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const lockPath = `${configPathOf(repoRoot)}.lock`;
+    writeFileSync(lockPath, "held by a crashed git process");
+    const staleTime = new Date(Date.now() - 5 * 60_000);
+    utimesSync(lockPath, staleTime, staleTime);
+    const configBefore = readFileSync(configPathOf(repoRoot), "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPathOf(repoRoot));
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(result.error).toContain(lockPath);
+    expect(result.staleLock).toBe(lockPath);
+    expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(configBefore);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+    expect(statSync(lockPath, { throwIfNoEntry: false })).not.toBeUndefined();
+    expect(readFileSync(lockPath, "utf8")).toBe(
+      "held by a crashed git process",
+    );
+  });
+
+  it("treats a config.lock just under the 60s stale threshold (30s old) as quiet, same as a fresh lock -- no error, no staleLock, config and lock both untouched", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-freshish-lock-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const lockPath = `${configPathOf(repoRoot)}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const recentTime = new Date(Date.now() - 30_000);
+    utimesSync(lockPath, recentTime, recentTime);
+    const configBefore = readFileSync(configPathOf(repoRoot), "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result).toEqual({
+      repaired: false,
+      configPath: configPathOf(repoRoot),
+    });
+    expect(Object.hasOwn(result, "error")).toBe(false);
+    expect(Object.hasOwn(result, "staleLock")).toBe(false);
+    expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(
+      "held by a concurrent git process",
+    );
+  });
+
+  it("leaves no config.lock behind after a successful repair, and preserves the original file mode of .git/config", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-mode-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    chmodSync(configPathOf(repoRoot), 0o600);
+
+    const result = hookModule.repairCoreBare(repoRoot);
+
+    expect(result.repaired).toBe(true);
+    expect(
+      statSync(`${configPathOf(repoRoot)}.lock`, { throwIfNoEntry: false }),
+    ).toBeUndefined();
+    expect(statSync(configPathOf(repoRoot)).mode & 0o777).toBe(0o600);
+  });
+
+  // --- A: the `ownsLock` guard itself -- each scenario makes the failure
+  // happen BEFORE this run ever created its own lock, with a real foreign
+  // lock present, so a revert back to unconditional cleanup (deleting
+  // whatever `config.lock` it finds, owned or not) would delete it. All
+  // three use the `io` seam, deterministic on every OS -- no chmod/chflags.
+
+  it("[regression: lock-ownership fix] never deletes a foreign config.lock when the follow-up stat on it fails (EIO) while this run never opened it", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-lockstat-eio-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const configBefore = readFileSync(configPath, "utf8");
+    const lockBefore = readFileSync(lockPath, "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      // The real foreign lock already makes `openSync(lock, "wx")` fail with
+      // EEXIST; only the EEXIST branch's OWN follow-up `statSync(lock, ...)`
+      // is faulted here, so the reverted (pre-fix) code path -- which never
+      // reaches this branch at all, since it returned unconditionally on
+      // EEXIST -- can't coincidentally pass this test too.
+      statSync: (targetPath, options) => {
+        if (targetPath.endsWith("config.lock")) {
+          throw errorWithCode("EIO", "simulated EIO reading config.lock");
+        }
+        return realStatSyncPassthrough(targetPath, options);
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(lockBefore);
+  });
+
+  it("[regression: lock-ownership fix] never deletes a foreign config.lock when openSync itself fails with a non-EEXIST error (EACCES)", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-openfail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const configBefore = readFileSync(configPath, "utf8");
+    const lockBefore = readFileSync(lockPath, "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      openSync: () => {
+        throw errorWithCode("EACCES", "simulated EACCES opening config.lock");
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(lockBefore);
+  });
+
+  it("[regression: lock-ownership fix] never deletes a foreign config.lock when the pre-open mode lookup on config itself fails (EIO)", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-modefail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const configBefore = readFileSync(configPath, "utf8");
+    const lockBefore = readFileSync(lockPath, "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      statSync: (targetPath, options) => {
+        if (targetPath === configPath) {
+          throw errorWithCode("EIO", "simulated EIO reading config mode");
+        }
+        return realStatSyncPassthrough(targetPath, options);
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(lockBefore);
+  });
+
+  // --- B: the `ownsLock` cleanup itself -- this run's OWN lock (a real
+  // file, never stubbed into existence) must be removed when a later write
+  // step fails, deterministic via the `io` seam instead of an OS-specific
+  // immutable-flag trick that never runs unprivileged on Linux CI.
+
+  it("[regression: lock-ownership fix] cleans up the config.lock THIS run created when the rename step fails, leaving none behind", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-renamefail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    const configBefore = readFileSync(configPath, "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      renameSync: () => {
+        throw errorWithCode("EPERM", "simulated EPERM renaming config.lock");
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    // This run's OWN lock is gone -- unlike a foreign lock it never created
+    // (see the tests above).
+    expect(statSync(lockPath, { throwIfNoEntry: false })).toBeUndefined();
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
+
+  it("[regression: lock-ownership fix] cleans up the config.lock THIS run created when the write step fails, leaving none behind", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-writefail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    const configBefore = readFileSync(configPath, "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      writeSync: () => {
+        throw errorWithCode("EIO", "simulated EIO writing config.lock");
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(statSync(lockPath, { throwIfNoEntry: false })).toBeUndefined();
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
+
+  it("reports the ORIGINAL failure (not the cleanup failure) and prints a stderr hint about the leftover lock when cleanup's own rmSync also throws", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-cleanupfail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    const configBefore = readFileSync(configPath, "utf8");
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      renameSync: () => {
+        throw errorWithCode("EPERM", "simulated EPERM renaming config.lock");
+      },
+      rmSync: () => {
+        throw errorWithCode("EACCES", "simulated EACCES removing config.lock");
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.error).toContain("simulated EPERM renaming config.lock");
+    expect(result.error).not.toContain("simulated EACCES removing config.lock");
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(stderrSpy).toHaveBeenCalled();
+    expect(
+      stderrSpy.mock.calls.some(
+        (call) =>
+          typeof call[0] === "string" &&
+          /left .*config\.lock behind/i.test(call[0]),
+      ),
+    ).toBe(true);
+    // The real lock file is still on disk: the stubbed rmSync never actually
+    // removed it, which is the leftover the stderr hint above warns about.
+    expect(statSync(lockPath, { throwIfNoEntry: false })).not.toBeUndefined();
+    stderrSpy.mockRestore();
+  });
+});
+
+describe("repair-core-bare (hook script)", () => {
+  const scratchDirs: string[] = [];
+
+  afterEach(() => {
+    // No test in this describe block spies on `process.stderr.write` today
+    // (they all exercise the hook as a real child process), but this keeps
+    // the same safety net as the sibling describe block above in case one
+    // is added here later.
+    vi.restoreAllMocks();
+    for (const dir of scratchDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function runHook(stdinInput: string, cwd?: string): SpawnSyncReturns<string> {
+    return spawnSync(process.execPath, [hookPath], {
+      input: stdinInput,
+      encoding: "utf8",
+      cwd,
+    });
+  }
+
+  function buildRepoNeedingRepair(prefix: string): string {
+    const repoRoot = mkdtempSync(join(tmpdir(), prefix));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    return repoRoot;
+  }
+
+  it("exits 0 and prints a hookSpecificOutput mentioning core.bare and the config path when stdin names a repo needing repair", () => {
+    const repoRoot = buildRepoNeedingRepair("repair-core-bare-hook-cwd-");
+
+    const result = runHook(JSON.stringify({ cwd: repoRoot }));
+
+    expect(result.status).toBe(0);
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput: {
+        hookEventName: string;
+        additionalContext: string;
+      };
+    };
+    expect(output.hookSpecificOutput.hookEventName).toBe("SessionStart");
+    expect(output.hookSpecificOutput.additionalContext).toMatch(/core\.bare/i);
+    expect(output.hookSpecificOutput.additionalContext).toContain(
+      configPathOf(repoRoot),
+    );
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "false",
+    );
+  });
+
+  it("falls back to process.cwd() when the stdin payload has no cwd field", () => {
+    const repoRoot = buildRepoNeedingRepair("repair-core-bare-hook-nocwd-");
+
+    const result = runHook(JSON.stringify({}), repoRoot);
+
+    expect(result.status).toBe(0);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "false",
+    );
+  });
+
+  it("falls back to process.cwd() when stdin is invalid JSON", () => {
+    const repoRoot = buildRepoNeedingRepair("repair-core-bare-hook-badjson-");
+
+    const result = runHook("not valid json {{{", repoRoot);
+
+    expect(result.status).toBe(0);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "false",
+    );
+  });
+
+  it("echoes payload.hook_event_name in hookSpecificOutput.hookEventName instead of defaulting", () => {
+    const repoRoot = buildRepoNeedingRepair("repair-core-bare-hook-event-");
+
+    // PostToolUse is the event this hook is actually wired to (alongside
+    // SessionStart, its default) -- not PreCompact.
+    const result = runHook(
+      JSON.stringify({ cwd: repoRoot, hook_event_name: "PostToolUse" }),
+    );
+
+    expect(result.status).toBe(0);
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput: { hookEventName: string };
+    };
+    expect(output.hookSpecificOutput.hookEventName).toBe("PostToolUse");
+  });
+
+  it("prints nothing to stdout and still exits 0 when nothing needed repairing", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "repair-core-bare-hook-noop-"));
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+
+    const result = runHook(JSON.stringify({ cwd: repoRoot }));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe("");
+  });
+
+  it("exits 0 with empty stdout when cwd is not inside any git repository at all", () => {
+    const nonRepo = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-hook-nonrepo-"),
+    );
+    scratchDirs.push(nonRepo);
+
+    const result = runHook(JSON.stringify({ cwd: nonRepo }));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe("");
+  });
+
+  it.skipIf(chmodIneffective)(
+    "prints a systemMessage with the manual git-config fix and exits 0 when the write fails after core.bare=true is confirmed",
+    () => {
+      const repoRoot = buildRepoNeedingRepair(
+        "repair-core-bare-hook-writefail-",
+      );
+      const gitDir = join(repoRoot, ".git");
+      chmodSync(gitDir, 0o555);
+
+      let result: SpawnSyncReturns<string>;
+      try {
+        result = runHook(JSON.stringify({ cwd: repoRoot }));
+      } finally {
+        chmodSync(gitDir, 0o755);
+      }
+
+      expect(result.status).toBe(0);
+      const output = JSON.parse(result.stdout) as {
+        systemMessage: string;
+        hookSpecificOutput: {
+          hookEventName: string;
+          additionalContext: string;
+        };
+      };
+      expect(output.systemMessage).toContain(
+        `git config --file ${configPathOf(repoRoot)} core.bare false`,
+      );
+      expect(output.hookSpecificOutput.additionalContext).toMatch(
+        /core\.bare/i,
+      );
+    },
+  );
+
+  it("prints a systemMessage with both the rm-lock and git-config manual-fix commands, and a non-empty additionalContext, when config.lock is stale", () => {
+    const repoRoot = buildRepoNeedingRepair("repair-core-bare-hook-stalelock-");
+    const lockPath = `${configPathOf(repoRoot)}.lock`;
+    writeFileSync(lockPath, "held by a crashed git process");
+    const staleTime = new Date(Date.now() - 5 * 60_000);
+    utimesSync(lockPath, staleTime, staleTime);
+
+    const result = runHook(JSON.stringify({ cwd: repoRoot }));
+
+    expect(result.status).toBe(0);
+    const output = JSON.parse(result.stdout) as {
+      systemMessage: string;
+      hookSpecificOutput: {
+        hookEventName: string;
+        additionalContext: string;
+      };
+    };
+    expect(output.systemMessage).toContain(`rm ${lockPath}`);
+    expect(output.systemMessage).toContain(
+      `git config --file ${configPathOf(repoRoot)} core.bare false`,
+    );
+    expect(output.hookSpecificOutput.additionalContext).toBeTruthy();
+    expect(output.hookSpecificOutput.additionalContext.length).toBeGreaterThan(
+      0,
+    );
+    // The stale lock is reported, never deleted by the hook itself.
+    expect(statSync(lockPath, { throwIfNoEntry: false })).not.toBeUndefined();
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
+
+  it.each([
+    ["a directory name containing a space", "my projects"],
+    ["a directory name containing an apostrophe", "o'brien dir"],
+  ])(
+    "shell-quotes the manual-fix rm/git-config commands in systemMessage when the repo path has %s",
+    (_label, dirName) => {
+      const scratch = mkdtempSync(
+        join(tmpdir(), "repair-core-bare-shellquote-"),
+      );
+      scratchDirs.push(scratch);
+      const specialDir = join(scratch, dirName);
+      mkdirSync(specialDir, { recursive: true });
+      const repoRoot = join(specialDir, "repo");
+      initRepo(repoRoot);
+      gitOk(repoRoot, "config", "core.bare", "true");
+      const lockPath = `${configPathOf(repoRoot)}.lock`;
+      writeFileSync(lockPath, "held by a crashed git process");
+      const staleTime = new Date(Date.now() - 5 * 60_000);
+      utimesSync(lockPath, staleTime, staleTime);
+      // Mirrors the hook's own `shellQuote` contract (single-quote, escaping
+      // an embedded `'` as `'\''`) -- not its internals, just the documented
+      // external shape a pasted command must have.
+      const quote = (value: string): string =>
+        `'${value.replaceAll("'", `'\\''`)}'`;
+
+      const result = runHook(JSON.stringify({ cwd: repoRoot }));
+
+      expect(result.status).toBe(0);
+      const output = JSON.parse(result.stdout) as { systemMessage: string };
+      expect(output.systemMessage).toContain(`rm ${quote(lockPath)}`);
+      expect(output.systemMessage).toContain(
+        `git config --file ${quote(configPathOf(repoRoot))} core.bare false`,
+      );
+    },
+  );
+
+  it("falls back to process.cwd() and stays fast when stdin is closed immediately with no payload at all", () => {
+    const repoRoot = buildRepoNeedingRepair(
+      "repair-core-bare-hook-closedstdin-",
+    );
+    const start = Date.now();
+
+    const result = spawnSync(process.execPath, [hookPath], {
+      cwd: repoRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf8",
+    });
+
+    expect(Date.now() - start).toBeLessThan(5000);
+    expect(result.status).toBe(0);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "false",
+    );
+  });
+
+  it("falls back to process.cwd() and stays fast when stdin is an empty string", () => {
+    const repoRoot = buildRepoNeedingRepair(
+      "repair-core-bare-hook-emptystdin-",
+    );
+    const start = Date.now();
+
+    const result = runHook("", repoRoot);
+
+    expect(Date.now() - start).toBeLessThan(5000);
+    expect(result.status).toBe(0);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "false",
+    );
+  });
+});
+
+describe("root harness copy stays in sync with the pack copy", () => {
+  it("is byte-identical to the pack copy once the root's own SPDX/mirror header is stripped and the shebang is re-accounted for", () => {
+    const rootPath = join(
+      repoRootDir,
+      ".claude",
+      "hooks",
+      "repair-core-bare.mjs",
+    );
+    const rootContent = readFileSync(rootPath, "utf8");
+    const packContent = readFileSync(hookPath, "utf8");
+
+    const rootLines = rootContent.split("\n");
+    const firstDocLine = rootLines.findIndex((line) => line.startsWith("/**"));
+    // The root copy carries its own SPDX header + a "mirrors the pack copy"
+    // comment ahead of the shared doc block -- everything before the first
+    // `/**` line is that header, including the root's own shebang. Stripping
+    // it and re-prepending the bare shebang must reproduce the pack copy
+    // byte-for-byte, since the two are required to stay identical apart from
+    // that header.
+    expect(firstDocLine).toBeGreaterThan(0);
+    const rootStripped = [
+      "#!/usr/bin/env node",
+      ...rootLines.slice(firstDocLine),
+    ].join("\n");
+
+    expect(rootStripped).toBe(packContent);
+  });
+});

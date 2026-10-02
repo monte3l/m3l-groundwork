@@ -34,6 +34,15 @@ Hub-only. Never dispatched as a spoke's own tool.
    tracking for a worktree you created yourself -- see the tool's own "on
    first entry from the launch directory, the path must appear in
    `git worktree list`" note).
+   **Known side effect:** Claude Code's `EnterWorktree`/`ExitWorktree` have
+   been reported to leave `core.bare = true` in the main repository's shared
+   `.git/config` (anthropics/claude-code#58345, #69802, both closed "not
+   planned"), which breaks `git status` in the main checkout while worktrees
+   keep working. This pack's `repair-core-bare.mjs` hook resets it after
+   either tool runs; if `git status` ever says "this operation must be run in
+   a work tree", the manual fix is `git config --local core.bare false`. Prefer
+   the `path:` and `keep` forms used in this skill; `EnterWorktree(name: ...)` and
+   `ExitWorktree(remove)` are the calls the upstream reports tie to it.
 4. Copy any of `.env`, `.env.local`, `.env.*.local` that exist in the main
    checkout into the new worktree (the same list as `.worktreeinclude`). `.worktreeinclude` (this pack ships one) only fires for a
    worktree Claude Code itself creates -- since this skill creates the
