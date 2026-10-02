@@ -56,7 +56,10 @@
  * An ANCESTOR of a guarded directory is a path that contains one beneath
  * it, judged lexically: the project root (a flat layout's own src/tests),
  * a workspace container (`packages`, `apps`, `libs`), or a package
- * directly inside one (`packages/cli`). A final glob segment is judged by
+ * directly inside one (`packages/cli`). A container only counts as the
+ * operand's own first segment (`docs/packages/old`, `packages/*\/dist` are
+ * not ancestors), and `node_modules` is never a package
+ * (`*\/node_modules`). A final glob segment is judged by
  * its parent: directly under the project root it counts when it could
  * expand to `src`, `tests` or a container (`rm -rf *`); directly under a
  * container it always counts, as it may name a package (`packages/c*`,
@@ -705,6 +708,9 @@ function firstProtected(words, ctx, rule, base = ctx.cwd) {
 // each hold a whole package's src/tests beneath them.
 const WORKSPACE_CONTAINERS = ["packages", "apps", "libs"];
 const GUARDED_DIRS = ["src", "tests"];
+// Never a workspace package: package managers skip node_modules when
+// expanding workspace globs, so `<container>/node_modules` holds no package.
+const NON_PACKAGE_DIRS = ["node_modules"];
 const GLOB_CHAR = /[*?[{]/;
 const MATCH_ANY = /^/;
 
@@ -755,8 +761,11 @@ function projectRelative(resolved, ctx) {
 /**
  * True when project-relative `segments` name a directory that CONTAINS a
  * guarded tree: the project root (a flat layout's own src/tests), a
- * workspace container, or a package directly inside one. A glob in an
- * earlier segment counts as a container when it could expand to one
+ * workspace container, or a package directly inside one. A container only
+ * ever counts as the operand's OWN first segment: a container-shaped name
+ * deeper down (`docs/packages/old`) is an ordinary nested directory, and
+ * `node_modules` is never a package (`*\/node_modules`). A glob in the
+ * first segment counts as a container when it could expand to one
  * (`*\/cli`, `pack*\/*`), since at runtime it may name exactly that
  * ancestor. A glob in the last segment is read by what its PARENT is:
  * under the project root it counts when it
@@ -764,28 +773,32 @@ function projectRelative(resolved, ctx) {
  * container it always counts, since it may name a package (`packages/c*`);
  * under a package it counts when it could expand to `src` or `tests`
  * (`packages/cli/*`). Under anything else (`dist/*`, `packages/cli/dist/*`)
- * it never does.
+ * it never does, and nor does a literal path below a package
+ * (`packages/*\/dist`).
  */
 function containsGuardedTree(segments, globbed) {
   const n = segments.length;
   if (n === 0) return true;
+  const first = segments[0];
   const last = segments[n - 1];
-  const isContainer = (k) =>
-    k >= 0 &&
-    (WORKSPACE_CONTAINERS.includes(segments[k]) ||
-      (globbed &&
-        GLOB_CHAR.test(segments[k]) &&
-        WORKSPACE_CONTAINERS.some((name) =>
-          globMatcher(segments[k]).test(name),
-        )));
-  if (globbed && GLOB_CHAR.test(last)) {
+  const container =
+    WORKSPACE_CONTAINERS.includes(first) ||
+    (globbed &&
+      GLOB_CHAR.test(first) &&
+      WORKSPACE_CONTAINERS.some((name) => globMatcher(first).test(name)));
+  if (n === 1 && globbed && GLOB_CHAR.test(last)) {
     const matcher = globMatcher(last);
-    const matchesAny = (names) => names.some((name) => matcher.test(name));
-    if (n === 1) return matchesAny([...WORKSPACE_CONTAINERS, ...GUARDED_DIRS]);
-    if (isContainer(n - 2)) return true;
-    return isContainer(n - 3) && matchesAny(GUARDED_DIRS);
+    return [...WORKSPACE_CONTAINERS, ...GUARDED_DIRS].some((name) =>
+      matcher.test(name),
+    );
   }
-  return isContainer(n - 1) || isContainer(n - 2);
+  if (!container || n > 3) return false;
+  if (n <= 2) return n === 1 || !NON_PACKAGE_DIRS.includes(segments[1]);
+  // n === 3: only a final glob directly under a package can name src/tests.
+  if (NON_PACKAGE_DIRS.includes(segments[1])) return false;
+  if (!globbed || !GLOB_CHAR.test(last)) return false;
+  const matcher = globMatcher(last);
+  return GUARDED_DIRS.some((name) => matcher.test(name));
 }
 
 /**

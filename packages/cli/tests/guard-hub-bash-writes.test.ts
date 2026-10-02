@@ -1224,6 +1224,90 @@ describe("findBashWriteToProtectedPath -- GAP 7: a glob in a NON-FINAL path segm
   });
 });
 
+/**
+ * GAP 9: `containsGuardedTree`'s non-final-segment check
+ * (`isContainer(n-1) || isContainer(n-2)`) matches a workspace-container
+ * name -- or a glob that could expand to one -- at whatever index it lands
+ * on counting back from the END of the operand, not relative to the
+ * project ROOT. GAP 7's fix above anchors correctly for a 1- or 2-segment
+ * operand (there, `n-2` IS index 0), but once the operand is three or more
+ * segments deep, `n-2`/`n-1` land on a MIDDLE segment that merely happens
+ * to share a container's name -- so `docs/packages/old` reads as
+ * "`packages` the container, `old` the package" even though `packages`
+ * here sits two levels below the project root, never as the operand's own
+ * first segment. The same drift hits a package's own build and scratch
+ * directories (a package name glob followed by `dist`, or by `coverage`)
+ * and a bare top-level `node_modules` sweep (a leading glob followed by
+ * `node_modules`): in each case the glob standing in for the PACKAGE NAME
+ * sits at index 1, not index 0, yet still satisfies `isContainer` because
+ * that check never looks at WHERE in the operand the candidate segment
+ * sits. Only the operand's first segment (workspace-relative) can ever BE
+ * a workspace container; a container-shaped name anywhere else is an
+ * ordinary nested directory with no guarded `src`/`tests` tree beneath it.
+ * Every MUST-ALLOW row below is expected to presently return a BLOCK (an
+ * `ancestor: true` hit) -- this describe's RED state; `code-implementer`
+ * closes the gap by anchoring the container check to segment index 0 only.
+ * The MUST-BLOCK rows lock in the surrounding behavior (the container
+ * ITSELF, a bare package-glob sweep directly under it, and a direct
+ * `src`/`tests` target reached through a glob placeholder) that the fix
+ * must not regress.
+ */
+describe("findBashWriteToProtectedPath -- GAP 9: a workspace-container name counts only as the operand's OWN first segment", () => {
+  const ALLOWED_NESTED_CONTAINER_NAME: [string, string][] = [
+    [
+      "rm -rf packages/*/dist -- a package's own build artifact; 'packages' is the first segment but the glob package-name slot is index 1, not a second container",
+      "rm -rf packages/*/dist",
+    ],
+    [
+      "rm -rf packages/*/coverage -- a package's own coverage artifact, same shape as dist",
+      "rm -rf packages/*/coverage",
+    ],
+    [
+      "rm -rf */node_modules -- each top-level directory's own node_modules, not a package dir inside a container",
+      "rm -rf */node_modules",
+    ],
+    [
+      "rm -rf docs/packages/old -- 'packages' sits two levels deep, never the operand's own first segment",
+      "rm -rf docs/packages/old",
+    ],
+  ];
+
+  it.each(ALLOWED_NESTED_CONTAINER_NAME)("%s", (_name, command) => {
+    expectAllowed(command);
+  });
+
+  it("still allows rm -rf packages/cli/dist (regression lock -- already allowed today, must stay so)", () => {
+    expectAllowed("rm -rf packages/cli/dist");
+  });
+
+  const BLOCKED_FIRST_SEGMENT_CONTAINER: [string, string, string][] = [
+    [
+      "rm -rf packages/*/src stays blocked -- a direct guarded path reached through a glob placeholder, not an ancestor call",
+      "rm -rf packages/*/src",
+      "rm",
+    ],
+    [
+      "rm -rf packages/*/tests stays blocked -- a direct guarded path reached through a glob placeholder, not an ancestor call",
+      "rm -rf packages/*/tests",
+      "rm",
+    ],
+    [
+      "rm -rf packages stays blocked -- the container ITSELF, at the operand's own first (and only) segment",
+      "rm -rf packages",
+      "rm",
+    ],
+    [
+      "rm -rf packages/* stays blocked -- a bare package sweep, container at the operand's own first segment",
+      "rm -rf packages/*",
+      "rm",
+    ],
+  ];
+
+  it.each(BLOCKED_FIRST_SEGMENT_CONTAINER)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+});
+
 describe("findBashWriteToProtectedPath never throws, however malformed the command text", () => {
   it.each([
     ["empty string", ""],
