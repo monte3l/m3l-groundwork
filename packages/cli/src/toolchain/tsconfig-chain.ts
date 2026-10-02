@@ -35,6 +35,8 @@ interface ChainFile {
   rel: string;
   /** Why the file could not be used, or `undefined` when it parsed. */
   error: string | undefined;
+  /** True when `error` is a read failure (missing, unreadable, unresolvable, not a regular file) rather than a parse failure. */
+  readFailed: boolean;
   /** This file's own `compilerOptions`, unmerged. */
   options: Record<string, unknown>;
 }
@@ -153,6 +155,7 @@ export function loadTsconfigChain(root: string, entry: string): TsconfigChain {
           : read.ok
             ? "top level is not an object"
             : read.error,
+        readFailed: !read.ok && read.stage === "read",
         options: own,
       });
     }

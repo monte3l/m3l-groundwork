@@ -47,7 +47,8 @@ function findTsconfigPath(
  * shares, so the survey and the grade cannot disagree about a project's
  * effective flags. `files` are absolute and child-first. A file that fails to
  * parse, or a relative `extends` that points at nothing, is a parse failure; a
- * bare package specifier that is not installed is only a note -- the flags it
+ * file in the chain that exists but cannot be read is noted "could not read",
+ * never "could not parse"; a bare package specifier that is not installed is only a note -- the flags it
  * would contribute are simply absent.
  */
 function surveyTsconfig(dir: string, undetermined: string[]): TsconfigSurvey {
@@ -60,7 +61,8 @@ function surveyTsconfig(dir: string, undetermined: string[]): TsconfigSurvey {
   let parsed = chain.parsed;
   for (const file of chain.files) {
     if (file.error !== undefined) {
-      undetermined.push(`could not parse ${file.abs}: ${file.error}`);
+      const verb = file.readFailed ? "could not read" : "could not parse";
+      undetermined.push(`${verb} ${file.abs}: ${file.error}`);
     }
   }
   for (const link of chain.links) {
@@ -233,7 +235,8 @@ function surveyScripts(
 
 /**
  * Surveys toolchain enforcement at `dir`. Appends anything it could not
- * parse, or could not read (`EACCES`/`EPERM`), to `undetermined`; any other
+ * parse, or could not read (`EACCES`/`EPERM`, a dangling symlink, a symlink
+ * loop, a directory where a file was expected), to `undetermined`; any other
  * read failure throws, naming the path, with the original failure as
  * `cause`.
  *

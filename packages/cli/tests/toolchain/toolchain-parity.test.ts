@@ -13,7 +13,13 @@
 // unnoticed until a bootstrapped project's own gate disagrees with what adopt
 // mode reported.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -24,6 +30,7 @@ import {
   STRICT_FLAGS,
 } from "../../src/toolchain/rules.js";
 import { TOOLCHAIN_CATEGORIES } from "../../src/toolchain/types.js";
+import { chmodIneffective } from "../chmod-ineffective.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const templatesCoreDir = join(
@@ -281,6 +288,115 @@ describe("the TypeScript grader and its emitted .mjs twin", () => {
     expect(plain(emitted.gradeToolchain(root))).toEqual(
       plain(gradeToolchain(root)),
     );
+  });
+
+  // The TypeScript grader's `readJsoncFile` (jsonc.ts) now classifies an
+  // unreachable extends candidate by errno (EACCES/EPERM/ELOOP recorded as
+  // "unreadable", never conflated with "does not exist"). The emitted .mjs
+  // twin's `isFile`/`readJsonc` (templates/core/bin/lib/toolchain-rules.mjs)
+  // still use `existsSync`/a bare-catch `isFile` that cannot tell "nothing
+  // here" from "something here this process may not reach" -- both answer
+  // `false`/"does not exist" for a permission failure. These three describes
+  // prove the resulting grades diverge today (RED), not just the underlying
+  // chain's own fields (tsconfig-chain.test.ts already covers those).
+  describe("an extends target this process cannot reach due to an unreadable errno", () => {
+    describe("the extends target's own directory is unsearchable (ancestor chmod 000)", () => {
+      let cfgDir: string;
+
+      beforeEach(() => {
+        write(
+          "cfg/base.json",
+          JSON.stringify({ compilerOptions: { strict: true } }),
+        );
+        write("tsconfig.json", JSON.stringify({ extends: "./cfg/base.json" }));
+        cfgDir = join(root, "cfg");
+      });
+
+      afterEach(() => {
+        chmodSync(cfgDir, 0o755);
+      });
+
+      it.skipIf(chmodIneffective)(
+        "produce identical grades: only an unreadable note, never 'resolves to no file'",
+        () => {
+          chmodSync(cfgDir, 0o000);
+          let ts: unknown;
+          let twin: unknown;
+          try {
+            ts = plain(gradeToolchain(root));
+            twin = plain(emitted.gradeToolchain(root));
+          } finally {
+            chmodSync(cfgDir, 0o755);
+          }
+          const tsText = JSON.stringify(ts);
+          expect(tsText).not.toContain("resolves to no file");
+          expect(tsText).toContain("unreadable");
+          expect(twin).toEqual(ts);
+        },
+      );
+    });
+
+    describe("the extends target file itself is unreadable, its directory is reachable (file chmod 000)", () => {
+      let targetFile: string;
+
+      beforeEach(() => {
+        write(
+          "cfg/base.json",
+          JSON.stringify({ compilerOptions: { strict: true } }),
+        );
+        write("tsconfig.json", JSON.stringify({ extends: "./cfg/base.json" }));
+        targetFile = join(root, "cfg", "base.json");
+      });
+
+      afterEach(() => {
+        chmodSync(targetFile, 0o644);
+      });
+
+      it.skipIf(chmodIneffective)(
+        "produce identical grades for an unreadable extends target file",
+        () => {
+          chmodSync(targetFile, 0o000);
+          let ts: unknown;
+          let twin: unknown;
+          try {
+            ts = plain(gradeToolchain(root));
+            twin = plain(emitted.gradeToolchain(root));
+          } finally {
+            chmodSync(targetFile, 0o644);
+          }
+          expect(JSON.stringify(ts)).toContain("unreadable");
+          expect(twin).toEqual(ts);
+        },
+      );
+    });
+
+    // `package.json` (unlike a root tsconfig*.json name) is read directly by
+    // `readJsoncFile`/`readJsonc` with no prior "is this a regular file?"
+    // filter on either twin -- so a directory sitting at that path reaches
+    // the read unconditionally on both sides, unlike "tsconfig.json" itself
+    // (excluded from both twins' root-file scan before `loadTsconfigChain`
+    // is ever called -- see tsconfig-chain.test.ts for that direct,
+    // non-parity-comparable contract instead). The TypeScript side's errno
+    // classification does not yet cover EISDIR, so it throws; the emitted
+    // twin's bare `catch` around the read swallows it and reports ok:false --
+    // a real, reachable "no throw" vs. "throws" divergence for the same
+    // unclassified-errno gap this describe block is about.
+    describe("the path a JSONC read expects a file at is actually a directory (EISDIR)", () => {
+      it("produce identical grades when package.json is a directory -- no throw on either side", () => {
+        mkdirSync(join(root, "package.json"));
+        let thrown: unknown;
+        let ts: unknown;
+        let twin: unknown;
+        try {
+          ts = plain(gradeToolchain(root));
+          twin = plain(emitted.gradeToolchain(root));
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeUndefined();
+        expect(twin).toEqual(ts);
+      });
+    });
   });
 
   it("every rule id RULES declares produces at least one finding across these fixtures, in both twins", () => {

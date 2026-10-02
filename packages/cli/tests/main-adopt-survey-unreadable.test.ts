@@ -22,14 +22,15 @@
  * output is ever written.
  *
  * The follow-on cases cover each other unreadable file kind the survey
- * reads where the contract differs: an agent `.md`, a rule `.md`, and (as a
- * negative check) `settings.json`, whose presence is recorded via
- * `existsSync` alone -- no content read, so it must never appear in
- * `undetermined` even while unreadable. Deliberately avoids any file name
- * that collides with one `templates/core` itself ships (CLAUDE.md, the
- * baseline's own agent/rule names), since `planConflicts` independently
- * reads a project's copy of any file matching a baseline name -- a separate,
- * out-of-scope concern this file does not exercise.
+ * reads: an agent `.md`, a rule `.md`, and `settings.json` -- the last one a
+ * baseline file `conflicts.ts`'s `planConflicts` reads (`templates/core`
+ * ships `.claude/settings.json`), so an unreadable copy is recorded in
+ * `undetermined` with EACCES the same as the other two, not exempted from
+ * it. Deliberately avoids any file name that collides with one
+ * `templates/core` itself ships elsewhere (CLAUDE.md, the baseline's own
+ * agent/rule names), since `planConflicts` independently reads a project's
+ * copy of any file matching a baseline name -- a separate, out-of-scope
+ * concern this file does not exercise beyond this one settings.json case.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -219,10 +220,10 @@ describe.each([
   },
   {
     label:
-      "an unreadable settings.json (existsSync-only: never content-read, never in undetermined)",
+      "an unreadable settings.json (a baseline file planConflicts reads: recorded in undetermined with EACCES)",
     relPath: join(".claude", "settings.json"),
     content: "{}",
-    expectUndetermined: false,
+    expectUndetermined: true,
   },
 ])(
   "adopt mode (main()): $label",

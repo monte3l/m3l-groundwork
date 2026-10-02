@@ -147,9 +147,10 @@
  *     is caught, the wrapper being stripped)
  *   - an ancestor the lexical rule above does not recognise: a workspace
  *     container under another name, a nested one (`packages/group/pkg`),
- *     or the root of a linked worktree (`.claude/worktrees/<name>`, so
- *     `rsync -a /tmp/x/ .` from inside one passes); and a mid-path glob is
- *     never read as possibly naming `src`/`tests` (`<glob>/a.ts`)
+ *     a parent of the project root (`rm -rf ..`), or the root of a linked
+ *     worktree (`.claude/worktrees/<name>`, so `rsync -a /tmp/x/ .` from
+ *     inside one passes); and a mid-path glob is read only as possibly
+ *     naming a workspace container, never `src`/`tests` (`<glob>/a.ts`)
  *   - `tar`/`unzip`/`curl -o`/`wget -O`, `git checkout`/`restore`/`stash`
  *     (`stash pop`)/`reset`/`rm`/`mv`/`clean` (`git clean -fdx`), and editors (`vim -c ...`)
  *   - a redirect attached to a test expression (`[[ -f a ]] > file`): the
@@ -754,9 +755,11 @@ function projectRelative(resolved, ctx) {
 /**
  * True when project-relative `segments` name a directory that CONTAINS a
  * guarded tree: the project root (a flat layout's own src/tests), a
- * workspace container, or a package directly inside one. Only the last
- * segment is read as a glob (a mid-path glob is an opaque package name),
- * and only by what its PARENT is: under the project root it counts when it
+ * workspace container, or a package directly inside one. A glob in an
+ * earlier segment counts as a container when it could expand to one
+ * (`*\/cli`, `pack*\/*`), since at runtime it may name exactly that
+ * ancestor. A glob in the last segment is read by what its PARENT is:
+ * under the project root it counts when it
  * could expand to `src`, `tests` or a container (`*`); under a workspace
  * container it always counts, since it may name a package (`packages/c*`);
  * under a package it counts when it could expand to `src` or `tests`
@@ -768,7 +771,13 @@ function containsGuardedTree(segments, globbed) {
   if (n === 0) return true;
   const last = segments[n - 1];
   const isContainer = (k) =>
-    k >= 0 && WORKSPACE_CONTAINERS.includes(segments[k]);
+    k >= 0 &&
+    (WORKSPACE_CONTAINERS.includes(segments[k]) ||
+      (globbed &&
+        GLOB_CHAR.test(segments[k]) &&
+        WORKSPACE_CONTAINERS.some((name) =>
+          globMatcher(segments[k]).test(name),
+        )));
   if (globbed && GLOB_CHAR.test(last)) {
     const matcher = globMatcher(last);
     const matchesAny = (names) => names.some((name) => matcher.test(name));
@@ -1765,6 +1774,12 @@ function isEntryPoint() {
 
 function runWriteGuard(input) {
   const filePath = input.tool_input?.file_path ?? "";
+  if (typeof filePath !== "string") {
+    process.stderr.write(
+      `guard-hub-src-writes: ${input.tool_name} payload has no string tool_input.file_path (got ${typeof filePath}); allowing without analysis.\n`,
+    );
+    process.exit(0);
+  }
   const agentType = input.agent_type;
   // Canonicalized (case-correct, symlinks resolved) where the real
   // filesystem can confirm it -- isProtectedPath's own case-insensitive

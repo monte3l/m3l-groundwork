@@ -2,10 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  chmodSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { surveyToolchain } from "../../src/survey/survey-toolchain.js";
+import { chmodIneffective } from "../chmod-ineffective.js";
 
 describe("surveyToolchain", () => {
   let dir: string;
@@ -172,6 +179,57 @@ describe("surveyToolchain", () => {
     expect(undetermined).toEqual([
       `could not parse ${join(dir, "gone.json")}: ${join(dir, "gone.json")} does not exist`,
     ]);
+  });
+
+  /**
+   * An extends candidate `readJsoncFile` could reach but could not read
+   * (EACCES, via an unsearchable ancestor directory) is a different failure
+   * than one that is genuinely absent -- `loadTsconfigChain` already records
+   * it as a `ChainFile` with an "is unreadable (EACCES)" error (see
+   * tsconfig-chain.test.ts), never folded into "does not exist". This
+   * loop's own wording still says "could not parse" for that file
+   * unconditionally (line below `for (const file of chain.files)`), which is
+   * wrong when the reason is unreadable, not unparseable -- this is that
+   * wording's own RED state.
+   */
+  describe("an extends target this process cannot search (ancestor chmod 000)", () => {
+    let cfgDir: string;
+
+    beforeEach(() => {
+      cfgDir = join(dir, "cfg");
+      mkdirSync(cfgDir);
+      writeFileSync(
+        join(cfgDir, "base.json"),
+        JSON.stringify({ compilerOptions: { strict: true } }),
+      );
+      writeFileSync(
+        join(dir, "tsconfig.json"),
+        JSON.stringify({ extends: "./cfg/base.json" }),
+      );
+    });
+
+    afterEach(() => {
+      chmodSync(cfgDir, 0o755);
+    });
+
+    it.skipIf(chmodIneffective)(
+      "records 'could not read', never 'could not parse', for an unreadable extends target",
+      () => {
+        chmodSync(cfgDir, 0o000);
+        let survey: ReturnType<typeof surveyToolchain> | undefined;
+        try {
+          survey = surveyToolchain(dir, undetermined);
+        } finally {
+          chmodSync(cfgDir, 0o755);
+        }
+        expect(survey?.tsconfig.parsed).toBe(false);
+        const note = undetermined.find((entry) => entry.includes("base.json"));
+        expect(note).toBeDefined();
+        expect(note).toContain("unreadable");
+        expect(note).toContain("could not read");
+        expect(note).not.toContain("could not parse");
+      },
+    );
   });
 
   it("reports the full graded flag set, including the ones the survey once omitted", () => {

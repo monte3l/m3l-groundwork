@@ -37,13 +37,20 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  CLAUDE_DEST_SEGMENTS,
+  CUSTOMIZE_SKILL_ENTRY_FILE,
+} from "../src/customize-paths.js";
+import type * as PluginModule from "../src/plugin.js";
 import type { InstallPluginResult } from "../src/plugin.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
-const installCustomizeSkillMock = vi.fn((): InstallPluginResult => ({
-  filesWritten: [],
-}));
+const installCustomizeSkillMock = vi.fn(
+  (_targetDir: string, _sourceDir?: string): InstallPluginResult => ({
+    filesWritten: [],
+  }),
+);
 const installCustomizeSkillGuardedMock = vi.fn(() => ({
   filesWritten: [],
   location: "claude" as const,
@@ -93,6 +100,29 @@ function expectFreshModeRefusal(thrown: unknown, offendingPath: string): void {
   for (const chainMessage of chain) {
     expect(chainMessage).not.toMatch(/\bre-run the CLI\b/);
   }
+}
+
+/**
+ * Every entry under `dir`, relative paths, depth-first. Never descends into
+ * a symlinked directory (a `Dirent`'s own `isDirectory()` answers `false`
+ * for a symlink, since it is `lstat`-shaped, not `stat`-shaped) -- so a
+ * symlink entry is recorded once, not followed into whatever it points at.
+ * Used to assert a target tree is byte-for-byte unchanged (same entries, in
+ * the same shape) before and after a refused run.
+ */
+function snapshotTree(dir: string): string[] {
+  const results: string[] = [];
+  const walk = (current: string, rel: string): void => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const relPath = rel === "" ? entry.name : join(rel, entry.name);
+      results.push(relPath);
+      if (entry.isDirectory()) {
+        walk(join(current, entry.name), relPath);
+      }
+    }
+  };
+  walk(dir, "");
+  return results.sort();
 }
 
 describe("main() fresh mode: symlink/non-directory preflight (GAP 1)", () => {
@@ -227,6 +257,103 @@ describe("main() fresh mode: symlink/non-directory preflight (GAP 1)", () => {
       // is validated before the first write.
       expect(existsSync(join(targetDir, "package.json"))).toBe(false);
       expect(gitInitMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("real (unmocked) installCustomizeSkill -- main()-level write-ordering bugs its own symlink/directory guard cannot prevent on its own", () => {
+    // These describes need the REAL installCustomizeSkill, not the
+    // top-of-file no-op mock (which always reports "already up to date"
+    // and never touches disk) -- that mock exists so the OTHER tests in
+    // this file exercise real emitTemplate/installPack without a real
+    // /customize install; here the /customize install's own guard is
+    // exactly what's under test, reached through main()'s real ordering.
+    beforeEach(async () => {
+      const actual =
+        await vi.importActual<typeof PluginModule>("../src/plugin.js");
+      installCustomizeSkillMock.mockImplementation(
+        actual.installCustomizeSkill,
+      );
+    });
+
+    afterEach(() => {
+      installCustomizeSkillMock.mockImplementation((): InstallPluginResult => ({
+        filesWritten: [],
+      }));
+    });
+
+    describe("a symlinked .claude/skills/customize (the /customize skill's own destination -- not part of assertSafeEmitDestinations, since the baseline never ships a skill at that path)", () => {
+      it("refuses before writing the baseline at all: the target tree is byte-for-byte unchanged, the outside dir is untouched, and the error names the symlink", () => {
+        writeFileSync(join(outsideDir, "sentinel.txt"), "do not touch\n");
+        mkdirSync(join(targetDir, ...CLAUDE_DEST_SEGMENTS.slice(0, -1)), {
+          recursive: true,
+        });
+        const symlinkPath = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
+        symlinkSync(outsideDir, symlinkPath, "dir");
+
+        const before = snapshotTree(targetDir);
+
+        let thrown: unknown;
+        try {
+          main([targetDir, "--force", "--skip-install"]);
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(errorChainMessages(thrown).join("\n")).toContain(symlinkPath);
+        // Today's bug: runFresh's own assertSafeEmitDestinations only covers
+        // the baseline's and any pack's destinations, never the /customize
+        // skill's; installCustomizeSkill runs (and refuses) only AFTER
+        // emitTemplate has already written the baseline, so package.json
+        // exists and the tree has changed well before this refusal fires.
+        expect(existsSync(join(targetDir, "package.json"))).toBe(false);
+        expect(snapshotTree(targetDir)).toEqual(before);
+        expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+        expect(readdirSync(outsideDir)).toEqual(["sentinel.txt"]);
+        expect(readFileSync(join(outsideDir, "sentinel.txt"), "utf8")).toBe(
+          "do not touch\n",
+        );
+        expect(gitInitMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("a real directory occupying one of the /customize skill's own payload-file destinations (same main()-ordering bug, file-name granularity)", () => {
+      // NOTE: a plain symlink AT one of these payload file names (e.g.
+      // `.claude/skills/customize/SKILL.md`) is not refused by plugin.ts at
+      // all under fresh mode's "overwrite" policy -- it is deliberately
+      // replaced (removed, then rewritten with "wx"), never written through;
+      // see plugin-symlink.test.ts's "replaces a symlinked SKILL.md
+      // destination" coverage, which this suite must not contradict. A real
+      // DIRECTORY at that same payload name is the one shape plugin.ts's own
+      // `assertNoDirectoryAtPayloadNames` DOES refuse, so it is what exercises
+      // the same main()-level "writes the baseline, then refuses" ordering
+      // bug at file-name (rather than directory-component) granularity.
+      it("refuses before writing the baseline at all when SKILL.md is itself a directory, leaving the target's pre-existing entries untouched", () => {
+        const destDir = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
+        mkdirSync(destDir, { recursive: true });
+        const conflictPath = join(destDir, CUSTOMIZE_SKILL_ENTRY_FILE);
+        mkdirSync(conflictPath);
+        writeFileSync(join(conflictPath, "inner.txt"), "do not touch\n");
+
+        const before = snapshotTree(targetDir);
+
+        let thrown: unknown;
+        try {
+          main([targetDir, "--force", "--skip-install"]);
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(errorChainMessages(thrown).join("\n")).toContain(conflictPath);
+        expect(existsSync(join(targetDir, "package.json"))).toBe(false);
+        expect(snapshotTree(targetDir)).toEqual(before);
+        expect(lstatSync(conflictPath).isDirectory()).toBe(true);
+        expect(readFileSync(join(conflictPath, "inner.txt"), "utf8")).toBe(
+          "do not touch\n",
+        );
+        expect(gitInitMock).not.toHaveBeenCalled();
+      });
     });
   });
 

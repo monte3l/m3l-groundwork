@@ -5,7 +5,9 @@
  * The one errno discrimination every adopt-mode survey read goes through.
  * A permission failure (`EACCES`/`EPERM`) is a property of the project file
  * itself -- a `chmod 000` left behind, a root-owned file -- so it is recorded
- * in the survey's `undetermined` list and the survey carries on. Anything
+ * in the survey's `undetermined` list and the survey carries on; so is a
+ * dangling symlink (`ENOENT`), a symlink loop (`ELOOP`) or a directory where
+ * a file was expected (`EISDIR`) met on a read. Anything
  * else (`EIO`, `EMFILE`, ...) says something about the machine, not the
  * project, and is thrown with the path named and the original chained as
  * `cause`, never folded silently in beside a genuine permission problem.
@@ -181,6 +183,26 @@ export function probePath(path: string): PathProbe {
 }
 
 /**
+ * The path an `undetermined` note names when a `stat` of `path` failed with
+ * `code` (from {@link probePath}'s `unresolvable` result). A `stat` needs
+ * search permission on the path's ancestors, never on the path itself, so a
+ * permission failure names the enclosing directory -- one entry for every
+ * probe under it once the caller de-duplicates. A symlink loop (`ELOOP`) is
+ * a property of the path itself, so it names `path`.
+ *
+ * @example
+ * ```ts
+ * const probe = probePath(targetPath);
+ * if (probe.kind === "unresolvable") {
+ *   undetermined.push(unreadableNote(probeSubject(targetPath, probe.code), probe.code));
+ * }
+ * ```
+ */
+export function probeSubject(path: string, code: string): string {
+  return code === UNRESOLVABLE_CODE ? path : dirname(path);
+}
+
+/**
  * Whether `path` exists, without `existsSync`'s blind spot: `existsSync`
  * answers `false` for ANY `stat` failure, so a path under a directory this
  * process may not enter (`chmod 000`) reads as silently absent. A `stat`
@@ -203,14 +225,48 @@ export function guardedExists(path: string, undetermined: string[]): boolean {
   const probe = probePath(path);
   if (probe.kind === "present") return true;
   if (probe.kind === "absent") return false;
-  const named = probe.code === UNRESOLVABLE_CODE ? path : dirname(path);
-  undetermined.push(unreadableNote(named, probe.code));
+  undetermined.push(unreadableNote(probeSubject(path, probe.code), probe.code));
   return false;
 }
 
 /**
- * Runs `read` against `path`. On a permission failure, records the path and
- * errno in `undetermined` and returns `undefined`; on any other failure,
+ * The non-permission errnos a read of an already-discovered path records
+ * rather than throws: the entry is a dangling symlink (`ENOENT`), a symlink
+ * loop (`ELOOP`), or a directory where a file was expected (`EISDIR`). Each
+ * is a property of the project's own tree, like a permission failure -- not
+ * of the machine, like `EIO`/`EMFILE`.
+ */
+const RECORDED_READ_CODES: ReadonlySet<string> = new Set([
+  "ENOENT",
+  UNRESOLVABLE_CODE,
+  "EISDIR",
+]);
+
+/**
+ * The errno to record when a read of an already-discovered path failed for a
+ * reason that is a property of the project's own tree -- `EACCES`/`EPERM`,
+ * `ENOENT` (a dangling symlink), `ELOOP` or `EISDIR` -- or `undefined` for
+ * anything else (`EIO`, `EMFILE`, ...), which the caller throws.
+ *
+ * @example
+ * ```ts
+ * recordedReadCode(Object.assign(new Error("x"), { code: "EISDIR" })); // "EISDIR"
+ * recordedReadCode(Object.assign(new Error("x"), { code: "EIO" })); // undefined
+ * ```
+ */
+export function recordedReadCode(error: unknown): string | undefined {
+  const permission = permissionCode(error);
+  if (permission !== undefined) return permission;
+  const code = errnoCode(error);
+  return code !== undefined && RECORDED_READ_CODES.has(code) ? code : undefined;
+}
+
+/**
+ * Runs `read` against `path`. On a failure that is a property of the
+ * project's own tree -- a permission failure (`EACCES`/`EPERM`), a dangling
+ * symlink (`ENOENT`), a symlink loop (`ELOOP`), or a directory where a file
+ * was expected (`EISDIR`) -- records the path and errno in `undetermined`
+ * and returns `undefined`. On any other failure (`EIO`, `EMFILE`, ...),
  * throws a {@link SurveyReadError} chaining the original as `cause`.
  *
  * @example
@@ -227,7 +283,7 @@ export function guardedRead<T>(
   try {
     return read();
   } catch (error) {
-    const code = permissionCode(error);
+    const code = recordedReadCode(error);
     if (code === undefined) throw readFailure(path, error);
     undetermined.push(unreadableNote(path, code));
     return undefined;

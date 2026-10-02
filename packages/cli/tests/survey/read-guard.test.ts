@@ -18,7 +18,14 @@
  * the second `describe` still exercise the genuine syscall.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  symlinkSync,
+  mkdirSync,
+  readFileSync,
+} from "node:fs";
 import type * as FsModule from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,7 +39,7 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, statSync: statSyncMock };
 });
 
-const { guardedExists } =
+const { guardedExists, guardedRead } =
   await import("../../src/survey/internal/read-guard.js");
 
 describe("guardedExists -- a non-permission statSync failure throws, rather than being recorded or swallowed", () => {
@@ -139,6 +146,92 @@ describe("guardedExists -- ELOOP is recorded in undetermined, not silently absen
     expect(undetermined).toHaveLength(1);
     expect(undetermined[0]).toContain(loopA);
     expect(undetermined[0]).toContain("ELOOP");
+  });
+});
+
+describe("guardedRead -- ENOENT, ELOOP and EISDIR failures on the READ itself (not guardedExists's stat) are recorded in undetermined, not thrown (RED: today only EACCES/EPERM are recognized by permissionCode, so everything else -- including these three -- throws a SurveyReadError)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "read-guard-read-errno-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("a dangling symlink (ENOENT raised by the read itself) is recorded in undetermined naming the path and ENOENT, answers undefined, and does not throw", () => {
+    const linkPath = join(dir, "dangling.md");
+    symlinkSync(join(dir, "does-not-exist-target"), linkPath);
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: string | undefined;
+    try {
+      result = guardedRead(
+        linkPath,
+        () => readFileSync(linkPath, "utf8"),
+        undetermined,
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(result).toBeUndefined();
+    expect(undetermined).toHaveLength(1);
+    expect(undetermined[0]).toContain(linkPath);
+    expect(undetermined[0]).toContain("ENOENT");
+  });
+
+  it("a symlink loop (ELOOP raised by the read itself) is recorded in undetermined naming the path and ELOOP, answers undefined, and does not throw", () => {
+    const loopA = join(dir, "loop-a.md");
+    const loopB = join(dir, "loop-b");
+    symlinkSync(loopB, loopA);
+    symlinkSync(loopA, loopB);
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: string | undefined;
+    try {
+      result = guardedRead(
+        loopA,
+        () => readFileSync(loopA, "utf8"),
+        undetermined,
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(result).toBeUndefined();
+    expect(undetermined).toHaveLength(1);
+    expect(undetermined[0]).toContain(loopA);
+    expect(undetermined[0]).toContain("ELOOP");
+  });
+
+  it("a directory where a file was expected (EISDIR raised by the read itself) is recorded in undetermined naming the path and EISDIR, answers undefined, and does not throw", () => {
+    const dirPath = join(dir, "actually-a-dir.md");
+    mkdirSync(dirPath);
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: string | undefined;
+    try {
+      result = guardedRead(
+        dirPath,
+        () => readFileSync(dirPath, "utf8"),
+        undetermined,
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(result).toBeUndefined();
+    expect(undetermined).toHaveLength(1);
+    expect(undetermined[0]).toContain(dirPath);
+    expect(undetermined[0]).toContain("EISDIR");
   });
 });
 

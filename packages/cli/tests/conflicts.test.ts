@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planConflicts } from "../src/conflicts.js";
+import { unreadableNote } from "../src/survey/internal/read-guard.js";
 import { chmodIneffective } from "./chmod-ineffective.js";
 
 describe("planConflicts", () => {
@@ -312,6 +313,87 @@ describe("planConflicts", () => {
             (note) => note.includes(lockedDir) && note.includes("EACCES"),
           ),
         ).toBe(true);
+      },
+    );
+  });
+
+  describe("an emptied baseline subdirectory in target that is itself permission-locked, holding no existing files at all (ancestor chmod 000)", () => {
+    let lockedDir: string;
+
+    beforeEach(() => {
+      lockedDir = join(targetDir, "bin");
+      mkdirSync(lockedDir);
+      mkdirSync(join(templateRoot, "bin"));
+      // Two baseline files that map under the locked target directory: today
+      // `compareFile`'s unresolvable branch names the probed FILE path
+      // (`unreadableNote(targetPath, code)`), not the enclosing directory
+      // like `guardedExists` does -- so each of these produces its OWN
+      // distinct note, rather than the single enclosing-directory note this
+      // test expects.
+      writeFileSync(join(templateRoot, "bin", "a.ts"), "export {};");
+      writeFileSync(join(templateRoot, "bin", "b.ts"), "export {};");
+    });
+
+    afterEach(() => {
+      chmodSync(lockedDir, 0o755);
+    });
+
+    it.skipIf(chmodIneffective)(
+      "names the enclosing directory once in undetermined, with no note per nonexistent baseline file under it",
+      () => {
+        chmodSync(lockedDir, 0o000);
+        const undetermined: string[] = [];
+        let thrown: unknown;
+        let result: ReturnType<typeof planConflicts> | undefined;
+        try {
+          result = planConflicts(templateRoot, targetDir, {}, undetermined);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          chmodSync(lockedDir, 0o755);
+        }
+
+        expect(thrown).toBeUndefined();
+        expect(result).toHaveLength(2);
+        expect(undetermined).toEqual([unreadableNote(lockedDir, "EACCES")]);
+      },
+    );
+  });
+
+  describe("a baseline file that exists in target but is itself unreadable (EACCES on the read, not on the stat)", () => {
+    const targetPath = () => join(targetDir, ".prettierignore");
+
+    afterEach(() => {
+      if (existsSync(targetPath())) {
+        try {
+          chmodSync(targetPath(), 0o644);
+        } catch {
+          // already gone.
+        }
+      }
+    });
+
+    it.skipIf(chmodIneffective)(
+      "records the path in undetermined with EACCES (deduped, one entry) instead of silently reporting divergent with nothing recorded",
+      () => {
+        writeFileSync(join(templateRoot, ".prettierignore"), "dist\n");
+        writeFileSync(targetPath(), "dist\n");
+        chmodSync(targetPath(), 0o000);
+
+        const undetermined: string[] = [];
+        let thrown: unknown;
+        let result: ReturnType<typeof planConflicts> | undefined;
+        try {
+          result = planConflicts(templateRoot, targetDir, {}, undetermined);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          chmodSync(targetPath(), 0o644);
+        }
+
+        expect(thrown).toBeUndefined();
+        expect(result?.[0]?.status).toBe("divergent");
+        expect(undetermined).toEqual([unreadableNote(targetPath(), "EACCES")]);
       },
     );
   });

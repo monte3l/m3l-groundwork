@@ -14,9 +14,10 @@ import { restoreDotfilePath } from "./assets.js";
 import { parseJsonc } from "./jsonc.js";
 import { isRecord } from "./merge-json.js";
 import {
-  permissionCode,
   probePath,
+  probeSubject,
   readFailure,
+  recordedReadCode,
   unreadableNote,
 } from "./survey/internal/read-guard.js";
 import { applyTokens } from "./tokens.js";
@@ -68,6 +69,14 @@ function compareJsonKeys(
   return diffs;
 }
 
+/**
+ * Appends `note` unless already present: adopt mode passes the survey's own
+ * list, and a pack and the baseline can name the same path.
+ */
+function recordOnce(undetermined: string[], note: string): void {
+  if (!undetermined.includes(note)) undetermined.push(note);
+}
+
 function compareFile(
   relPath: string,
   baselineContent: string,
@@ -84,25 +93,29 @@ function compareFile(
     return { relPath, status: "absent", keyDiffs: undefined };
   }
   if (probe.kind === "unresolvable") {
-    // Once only: adopt mode passes the survey's own list, and a pack and the
-    // baseline can name the same path.
-    const note = unreadableNote(targetPath, probe.code);
-    if (!undetermined.includes(note)) undetermined.push(note);
+    // A permission failure names the enclosing directory (the `stat` needed
+    // search permission there, not on the file), so every baseline file
+    // under one locked directory shares a single note; a symlink loop names
+    // the path itself.
+    recordOnce(
+      undetermined,
+      unreadableNote(probeSubject(targetPath, probe.code), probe.code),
+    );
     return { relPath, status: "divergent", keyDiffs: undefined };
   }
 
-  // A permission failure on the read itself is divergent too. Its existence
-  // is established, so nothing is recorded: the survey already reports any
-  // file whose contents it needed, and a status of "divergent" is not a
-  // false claim.
+  // A read failure that is a property of the project's tree (a permission
+  // failure, a directory where the baseline has a file) is divergent too --
+  // it cannot be shown identical -- and is recorded naming the path, so the
+  // report never shows "divergent" with no reason behind it.
   let targetContent: string;
   try {
     targetContent = readFileSync(targetPath, "utf8");
   } catch (error) {
-    if (permissionCode(error) !== undefined) {
-      return { relPath, status: "divergent", keyDiffs: undefined };
-    }
-    throw readFailure(targetPath, error);
+    const code = recordedReadCode(error);
+    if (code === undefined) throw readFailure(targetPath, error);
+    recordOnce(undetermined, unreadableNote(targetPath, code));
+    return { relPath, status: "divergent", keyDiffs: undefined };
   }
 
   if (isKeyLevelJsonFile(relPath)) {
@@ -162,9 +175,12 @@ function walkTemplate(
  * Compares every file `templates/core` (or a pack's `files/`) would emit
  * against what `targetDir` already has. A target path this process cannot
  * reach (`EACCES`/`EPERM`/`ELOOP`) is never reported `absent`: it is
- * `divergent`, and a note naming the path and errno is appended to
- * `undetermined` (adopt mode passes the survey's own list, so the report
- * shows it). `ENOENT`/`ENOTDIR` is `absent`; any other errno throws.
+ * `divergent`, and a note naming the errno is appended to `undetermined`
+ * once (adopt mode passes the survey's own list, so the report shows it) --
+ * naming the enclosing directory for a permission failure on the `stat`, the
+ * path itself for a symlink loop, or for a permission failure or a
+ * directory-where-a-file-was-expected (`EISDIR`) on the read.
+ * `ENOENT`/`ENOTDIR` is `absent`; any other errno throws.
  *
  * @example
  * ```ts

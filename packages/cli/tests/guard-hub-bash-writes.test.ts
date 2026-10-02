@@ -1169,6 +1169,61 @@ describe("findBashWriteToProtectedPath -- GAP 4(c): Deno's own namespace calls (
   });
 });
 
+/**
+ * GAP 7: `containsGuardedTree`'s glob branch only recognises a glob
+ * character sitting in the FINAL path segment (see its own doc comment:
+ * "only the last segment is read as a glob -- a mid-path glob is an opaque
+ * package name"). A glob in an EARLIER segment is therefore matched
+ * LITERALLY against `WORKSPACE_CONTAINERS` and can never be recognised as
+ * potentially expanding to `packages` (or a package name directly beneath
+ * one) at runtime -- so a destructive operand built from a non-final glob
+ * segment (two stars separated by a slash, a star then a literal package
+ * name, or a literal prefix then a star) passes through unblocked today,
+ * even though at runtime it can expand to exactly the same
+ * `packages/cli` ancestor a literal `rm -rf packages/cli` already blocks
+ * (see GAP 3(a)/4(a) above). Every MUST-BLOCK row below is expected to
+ * presently return ALLOW (null) -- this describe's RED state;
+ * `code-implementer` closes the gap by also matching a glob sitting in a
+ * non-final segment against `WORKSPACE_CONTAINERS` (and a package-name
+ * segment directly beneath one), without reopening GAP 4(a)'s "own glob
+ * clear" rows (a build directory's own contents, e.g. `packages/cli/dist`)
+ * -- a flat-layout equivalent does not apply here since none of these
+ * commands name a package (`cli`) that exists in a flat, non-nested layout.
+ */
+describe("findBashWriteToProtectedPath -- GAP 7: a glob in a NON-FINAL path segment is opaque today", () => {
+  const BLOCKED_MIDPATH_GLOB: [string, string, string][] = [
+    [
+      "rm -rf */* -- both segments globbed, the first could expand to the packages container",
+      "rm -rf */*",
+      "rm",
+    ],
+    [
+      "rm -rf */cli -- the first (non-final) segment could expand to packages",
+      "rm -rf */cli",
+      "rm",
+    ],
+    [
+      "rm -rf pack*/* -- a partial-literal non-final segment could still expand to packages",
+      "rm -rf pack*/*",
+      "rm",
+    ],
+    [
+      "rm -rf p*/cli -- same, with a literal final package-name segment",
+      "rm -rf p*/cli",
+      "rm",
+    ],
+    [
+      "mv */cli /tmp -- an mv SOURCE naming the same ancestor via a non-final glob segment",
+      "mv */cli /tmp",
+      "mv",
+    ],
+  ];
+
+  it.each(BLOCKED_MIDPATH_GLOB)("%s", (_name, command, keyword) => {
+    expectBlocked(command, keyword);
+  });
+});
+
 describe("findBashWriteToProtectedPath never throws, however malformed the command text", () => {
   it.each([
     ["empty string", ""],
@@ -1543,6 +1598,43 @@ describe.each([
       expect(stderr).toBe("");
     });
   });
+
+  // GAP 8: a Write/Edit payload whose file_path is not a string must fail
+  // open the same way a Bash payload with a non-string command already does
+  // (see "exits 0 but writes a stderr line when tool_input.command is not a
+  // string" above) -- exit 0 with a non-empty stderr line, never an uncaught
+  // crash. Today `runWriteGuard` computes `filePath && isAbsoluteLike(filePath)`
+  // unconditionally once filePath is truthy, and `isAbsoluteLike` calls
+  // `.startsWith` on it -- a non-string, truthy file_path (a number, a
+  // plain object) throws an uncaught TypeError nothing catches, crashing the
+  // process instead of failing open. This describe's RED state: today's
+  // exit status is not 0 (an uncaught exception), not the documented
+  // fail-open contract.
+  it.each([
+    ["Write", "a number", 123],
+    ["Write", "a plain object", {}],
+    ["Edit", "a number", 123],
+  ])(
+    "exits 0 with a non-empty, non-crash stderr line for a %s payload whose file_path is %s (not a string)",
+    (toolName, _label, filePath) => {
+      withFakeProject((fakeProject) => {
+        const result = spawnSync("node", [scriptPath], {
+          input: JSON.stringify({
+            tool_name: toolName,
+            tool_input: { file_path: filePath },
+          }),
+          cwd: fakeProject,
+          env: { ...process.env, CLAUDE_PROJECT_DIR: fakeProject },
+          encoding: "utf8",
+        });
+        expect(result.status).toBe(0);
+        expect(result.stderr.trim().length).toBeGreaterThan(0);
+        // No uncaught-exception stack trace (a Node stack frame line starts
+        // with leading whitespace then "at ").
+        expect(result.stderr).not.toMatch(/\n\s*at /);
+      });
+    },
+  );
 
   it("exits 0 but warns on stderr ('not fully analysed') when the nesting depth cap is hit", () => {
     withFakeProject((fakeProject) => {

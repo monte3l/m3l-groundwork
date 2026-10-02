@@ -42,6 +42,7 @@ import {
 import type { GuardedInstallResult, InstallPluginResult } from "./plugin.js";
 import {
   CLAUDE_DEST_SEGMENTS,
+  CUSTOMIZE_SKILL_FILE_NAMES,
   GROUNDWORK_DEST_SEGMENTS,
   plannedCustomizeSkillPaths,
 } from "./customize-paths.js";
@@ -57,9 +58,12 @@ import {
   stageBaselineAdditions,
 } from "./baseline-stage.js";
 import {
+  assertDirectoryComponent,
+  assertNotDirectory,
   assertNotSymlink,
   endsWithRerunAdvice,
   FIX_AND_RERUN_ADVICE,
+  FRESH_SYMLINK_ADVICE,
 } from "./fs-guard.js";
 import {
   buildInventory,
@@ -364,6 +368,26 @@ export function formatCapsSummary(
   return { text: lines.join("\n"), overCap: overCap.length > 0 };
 }
 
+/**
+ * Fresh mode's pre-flight over the `/customize` skill's own destination
+ * (`.claude/skills/customize/`): each directory component must be missing
+ * or a real directory, and no payload file name may be a directory. A
+ * symlink AT a payload name passes -- the install replaces it rather than
+ * writing through it. Nothing is written either way.
+ */
+function assertSafeSkillDestination(targetDir: string): void {
+  for (let depth = 1; depth <= CLAUDE_DEST_SEGMENTS.length; depth++) {
+    assertDirectoryComponent(
+      join(targetDir, ...CLAUDE_DEST_SEGMENTS.slice(0, depth)),
+      FRESH_SYMLINK_ADVICE,
+    );
+  }
+  const destDir = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
+  for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+    assertNotDirectory(join(destDir, name), FRESH_SYMLINK_ADVICE);
+  }
+}
+
 function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   if (platform === "win32") {
     throw new Error("Windows is not supported yet (Linux and macOS only)");
@@ -388,6 +412,12 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
     options.targetDir,
     tokens,
   );
+
+  // The /customize skill's destination too: its own install refuses a
+  // symlinked directory component or a directory at a payload name, but it
+  // runs only after the baseline is written -- too late to leave the target
+  // untouched.
+  assertSafeSkillDestination(options.targetDir);
 
   mkdirSync(options.targetDir, { recursive: true });
 

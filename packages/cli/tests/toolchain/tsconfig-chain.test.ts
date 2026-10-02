@@ -205,6 +205,33 @@ describe("loadTsconfigChain", () => {
     );
   });
 
+  /**
+   * A directory sitting at the entry path reaches `readJsoncFile` directly
+   * (`visit` calls it with no prior `isFile`/candidate check on the entry
+   * itself, unlike an `extends` target) and triggers `EISDIR` on the read.
+   * Neither `isAbsentError` nor `unresolvableCode` (read-guard.ts) currently
+   * classifies `EISDIR`, so it falls through to the generic throw -- this
+   * describe's RED state. The entry is never reachable this way through
+   * `gradeToolchain`/the emitted twin's own grader (both exclude directories
+   * from their root tsconfig-file scan before ever calling this function),
+   * so there is no emitted-twin counterpart to parity-compare here; this is
+   * `loadTsconfigChain`'s own contract instead -- same shape as the
+   * EACCES/EISDIR distinctions `readJsoncFile` already makes.
+   */
+  it("records a directory sitting at the entry path as 'not a regular file', never throwing", () => {
+    mkdirSync(join(root, "tsconfig.json"));
+    let thrown: unknown;
+    let chain: ReturnType<typeof loadTsconfigChain> | undefined;
+    try {
+      chain = loadTsconfigChain(root, "tsconfig.json");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeUndefined();
+    expect(chain?.parsed).toBe(false);
+    expect(chain?.files[0]?.error).toContain("not a regular file");
+  });
+
   it("ignores extends entries that are not strings", () => {
     write("tsconfig.json", { extends: [1, null, "./ok.json"] });
     write("ok.json", { compilerOptions: { strict: true } });

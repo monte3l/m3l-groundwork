@@ -32,6 +32,7 @@ import {
   mkdirSync,
   writeFileSync,
   chmodSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -343,6 +344,147 @@ describe("surveyHarness: an unreadable project file is recorded in undetermined,
       ).toBe(true);
     },
   );
+});
+
+describe("surveyHarness: ENOENT (dangling symlink), ELOOP (symlink loop) and EISDIR (a directory where a file was expected) are recorded in undetermined, never thrown (RED: today each one throws -- guardedRead only recognizes EACCES/EPERM)", () => {
+  let dir: string;
+  let undetermined: string[];
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "harness-errno-"));
+    undetermined = [];
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("a dangling agent .md symlink is excluded from agents[] and recorded in undetermined with ENOENT", () => {
+    mkdirSync(join(dir, ".claude", "agents"), { recursive: true });
+    const dangling = join(dir, ".claude", "agents", "x.md");
+    symlinkSync(join(dir, "does-not-exist-target"), dangling);
+    writeFileSync(
+      join(dir, ".claude", "agents", "ok.md"),
+      "---\nmodel: haiku\n---\n# ok\n",
+    );
+
+    let thrown: unknown;
+    let survey;
+    try {
+      survey = surveyHarness(dir, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(survey?.agents).toEqual([{ name: "ok", model: "haiku" }]);
+    expect(
+      undetermined.some(
+        (entry) => entry.includes(dangling) && entry.includes("ENOENT"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a dangling rule .md symlink is excluded from rules[] and recorded in undetermined with ENOENT", () => {
+    mkdirSync(join(dir, ".claude", "rules"), { recursive: true });
+    const dangling = join(dir, ".claude", "rules", "r.md");
+    symlinkSync(join(dir, "does-not-exist-target"), dangling);
+    writeFileSync(
+      join(dir, ".claude", "rules", "ok.md"),
+      '---\npaths: "tests/**"\n---\nbody\n',
+    );
+
+    let thrown: unknown;
+    let survey;
+    try {
+      survey = surveyHarness(dir, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(survey?.rules).toEqual([{ name: "ok", paths: "tests/**" }]);
+    expect(
+      undetermined.some(
+        (entry) => entry.includes(dangling) && entry.includes("ENOENT"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a symlink loop in place of an agent .md is excluded from agents[] and recorded in undetermined with ELOOP", () => {
+    mkdirSync(join(dir, ".claude", "agents"), { recursive: true });
+    const loopA = join(dir, ".claude", "agents", "x.md");
+    const loopB = join(dir, ".claude", "agents", "x-loop-b");
+    symlinkSync(loopB, loopA);
+    symlinkSync(loopA, loopB);
+    writeFileSync(
+      join(dir, ".claude", "agents", "ok.md"),
+      "---\nmodel: haiku\n---\n# ok\n",
+    );
+
+    let thrown: unknown;
+    let survey;
+    try {
+      survey = surveyHarness(dir, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(survey?.agents).toEqual([{ name: "ok", model: "haiku" }]);
+    expect(
+      undetermined.some(
+        (entry) => entry.includes(loopA) && entry.includes("ELOOP"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a directory named <agent>.md is excluded from agents[] and recorded in undetermined with EISDIR", () => {
+    const dirPath = join(dir, ".claude", "agents", "y.md");
+    mkdirSync(dirPath, { recursive: true });
+    writeFileSync(
+      join(dir, ".claude", "agents", "ok.md"),
+      "---\nmodel: haiku\n---\n# ok\n",
+    );
+
+    let thrown: unknown;
+    let survey;
+    try {
+      survey = surveyHarness(dir, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(survey?.agents).toEqual([{ name: "ok", model: "haiku" }]);
+    expect(
+      undetermined.some(
+        (entry) => entry.includes(dirPath) && entry.includes("EISDIR"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a directory named CLAUDE.md reports hasClaudeMd true, empty headings, records EISDIR in undetermined, and does not throw", () => {
+    const claudeMdDir = join(dir, "CLAUDE.md");
+    mkdirSync(claudeMdDir);
+
+    let thrown: unknown;
+    let survey;
+    try {
+      survey = surveyHarness(dir, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(survey?.hasClaudeMd).toBe(true);
+    expect(survey?.claudeMdHeadings).toEqual([]);
+    expect(
+      undetermined.some(
+        (entry) => entry.includes(claudeMdDir) && entry.includes("EISDIR"),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("[GAP 2a] surveyHarness: an unenterable `.claude` ITSELF (not a child) is a different failure mode than an unenterable child directory", () => {

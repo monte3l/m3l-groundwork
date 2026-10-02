@@ -223,6 +223,36 @@ describe("readJsoncFile", () => {
    * mocking the latter is how this reaches the guarded seam once the fix
    * routes through it; until then, this proves the gap by NOT throwing.
    */
+  describe("a directory where a file was expected (EISDIR)", () => {
+    /**
+     * GAP: `readJsoncFile`'s single `try` runs `statSync` then
+     * `readFileSync` back to back. A directory at `path` makes `statSync`
+     * succeed (it needs no read permission and works fine on a directory),
+     * so the failure actually comes from `readFileSync` raising `EISDIR` --
+     * today `unresolvableCode` does not recognize it (only
+     * `EACCES`/`EPERM`/`ELOOP`), so it falls through to the generic throw.
+     * RED: this currently throws instead of returning `{ ok: false }`.
+     */
+    it("reports 'not a regular file' rather than throwing", () => {
+      const path = join(dir, "tsconfig.json");
+      mkdirSync(path);
+
+      let thrown: unknown;
+      let result: ReturnType<typeof readJsoncFile> | undefined;
+      try {
+        result = readJsoncFile(path);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeUndefined();
+      expect(result?.ok).toBe(false);
+      const message = result?.ok === false ? result.error : "";
+      expect(message).toContain(path);
+      expect(message).toContain("not a regular file");
+    });
+  });
+
   describe("a non-permission failure on the existence check (EIO, mocked)", () => {
     afterEach(() => {
       statSyncMock.mockReset();

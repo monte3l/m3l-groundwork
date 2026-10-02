@@ -93,6 +93,29 @@ describe.skipIf(chmodIneffective)(
         ).toBe("EACCES");
       },
     );
+
+    it.each(GUARDS)(
+      "%s gives permission-specific advice for a real EACCES, not the symlink-removal wording -- still naming the path and carrying FRESH --fresh --force advice, cause set",
+      (_name, guard) => {
+        chmodSync(locked, 0o000);
+        let thrown: unknown;
+        try {
+          guard(target, FRESH_SYMLINK_ADVICE);
+        } catch (error) {
+          thrown = error;
+        } finally {
+          chmodSync(locked, 0o755);
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).toContain(target);
+        expect(message).toContain(FRESH_RETRY);
+        expect(message).not.toContain("remove it");
+        expect(message.toLowerCase()).toMatch(/permission/);
+        expect((thrown as Error).cause).toBeDefined();
+      },
+    );
   },
 );
 
@@ -134,6 +157,68 @@ describe("fs-guard -- a non-permission lstat failure (EIO) is wrapped the same w
       expect(thrown).toBeInstanceOf(Error);
       expect(thrown).not.toBe(failure);
       expect((thrown as Error).message).toContain(path);
+      expect((thrown as Error).cause).toBe(failure);
+    },
+  );
+
+  it.each(GUARDS)(
+    "%s keeps the generic (caller-supplied) advice for a non-permission errno -- the symlink-removal wording is NOT replaced",
+    (_name, guard) => {
+      const failure = Object.assign(new Error("simulated EIO"), {
+        code: "EIO",
+      });
+      lstatSyncMock.mockImplementation(() => {
+        throw failure;
+      });
+      const path = "/proj/.claude/settings.json";
+      let thrown: unknown;
+      try {
+        guard(path, FRESH_SYMLINK_ADVICE);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toContain("remove it");
+      expect((thrown as Error).message).toContain(FRESH_RETRY);
+    },
+  );
+});
+
+describe("fs-guard -- a real EPERM lstat failure gets the same permission-specific advice as EACCES", () => {
+  afterEach(() => {
+    lstatSyncMock.mockReset();
+  });
+
+  const GUARDS: [string, Guard][] = [
+    ["assertNotSymlink", assertNotSymlink],
+    ["assertDirectoryComponent", assertDirectoryComponent],
+    ["assertFileDestination", assertFileDestination],
+  ];
+
+  it.each(GUARDS)(
+    "%s wraps an EPERM lstat failure with permission-specific advice, not the symlink-removal wording -- still naming the path and carrying FRESH --fresh --force advice, cause set",
+    (_name, guard) => {
+      const failure = Object.assign(new Error("simulated EPERM"), {
+        code: "EPERM",
+      });
+      lstatSyncMock.mockImplementation(() => {
+        throw failure;
+      });
+      const path = "/proj/.claude/settings.json";
+      let thrown: unknown;
+      try {
+        guard(path, FRESH_SYMLINK_ADVICE);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain(path);
+      expect(message).toContain(FRESH_RETRY);
+      expect(message).not.toContain("remove it");
+      expect(message.toLowerCase()).toMatch(/permission/);
       expect((thrown as Error).cause).toBe(failure);
     },
   );

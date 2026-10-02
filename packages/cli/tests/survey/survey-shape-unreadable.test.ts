@@ -14,7 +14,13 @@
  * The non-permission (`EIO`) cases live in `survey-shape-io-error.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  chmodSync,
+  mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { surveyShape } from "../../src/survey/survey-shape.js";
@@ -140,6 +146,31 @@ describe("surveyShape: an unreadable project file is recorded in undetermined, n
       expect(
         undetermined.some(
           (entry) => entry.includes(dir) && entry.includes("EACCES"),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it(
+    "a directory named package.json is recorded in undetermined with EISDIR rather than thrown " +
+      "(RED: readPackageJson's guardedExists sees the directory as present, then guardedRead's readFileSync raises EISDIR, which is not yet recognized)",
+    () => {
+      const path = join(dir, "package.json");
+      mkdirSync(path);
+
+      let thrown: unknown;
+      let survey;
+      try {
+        survey = surveyShape(dir, undetermined);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeUndefined();
+      expect(survey?.moduleType).toBe("unspecified");
+      expect(
+        undetermined.some(
+          (entry) => entry.includes(path) && entry.includes("EISDIR"),
         ),
       ).toBe(true);
     },

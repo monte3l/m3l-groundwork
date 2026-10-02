@@ -11,13 +11,21 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import {
+  errnoCode,
   isAbsentError,
   readFailure,
   unresolvableCode,
 } from "./survey/internal/read-guard.js";
 
+/**
+ * The outcome of reading/parsing JSONC. A failure says which step failed:
+ * `"read"` (the file is missing, unreadable, unresolvable or not a regular
+ * file) or `"parse"` (its text is not JSONC) -- so a caller never reports an
+ * unreadable file as unparseable.
+ */
 export type JsoncReadResult =
-  { ok: true; value: unknown } | { ok: false; error: string };
+  | { ok: true; value: unknown }
+  | { ok: false; stage: "read" | "parse"; error: string };
 
 /** Matches exactly the whitespace class `\s` covers, so a trailing comma is recognized across the same gaps as before. */
 const WHITESPACE = /\s/;
@@ -189,6 +197,7 @@ export function parseJsonc(content: string): JsoncReadResult {
   } catch (error) {
     return {
       ok: false,
+      stage: "parse",
       error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -196,9 +205,9 @@ export function parseJsonc(content: string): JsoncReadResult {
 
 /**
  * Reads and parses a JSONC file. A missing (`ENOENT`/`ENOTDIR`), unreadable
- * (`EACCES`/`EPERM`), unresolvable (a symlink loop's `ELOOP`) or
- * unparseable file is reported, not thrown -- each is a property of the
- * file. The existence check is a real `stat`, never `existsSync`, so a file
+ * (`EACCES`/`EPERM`), unresolvable (a symlink loop's `ELOOP`), not a regular
+ * file (a directory's `EISDIR`) or unparseable file is reported, not thrown
+ * -- each is a property of the file. The existence check is a real `stat`, never `existsSync`, so a file
  * under a directory this process cannot search is reported with its errno
  * rather than as absent. Any other failure, on the check or the read
  * (`EIO`, `EMFILE`, ...), throws an `Error` naming the path, with the
@@ -217,11 +226,22 @@ export function readJsoncFile(path: string): JsoncReadResult {
     content = readFileSync(path, "utf8");
   } catch (error) {
     if (isAbsentError(error)) {
-      return { ok: false, error: `${path} does not exist` };
+      return { ok: false, stage: "read", error: `${path} does not exist` };
+    }
+    if (errnoCode(error) === "EISDIR") {
+      return {
+        ok: false,
+        stage: "read",
+        error: `${path} is not a regular file`,
+      };
     }
     const code = unresolvableCode(error);
     if (code === undefined) throw readFailure(path, error);
-    return { ok: false, error: `${path} is unreadable (${code})` };
+    return {
+      ok: false,
+      stage: "read",
+      error: `${path} is unreadable (${code})`,
+    };
   }
   return parseJsonc(content);
 }
