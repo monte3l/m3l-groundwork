@@ -117,6 +117,54 @@ function coreSectionOf(content: string): string {
   return match?.[1] ?? "";
 }
 
+/**
+ * What this process needs to invoke to set/clear a file's OS-level immutable
+ * attribute without elevated privilege, or `undefined` when unsupported here.
+ */
+interface ImmutableSupport {
+  cmd: string;
+  setFlag: string;
+  clearFlag: string;
+}
+
+/**
+ * Probes whether this process can mark a file immutable WITHOUT root: macOS
+ * `chflags uchg` may be set/cleared by the file's own OWNER (confirmed
+ * empirically -- no `sudo` involved); Linux `chattr +i` needs
+ * `CAP_LINUX_IMMUTABLE`, normally root-only, so an ordinary CI runner
+ * reliably reports this unsupported and the test below skips itself rather
+ * than asserting a false positive -- same shape as `chmodIneffective`.
+ *
+ * This exists to engineer a REAL (non-mocked) `renameSync` failure that
+ * happens strictly AFTER `openSync(lock, "wx")` already succeeded: mocking
+ * `node:fs` here would mean mocking the whole module the hook's own dynamic
+ * `import()` resolves, which would also intercept every other test in this
+ * file that imports from `node:fs` directly -- awkward enough across the
+ * ESM boundary that a real OS primitive is the more reliable regression
+ * mechanism instead.
+ */
+function probeImmutableSupport(): ImmutableSupport | undefined {
+  const probeDir = mkdtempSync(
+    join(tmpdir(), "repair-core-bare-immutable-probe-"),
+  );
+  try {
+    const probeFile = join(probeDir, "probe");
+    writeFileSync(probeFile, "x");
+    const support: ImmutableSupport =
+      process.platform === "darwin"
+        ? { cmd: "chflags", setFlag: "uchg", clearFlag: "nouchg" }
+        : { cmd: "chattr", setFlag: "+i", clearFlag: "-i" };
+    const setResult = spawnSync(support.cmd, [support.setFlag, probeFile]);
+    if (setResult.status !== 0) return undefined;
+    spawnSync(support.cmd, [support.clearFlag, probeFile]);
+    return support;
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true });
+  }
+}
+
+const immutableSupport = probeImmutableSupport();
+
 interface RepairCoreBareModule {
   repairCoreBare: (cwd: string) => {
     repaired: boolean;
@@ -579,6 +627,82 @@ describe("repairCoreBare", () => {
     ).toBeUndefined();
     expect(statSync(configPathOf(repoRoot)).mode & 0o777).toBe(0o600);
   });
+
+  it.skipIf(immutableSupport === undefined)(
+    "[regression: lock-ownership fix] cleans up the config.lock THIS run created when the later rename fails, leaving none behind",
+    () => {
+      const repoRoot = mkdtempSync(
+        join(tmpdir(), "repair-core-bare-ownslock-renamefail-"),
+      );
+      scratchDirs.push(repoRoot);
+      initRepo(repoRoot);
+      gitOk(repoRoot, "config", "core.bare", "true");
+      const configPath = configPathOf(repoRoot);
+      const lockPath = `${configPath}.lock`;
+      const support = immutableSupport as ImmutableSupport;
+      // Marking the DESTINATION of the rename immutable (settable by its own
+      // owner on macOS, confirmed empirically -- no root needed) leaves
+      // every step up to and including `openSync(lock, "wx")` succeeding
+      // (so this run DOES create and own the lock), and only the final
+      // `renameSync(lock, configPath)` fails (EPERM) -- the exact "owns the
+      // lock, later step fails" shape the fix's `ownsLock` guard exists for.
+      expect(spawnSync(support.cmd, [support.setFlag, configPath]).status).toBe(
+        0,
+      );
+
+      try {
+        const result = hookModule.repairCoreBare(repoRoot);
+
+        expect(result.repaired).toBe(false);
+        expect(result.configPath).toBe(configPath);
+        expect(typeof result.error).toBe("string");
+        expect(result.error).not.toBe("");
+        // The regression check itself: this run's OWN lock is gone, unlike
+        // a foreign lock it never created (see the tests above/below).
+        expect(statSync(lockPath, { throwIfNoEntry: false })).toBeUndefined();
+      } finally {
+        spawnSync(support.cmd, [support.clearFlag, configPath]);
+      }
+    },
+  );
+
+  it.skipIf(chmodIneffective)(
+    "[regression: lock-ownership fix] never deletes a foreign config.lock even when it is unreadable (chmod 0o000) to this process",
+    () => {
+      const repoRoot = mkdtempSync(
+        join(tmpdir(), "repair-core-bare-lock-unreadable-"),
+      );
+      scratchDirs.push(repoRoot);
+      initRepo(repoRoot);
+      gitOk(repoRoot, "config", "core.bare", "true");
+      const lockPath = `${configPathOf(repoRoot)}.lock`;
+      writeFileSync(lockPath, "held by a concurrent git process");
+      chmodSync(lockPath, 0o000);
+      const configBefore = readFileSync(configPathOf(repoRoot), "utf8");
+      const lockStatBefore = statSync(lockPath);
+
+      let result: { repaired: boolean; configPath: string; error?: string };
+      try {
+        result = hookModule.repairCoreBare(repoRoot);
+      } finally {
+        // Restore permission so the content check and afterEach's recursive
+        // rmSync can both still reach the file.
+        chmodSync(lockPath, 0o644);
+      }
+
+      expect(result).toEqual({
+        repaired: false,
+        configPath: configPathOf(repoRoot),
+      });
+      expect(Object.hasOwn(result, "error")).toBe(false);
+      expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(configBefore);
+      // Same inode, same content -- never deleted and recreated, nor edited.
+      expect(statSync(lockPath).ino).toBe(lockStatBefore.ino);
+      expect(readFileSync(lockPath, "utf8")).toBe(
+        "held by a concurrent git process",
+      );
+    },
+  );
 });
 
 describe("repair-core-bare (hook script)", () => {
@@ -753,6 +877,42 @@ describe("repair-core-bare (hook script)", () => {
       "true",
     );
   });
+
+  it.each([
+    ["a directory name containing a space", "my projects"],
+    ["a directory name containing an apostrophe", "o'brien dir"],
+  ])(
+    "shell-quotes the manual-fix rm/git-config commands in systemMessage when the repo path has %s",
+    (_label, dirName) => {
+      const scratch = mkdtempSync(
+        join(tmpdir(), "repair-core-bare-shellquote-"),
+      );
+      scratchDirs.push(scratch);
+      const specialDir = join(scratch, dirName);
+      mkdirSync(specialDir, { recursive: true });
+      const repoRoot = join(specialDir, "repo");
+      initRepo(repoRoot);
+      gitOk(repoRoot, "config", "core.bare", "true");
+      const lockPath = `${configPathOf(repoRoot)}.lock`;
+      writeFileSync(lockPath, "held by a crashed git process");
+      const staleTime = new Date(Date.now() - 5 * 60_000);
+      utimesSync(lockPath, staleTime, staleTime);
+      // Mirrors the hook's own `shellQuote` contract (single-quote, escaping
+      // an embedded `'` as `'\''`) -- not its internals, just the documented
+      // external shape a pasted command must have.
+      const quote = (value: string): string =>
+        `'${value.replaceAll("'", `'\\''`)}'`;
+
+      const result = runHook(JSON.stringify({ cwd: repoRoot }));
+
+      expect(result.status).toBe(0);
+      const output = JSON.parse(result.stdout) as { systemMessage: string };
+      expect(output.systemMessage).toContain(`rm ${quote(lockPath)}`);
+      expect(output.systemMessage).toContain(
+        `git config --file ${quote(configPathOf(repoRoot))} core.bare false`,
+      );
+    },
+  );
 
   it("falls back to process.cwd() and stays fast when stdin is closed immediately with no payload at all", () => {
     const repoRoot = buildRepoNeedingRepair(

@@ -116,6 +116,19 @@ function resetCoreBare(text) {
   return changed ? out.join("\n") : null;
 }
 
+/**
+ * Quotes `value` for a POSIX shell only when it needs it, so the manual-fix
+ * commands in a message can be pasted as-is even from a path with spaces.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function shellQuote(value) {
+  return /^[\w@%+=:,./-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 /** @param {unknown} cause */
 function firstLine(cause) {
   const message = cause instanceof Error ? cause.message : String(cause);
@@ -163,6 +176,9 @@ export function repairCoreBare(cwd) {
   // repository broken and must be reported, never swallowed.
   const lock = `${configPath}.lock`;
   let fd;
+  // Only a lock THIS run created may be removed on failure: otherwise a
+  // failed stat/open would delete the `config.lock` of a live git process.
+  let ownsLock = false;
   try {
     const mode = statSync(configPath).mode & 0o777;
     try {
@@ -186,6 +202,7 @@ export function repairCoreBare(cwd) {
       }
       throw cause;
     }
+    ownsLock = true;
     writeSync(fd, updated);
     closeSync(fd);
     fd = undefined;
@@ -200,12 +217,14 @@ export function repairCoreBare(cwd) {
         // The original failure below is the one worth reporting.
       }
     }
-    try {
-      rmSync(lock, { force: true });
-    } catch (cleanup) {
-      process.stderr.write(
-        `repair-core-bare: left ${lock} behind (${firstLine(cleanup)}).\n`,
-      );
+    if (ownsLock) {
+      try {
+        rmSync(lock, { force: true });
+      } catch (cleanup) {
+        process.stderr.write(
+          `repair-core-bare: left ${lock} behind (${firstLine(cleanup)}).\n`,
+        );
+      }
     }
     return { repaired: false, configPath, error: firstLine(cause) };
   }
@@ -274,11 +293,11 @@ if (isEntryPoint()) {
       }),
     );
   } else if (error !== undefined) {
-    const reset = `\`git config --file ${configPath} core.bare false\``;
+    const reset = `\`git config --file ${shellQuote(configPath)} core.bare false\``;
     const fix =
       staleLock === undefined
         ? `run ${reset}`
-        : `first \`rm ${staleLock}\` (only if no git process is running), then run ${reset}`;
+        : `first \`rm ${shellQuote(staleLock)}\` (only if no git process is running), then run ${reset}`;
     process.stdout.write(
       JSON.stringify({
         systemMessage: `repair-core-bare: core.bare is still true in ${configPath} (${error}); ${fix}.`,
