@@ -83,73 +83,57 @@ paths:
   until the one-time setup below is done. `claude.yml` is interactive
   `@claude`-mention mode: it never opens a PR itself (it commits to a
   branch and links back to a PR-creation page), so it never bypasses the
-  human-opened-PR rule above. `claude-pr-review.yml` reviews every
-  opened/updated PR in two jobs: `review` (Claude, `contents: read` and
-  `pull-requests: read` only) returns its findings as schema-validated
-  structured output, and `post` (plain `gh` + `jq`, the only job with
-  `pull-requests: write`) posts them -- Claude has no write token and
-  cannot push code, submit a formal GitHub review, or approve a PR, so it
-  cannot satisfy or bypass `main`'s required checks or its 0-approval
-  rule either way.
-- `claude-pr-review.yml` pins `claude_args: --model claude-opus-5-5
---fallback-model claude-sonnet-5-5` (there is no `model:`/`fallback_model:`
-  input -- both are deprecated action inputs, per claude-code-action's own
-  docs/usage.md, in favor of configuring both through `claude_args`);
-  `claude.yml` is left on the action's default. Two reasons for pinning at
-  all, not one: no official source states whether the action's undocumented
-  default can change silently between action releases, which matters for an
-  unattended, repeated job the way it doesn't for `claude.yml`'s
-  interactive, humanly-invoked sessions; and Opus 5.5 is Anthropic's own
-  explicit recommendation for agentic code review specifically (a
-  third-party eval measured a 72% known-bug catch rate against the prior
-  Opus generation's 56%, with fewer false alarms). The fallback only
-  triggers on an overload/unavailable/non-retryable-server-error response,
-  never on an auth, billing, rate-limit, or policy failure -- a real,
-  currently-unfixed gap (anthropics/claude-code-action#594, redirected to
-  and auto-closed `not_planned` as anthropics/claude-code#8413) -- but it's
-  worth having for the failure mode it does cover. Sonnet 5.5 is the
-  current Sonnet tier; per Anthropic's Opus 5.5 migration guide (section
-  "Thinking blocks are tied to the model and the conversation",
-  https://platform.claude.com/docs/en/models/opus-5-5/migration-guide,
-  re-read 2026-10-01), on the Claude API a fallback that moves a
-  conversation from Opus 5.5 to any model other than Fable 5.1 or Mythos
-  5.1 runs without Opus 5.5's thinking blocks, which is acceptable for an
-  overload-only fallback.
-- **The model never posts the review -- keep it that way.** An earlier
-  version let Claude post through `gh pr comment` and the inline-comment MCP
-  tool, and it failed silently and green: five of six runs on one PR
-  concluded `success` with 5-9 permission denials and posted nothing, so a
-  push looked unreviewed until a close/reopen re-rolled the dice (the
-  trigger was never at fault -- `synchronize` and `reopened` both start
-  runs). Most likely the action loads this repo's own `.claude/` and
-  CLAUDE.md, whose hub-and-spoke rules make the model dispatch review
-  subagents that lack the MCP tool and `gh api`; background subagents also
-  end the action's run at its first result message
-  (anthropics/claude-code-action#1523, #1823, #1852, #1499, #1646, #1679).
-  No action input fails a run that posted nothing, and `use_sticky_comment`
-  does nothing in this mode. So `review` passes `--json-schema` (the action
-  fails the step when no `structured_output` comes back), `--disallowedTools`
-  drops subagents and every write, and `--allowedTools` is read-only (`gh pr
-diff`/`view`, `git diff`/`log`/`show`; the checkout is `fetch-depth: 0` so
-  the base exists to diff). The `post` job keeps one marked summary comment
-  per PR (edited on each push, created if absent) plus inline comments
-  de-duplicated against earlier ones, folds any inline finding GitHub
-  rejects with HTTP 422 into the summary, and fails on every other API
-  error. Review JSON and comment text reach its script only through `env:`.
+  human-opened-PR rule above.
+- **`claude-pr-review.yml` is Anthropic's documented review workflow, kept
+  as close to it as the repo allows** (code.claude.com/docs/en/github-actions,
+  "Run a skill"; what `/install-github-app` generates): the action in
+  automation mode, the `code-review@claude-code-plugins` plugin, prompt
+  `/code-review:code-review --comment <repo>/pull/<n>`, and
+  `--allowedTools` naming the inline-comment MCP tool (the action starts that
+  server only when the flag names it). With no `github_token` input it posts
+  as the Claude GitHub App, i.e. `claude[bot]`. It never approves, blocks or
+  submits a formal review, so it cannot satisfy or bypass `main`'s required
+  checks or its 0-approval rule. There is deliberately **no model pin**: the
+  plugin picks Haiku/Sonnet/Opus per step and the official example omits
+  one. The trade-offs of staying official: the plugin reviews a PR **once**
+  (it stops if Claude already commented, so a push posts nothing and a fresh
+  review needs Claude's comment deleted), it reports only validated
+  high-signal findings with no severity tiers, and it never resolves its own
+  threads -- `main`'s `required_review_thread_resolution` still means the
+  maintainer resolves each one. The job's `if:` excludes bot-authored, fork
+  and draft PRs explicitly (the action rejects a bot actor and a fork gets no
+  secrets), as defense in depth behind CLAUDE.md's collaborators-only pull
+  request policy.
+- **The silent-no-post bug class is mitigated, not fixed -- keep the three
+  mitigations, and re-check them upstream before touching them.** A green
+  run that posts nothing is claude-code-action#1646 (this exact plugin +
+  action pairing), #1499, #1852, #1523, #1679 and #1823, all open with no
+  Anthropic reply and no official workaround as of 2026-10-02: the plugin
+  backgrounds its sub-reviewers and the action ends the session at the
+  first `result`. (1) `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` on the
+  action step -- a documented Claude Code variable that disables background
+  subagents, so they run in the foreground the plugin assumes; the only
+  evidence it helps is community-measured (#1646: 4 of 4 runs posted after,
+  against 2 of 7 before). (2) `Bash(gh pr comment:*)` in `--allowedTools`:
+  the "No issues found" summary posts with it and #1646 reports the plugin's
+  own `allowed-tools` doesn't carry it under the action. (3) The
+  `Verify Claude posted` step (`if: always()`, plain `gh` + `jq`, values only
+  through `env:`) fails the job when no comment, review or inline comment by
+  `claude[bot]` exists afterwards, so a silent green is a red a re-run fixes.
+  Rejected on evidence: a prompt telling the model to wait for its
+  subagents (#1646 measured no effect), `show_full_output` (the action warns
+  it leaks tool output into public logs), and forking the action or plugin.
+  The earlier design -- a read-only `review` job returning `--json-schema`
+  output to a `post` job under `github.token` -- avoided the bug but posted
+  as `github-actions[bot]`, because the action revokes its Claude App token
+  at the end of its own step; that identity is the reason it was dropped.
   A PR that edits `claude-pr-review.yml` itself gets no review: the action
   refuses to run a workflow that differs from the default branch's copy and
-  exits green with no outputs. `review`'s `gate` step recognizes exactly that
-  (no `conclusion` and the file differs from the base), emits a notice and
-  skips `post`; any other empty result fails the job. Don't treat that
-  skip as a regression, and verify a change to this file on the first PR
-  after it merges, not on its own PR.
-  `claude-pr-review.yml`'s own `if:` excludes bot-authored PRs (the
-  changesets version-PR, Dependabot) and fork PRs explicitly, rather than
-  relying on the action's own internal bot/permission checks, so a run
-  that would just fail on missing secrets never starts -- the fork-PR half
-  of that check is now also backstopped by CLAUDE.md's "Git Workflow"
-  collaborators-only pull request policy, but the explicit `if:` stays as
-  defense in depth. `claude.yml` has no PR to gate (it only triggers on
+  exits green with no outputs, which `Verify Claude posted` recognizes (no
+  `conclusion` and the PR changes this file) and passes with a notice. Don't
+  treat that skip as a regression, and verify a change to this file on the
+  first PR after it merges, not on its own PR.
+- `claude.yml` has no PR to gate (it only triggers on
   issues and comments, which stay open to everyone even under
   collaborators-only PRs), so its `if:` instead requires the triggering
   actor's `author_association` to be `OWNER`, `MEMBER` or `COLLABORATOR`.

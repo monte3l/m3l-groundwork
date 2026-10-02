@@ -377,7 +377,7 @@ steps) before considering any task here done.
   workflows.** `ci.yml` runs five verify lanes plus `e2e`/`e2e-macos`/`node-current`
   behind a `verify` aggregator (the check `main`'s ruleset gates on --
   see "Git Workflow"); `claude.yml`/`claude-pr-review.yml` run Anthropic's
-  official action, model-pinned and scoped to read-only PR comments. Full
+  official action; the review is the official `code-review` plugin posting as `claude[bot]`, once per PR. Full
   detail, including the `gate-lane-parity` rules that must never be broken
   and the one-time GitHub App setup: `.claude/rules/ci.md` (auto-loads on
   `.github/**`, `lefthook.yml`, `bin/verify.mjs`, `bin/lib/verify-steps.mjs`).
