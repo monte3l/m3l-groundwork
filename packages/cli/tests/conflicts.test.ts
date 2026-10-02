@@ -1,7 +1,15 @@
 // SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
 // SPDX-License-Identifier: MIT
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   mkdtempSync,
   rmSync,
@@ -11,11 +19,47 @@ import {
   existsSync,
   symlinkSync,
 } from "node:fs";
+import type * as FsModule from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planConflicts } from "../src/conflicts.js";
 import { unreadableNote } from "../src/survey/internal/read-guard.js";
 import { chmodIneffective } from "./chmod-ineffective.js";
+
+/**
+ * `statSync`/`lstatSync` are mocked (`importOriginal`-preserving, same
+ * pattern as `fs-guard.test.ts`) only to reach `blockedAbsentNote`'s race
+ * fallback (a `stat` reporting ENOENT, then a RACED `lstat` on the same path
+ * finding it present and not a symlink -- the tree changed between the two
+ * calls). Every other describe below never overrides these mocks, so the
+ * global `beforeEach` passthrough makes them behave exactly like the real
+ * `node:fs` for the real-filesystem tests in this file.
+ */
+const { statSyncMock, lstatSyncMock } = vi.hoisted(() => ({
+  statSyncMock: vi.fn(),
+  lstatSyncMock: vi.fn(),
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof FsModule>();
+  return { ...actual, statSync: statSyncMock, lstatSync: lstatSyncMock };
+});
+
+let actualStatSync: typeof FsModule.statSync;
+let actualLstatSync: typeof FsModule.lstatSync;
+
+beforeAll(async () => {
+  const actual = await vi.importActual<typeof FsModule>("node:fs");
+  actualStatSync = actual.statSync;
+  actualLstatSync = actual.lstatSync;
+});
+
+beforeEach(() => {
+  statSyncMock.mockReset();
+  lstatSyncMock.mockReset();
+  statSyncMock.mockImplementation(actualStatSync);
+  lstatSyncMock.mockImplementation(actualLstatSync);
+});
 
 describe("planConflicts", () => {
   let templateRoot: string;
@@ -508,5 +552,101 @@ describe("planConflicts: an enclosing path component is a regular file, not a di
       expect(entry.status).not.toBe("absent");
     }
     expect(undetermined).toEqual([unreadableNote(blockedAncestor, "ENOTDIR")]);
+  });
+
+  /**
+   * The previous test's baseline file sits directly inside the blocked
+   * ancestor, so `blockedAncestor`'s walk returns on its very first
+   * iteration -- it never continues past one component. Nesting the
+   * baseline file one level deeper forces the walk to climb past an
+   * in-between path component (itself unreachable, same ENOTDIR, caught and
+   * skipped) before reaching the real blocker two levels up.
+   */
+  it("walks past an in-between unreachable component to find the real blocking ancestor two levels up", () => {
+    mkdirSync(join(templateRoot, ".claude", "sub"), { recursive: true });
+    writeFileSync(join(templateRoot, ".claude", "sub", "settings.json"), "{}");
+    const blockedAncestor = join(targetDir, ".claude");
+    writeFileSync(blockedAncestor, "not a directory");
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: ReturnType<typeof planConflicts> | undefined;
+    try {
+      result = planConflicts(templateRoot, targetDir, {}, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(result).toHaveLength(1);
+    expect(result?.[0]?.status).toBe("divergent");
+    expect(result?.[0]?.status).not.toBe("absent");
+    expect(undetermined).toEqual([unreadableNote(blockedAncestor, "ENOTDIR")]);
+  });
+});
+
+describe("planConflicts: a target path's stat reports absent (ENOENT) but a raced lstat finds it present, not a symlink", () => {
+  let templateRoot: string;
+  let targetDir: string;
+
+  beforeEach(() => {
+    templateRoot = mkdtempSync(join(tmpdir(), "conflicts-race-template-"));
+    targetDir = mkdtempSync(join(tmpdir(), "conflicts-race-target-"));
+  });
+
+  afterEach(() => {
+    rmSync(templateRoot, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  /**
+   * `blockedAbsentNote` is only reached after `probePath`'s own `stat`
+   * already reported the path absent (ENOENT). A genuinely missing path
+   * answers ENOENT on `lstat` too, so the branch where `lstat` instead
+   * succeeds and finds a non-symlink can only happen if the tree changed
+   * between the two calls -- not reproducible with a real, single-threaded
+   * filesystem, hence the mock naming only this one path.
+   */
+  it("records the path unreadable (ENOENT) and reports the entry divergent, rather than throwing on the mismatch", () => {
+    mkdirSync(join(templateRoot, ".claude"), { recursive: true });
+    writeFileSync(join(templateRoot, ".claude", "settings.json"), "{}");
+    mkdirSync(join(targetDir, ".claude"), { recursive: true });
+    const targetPath = join(targetDir, ".claude", "settings.json");
+
+    statSyncMock.mockImplementation((path: unknown, ...args: unknown[]) => {
+      if (path === targetPath) {
+        throw Object.assign(new Error("simulated ENOENT (race)"), {
+          code: "ENOENT",
+        });
+      }
+      return actualStatSync(
+        ...([path, ...args] as Parameters<typeof actualStatSync>),
+      );
+    });
+    lstatSyncMock.mockImplementation((path: unknown, ...args: unknown[]) => {
+      if (path === targetPath) {
+        return { isSymbolicLink: () => false } as ReturnType<
+          typeof actualLstatSync
+        >;
+      }
+      return actualLstatSync(
+        ...([path, ...args] as Parameters<typeof actualLstatSync>),
+      );
+    });
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: ReturnType<typeof planConflicts> | undefined;
+    try {
+      result = planConflicts(templateRoot, targetDir, {}, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    const entry = result?.find((r) => r.relPath === ".claude/settings.json");
+    expect(entry?.status).toBe("divergent");
+    expect(entry?.status).not.toBe("absent");
+    expect(undetermined).toEqual([unreadableNote(targetPath, "ENOENT")]);
   });
 });

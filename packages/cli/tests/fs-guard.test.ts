@@ -223,3 +223,59 @@ describe("fs-guard -- a real EPERM lstat failure gets the same permission-specif
     },
   );
 });
+
+describe("fs-guard -- permissionAdvice's other two branches, reached only when the caller advice does NOT carry FRESH_RETRY", () => {
+  afterEach(() => {
+    lstatSyncMock.mockReset();
+  });
+
+  it("an advice already ending with the bare 're-run the CLI' tail gets the permissions-specific variant of THAT tail, not FRESH_RETRY's", () => {
+    const failure = Object.assign(new Error("simulated EACCES"), {
+      code: "EACCES",
+    });
+    lstatSyncMock.mockImplementation(() => {
+      throw failure;
+    });
+    const path = "/proj/.groundwork/inventory.json";
+    let thrown: unknown;
+    try {
+      // No `advice` argument: assertNotSymlink's own default is
+      // "remove it and re-run the CLI", which ends with the bare
+      // "re-run the CLI" tail but NOT with FRESH_RETRY.
+      assertNotSymlink(path);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain(path);
+    expect(message).toContain("fix its permissions and re-run the CLI");
+    expect(message).not.toContain("remove it");
+    expect(message).not.toContain(FRESH_RETRY);
+    expect((thrown as Error).cause).toBe(failure);
+  });
+
+  it("an advice ending with neither FRESH_RETRY nor the re-run tail is kept whole, prefixed by the generic permissions fix", () => {
+    const failure = Object.assign(new Error("simulated EACCES"), {
+      code: "EACCES",
+    });
+    lstatSyncMock.mockImplementation(() => {
+      throw failure;
+    });
+    const path = "/proj/.groundwork/inventory.json";
+    const customAdvice = "ask a project administrator";
+    let thrown: unknown;
+    try {
+      assertNotSymlink(path, customAdvice);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain(path);
+    expect(message).toContain(`fix its permissions; ${customAdvice}`);
+    expect((thrown as Error).cause).toBe(failure);
+  });
+});
