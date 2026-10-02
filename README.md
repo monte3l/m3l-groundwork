@@ -204,11 +204,11 @@ not load that copy, so run the plugin's `/customize` or replace the project's
 copy yourself. If `.claude`, `.claude/skills` or `.claude/skills/customize` is
 a symlink or not a directory, no project copy exists: fix that path, copy the
 staged skill into place, or run the plugin's `/customize`. Fresh mode with
-`--force` does replace an existing skill copy. The symlink protection above
-covers adopt mode. Fresh mode is meant for a directory you control: with
-`--force` it writes the baseline into a non-empty directory without a symlink
-check, so if `.claude` or `.claude/skills` there is a symlink, template files
-are written through it before the skill install refuses.
+`--force` does replace an existing skill copy. Fresh mode also checks, before
+it writes anything, that no directory below the target directory and no existing
+file the baseline or a `--pack` would write is a symlink (or a non-directory
+where a directory is needed); if one is, it refuses and writes nothing. The
+target directory itself and its ancestors are not checked.
 
 - **Fresh project:** a short interview (project kind, runtime target, test
   strictness, CI depth) tailors the baseline, then a guidance sweep checks the
