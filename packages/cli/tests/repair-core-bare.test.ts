@@ -32,6 +32,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  type Stats,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -118,55 +119,53 @@ function coreSectionOf(content: string): string {
 }
 
 /**
- * What this process needs to invoke to set/clear a file's OS-level immutable
- * attribute without elevated privilege, or `undefined` when unsupported here.
+ * Builds a Node-style errno exception carrying `code`, for the io-seam fault
+ * injections below -- the deterministic, cross-OS replacement for the
+ * `chflags`/`chattr` immutable-flag tricks this file used to need.
  */
-interface ImmutableSupport {
-  cmd: string;
-  setFlag: string;
-  clearFlag: string;
+function errorWithCode(code: string, message: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(message), { code });
 }
 
 /**
- * Probes whether this process can mark a file immutable WITHOUT root: macOS
- * `chflags uchg` may be set/cleared by the file's own OWNER (confirmed
- * empirically -- no `sudo` involved); Linux `chattr +i` needs
- * `CAP_LINUX_IMMUTABLE`, normally root-only, so an ordinary CI runner
- * reliably reports this unsupported and the test below skips itself rather
- * than asserting a false positive -- same shape as `chmodIneffective`.
- *
- * This exists to engineer a REAL (non-mocked) `renameSync` failure that
- * happens strictly AFTER `openSync(lock, "wx")` already succeeded: mocking
- * `node:fs` here would mean mocking the whole module the hook's own dynamic
- * `import()` resolves, which would also intercept every other test in this
- * file that imports from `node:fs` directly -- awkward enough across the
- * ESM boundary that a real OS primitive is the more reliable regression
- * mechanism instead.
+ * Delegates a `statSync` call to the real implementation, matching the two
+ * shapes the hook itself ever calls it with (`fsx.statSync(configPath)` and
+ * `fsx.statSync(lock, { throwIfNoEntry: false })`) -- used by the io-seam
+ * stubs below that only want to intercept ONE specific path.
  */
-function probeImmutableSupport(): ImmutableSupport | undefined {
-  const probeDir = mkdtempSync(
-    join(tmpdir(), "repair-core-bare-immutable-probe-"),
-  );
-  try {
-    const probeFile = join(probeDir, "probe");
-    writeFileSync(probeFile, "x");
-    const support: ImmutableSupport =
-      process.platform === "darwin"
-        ? { cmd: "chflags", setFlag: "uchg", clearFlag: "nouchg" }
-        : { cmd: "chattr", setFlag: "+i", clearFlag: "-i" };
-    const setResult = spawnSync(support.cmd, [support.setFlag, probeFile]);
-    if (setResult.status !== 0) return undefined;
-    spawnSync(support.cmd, [support.clearFlag, probeFile]);
-    return support;
-  } finally {
-    rmSync(probeDir, { recursive: true, force: true });
-  }
+function realStatSyncPassthrough(
+  targetPath: string,
+  options?: { throwIfNoEntry: false },
+): Stats | undefined {
+  return options === undefined
+    ? statSync(targetPath)
+    : statSync(targetPath, options);
 }
 
-const immutableSupport = probeImmutableSupport();
+/**
+ * The write-phase fs overrides `repairCoreBare`'s test seam accepts --
+ * mirrors the hook's own `realFs` shape (see its header comment), loosely
+ * typed to the exact call shapes the hook uses rather than `node:fs`'s own
+ * overloaded signatures.
+ */
+interface RepairFsOverrides {
+  chmodSync?: (path: string, mode: number) => void;
+  closeSync?: (fd: number) => void;
+  openSync?: (path: string, flags: string, mode?: number) => number;
+  renameSync?: (oldPath: string, newPath: string) => void;
+  rmSync?: (path: string, options?: { force?: boolean }) => void;
+  statSync?: (
+    path: string,
+    options?: { throwIfNoEntry: false },
+  ) => Stats | undefined;
+  writeSync?: (fd: number, data: string) => number;
+}
 
 interface RepairCoreBareModule {
-  repairCoreBare: (cwd: string) => {
+  repairCoreBare: (
+    cwd: string,
+    io?: RepairFsOverrides,
+  ) => {
     repaired: boolean;
     configPath: string;
     error?: string;
@@ -628,81 +627,207 @@ describe("repairCoreBare", () => {
     expect(statSync(configPathOf(repoRoot)).mode & 0o777).toBe(0o600);
   });
 
-  it.skipIf(immutableSupport === undefined)(
-    "[regression: lock-ownership fix] cleans up the config.lock THIS run created when the later rename fails, leaving none behind",
-    () => {
-      const repoRoot = mkdtempSync(
-        join(tmpdir(), "repair-core-bare-ownslock-renamefail-"),
-      );
-      scratchDirs.push(repoRoot);
-      initRepo(repoRoot);
-      gitOk(repoRoot, "config", "core.bare", "true");
-      const configPath = configPathOf(repoRoot);
-      const lockPath = `${configPath}.lock`;
-      const support = immutableSupport as ImmutableSupport;
-      // Marking the DESTINATION of the rename immutable (settable by its own
-      // owner on macOS, confirmed empirically -- no root needed) leaves
-      // every step up to and including `openSync(lock, "wx")` succeeding
-      // (so this run DOES create and own the lock), and only the final
-      // `renameSync(lock, configPath)` fails (EPERM) -- the exact "owns the
-      // lock, later step fails" shape the fix's `ownsLock` guard exists for.
-      expect(spawnSync(support.cmd, [support.setFlag, configPath]).status).toBe(
-        0,
-      );
+  // --- A: the `ownsLock` guard itself -- each scenario makes the failure
+  // happen BEFORE this run ever created its own lock, with a real foreign
+  // lock present, so a revert back to unconditional cleanup (deleting
+  // whatever `config.lock` it finds, owned or not) would delete it. All
+  // three use the `io` seam, deterministic on every OS -- no chmod/chflags.
 
-      try {
-        const result = hookModule.repairCoreBare(repoRoot);
+  it("[regression: lock-ownership fix] never deletes a foreign config.lock when the follow-up stat on it fails (EIO) while this run never opened it", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-lockstat-eio-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const configBefore = readFileSync(configPath, "utf8");
+    const lockBefore = readFileSync(lockPath, "utf8");
 
-        expect(result.repaired).toBe(false);
-        expect(result.configPath).toBe(configPath);
-        expect(typeof result.error).toBe("string");
-        expect(result.error).not.toBe("");
-        // The regression check itself: this run's OWN lock is gone, unlike
-        // a foreign lock it never created (see the tests above/below).
-        expect(statSync(lockPath, { throwIfNoEntry: false })).toBeUndefined();
-      } finally {
-        spawnSync(support.cmd, [support.clearFlag, configPath]);
-      }
-    },
-  );
+    const result = hookModule.repairCoreBare(repoRoot, {
+      // The real foreign lock already makes `openSync(lock, "wx")` fail with
+      // EEXIST; only the EEXIST branch's OWN follow-up `statSync(lock, ...)`
+      // is faulted here, so the reverted (pre-fix) code path -- which never
+      // reaches this branch at all, since it returned unconditionally on
+      // EEXIST -- can't coincidentally pass this test too.
+      statSync: (targetPath, options) => {
+        if (targetPath.endsWith("config.lock")) {
+          throw errorWithCode("EIO", "simulated EIO reading config.lock");
+        }
+        return realStatSyncPassthrough(targetPath, options);
+      },
+    });
 
-  it.skipIf(chmodIneffective)(
-    "[regression: lock-ownership fix] never deletes a foreign config.lock even when it is unreadable (chmod 0o000) to this process",
-    () => {
-      const repoRoot = mkdtempSync(
-        join(tmpdir(), "repair-core-bare-lock-unreadable-"),
-      );
-      scratchDirs.push(repoRoot);
-      initRepo(repoRoot);
-      gitOk(repoRoot, "config", "core.bare", "true");
-      const lockPath = `${configPathOf(repoRoot)}.lock`;
-      writeFileSync(lockPath, "held by a concurrent git process");
-      chmodSync(lockPath, 0o000);
-      const configBefore = readFileSync(configPathOf(repoRoot), "utf8");
-      const lockStatBefore = statSync(lockPath);
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(lockBefore);
+  });
 
-      let result: { repaired: boolean; configPath: string; error?: string };
-      try {
-        result = hookModule.repairCoreBare(repoRoot);
-      } finally {
-        // Restore permission so the content check and afterEach's recursive
-        // rmSync can both still reach the file.
-        chmodSync(lockPath, 0o644);
-      }
+  it("[regression: lock-ownership fix] never deletes a foreign config.lock when openSync itself fails with a non-EEXIST error (EACCES)", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-openfail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const configBefore = readFileSync(configPath, "utf8");
+    const lockBefore = readFileSync(lockPath, "utf8");
 
-      expect(result).toEqual({
-        repaired: false,
-        configPath: configPathOf(repoRoot),
-      });
-      expect(Object.hasOwn(result, "error")).toBe(false);
-      expect(readFileSync(configPathOf(repoRoot), "utf8")).toBe(configBefore);
-      // Same inode, same content -- never deleted and recreated, nor edited.
-      expect(statSync(lockPath).ino).toBe(lockStatBefore.ino);
-      expect(readFileSync(lockPath, "utf8")).toBe(
-        "held by a concurrent git process",
-      );
-    },
-  );
+    const result = hookModule.repairCoreBare(repoRoot, {
+      openSync: () => {
+        throw errorWithCode("EACCES", "simulated EACCES opening config.lock");
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(lockBefore);
+  });
+
+  it("[regression: lock-ownership fix] never deletes a foreign config.lock when the pre-open mode lookup on config itself fails (EIO)", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-modefail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    writeFileSync(lockPath, "held by a concurrent git process");
+    const configBefore = readFileSync(configPath, "utf8");
+    const lockBefore = readFileSync(lockPath, "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      statSync: (targetPath, options) => {
+        if (targetPath === configPath) {
+          throw errorWithCode("EIO", "simulated EIO reading config mode");
+        }
+        return realStatSyncPassthrough(targetPath, options);
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(readFileSync(lockPath, "utf8")).toBe(lockBefore);
+  });
+
+  // --- B: the `ownsLock` cleanup itself -- this run's OWN lock (a real
+  // file, never stubbed into existence) must be removed when a later write
+  // step fails, deterministic via the `io` seam instead of an OS-specific
+  // immutable-flag trick that never runs unprivileged on Linux CI.
+
+  it("[regression: lock-ownership fix] cleans up the config.lock THIS run created when the rename step fails, leaving none behind", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-renamefail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    const configBefore = readFileSync(configPath, "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      renameSync: () => {
+        throw errorWithCode("EPERM", "simulated EPERM renaming config.lock");
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    // This run's OWN lock is gone -- unlike a foreign lock it never created
+    // (see the tests above).
+    expect(statSync(lockPath, { throwIfNoEntry: false })).toBeUndefined();
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
+
+  it("[regression: lock-ownership fix] cleans up the config.lock THIS run created when the write step fails, leaving none behind", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-writefail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    const configBefore = readFileSync(configPath, "utf8");
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      writeSync: () => {
+        throw errorWithCode("EIO", "simulated EIO writing config.lock");
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).not.toBe("");
+    expect(statSync(lockPath, { throwIfNoEntry: false })).toBeUndefined();
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(git(repoRoot, "config", "--bool", "core.bare").stdout.trim()).toBe(
+      "true",
+    );
+  });
+
+  it("reports the ORIGINAL failure (not the cleanup failure) and prints a stderr hint about the leftover lock when cleanup's own rmSync also throws", () => {
+    const repoRoot = mkdtempSync(
+      join(tmpdir(), "repair-core-bare-ownslock-cleanupfail-"),
+    );
+    scratchDirs.push(repoRoot);
+    initRepo(repoRoot);
+    gitOk(repoRoot, "config", "core.bare", "true");
+    const configPath = configPathOf(repoRoot);
+    const lockPath = `${configPath}.lock`;
+    const configBefore = readFileSync(configPath, "utf8");
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    const result = hookModule.repairCoreBare(repoRoot, {
+      renameSync: () => {
+        throw errorWithCode("EPERM", "simulated EPERM renaming config.lock");
+      },
+      rmSync: () => {
+        throw errorWithCode("EACCES", "simulated EACCES removing config.lock");
+      },
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.error).toContain("simulated EPERM renaming config.lock");
+    expect(result.error).not.toContain("simulated EACCES removing config.lock");
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+    expect(stderrSpy).toHaveBeenCalled();
+    expect(
+      stderrSpy.mock.calls.some(
+        (call) =>
+          typeof call[0] === "string" &&
+          /left .*config\.lock behind/i.test(call[0]),
+      ),
+    ).toBe(true);
+    // The real lock file is still on disk: the stubbed rmSync never actually
+    // removed it, which is the leftover the stderr hint above warns about.
+    expect(statSync(lockPath, { throwIfNoEntry: false })).not.toBeUndefined();
+    stderrSpy.mockRestore();
+  });
 });
 
 describe("repair-core-bare (hook script)", () => {

@@ -60,6 +60,25 @@ import {
 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+/**
+ * The filesystem calls of the WRITE phase (everything after `core.bare =
+ * true` is confirmed). `repairCoreBare` takes an optional partial override
+ * of these as a test seam, so a failure at an exact step -- a `statSync`
+ * that throws while another process holds the lock, a `renameSync` that
+ * fails after this run created its own -- can be injected deterministically
+ * on every OS instead of engineered with permissions. Production callers
+ * never pass one.
+ */
+const realFs = {
+  chmodSync,
+  closeSync,
+  openSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeSync,
+};
+
 /** A `config.lock` older than this is treated as left behind by a crashed git. */
 const STALE_LOCK_MS = 60_000;
 
@@ -148,9 +167,11 @@ function firstLine(cause) {
  * is still broken.
  *
  * @param {string} cwd
+ * @param {Partial<typeof realFs>} [io] Test seam: overrides for the write-phase fs calls.
  * @returns {{ repaired: boolean; configPath: string; error?: string; staleLock?: string }}
  */
-export function repairCoreBare(cwd) {
+export function repairCoreBare(cwd, io = {}) {
+  const fsx = { ...realFs, ...io };
   let configPath = "";
   let updated;
   try {
@@ -186,15 +207,15 @@ export function repairCoreBare(cwd) {
   // failed stat/open would delete the `config.lock` of a live git process.
   let ownsLock = false;
   try {
-    const mode = statSync(configPath).mode & 0o777;
+    const mode = fsx.statSync(configPath).mode & 0o777;
     try {
-      fd = openSync(lock, "wx", mode);
+      fd = fsx.openSync(lock, "wx", mode);
     } catch (cause) {
       if (cause?.code === "EEXIST") {
         // Usually git (or another hook run) holds the lock right now: retry
         // on the next trigger rather than racing it. An old one is a crashed
         // git's leftover that would block every future repair, so say so.
-        const held = statSync(lock, { throwIfNoEntry: false });
+        const held = fsx.statSync(lock, { throwIfNoEntry: false });
         if (held === undefined || Date.now() - held.mtimeMs < STALE_LOCK_MS) {
           return { repaired: false, configPath };
         }
@@ -209,23 +230,23 @@ export function repairCoreBare(cwd) {
       throw cause;
     }
     ownsLock = true;
-    writeSync(fd, updated);
-    closeSync(fd);
+    fsx.writeSync(fd, updated);
+    fsx.closeSync(fd);
     fd = undefined;
-    chmodSync(lock, mode);
-    renameSync(lock, configPath);
+    fsx.chmodSync(lock, mode);
+    fsx.renameSync(lock, configPath);
     return { repaired: true, configPath };
   } catch (cause) {
     if (fd !== undefined) {
       try {
-        closeSync(fd);
+        fsx.closeSync(fd);
       } catch {
         // The original failure below is the one worth reporting.
       }
     }
     if (ownsLock) {
       try {
-        rmSync(lock, { force: true });
+        fsx.rmSync(lock, { force: true });
       } catch (cleanup) {
         process.stderr.write(
           `repair-core-bare: left ${lock} behind (${firstLine(cleanup)}).\n`,
