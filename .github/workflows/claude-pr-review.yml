@@ -3,33 +3,50 @@
 
 name: Claude PR Review
 
-# What this does: automatically posts a Claude-written review comment on
-# every pull request when it's opened or pushed to, checking the same
-# things a human reviewer would (see the prompt below). It never approves,
-# blocks, or pushes code -- it only comments -- and it skips bot-authored
-# and fork pull requests.
+# What this does: reviews every pull request when it's opened, pushed to,
+# marked ready or reopened, checking the same things a human reviewer would
+# (see the prompt below), then posts the result as one sticky summary comment
+# plus inline comments. It never approves, blocks, or pushes code, and it
+# skips bot-authored and fork pull requests.
 #
-# No `track_progress` and an explicit `--allowedTools` in `claude_args`
-# below: this step runs in the action's automation mode (a `prompt` input is
-# set), where a review's findings reach the PR only through a tool Claude is
-# actually granted, per Anthropic's own
-# docs/en/github-actions#interactive-and-automation-modes ("By default,
-# results appear in the workflow run log rather than a comment. Claude can
-# post ... when the prompt directs it to and it has a tool that can post").
-# `track_progress: true` forces a different mode (tag mode, tracking-comment
-# tool only) that was tried here first and silently failed: five separate
-# runs each completed successfully (25-44 real turns, real spend) but the PR
-# was left with only the tracking comment's initial placeholder text -- the
-# review itself was never posted, and CI stayed green throughout. This
-# workflow now follows claude-code-action's own documented recipe instead
-# (docs/solutions.md, "Automatic PR Code Review"): grant the posting tools
-# via `claude_args`, and tell the prompt explicitly to use them.
+# Two jobs, because Claude does not post the review itself. `review` runs
+# Claude read-only and gets its findings back as schema-validated structured
+# output (`--json-schema`); `post` is plain `gh` + `jq` and is the only job
+# holding `pull-requests: write`. The earlier design let the model post
+# through `gh pr comment` and the inline-comment MCP tool, and that failed
+# silently: on one PR, five of six runs concluded `success` at $0.6-$1.95
+# each with 5-9 permission denials and posted nothing, so a new push looked
+# unreviewed until a close and reopen re-rolled the dice. The trigger was
+# never the problem -- `synchronize` and `reopened` both started runs. Likely
+# cause (read from claude-code-action's source, not reproduced): the action
+# loads this repo's own `.claude/` and CLAUDE.md, whose hub-and-spoke rules
+# make the model dispatch review subagents that have no MCP tool and no
+# `gh api`; background subagents also end the action's run at the first
+# result message. Upstream reports the same shape: claude-code-action#1523
+# (success, nothing posted, 19 denials), #1823 (a `--edit-last` re-review
+# silently skipped), #1852/#1499/#1646 (background subagents), #1679 (the
+# buffered inline-comment step exits 0 after posting nothing). There is no
+# input that fails a run which posted nothing, and `use_sticky_comment` does
+# nothing in this mode, so posting moved out of the model: without
+# `structured_output` the action itself fails the run (docs/usage.md), and
+# the `post` job fails on any API error other than an inline comment
+# GitHub can't anchor (HTTP 422), which is folded into the summary instead.
 #
-# Read-only on repo contents
-# (contents: read) -- Claude posts a review comment, it never pushes code,
-# and it cannot submit a formal GitHub review or approve a PR (Anthropic's
-# own docs/capabilities-and-limitations.md), so it cannot satisfy or bypass
-# the `main` ruleset's required checks or its 0-approval rule either way.
+# One run is deliberately skipped: claude-code-action will not run on a PR
+# that edits this very file (its copy must match the default branch's, a
+# guard against a PR rewriting its own reviewer). It logs a warning and exits
+# success with no outputs, so the `gate` step tells that case apart from a
+# real empty result -- no `conclusion` AND this file differs from the base --
+# and `post` is skipped with a notice. Any other empty result fails `review`.
+# A PR touching this file therefore gets no review until it merges.
+#
+# `--disallowedTools` keeps subagents and writes off in `review`, and the job
+# has no write token at all (contents/pull-requests read), so a prompt
+# injected through a PR's contents can at worst return a wrong review, not
+# post, push or approve. A review is never a formal GitHub review either
+# (Anthropic's own docs/capabilities-and-limitations.md), so it cannot
+# satisfy or bypass the `main` ruleset's required checks or its 0-approval
+# rule. Comments appear as github-actions[bot] rather than claude[bot].
 # Excludes bot-authored and fork PRs explicitly below, rather than relying
 # on anthropics/claude-code-action's own internal bot/permission checks
 # (docs/security.md) -- that way a Dependabot or fork PR never starts a run
@@ -41,7 +58,7 @@ on:
 
 # Cancel a stale run when the PR gets a new push, same as ci.yml -- a
 # `synchronize` fires on every push, and a paid review run per push queues
-# up otherwise.
+# up otherwise. This also cancels a `post` job still running for the old head.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -58,15 +75,21 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
       id-token: write # see claude.yml for why this is needed regardless of auth method
+    outputs:
+      review: ${{ steps.claude.outputs.structured_output }}
+      skipped: ${{ steps.gate.outputs.skipped }}
     steps:
+      # Full history, not depth 1: the prompt tells Claude to `git diff` the
+      # base against the head, and a shallow clone has no base to diff.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # v1.0.238
+      - id: claude
+        uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # v1.0.238
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Pinned rather than left on the action's default: there is no
@@ -109,20 +132,38 @@ jobs:
           # scoped to this one action invocation (Claude Code's fallback
           # lasts for the current turn only), so it doesn't relax anything
           # about which model claude.yml's separate, unattached session uses.
+          #
+          # `--allowedTools` is read-only on purpose: the diff and PR
+          # metadata, plus git history (Read/Grep/Glob are allowed by
+          # default). `--disallowedTools` removes subagents -- the likely
+          # reason reviews went unposted, see the header -- and every write.
+          # `--json-schema` is what makes the result machine-readable: the
+          # action fails the step when Claude returns no `structured_output`.
           claude_args: |
             --model claude-opus-5-5
             --fallback-model claude-sonnet-5-5
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            --disallowedTools "Agent,Task,Write,Edit,NotebookEdit"
+            --json-schema '{"type":"object","properties":{"summary":{"type":"string"},"inline":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"line":{"type":"integer"},"body":{"type":"string"}},"required":["path","line","body"],"additionalProperties":false}}},"required":["summary","inline"],"additionalProperties":false}'
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
+            BASE: origin/${{ github.base_ref }}
+            HEAD: ${{ github.event.pull_request.head.sha }}
+            PREVIOUSLY REVIEWED HEAD (empty unless this is a push to an
+            already-open PR): ${{ github.event.before }}
 
             Review this PR. You already have this repo's CLAUDE.md loaded --
-            use it, don't restate it. Specifically check:
+            use it, don't restate it. Do not dispatch subagents and do not
+            try to post anything to GitHub: you have no write access, and
+            your only output is the structured result described below.
+            Specifically check:
 
             1. Hub-and-spoke was followed for any packages/*/src or
                packages/*/tests change (test-author before code-implementer,
-               review spokes ran) -- not just that the diff looks correct.
+               review spokes ran). You can't see the agents run, so judge
+               it from the PR description and commit history, and say what
+               you could and could not establish rather than guessing.
             2. A changeset exists (`.changeset/*.md`) if the CLI's
                user-visible behavior changed; none is needed for a
                plugin-only, docs-only, or CI-only change.
@@ -136,12 +177,115 @@ jobs:
                security, SOLID/simplification, test coverage.
 
             Note: the PR branch is already checked out in the current
-            working directory.
+            working directory with full history. Read the change with
+            `git diff BASE...HEAD` (or `gh pr diff`).
 
-            Use `mcp__github_inline_comment__create_inline_comment` (with
-            `confirmed: true`) to flag specific code issues inline.
-            Post one top-level summary covering all four checks above (say
-            so explicitly for a check that passes) with:
-              gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body-file -
-            Only post GitHub comments -- don't submit review text as a plain
-            chat response, since only a comment is visible on the PR.
+            Return exactly the structured result:
+            - `summary`: one markdown summary covering all four checks (say
+              so explicitly for a check that passes), always non-empty. It
+              always covers the whole PR, not just the latest push.
+            - `inline`: specific code issues, each with the file `path`, the
+              1-based `line` in the new version of that file, and a
+              `body`. Use an empty array when there are none. When
+              PREVIOUSLY REVIEWED HEAD is set, limit these to lines changed
+              since that commit (`git diff <previous>..HEAD`), because
+              earlier findings are already on the PR. Only use lines that
+              appear in the diff, since GitHub rejects any other.
+
+      # claude-code-action refuses to run on a PR that edits its own workflow
+      # file (the file must match the default branch's copy), logs a warning
+      # and still exits success with no outputs -- a green job with no review.
+      # That one case is expected, so it is detected by two independent facts:
+      # the action set no `conclusion` AND this PR really changes this file.
+      # Any other empty result is a failure, never a quiet pass.
+      - id: gate
+        env:
+          CONCLUSION: ${{ steps.claude.outputs.conclusion }}
+          REVIEW: ${{ steps.claude.outputs.structured_output }}
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REVIEW" ]; then
+            echo "skipped=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$CONCLUSION" ] \
+            && ! git diff --quiet "$BASE" HEAD -- .github/workflows/claude-pr-review.yml; then
+            echo "::notice::Claude was skipped: this PR edits claude-pr-review.yml, so claude-code-action will not run it until it merges. No review is posted."
+            echo "skipped=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::error::Claude returned no structured review (conclusion: '${CONCLUSION:-none}')."
+          exit 1
+
+  post:
+    needs: review
+    if: needs.review.result == 'success' && needs.review.outputs.skipped != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    steps:
+      # Everything attacker-influenced (the review JSON, comment bodies) goes
+      # through `env:` and is only ever quoted as a variable, never
+      # interpolated into the script text.
+      - name: Post the review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REVIEW: ${{ needs.review.outputs.review }}
+        run: |
+          set -euo pipefail
+          marker='<!-- claude-pr-review -->'
+          me='github-actions[bot]'
+
+          # A review without a summary is a failure, not an empty comment.
+          jq -e '(.summary | type == "string" and length > 0) and (.inline | type == "array")' \
+            <<<"$REVIEW" >/dev/null
+
+          # Inline comments first, so any that can't be anchored land in the
+          # summary. Skip a finding already on the PR from an earlier push.
+          existing=$(mktemp)
+          gh api --paginate "repos/$REPO/pulls/$PR/comments" \
+            --jq ".[] | select(.user.login == \"$me\") | [.path, (.line // .original_line), .body] | @json" \
+            >"$existing"
+          unanchored=$(mktemp)
+          err=$(mktemp)
+          while IFS= read -r finding; do
+            path=$(jq -r '.path' <<<"$finding")
+            line=$(jq -r '.line' <<<"$finding")
+            body=$(jq -r '.body' <<<"$finding")
+            key=$(jq -cn --arg p "$path" --argjson l "$line" --arg b "$body" '[$p, $l, $b]')
+            if grep -Fxq -- "$key" "$existing"; then
+              continue
+            fi
+            if ! gh api -X POST "repos/$REPO/pulls/$PR/comments" \
+              -f body="$body" -f commit_id="$HEAD_SHA" -f path="$path" \
+              -F line="$line" -f side=RIGHT >/dev/null 2>"$err"; then
+              # 422: the line isn't part of the diff. Anything else is real.
+              grep -q 'HTTP 422' "$err" || { cat "$err" >&2; exit 1; }
+              printf -- '- `%s:%s` -- %s\n' "$path" "$line" "$body" >>"$unanchored"
+            fi
+          done < <(jq -c '.inline[]' <<<"$REVIEW")
+
+          # One sticky summary: edit the marked comment, else create it.
+          summary=$(mktemp)
+          {
+            printf '%s\n' "$marker"
+            printf '_Reviewed commit `%s`._\n\n' "${HEAD_SHA:0:7}"
+            jq -r '.summary' <<<"$REVIEW"
+            if [ -s "$unanchored" ]; then
+              printf '\n### Findings that could not be anchored to a diff line\n\n'
+              cat "$unanchored"
+            fi
+          } >"$summary"
+          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"$me\" and (.body | startswith(\"$marker\"))) | .id" \
+            | tail -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@"$summary" >/dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@"$summary" >/dev/null
+          fi
