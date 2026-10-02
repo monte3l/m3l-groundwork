@@ -225,6 +225,14 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   that window is outside the threat model this tool accepts, which assumes
   the project directory is not concurrently modified by a hostile local
   process.
+- **The skill-copy symlink guard covers adopt mode, not fresh mode.** In fresh
+  mode `emit.ts` writes the baseline template tree (`mkdirSync` recursive plus
+  `writeFileSync`, with no symlink check) before the skill install runs, so under
+  `--fresh --force` into a non-empty directory whose `.claude` or `.claude/skills`
+  is a symlink, template files are written through the link before the skill
+  guard refuses. Fresh mode is meant for a directory the user controls, and
+  `--force` overwrites into it. Accepted as a documented limit; hardening
+  `emit.ts` is tracked separately.
 - **The skill install is not fully atomic.** A pre-flight refuses a directory
   sitting at any of the skill's file names before anything is touched, and a
   failed write removes the files that run created. A failure after the install

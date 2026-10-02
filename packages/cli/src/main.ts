@@ -52,7 +52,7 @@ import {
   planBaselineStaging,
   stageBaselineAdditions,
 } from "./baseline-stage.js";
-import { assertNotSymlink } from "./fs-guard.js";
+import { assertNotSymlink, endsWithRerunAdvice } from "./fs-guard.js";
 import {
   buildInventory,
   resolveCliVersion,
@@ -619,14 +619,14 @@ function describeRemoved(removed: readonly StaleFileName[]): string {
  * cause's own message so it stands alone (`formatErrorChain` then skips the
  * redundant `caused by:` line), names only the previous files actually
  * removed, and appends the re-run advice unless the cause already ends
- * with it.
+ * with equivalent advice in any wording ({@link endsWithRerunAdvice}).
  */
 function removedStaleFilesError(
   cause: unknown,
   removed: readonly StaleFileName[],
 ): Error {
   const reason = cause instanceof Error ? cause.message : String(cause);
-  const advice = reason.endsWith(RERUN_ADVICE) ? "" : `; ${RERUN_ADVICE}`;
+  const advice = endsWithRerunAdvice(reason) ? "" : `; ${RERUN_ADVICE}`;
   return new Error(
     `adopt mode failed (${reason}); ${describeRemoved(removed)}${advice}`,
     { cause },

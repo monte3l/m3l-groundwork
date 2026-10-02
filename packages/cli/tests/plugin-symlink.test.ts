@@ -64,12 +64,49 @@ function writeDifferingClaudeSkill(targetDir: string): void {
   );
 }
 
-/** Asserts `thrown` is an `Error` naming a symlink refusal at exactly `offendingPath`. */
-function expectSymlinkRefusal(thrown: unknown, offendingPath: string): void {
+/** Every message in `thrown`'s own `cause` chain, outermost first, as long as each link is itself an `Error`. */
+function errorChainMessages(thrown: unknown): string[] {
+  const messages: string[] = [];
+  let current: unknown = thrown;
+  while (current instanceof Error) {
+    messages.push(current.message);
+    current = current.cause;
+  }
+  return messages;
+}
+
+/**
+ * Asserts `thrown` is an `Error` naming a symlink refusal at exactly
+ * `offendingPath`, and that its remediation marker is mode-specific and
+ * END-anchored (not a loose substring match):
+ *
+ * - `"fresh"` (`installCustomizeSkill`): the whole error chain (this
+ *   message AND every `cause` in it) must carry ONLY the `--fresh --force`
+ *   advice -- never a bare "re-run the CLI", the generic marker
+ *   `assertNotSymlink` itself appends, which fresh mode must strip or
+ *   replace rather than let suppress its own, more specific advice.
+ * - `"adopt"` (`installCustomizeSkillGuarded`): keeps the generic "re-run
+ *   the CLI" advice, exactly once (never doubled, never dropped).
+ */
+function expectSymlinkRefusal(
+  thrown: unknown,
+  offendingPath: string,
+  mode: "fresh" | "adopt",
+): void {
   expect(thrown).toBeInstanceOf(Error);
   const message = (thrown as Error).message;
   expect(message).toContain("refusing to write through a symlink");
   expect(message).toContain(offendingPath);
+
+  if (mode === "fresh") {
+    expect(message).toContain("--fresh --force");
+    for (const chainMessage of errorChainMessages(thrown)) {
+      expect(chainMessage).not.toMatch(/\bre-run the CLI\b/);
+    }
+  } else {
+    const occurrences = message.split("re-run the CLI").length - 1;
+    expect(occurrences).toBe(1);
+  }
 }
 
 describe("copyCustomizeSkillFiles directory-component symlink guard", () => {
@@ -119,21 +156,23 @@ describe("copyCustomizeSkillFiles directory-component symlink guard", () => {
         thrown = error;
       }
 
-      expectSymlinkRefusal(thrown, symlinkPath);
+      expectSymlinkRefusal(thrown, symlinkPath, "fresh");
       expect(readdirSync(outsideDir)).toEqual([]);
       expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
     },
   );
 
-  // [item 6] assertNotSymlink's own message already ends in its own
-  // remediation clause ("... -- remove it and re-run the CLI"); installError
-  // (the wrapper every plugin.ts failure is normalized into) appends a
-  // SECOND, near-identical clause ("-- fix the cause and re-run the CLI") to
-  // every wrapped cause's message unconditionally. Chained together, a
-  // symlink refusal's wrapped message ends up saying "re-run the CLI" twice
-  // in a row -- the final message must carry that remediation phrasing only
-  // once.
-  it("[no doubled remediation] a wrapped symlink refusal's message says 're-run the CLI' exactly once, not twice", () => {
+  // [item 6, revised for mode-specific/end-anchored markers] assertNotSymlink's
+  // own message ends in its own GENERIC remediation clause ("... -- remove it
+  // and re-run the CLI"). That clause is correct for adopt mode (which has no
+  // more specific advice to give), but fresh mode has a strictly better one
+  // (--fresh --force) and must not let the generic marker suppress it: a
+  // marker match on "re-run the CLI" must not be read as "this message
+  // already carries FRESH mode's own advice" -- the two are different modes'
+  // remediation, not interchangeable text. Fresh mode's wrapped message must
+  // therefore carry ONLY its own --fresh --force advice, with no bare
+  // "re-run the CLI" surviving anywhere in the error chain.
+  it("[no doubled remediation] a wrapped symlink refusal in FRESH mode carries only the --fresh --force advice, never assertNotSymlink's generic bare 're-run the CLI'", () => {
     const symlinkPath = plantSymlinkAt([".claude"]);
 
     let thrown: unknown;
@@ -146,8 +185,10 @@ describe("copyCustomizeSkillFiles directory-component symlink guard", () => {
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
     expect(message).toContain(symlinkPath);
-    const occurrences = message.split("re-run the CLI").length - 1;
-    expect(occurrences).toBe(1);
+    expect(message).toContain("--fresh --force");
+    for (const chainMessage of errorChainMessages(thrown)) {
+      expect(chainMessage).not.toMatch(/\bre-run the CLI\b/);
+    }
   });
 
   // [round-two review, item D] installCustomizeSkillGuarded no longer
@@ -201,7 +242,7 @@ describe("copyCustomizeSkillFiles directory-component symlink guard", () => {
         thrown = error;
       }
 
-      expectSymlinkRefusal(thrown, symlinkPath);
+      expectSymlinkRefusal(thrown, symlinkPath, "adopt");
       expect(readdirSync(outsideDir)).toEqual([]);
       expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
       // The project's own (differing) skill under .claude/ is untouched too.

@@ -847,13 +847,21 @@ describe("fresh-mode --force over an existing install removes the old SKILL.md f
     // The existing rollback-count clause must still be present alongside
     // the new one.
     expect(message).toContain("removed the 1 file(s) written by this run");
-    // [item 3] Fresh mode's own remediation: "re-run the same command with
-    // --fresh --force added", never the generic "fix the cause and re-run
-    // the CLI" every other install failure gets.
-    expect(message).toContain(
-      "re-run the same command with --fresh --force added",
-    );
+    // [item 3, revised for S3] Fresh mode's own remediation still names
+    // --fresh --force, never the generic "fix the cause and re-run the CLI"
+    // every other install failure gets -- but it must not ADD a second "re-
+    // run" mention of its own: this message already legitimately says "a
+    // successful re-run" (the overwrite policy's own "not loadable" clause,
+    // unrelated to the remediation suffix), and main.ts's outer wrap is the
+    // one place that states the full re-run instruction when this error is
+    // reached through runFresh (see plugin-payload-read.test.ts's "[item 3]"
+    // test and main-run.test.ts for the rest of this contract). So the total
+    // count of "re-run" anywhere in this message must stay at exactly the
+    // ONE pre-existing mention, not grow to two.
+    expect(message).toContain("--fresh --force");
     expect(message).not.toContain("fix the cause and re-run the CLI");
+    const reRunOccurrences = (message.match(/re-run/gi) ?? []).length;
+    expect(reRunOccurrences).toBe(1);
 
     real.rmSync(sourceDir, { recursive: true, force: true });
     real.rmSync(targetDir, { recursive: true, force: true });
@@ -2176,6 +2184,126 @@ describe("a SKILL.md write failure does not also append the generic 'not loadabl
     expect(existsSync(skillMdDest)).toBe(true);
 
     real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * [NIT] withRemediation's "already carries a re-run remediation" check must
+ * be END-anchored, not a loose substring match anywhere in the message: a
+ * target path that itself happens to CONTAIN marker-shaped text (e.g. a
+ * directory literally named "re-run the CLI-something") is embedded in the
+ * body via `could not write <dest>...`, and a naive `.includes()` check
+ * would misread that coincidental text as "this message already carries
+ * its own remediation", silently suppressing the real one.
+ */
+describe("withRemediation's marker check is END-anchored, not a coincidental substring match (NIT)", () => {
+  beforeEach(() => {
+    rmSyncMock.mockImplementation((...args: Parameters<typeof NodeFs.rmSync>) =>
+      real.rmSync(...args),
+    );
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) =>
+        real.writeFileSync(...args),
+    );
+  });
+
+  afterEach(() => {
+    rmSyncMock.mockReset();
+    writeFileSyncMock.mockReset();
+  });
+
+  it("still appends fresh-mode's --fresh --force advice when the target path's own text happens to contain 're-run the CLI'", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "plugin-nit-marker-src-"));
+    // The directory name itself embeds the marker text the real symlink
+    // refusal uses -- purely coincidental, nothing to do with a real
+    // remediation already being present.
+    const targetDir = mkdtempSync(
+      join(tmpdir(), "re-run the CLI-plugin-nit-marker-tgt-"),
+    );
+    writeSourceFixture(sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+    const dest = join(destDir, "kind-facet-map.ts");
+
+    writeFileSyncMock.mockImplementation(
+      (...args: Parameters<typeof NodeFs.writeFileSync>) => {
+        const [target] = args;
+        if (String(target) === dest) {
+          const failure = new Error(
+            "EACCES: permission denied, open (simulated)",
+          ) as NodeJS.ErrnoException;
+          failure.code = "EACCES";
+          throw failure;
+        }
+        return real.writeFileSync(...args);
+      },
+    );
+
+    let thrown: unknown;
+    try {
+      installCustomizeSkill(targetDir, sourceDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    // Confirms the coincidental substring really is embedded in the body
+    // (via the written-out `dest` path), so a naive, non-end-anchored
+    // `.includes()` marker check has something to be fooled by.
+    expect(message).toContain(targetDir);
+    expect(message).toContain("--fresh --force");
+
+    real.rmSync(sourceDir, { recursive: true, force: true });
+    real.rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * [NIT] `installCustomizeSkill`/`installCustomizeSkillGuarded`'s `sourceDir`
+ * parameter defaults to `pluginDir()` (`../src/plugin.js`), which calls
+ * `resolveAsset` (`../src/assets.js`). A default parameter value is
+ * evaluated as part of entering the function body, BEFORE
+ * `withRemediation`'s own `try` runs -- so a `pluginDir()` failure today
+ * propagates completely raw: no "could not install the /customize skill: "
+ * prefix, no chained `cause`, no remediation at all. Every other failure
+ * path in this module gets that treatment; this one is a gap.
+ */
+describe("[NIT] a pluginDir()/resolveAsset() failure (the sourceDir default) gets the same install-prefix and remediation as every other failure", () => {
+  afterEach(() => {
+    vi.doUnmock("../src/assets.js");
+    vi.resetModules();
+  });
+
+  it("wraps a resolveAsset() failure reached through installCustomizeSkill's default sourceDir the same way as any other failure", async () => {
+    const assetFailure = new Error(
+      "simulated resolveAsset failure: no source checkout or vendored copy found",
+    );
+    vi.doMock("../src/assets.js", () => ({
+      resolveAsset: vi.fn(() => {
+        throw assetFailure;
+      }),
+    }));
+    vi.resetModules();
+    const { installCustomizeSkill: installCustomizeSkillFreshImport } =
+      await import("../src/plugin.js");
+
+    const targetDir = mkdtempSync(join(tmpdir(), "plugin-nit-plugindir-tgt-"));
+
+    let thrown: unknown;
+    try {
+      // No sourceDir argument: forces the pluginDir() default to run.
+      installCustomizeSkillFreshImport(targetDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain("could not install the /customize skill");
+    expect((thrown as Error).cause).toBe(assetFailure);
+    expect(message).toContain("--fresh --force");
+
     real.rmSync(targetDir, { recursive: true, force: true });
   });
 });

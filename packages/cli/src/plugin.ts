@@ -24,7 +24,7 @@ import {
   CUSTOMIZE_SKILL_WRITE_ORDER,
   GROUNDWORK_DEST_SEGMENTS,
 } from "./customize-paths.js";
-import { assertNotSymlink } from "./fs-guard.js";
+import { assertNotSymlink, endsWithRerunAdvice } from "./fs-guard.js";
 
 /** Resolves the plugin payload for a source checkout (`packages/plugin`) or a published tarball (`plugin/`). */
 function pluginDir(): string {
@@ -48,17 +48,36 @@ export interface InstallPluginResult {
 }
 
 /**
+ * Fresh mode's retry instruction. Its target is no longer empty after a
+ * failed install, so a plain re-run would adopt it; only `--fresh --force`
+ * repeats that run. Deliberately not worded "re-run": reached through
+ * `main.ts`'s fresh mode, the outer error states the full re-run
+ * instruction, and the chain should carry exactly one.
+ */
+const FRESH_RETRY = "retry the same command with --fresh --force added";
+
+/** How a public entry point's failures end: the advice to append, and whether a message already ENDS with equivalent advice. */
+interface Remediation {
+  readonly advice: string;
+  readonly isAdvised: (message: string) => boolean;
+}
+
+/**
  * The remediation an install failure ends with, chosen by the public entry
  * point that owns the run ({@link withRemediation}) -- appended once, never
- * twice. Fresh mode's target is no longer empty after a failed install, so a
- * plain re-run would adopt it; only `--fresh --force` repeats that run.
+ * twice.
  */
-const FRESH_REMEDIATION =
-  "fix the cause, then re-run the same command with --fresh --force added";
-const ADOPT_REMEDIATION = "fix the cause and re-run the CLI";
+const FRESH_REMEDIATION: Remediation = {
+  advice: `fix the cause, then ${FRESH_RETRY}`,
+  isAdvised: (message) => message.endsWith(FRESH_RETRY),
+};
+const ADOPT_REMEDIATION: Remediation = {
+  advice: "fix the cause and re-run the CLI",
+  isAdvised: endsWithRerunAdvice,
+};
 
-/** Phrases that mark a message as already carrying a re-run remediation (e.g. {@link assertNotSymlink}'s). */
-const REMEDIATION_MARKERS = ["re-run the CLI", "--fresh --force"] as const;
+/** Fresh mode's symlinked-component advice, replacing {@link assertNotSymlink}'s adopt-mode default. */
+const FRESH_SYMLINK_ADVICE = `remove it, then ${FRESH_RETRY}`;
 
 /** The prefix every install failure's message starts with -- stated once, never twice. */
 const INSTALL_ERROR_PREFIX = "could not install the /customize skill: ";
@@ -95,25 +114,37 @@ function installError(detail: string, cause: unknown): Error {
 }
 
 /**
- * Runs one public install entry point, appending `remediation` to any install
- * failure it throws -- unless the message already carries a re-run
- * remediation (e.g. {@link assertNotSymlink}'s "remove it and re-run the
- * CLI"), so the advice appears once. Anything else is rethrown unchanged.
+ * Runs one public install entry point, appending `remediation.advice` to any
+ * install failure it throws -- unless the message already ENDS with this
+ * mode's advice (e.g. adopt mode's symlink refusal, "remove it and re-run
+ * the CLI"), so the advice appears once. The check is end-anchored and
+ * mode-specific: a phrase elsewhere in the message (inside a path) or the
+ * other mode's advice never suppresses it. Anything else is rethrown
+ * unchanged.
  */
-function withRemediation<T>(remediation: string, run: () => T): T {
+function withRemediation<T>(remediation: Remediation, run: () => T): T {
   try {
     return run();
   } catch (error) {
-    if (!(error instanceof CustomizeInstallError)) {
-      throw error;
+    if (
+      error instanceof CustomizeInstallError &&
+      !remediation.isAdvised(error.body)
+    ) {
+      throw new CustomizeInstallError(
+        `${error.body} -- ${remediation.advice}`,
+        error.cause,
+      );
     }
-    const { body } = error;
-    const advised = REMEDIATION_MARKERS.some((marker) => body.includes(marker));
-    if (advised) {
-      throw error;
-    }
-    throw new CustomizeInstallError(`${body} -- ${remediation}`, error.cause);
+    throw error;
   }
+}
+
+/** The plugin payload's location, resolved inside a public entry point's run so a failure is wrapped like any other. */
+function resolveSourceDir(sourceDir: string | undefined): string {
+  return (
+    sourceDir ??
+    wrapFs("could not locate the /customize skill's source", pluginDir)
+  );
 }
 
 /** Wording for a pre-write probe failure: nothing has been touched yet. */
@@ -194,23 +225,32 @@ function readCustomizeSkillPayload(sourceDir: string): readonly PayloadFile[] {
  */
 type WritePolicy = "overwrite" | "additive" | "cli-owned";
 
-/** Where an install writes (segments relative to the project root) and how it treats what is already there. */
+/**
+ * Where an install writes (segments relative to the project root), how it
+ * treats what is already there, and the advice a symlinked directory
+ * component's refusal ends with ({@link assertNotSymlink}'s default when
+ * `undefined`).
+ */
 interface SkillDestination {
   readonly segments: readonly string[];
   readonly policy: WritePolicy;
+  readonly symlinkAdvice: string | undefined;
 }
 
 const FRESH_DESTINATION: SkillDestination = {
   segments: CLAUDE_DEST_SEGMENTS,
   policy: "overwrite",
+  symlinkAdvice: FRESH_SYMLINK_ADVICE,
 };
 const ADOPT_CLAUDE_DESTINATION: SkillDestination = {
   segments: CLAUDE_DEST_SEGMENTS,
   policy: "additive",
+  symlinkAdvice: undefined,
 };
 const CLI_OWNED_DESTINATION: SkillDestination = {
   segments: GROUNDWORK_DEST_SEGMENTS,
   policy: "cli-owned",
+  symlinkAdvice: undefined,
 };
 
 /** Whether a policy removes an existing entry at a payload name before its `"wx"` write. */
@@ -542,14 +582,14 @@ function copyCustomizeSkillFiles(
   payload: readonly PayloadFile[],
   alreadyCurrent: ReadonlySet<string> = new Set(),
 ): InstallPluginResult {
-  const { segments, policy } = destination;
+  const { segments, policy, symlinkAdvice } = destination;
   const destDir = wrapFs(
     `could not prepare ${join(targetDir, ...segments)}`,
     () => {
       let dir = targetDir;
       for (const segment of segments) {
         dir = join(dir, segment);
-        assertNotSymlink(dir);
+        assertNotSymlink(dir, symlinkAdvice);
       }
       mkdirSync(dir, { recursive: true });
       return dir;
@@ -633,9 +673,11 @@ function copyCustomizeSkillFiles(
  * after removing every file this call wrote. An existing regular file that
  * cannot be read is not a failure: it is replaced like any stale copy.
  * Entries it replaced before the failure are not restored; the error names
- * them. The message ends by saying to fix the cause and re-run the same
- * command with `--fresh --force` added (a plain re-run would adopt the
- * now-non-empty target), once.
+ * them. So is a failure to locate the default `sourceDir`. The message ends,
+ * once, by saying to fix the cause (for a symlink: remove it), then retry
+ * the same command with `--fresh --force` added -- a plain re-run would
+ * adopt the now-non-empty target -- and nowhere in the error chain gives
+ * adopt mode's bare "re-run the CLI" advice.
  *
  * @example
  * ```ts
@@ -646,13 +688,13 @@ function copyCustomizeSkillFiles(
  */
 export function installCustomizeSkill(
   targetDir: string,
-  sourceDir: string = pluginDir(),
+  sourceDir?: string,
 ): InstallPluginResult {
   return withRemediation(FRESH_REMEDIATION, () =>
     copyCustomizeSkillFiles(
       targetDir,
       FRESH_DESTINATION,
-      readCustomizeSkillPayload(sourceDir),
+      readCustomizeSkillPayload(resolveSourceDir(sourceDir)),
     ),
   );
 }
@@ -910,7 +952,9 @@ function installGuarded(
  * `.groundwork`/`.groundwork/customize`, or a directory at a payload name
  * there -- after removing every file this call wrote. A failed
  * `.groundwork/customize/` install also names why the fallback was taken.
- * The message ends by saying to fix the cause and re-run the CLI, once.
+ * So is a failure to locate the default `sourceDir`. The message ends by
+ * saying to fix the cause (for a symlink: remove it) and re-run the CLI,
+ * once.
  *
  * @example
  * ```ts
@@ -922,9 +966,9 @@ function installGuarded(
  */
 export function installCustomizeSkillGuarded(
   targetDir: string,
-  sourceDir: string = pluginDir(),
+  sourceDir?: string,
 ): GuardedInstallResult {
   return withRemediation(ADOPT_REMEDIATION, () =>
-    installGuarded(targetDir, sourceDir),
+    installGuarded(targetDir, resolveSourceDir(sourceDir)),
   );
 }

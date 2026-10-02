@@ -312,6 +312,13 @@ describe("main", () => {
           "re-run with --fresh --force (plus your original --name/--pack/--skip-install)",
         );
         expect(message).toContain("a plain re-run adopts it");
+        // [S3] main.ts's own top-level message is the ONLY place that states
+        // the "--fresh --force" instruction for a fresh-mode install
+        // failure -- it never interpolates the plugin's own cause.message
+        // into its text, so this count must stay at exactly one regardless
+        // of what the (here, mocked) cause says.
+        const occurrences = (message.match(/--fresh --force/g) ?? []).length;
+        expect(occurrences).toBe(1);
       }
 
       it("without --skip-install: says pnpm install did not run, and how to re-run keeping the same flags, chaining the cause", () => {

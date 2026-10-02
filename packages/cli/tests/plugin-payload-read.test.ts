@@ -26,12 +26,7 @@ import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
 } from "../src/plugin.js";
-
-/** A root process ignores file permission bits entirely, and Windows has no
- * POSIX chmod semantics -- neither can produce the EACCES these tests rely
- * on. */
-const skipUnlessChmodWorks =
-  process.getuid?.() === 0 || process.platform === "win32";
+import { chmodIneffective } from "./chmod-ineffective.js";
 
 /** The same five-file payload fixture plugin.test.ts/plugin-install.test.ts use. */
 function writeSourceFixture(sourceDir: string): void {
@@ -78,7 +73,7 @@ describe("a source payload file that exists but is unreadable keeps its real err
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  it.skipIf(skipUnlessChmodWorks)(
+  it.skipIf(chmodIneffective)(
     "keeps EACCES in the message and cause, rather than reporting the file as missing",
     () => {
       const skillMdPath = join(sourceDir, "skills", "customize", "SKILL.md");
@@ -103,14 +98,20 @@ describe("a source payload file that exists but is unreadable keeps its real err
     },
   );
 
-  // [item 3] Fresh mode's own remediation must read "re-run the same
-  // command with --fresh --force added" (so it agrees with main.ts
-  // runFresh's outer message, which tells the caller exactly that) rather
-  // than the generic "fix the cause and re-run the CLI" every other
-  // install failure gets -- and the advice must appear exactly once, not
-  // both phrasings stacked on top of each other.
-  it.skipIf(skipUnlessChmodWorks)(
-    "[item 3] a fresh-mode (installCustomizeSkill) failure's remediation says to re-run with --fresh --force, not the generic 'fix the cause and re-run the CLI'",
+  // [item 3, revised for S3] Fresh mode's own remediation must still point at
+  // --fresh --force (so a direct caller of installCustomizeSkill, with no
+  // main.ts in the loop, still learns the concrete flag), but must NOT use
+  // the word "re-run" at all: main.ts's own outer wrap (runFresh) is the
+  // sole place that states the full "re-run with --fresh --force (plus your
+  // original flags)" instruction when installCustomizeSkill is reached
+  // through it, and formatErrorChain prints the plugin's cause as a
+  // SEPARATE line from main.ts's own custom message (it never embeds the
+  // cause's text), so both previously saying "re-run ... --fresh --force"
+  // doubled that instruction in the printed chain. Dropping the word
+  // "re-run" from plugin.ts's own text (while keeping the flag mention)
+  // resolves that without losing the flag for a direct caller.
+  it.skipIf(chmodIneffective)(
+    "[item 3] a fresh-mode (installCustomizeSkill) failure's remediation still names --fresh --force but never uses the word 're-run' (main.ts owns that instruction)",
     () => {
       const skillMdPath = join(sourceDir, "skills", "customize", "SKILL.md");
       chmodSync(skillMdPath, 0o000);
@@ -124,17 +125,15 @@ describe("a source payload file that exists but is unreadable keeps its real err
 
       expect(thrown).toBeInstanceOf(Error);
       const message = (thrown as Error).message;
-      expect(message).toContain(
-        "re-run the same command with --fresh --force added",
-      );
-      expect(message).not.toContain("fix the cause and re-run the CLI");
+      expect(message).toContain("--fresh --force");
+      expect(message).not.toMatch(/re-run/i);
     },
   );
 
   // [item 3] The same failure through installCustomizeSkillGuarded (adopt
   // mode) keeps the OLD, generic remediation -- it has no "--fresh --force"
   // flag to point at.
-  it.skipIf(skipUnlessChmodWorks)(
+  it.skipIf(chmodIneffective)(
     "[item 3] the same failure through installCustomizeSkillGuarded (adopt mode) keeps 'fix the cause and re-run the CLI', never '--fresh --force'",
     () => {
       const skillMdPath = join(sourceDir, "skills", "customize", "SKILL.md");

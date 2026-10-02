@@ -43,13 +43,7 @@ import {
   installCustomizeSkillGuarded,
 } from "../src/plugin.js";
 import { CUSTOMIZE_SKILL_FILE_NAMES } from "../src/customize-paths.js";
-
-/** A root process ignores file permission bits entirely, and Windows has no
- * POSIX chmod semantics -- neither can produce the EACCES these tests rely
- * on, so every test in this file skips rather than asserting a false
- * positive. */
-const skipUnlessChmodWorks =
-  process.getuid?.() === 0 || process.platform === "win32";
+import { chmodIneffective } from "./chmod-ineffective.js";
 
 /** The same five-file payload fixture plugin.test.ts/plugin-install.test.ts use. */
 function writeSourceFixture(sourceDir: string): void {
@@ -106,7 +100,7 @@ describe("an unreadable existing SKILL.md at the fresh-mode destination is treat
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  it.skipIf(skipUnlessChmodWorks)(
+  it.skipIf(chmodIneffective)(
     "removes and rewrites it rather than refusing the whole install",
     () => {
       chmodSync(skillMdDest, 0o000);
@@ -169,7 +163,7 @@ describe("an unreadable existing SKILL.md at the adopt-mode destination refuses 
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  it.skipIf(skipUnlessChmodWorks)(
+  it.skipIf(chmodIneffective)(
     "refuses with 'could not read ...' and a cause, writing and removing nothing",
     () => {
       chmodSync(skillMdDest, 0o000);
