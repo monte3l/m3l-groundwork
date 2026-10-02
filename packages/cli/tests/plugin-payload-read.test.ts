@@ -22,7 +22,16 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { installCustomizeSkill } from "../src/plugin.js";
+import {
+  installCustomizeSkill,
+  installCustomizeSkillGuarded,
+} from "../src/plugin.js";
+
+/** A root process ignores file permission bits entirely, and Windows has no
+ * POSIX chmod semantics -- neither can produce the EACCES these tests rely
+ * on. */
+const skipUnlessChmodWorks =
+  process.getuid?.() === 0 || process.platform === "win32";
 
 /** The same five-file payload fixture plugin.test.ts/plugin-install.test.ts use. */
 function writeSourceFixture(sourceDir: string): void {
@@ -69,33 +78,81 @@ describe("a source payload file that exists but is unreadable keeps its real err
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  it("keeps EACCES in the message and cause, rather than reporting the file as missing", () => {
-    // A root process ignores file permission bits entirely, and Windows has
-    // no POSIX chmod semantics -- neither can produce the EACCES this test
-    // relies on.
-    if (process.getuid?.() === 0 || process.platform === "win32") {
-      return;
-    }
-    const skillMdPath = join(sourceDir, "skills", "customize", "SKILL.md");
-    chmodSync(skillMdPath, 0o000);
+  it.skipIf(skipUnlessChmodWorks)(
+    "keeps EACCES in the message and cause, rather than reporting the file as missing",
+    () => {
+      const skillMdPath = join(sourceDir, "skills", "customize", "SKILL.md");
+      chmodSync(skillMdPath, 0o000);
 
-    let thrown: unknown;
-    try {
-      installCustomizeSkill(targetDir, sourceDir);
-    } catch (error) {
-      thrown = error;
-    }
+      let thrown: unknown;
+      try {
+        installCustomizeSkill(targetDir, sourceDir);
+      } catch (error) {
+        thrown = error;
+      }
 
-    expect(thrown).toBeInstanceOf(Error);
-    const message = (thrown as Error).message;
-    expect(message).toContain("could not install the /customize skill");
-    expect(message).not.toContain("is missing");
-    expect(message).toContain(skillMdPath);
-    expect((thrown as Error).cause).toBeInstanceOf(Error);
-    expect(((thrown as Error).cause as NodeJS.ErrnoException).code).toBe(
-      "EACCES",
-    );
-  });
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain("could not install the /customize skill");
+      expect(message).not.toContain("is missing");
+      expect(message).toContain(skillMdPath);
+      expect((thrown as Error).cause).toBeInstanceOf(Error);
+      expect(((thrown as Error).cause as NodeJS.ErrnoException).code).toBe(
+        "EACCES",
+      );
+    },
+  );
+
+  // [item 3] Fresh mode's own remediation must read "re-run the same
+  // command with --fresh --force added" (so it agrees with main.ts
+  // runFresh's outer message, which tells the caller exactly that) rather
+  // than the generic "fix the cause and re-run the CLI" every other
+  // install failure gets -- and the advice must appear exactly once, not
+  // both phrasings stacked on top of each other.
+  it.skipIf(skipUnlessChmodWorks)(
+    "[item 3] a fresh-mode (installCustomizeSkill) failure's remediation says to re-run with --fresh --force, not the generic 'fix the cause and re-run the CLI'",
+    () => {
+      const skillMdPath = join(sourceDir, "skills", "customize", "SKILL.md");
+      chmodSync(skillMdPath, 0o000);
+
+      let thrown: unknown;
+      try {
+        installCustomizeSkill(targetDir, sourceDir);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain(
+        "re-run the same command with --fresh --force added",
+      );
+      expect(message).not.toContain("fix the cause and re-run the CLI");
+    },
+  );
+
+  // [item 3] The same failure through installCustomizeSkillGuarded (adopt
+  // mode) keeps the OLD, generic remediation -- it has no "--fresh --force"
+  // flag to point at.
+  it.skipIf(skipUnlessChmodWorks)(
+    "[item 3] the same failure through installCustomizeSkillGuarded (adopt mode) keeps 'fix the cause and re-run the CLI', never '--fresh --force'",
+    () => {
+      const skillMdPath = join(sourceDir, "skills", "customize", "SKILL.md");
+      chmodSync(skillMdPath, 0o000);
+
+      let thrown: unknown;
+      try {
+        installCustomizeSkillGuarded(targetDir, sourceDir);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain("fix the cause and re-run the CLI");
+      expect(message).not.toContain("--fresh --force");
+    },
+  );
 
   it("[regression guard] a truly MISSING source file still says 'missing'", () => {
     rmSync(join(sourceDir, "skills", "customize", "SKILL.md"), {

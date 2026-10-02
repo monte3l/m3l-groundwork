@@ -411,7 +411,7 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
     // the failure stopped it (same split as the git-init branch below).
     const notRun = skipInstall ? "git init" : "git init / pnpm install";
     throw new Error(
-      `the project was written to ${targetDir}, but the /customize skill install failed and ${notRun} did not run -- fix the cause, then re-run the same command with --fresh --force added (keep the same --name/--pack/--skip-install flags; a plain re-run adopts it)`,
+      `the project was written to ${targetDir}, but the /customize skill install failed and ${notRun} did not run -- fix the cause, then re-run with --fresh --force (plus your original --name/--pack/--skip-install); a plain re-run adopts it`,
       { cause: error },
     );
   }

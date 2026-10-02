@@ -300,22 +300,17 @@ describe("main", () => {
 
     describe("when the /customize skill install fails", () => {
       /**
-       * The re-run instruction must be concrete enough to actually act on:
-       * name the exact flags to re-add (`--fresh --force`) and the exact
-       * flags to keep from the original invocation (`--name`/`--pack`/
-       * `--skip-install`, whichever the caller used) -- rather than a bare
-       * "re-run with --fresh --force" that silently drops a caller's
-       * `--pack`/`--name` choice on the retry. Shared by both tests below;
-       * the `--skip-install` wording itself differs per test, see each.
+       * [item 4] The re-run instruction must be concrete enough to actually
+       * act on: name the exact flags to re-add (`--fresh --force`) and say
+       * to keep the original invocation's own flags (`--name`/`--pack`/
+       * `--skip-install`) rather than silently dropping them on the retry.
+       * Shared by both tests below; the `--skip-install` wording itself
+       * differs per test, see each.
        */
       function expectReRunGuidance(message: string): void {
         expect(message).toContain(
-          "re-run the same command with --fresh --force added",
+          "re-run with --fresh --force (plus your original --name/--pack/--skip-install)",
         );
-        expect(message).toContain("--name");
-        expect(message).toContain("--pack");
-        expect(message).toContain("--skip-install");
-        expect(message.toLowerCase()).toMatch(/keep/);
         expect(message).toContain("a plain re-run adopts it");
       }
 

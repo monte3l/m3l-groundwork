@@ -721,6 +721,14 @@ describe("interrupted-install repair: the SKILL.md write itself fails (item 4, f
     expect(((thrown as Error).cause as NodeJS.ErrnoException).code).toBe(
       "EACCES",
     );
+    // [item 3] Adopt mode (installCustomizeSkillGuarded) keeps the generic
+    // "fix the cause and re-run the CLI" remediation -- it has no
+    // "--fresh --force" flag to point at, unlike fresh mode's own
+    // installCustomizeSkill.
+    expect((thrown as Error).message).toContain(
+      "fix the cause and re-run the CLI",
+    );
+    expect((thrown as Error).message).not.toContain("--fresh --force");
     // The four already-correct data files are untouched by the failed
     // repair attempt -- still exactly their original content.
     expect(readFileSync(join(destDir, "kind-facet-map.ts"), "utf8")).toBe(
@@ -839,6 +847,13 @@ describe("fresh-mode --force over an existing install removes the old SKILL.md f
     // The existing rollback-count clause must still be present alongside
     // the new one.
     expect(message).toContain("removed the 1 file(s) written by this run");
+    // [item 3] Fresh mode's own remediation: "re-run the same command with
+    // --fresh --force added", never the generic "fix the cause and re-run
+    // the CLI" every other install failure gets.
+    expect(message).toContain(
+      "re-run the same command with --fresh --force added",
+    );
+    expect(message).not.toContain("fix the cause and re-run the CLI");
 
     real.rmSync(sourceDir, { recursive: true, force: true });
     real.rmSync(targetDir, { recursive: true, force: true });
@@ -1235,6 +1250,11 @@ describe("the fallback-install re-wrap does not duplicate the 'could not install
     expect(occurrences).toBe(1);
     expect(message).toContain("fell back to .groundwork/customize/");
     expect(message).toContain("and that install failed too");
+    // [item 3] The fallback path is still adopt mode (installCustomizeSkillGuarded):
+    // it keeps the generic "fix the cause and re-run the CLI" remediation,
+    // never fresh mode's "--fresh --force" advice.
+    expect(message).toContain("fix the cause and re-run the CLI");
+    expect(message).not.toContain("--fresh --force");
 
     real.rmSync(sourceDir, { recursive: true, force: true });
     real.rmSync(targetDir, { recursive: true, force: true });
@@ -1267,7 +1287,7 @@ describe("createdByFailedWrite surfaces its own lstat failure instead of silentl
     writeFileSyncMock.mockReset();
   });
 
-  it("names the path and says '(unknown whether created)' rather than silently treating it as not created", () => {
+  it("names the path and says 'was left in place; whether this run created it is unknown' rather than silently treating it as not created (item 4: no parenthetical)", () => {
     const sourceDir = mkdtempSync(join(tmpdir(), "plugin-rollback-lstat-src-"));
     const targetDir = mkdtempSync(join(tmpdir(), "plugin-rollback-lstat-tgt-"));
     writeSourceFixture(sourceDir);
@@ -1314,7 +1334,12 @@ describe("createdByFailedWrite surfaces its own lstat failure instead of silentl
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
     expect(message).toContain(domainMapDest);
-    expect(message).toContain("(unknown whether created)");
+    // [item 4] no "(unknown whether created)" parenthetical -- the clause
+    // reads as one plain sentence instead.
+    expect(message).not.toContain("(unknown whether created)");
+    expect(message).toContain(
+      `${domainMapDest} was left in place; whether this run created it is unknown`,
+    );
     // An "unknown whether created" entry gets its own clause -- "left in
     // place; whether this run created it is unknown" -- rather than being
     // folded into the "(could not remove: ...)" list alongside entries that

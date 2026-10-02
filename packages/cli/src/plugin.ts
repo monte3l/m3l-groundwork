@@ -47,8 +47,18 @@ export interface InstallPluginResult {
   filesWritten: string[];
 }
 
-/** The remediation every install failure ends with -- appended once, never twice. */
-const REMEDIATION = "re-run the CLI";
+/**
+ * The remediation an install failure ends with, chosen by the public entry
+ * point that owns the run ({@link withRemediation}) -- appended once, never
+ * twice. Fresh mode's target is no longer empty after a failed install, so a
+ * plain re-run would adopt it; only `--fresh --force` repeats that run.
+ */
+const FRESH_REMEDIATION =
+  "fix the cause, then re-run the same command with --fresh --force added";
+const ADOPT_REMEDIATION = "fix the cause and re-run the CLI";
+
+/** Phrases that mark a message as already carrying a re-run remediation (e.g. {@link assertNotSymlink}'s). */
+const REMEDIATION_MARKERS = ["re-run the CLI", "--fresh --force"] as const;
 
 /** The prefix every install failure's message starts with -- stated once, never twice. */
 const INSTALL_ERROR_PREFIX = "could not install the /customize skill: ";
@@ -70,24 +80,40 @@ class CustomizeInstallError extends Error {
 
 /**
  * Builds the one error shape every install failure surfaces as, keeping the
- * underlying message and chaining the raw error as `cause`. A cause whose own
- * message already ends in a "re-run the CLI" remediation (e.g.
- * {@link assertNotSymlink}'s) is not given a second one. A cause that is
- * itself an install failure is folded in: its body follows `detail` under a
- * single prefix, and its own raw `cause` (not the wrapper) is chained.
+ * underlying message and chaining the raw error as `cause`. It adds no
+ * remediation: {@link withRemediation} appends the caller's once, at the
+ * public boundary. A cause that is itself an install failure is folded in:
+ * its body follows `detail` under a single prefix, and its own raw `cause`
+ * (not the wrapper) is chained.
  */
 function installError(detail: string, cause: unknown): Error {
   if (cause instanceof CustomizeInstallError) {
     return new CustomizeInstallError(`${detail}: ${cause.body}`, cause.cause);
   }
   const causeMessage = cause instanceof Error ? cause.message : String(cause);
-  const remediation = causeMessage.includes(REMEDIATION)
-    ? ""
-    : ` -- fix the cause and ${REMEDIATION}`;
-  return new CustomizeInstallError(
-    `${detail}: ${causeMessage}${remediation}`,
-    cause,
-  );
+  return new CustomizeInstallError(`${detail}: ${causeMessage}`, cause);
+}
+
+/**
+ * Runs one public install entry point, appending `remediation` to any install
+ * failure it throws -- unless the message already carries a re-run
+ * remediation (e.g. {@link assertNotSymlink}'s "remove it and re-run the
+ * CLI"), so the advice appears once. Anything else is rethrown unchanged.
+ */
+function withRemediation<T>(remediation: string, run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    if (!(error instanceof CustomizeInstallError)) {
+      throw error;
+    }
+    const { body } = error;
+    const advised = REMEDIATION_MARKERS.some((marker) => body.includes(marker));
+    if (advised) {
+      throw error;
+    }
+    throw new CustomizeInstallError(`${body} -- ${remediation}`, error.cause);
+  }
 }
 
 /** Wording for a pre-write probe failure: nothing has been touched yet. */
@@ -392,7 +418,7 @@ function failureClauses(args: {
   // would contradict it.
   const skillMaybeLeft = skillLeftBehind || unknownIsSkill;
   const unknown = createdUnknown
-    ? `; ${dest} (unknown whether created) was left in place; whether this run created it is unknown${
+    ? `; ${dest} was left in place; whether this run created it is unknown${
         unknownIsSkill
           ? " -- it may be a truncated copy; delete it by hand"
           : ""
@@ -507,7 +533,8 @@ function replacedClause(
  * directory at a payload name, a raw `lstat`/`mkdir` error such as
  * `ENOTDIR`, a write error -- is thrown as one "could not install the
  * /customize skill" `Error` carrying the underlying message and the raw
- * error as `cause`.
+ * error as `cause`; the public entry point appends its own remediation
+ * ({@link withRemediation}).
  */
 function copyCustomizeSkillFiles(
   targetDir: string,
@@ -601,10 +628,14 @@ function copyCustomizeSkillFiles(
  * @throws `Error` ("could not install the /customize skill ...", raw error
  * as `cause`) on a missing or unreadable source file, a directory at any
  * payload name, or a payload name or existing file that cannot be
- * `lstat`ed or read (all before anything is removed or written), a
- * symlinked or non-directory directory component, any fs failure, or a
- * failed write -- after removing every file this call wrote. Entries it
- * replaced before the failure are not restored; the error names them.
+ * `lstat`ed (all before anything is removed or written), a symlinked or
+ * non-directory directory component, any fs failure, or a failed write --
+ * after removing every file this call wrote. An existing regular file that
+ * cannot be read is not a failure: it is replaced like any stale copy.
+ * Entries it replaced before the failure are not restored; the error names
+ * them. The message ends by saying to fix the cause and re-run the same
+ * command with `--fresh --force` added (a plain re-run would adopt the
+ * now-non-empty target), once.
  *
  * @example
  * ```ts
@@ -617,10 +648,12 @@ export function installCustomizeSkill(
   targetDir: string,
   sourceDir: string = pluginDir(),
 ): InstallPluginResult {
-  return copyCustomizeSkillFiles(
-    targetDir,
-    FRESH_DESTINATION,
-    readCustomizeSkillPayload(sourceDir),
+  return withRemediation(FRESH_REMEDIATION, () =>
+    copyCustomizeSkillFiles(
+      targetDir,
+      FRESH_DESTINATION,
+      readCustomizeSkillPayload(sourceDir),
+    ),
   );
 }
 
@@ -777,54 +810,10 @@ function classifyExistingSkill(
   return { kind: "installable", alreadyCurrent };
 }
 
-/**
- * Adopt-mode install: purely additive, never overwrites or removes a project
- * entry under `.claude/skills/customize/`.
- *
- * - If `.claude`, `.claude/skills` or `.claude/skills/customize` is a
- *   symlink or not a directory, the skill is written to
- *   `.groundwork/customize/` instead, `fallbackReason` names that path and
- *   `fallbackCause` is `"component"` -- the entry (and any link target) is
- *   left untouched.
- * - Otherwise, if every payload file already there is a regular file
- *   matching what this CLI ships byte-for-byte: with all five present the
- *   result is `"already-present"` (nothing written); with no `SKILL.md` file
- *   (none at all, or an install interrupted before writing it) the missing
- *   files are written into `.claude/skills/customize/`, `SKILL.md` last,
- *   never rewriting or removing the correct ones.
- * - Anything else under a payload name (a differing file, a symlink --
- *   dangling or not -- a directory, a `SKILL.md` without its data; detected
- *   by `lstat`) is kept as the project's own: the skill is written to
- *   `.groundwork/customize/` instead, `fallbackReason` names that entry and
- *   `fallbackCause` is `"entry"`. Claude Code does not load a skill from
- *   there; the caller must say so.
- *
- * Writes into `.claude/skills/customize/` use `"wx"` only, so an entry that
- * appears there mid-install fails the run (rolled back) rather than being
- * replaced. Writes into the CLI-owned `.groundwork/customize/` replace that
- * directory's payload files (any `SKILL.md` removed first, then each file
- * removed and recreated with `"wx"`); a symlinked `.groundwork` or
- * `.groundwork/customize`, or a directory at any payload name there, is
- * refused, never routed around.
- *
- * @throws `Error` ("could not install the /customize skill ...", raw error
- * as `cause`) on a missing or unreadable source file (before anything is
- * written), any fs failure while probing or writing, a symlinked
- * `.groundwork`/`.groundwork/customize`, or a directory at a payload name
- * there -- after removing every file this call wrote. A failed
- * `.groundwork/customize/` install also names why the fallback was taken.
- *
- * @example
- * ```ts
- * import { installCustomizeSkillGuarded } from "./plugin.js";
- *
- * const { location } = installCustomizeSkillGuarded("/work/app");
- * // "claude" | "groundwork" | "already-present"
- * ```
- */
-export function installCustomizeSkillGuarded(
+/** The body of {@link installCustomizeSkillGuarded}, before its adopt-mode remediation is appended. */
+function installGuarded(
   targetDir: string,
-  sourceDir: string = pluginDir(),
+  sourceDir: string,
 ): GuardedInstallResult {
   const payload = readCustomizeSkillPayload(sourceDir);
   const existingDir = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
@@ -883,4 +872,59 @@ export function installCustomizeSkillGuarded(
       throw new Error(`unhandled skill state: ${JSON.stringify(exhaustive)}`);
     }
   }
+}
+
+/**
+ * Adopt-mode install: purely additive, never overwrites or removes a project
+ * entry under `.claude/skills/customize/`.
+ *
+ * - If `.claude`, `.claude/skills` or `.claude/skills/customize` is a
+ *   symlink or not a directory, the skill is written to
+ *   `.groundwork/customize/` instead, `fallbackReason` names that path and
+ *   `fallbackCause` is `"component"` -- the entry (and any link target) is
+ *   left untouched.
+ * - Otherwise, if every payload file already there is a regular file
+ *   matching what this CLI ships byte-for-byte: with all five present the
+ *   result is `"already-present"` (nothing written); with no `SKILL.md` file
+ *   (none at all, or an install interrupted before writing it) the missing
+ *   files are written into `.claude/skills/customize/`, `SKILL.md` last,
+ *   never rewriting or removing the correct ones.
+ * - Anything else under a payload name (a differing file, a symlink --
+ *   dangling or not -- a directory, a `SKILL.md` without its data; detected
+ *   by `lstat`) is kept as the project's own: the skill is written to
+ *   `.groundwork/customize/` instead, `fallbackReason` names that entry and
+ *   `fallbackCause` is `"entry"`. Claude Code does not load a skill from
+ *   there; the caller must say so.
+ *
+ * Writes into `.claude/skills/customize/` use `"wx"` only, so an entry that
+ * appears there mid-install fails the run (rolled back) rather than being
+ * replaced. Writes into the CLI-owned `.groundwork/customize/` replace that
+ * directory's payload files (any `SKILL.md` removed first, then each file
+ * removed and recreated with `"wx"`); a symlinked `.groundwork` or
+ * `.groundwork/customize`, or a directory at any payload name there, is
+ * refused, never routed around.
+ *
+ * @throws `Error` ("could not install the /customize skill ...", raw error
+ * as `cause`) on a missing or unreadable source file (before anything is
+ * written), any fs failure while probing or writing, a symlinked
+ * `.groundwork`/`.groundwork/customize`, or a directory at a payload name
+ * there -- after removing every file this call wrote. A failed
+ * `.groundwork/customize/` install also names why the fallback was taken.
+ * The message ends by saying to fix the cause and re-run the CLI, once.
+ *
+ * @example
+ * ```ts
+ * import { installCustomizeSkillGuarded } from "./plugin.js";
+ *
+ * const { location } = installCustomizeSkillGuarded("/work/app");
+ * // "claude" | "groundwork" | "already-present"
+ * ```
+ */
+export function installCustomizeSkillGuarded(
+  targetDir: string,
+  sourceDir: string = pluginDir(),
+): GuardedInstallResult {
+  return withRemediation(ADOPT_REMEDIATION, () =>
+    installGuarded(targetDir, sourceDir),
+  );
 }
