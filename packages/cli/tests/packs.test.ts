@@ -9,6 +9,7 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
+  chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -24,6 +25,7 @@ import type { PackManifest } from "../src/packs.js";
 import { stagePacks } from "../src/pack-stage.js";
 import { walkBounded } from "../src/survey/fs-walk.js";
 import { countPackBudget } from "../src/caps.js";
+import { chmodIneffective } from "./chmod-ineffective.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const realPacksRoot = join(here, "..", "..", "..", "templates", "packs");
@@ -986,6 +988,46 @@ describe("observeWiring", () => {
     expect(
       withoutSteps.some((o) => o.includes("verify-steps.packs.json")),
     ).toBe(false);
+  });
+
+  describe("settings.json exists but cannot be read (EACCES/EPERM)", () => {
+    let settingsPath: string;
+
+    beforeEach(() => {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      settingsPath = join(targetDir, ".claude", "settings.json");
+      writeFileSync(settingsPath, JSON.stringify({ hooks: {} }));
+      chmodSync(settingsPath, 0o000);
+    });
+
+    afterEach(() => {
+      if (existsSync(settingsPath)) {
+        chmodSync(settingsPath, 0o644);
+      }
+    });
+
+    it.skipIf(chmodIneffective)(
+      "records an observation that the file exists but could not be read, naming the errno, instead of throwing or reporting an unparseable file",
+      () => {
+        let thrown: unknown;
+        let observations: string[] = [];
+        try {
+          observations = observeWiring(targetDir, manifest());
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeUndefined();
+        expect(
+          observations.some(
+            (o) => o.includes("could not be read") && o.includes("EACCES"),
+          ),
+        ).toBe(true);
+        expect(
+          observations.some((o) => o.includes("could not be parsed")),
+        ).toBe(false);
+      },
+    );
   });
 });
 

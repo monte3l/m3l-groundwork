@@ -25,6 +25,7 @@ import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { emitTemplate } from "./emit.js";
 import { parseJsonc } from "./jsonc.js";
+import { permissionCode, readFailure } from "./survey/internal/read-guard.js";
 import {
   isPrototypeSensitiveKey,
   isRecord,
@@ -416,6 +417,28 @@ export function installPack(
 }
 
 /**
+ * Reads `.claude/settings.json` for {@link observeWiring}. A permission
+ * failure is a fact about the project file, recorded as an observation (and
+ * `undefined` returned); any other errno is about the machine and throws,
+ * naming the path with the original failure as `cause`.
+ */
+function readSettingsOrObserve(
+  settingsPath: string,
+  observations: string[],
+): string | undefined {
+  try {
+    return readFileSync(settingsPath, "utf8");
+  } catch (error) {
+    const code = permissionCode(error);
+    if (code === undefined) throw readFailure(settingsPath, error);
+    observations.push(
+      `.claude/settings.json exists but could not be read (${code})`,
+    );
+    return undefined;
+  }
+}
+
+/**
  * Index-level, adopt-mode-only facts about how a pack's wiring would land
  * against a real project's current `.claude/settings.json` and
  * `bin/lib/verify-steps.packs.json` -- never a verdict on whether it will
@@ -433,8 +456,11 @@ export function observeWiring(
   if (!existsSync(settingsPath)) {
     observations.push("no .claude/settings.json found");
   } else {
-    const parsed = parseJsonc(readFileSync(settingsPath, "utf8"));
-    if (!parsed.ok || !isRecord(parsed.value)) {
+    const content = readSettingsOrObserve(settingsPath, observations);
+    const parsed = content === undefined ? undefined : parseJsonc(content);
+    if (parsed === undefined) {
+      // Unreadable -- already recorded as an observation.
+    } else if (!parsed.ok || !isRecord(parsed.value)) {
       observations.push(".claude/settings.json exists but could not be parsed");
     } else {
       const hooks = parsed.value["hooks"];

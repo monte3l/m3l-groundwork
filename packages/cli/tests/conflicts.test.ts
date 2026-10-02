@@ -2,10 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  chmodSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planConflicts } from "../src/conflicts.js";
+import { chmodIneffective } from "./chmod-ineffective.js";
 
 describe("planConflicts", () => {
   let templateRoot: string;
@@ -158,5 +166,82 @@ describe("planConflicts", () => {
     expect(result).toEqual([
       { relPath: ".gitignore", status: "identical", keyDiffs: undefined },
     ]);
+  });
+
+  describe("a project file matching a baseline name that exists but cannot be read (EACCES/EPERM)", () => {
+    afterEach(() => {
+      // Restore read permission before the outer afterEach's rmSync -- an
+      // unlink doesn't need it, but this mirrors every other unreadable-file
+      // suite's teardown so a leftover chmod 000 entry never survives a
+      // failed assertion into the next test.
+      for (const name of ["README.md", "package.json"]) {
+        const path = join(targetDir, name);
+        if (existsSync(path)) {
+          try {
+            chmodSync(path, 0o644);
+          } catch {
+            // already gone.
+          }
+        }
+      }
+    });
+
+    it.skipIf(chmodIneffective)(
+      "reports divergent with keyDiffs undefined for an unreadable whole-file target, never identical and never thrown -- it cannot be shown identical, and adopt never overwrites",
+      () => {
+        writeFileSync(join(templateRoot, "README.md"), "# __PROJECT_NAME__\n");
+        writeFileSync(join(targetDir, "README.md"), "# acme\n");
+        chmodSync(join(targetDir, "README.md"), 0o000);
+
+        let thrown: unknown;
+        let result: ReturnType<typeof planConflicts> | undefined;
+        try {
+          result = planConflicts(templateRoot, targetDir, {
+            PROJECT_NAME: "acme",
+          });
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeUndefined();
+        expect(result).toEqual([
+          { relPath: "README.md", status: "divergent", keyDiffs: undefined },
+        ]);
+      },
+    );
+
+    it.skipIf(chmodIneffective)(
+      "reports divergent with keyDiffs undefined for an unreadable key-level JSON target (package.json), not a key-level compare",
+      () => {
+        writeFileSync(
+          join(templateRoot, "package.json"),
+          JSON.stringify({ name: "__PROJECT_NAME__" }),
+        );
+        writeFileSync(
+          join(targetDir, "package.json"),
+          JSON.stringify({ name: "acme" }),
+        );
+        chmodSync(join(targetDir, "package.json"), 0o000);
+
+        let thrown: unknown;
+        let result: ReturnType<typeof planConflicts> | undefined;
+        try {
+          result = planConflicts(templateRoot, targetDir, {
+            PROJECT_NAME: "acme",
+          });
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeUndefined();
+        expect(result).toEqual([
+          {
+            relPath: "package.json",
+            status: "divergent",
+            keyDiffs: undefined,
+          },
+        ]);
+      },
+    );
   });
 });

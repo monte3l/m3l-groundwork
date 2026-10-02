@@ -2,10 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  chmodSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { walkBounded } from "../../src/survey/fs-walk.js";
+import { chmodIneffective } from "../chmod-ineffective.js";
 
 describe("walkBounded", () => {
   let dir: string;
@@ -116,4 +123,42 @@ describe("walkBounded", () => {
     const missing = join(dir, "does-not-exist");
     expect(walkBounded(missing, 3)).toEqual([]);
   });
+
+  // GAP 2: a chmod 000 subdirectory (EACCES, as opposed to simply missing)
+  // must not abort the whole walk either -- it is skipped the same way a
+  // missing directory is, but unlike a missing directory it is recorded in
+  // the caller's `undetermined` array (the entry itself, not just "skipped
+  // silently"), since the directory genuinely exists and the caller needs to
+  // know its contents could not be indexed.
+  it.skipIf(chmodIneffective)(
+    "records an unreadable (EACCES) subdirectory in undetermined and keeps walking the rest of the tree",
+    () => {
+      const locked = join(dir, "locked");
+      mkdirSync(locked);
+      writeFileSync(join(locked, "secret.md"), "# secret\n");
+      writeFileSync(join(dir, "kept.ts"), "");
+      chmodSync(locked, 0o000);
+
+      const undetermined: string[] = [];
+      let thrown: unknown;
+      let entries: ReturnType<typeof walkBounded> = [];
+      try {
+        entries = walkBounded(dir, 3, undetermined);
+      } catch (error) {
+        thrown = error;
+      } finally {
+        chmodSync(locked, 0o755);
+      }
+
+      expect(thrown).toBeUndefined();
+      const relPaths = entries.map((e) => e.relPath);
+      expect(relPaths).toContain("kept.ts");
+      expect(relPaths).not.toContain("locked/secret.md");
+      expect(
+        undetermined.some(
+          (entry) => entry.includes(locked) && entry.includes("EACCES"),
+        ),
+      ).toBe(true);
+    },
+  );
 });

@@ -10,8 +10,10 @@
  * Handles a relative target (`x`, `x.json`, `x/tsconfig.json`) and a bare
  * package specifier looked up under every ancestor `node_modules`. A package
  * `exports` map is out of scope -- such a specifier simply stays unresolved.
- * Nothing here throws: a file that cannot be read or parsed is recorded on
- * the chain, and the chain is marked incomplete.
+ * A file that is missing, unreadable (`EACCES`/`EPERM`) or unparseable is
+ * recorded on the chain, and the chain is marked incomplete; any other read
+ * failure (`EIO`, `EMFILE`, ...) propagates from `readJsoncFile` as a thrown
+ * error naming the path.
  */
 import { statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";

@@ -10,6 +10,7 @@
  * single-quoted strings -- tsconfig-shaped input is the only intended use.
  */
 import { existsSync, readFileSync } from "node:fs";
+import { permissionCode, readFailure } from "./survey/internal/read-guard.js";
 
 export type JsoncReadResult =
   { ok: true; value: unknown } | { ok: false; error: string };
@@ -189,10 +190,29 @@ export function parseJsonc(content: string): JsoncReadResult {
   }
 }
 
-/** Reads and parses a JSONC file. A missing file is reported, not thrown. */
+/**
+ * Reads and parses a JSONC file. A missing, unreadable (`EACCES`/`EPERM`)
+ * or unparseable file is reported, not thrown -- each is a property of the
+ * file. Any other read failure (`EIO`, `EMFILE`, ...) throws an `Error`
+ * naming the path, with the original failure as `cause`.
+ *
+ * @example
+ * ```ts
+ * const read = readJsoncFile("/path/to/project/tsconfig.json");
+ * if (!read.ok) console.log(read.error);
+ * ```
+ */
 export function readJsoncFile(path: string): JsoncReadResult {
   if (!existsSync(path)) {
     return { ok: false, error: `${path} does not exist` };
   }
-  return parseJsonc(readFileSync(path, "utf8"));
+  let content: string;
+  try {
+    content = readFileSync(path, "utf8");
+  } catch (error) {
+    const code = permissionCode(error);
+    if (code === undefined) throw readFailure(path, error);
+    return { ok: false, error: `${path} is unreadable (${code})` };
+  }
+  return parseJsonc(content);
 }

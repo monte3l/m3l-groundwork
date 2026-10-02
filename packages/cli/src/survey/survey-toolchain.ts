@@ -13,6 +13,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { STRICT_FLAGS } from "../toolchain/rules.js";
 import { loadTsconfigChain } from "../toolchain/tsconfig-chain.js";
+import { readPackageJson } from "./internal/package-json.js";
+import { guardedRead } from "./internal/read-guard.js";
 import type {
   EslintSurvey,
   FormatterSurvey,
@@ -28,22 +30,6 @@ const STRICT_FLAG_NAMES = [...STRICT_FLAGS, "allowUnreachableCode"];
 
 const ESLINT_PLUGIN_PATTERN =
   /["']((?:eslint-plugin-|@typescript-eslint\/)[a-z0-9-]+)["']/gi;
-
-function readPackageJson(
-  dir: string,
-  undetermined: string[],
-): Record<string, unknown> | undefined {
-  const path = join(dir, "package.json");
-  if (!existsSync(path)) return undefined;
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch (error) {
-    undetermined.push(
-      `could not parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return undefined;
-  }
-}
 
 function findTsconfigPath(dir: string): string | undefined {
   for (const name of ["tsconfig.json"]) {
@@ -96,40 +82,35 @@ function surveyTsconfig(dir: string, undetermined: string[]): TsconfigSurvey {
   return { files: chain.files.map((file) => file.abs), effectiveFlags, parsed };
 }
 
-function surveyEslint(dir: string): EslintSurvey {
-  const flatCandidates = [
-    "eslint.config.js",
-    "eslint.config.mjs",
-    "eslint.config.ts",
-  ];
-  const legacyCandidates = [
-    ".eslintrc.js",
-    ".eslintrc.cjs",
-    ".eslintrc.json",
-    ".eslintrc",
-  ];
+const ESLINT_CANDIDATES: readonly (readonly [name: string, flat: boolean])[] = [
+  ["eslint.config.js", true],
+  ["eslint.config.mjs", true],
+  ["eslint.config.ts", true],
+  [".eslintrc.js", false],
+  [".eslintrc.cjs", false],
+  [".eslintrc.json", false],
+  [".eslintrc", false],
+];
 
-  for (const name of flatCandidates) {
+/**
+ * The first ESLint config present, flat configs first. An unreadable config
+ * is still reported (its presence is known) with no plugins, and recorded.
+ */
+function surveyEslint(dir: string, undetermined: string[]): EslintSurvey {
+  for (const [name, flat] of ESLINT_CANDIDATES) {
     const path = join(dir, name);
-    if (existsSync(path)) {
-      const content = readFileSync(path, "utf8");
-      return {
-        configFile: name,
-        flat: true,
-        referencedPlugins: extractPluginNames(content),
-      };
-    }
-  }
-  for (const name of legacyCandidates) {
-    const path = join(dir, name);
-    if (existsSync(path)) {
-      const content = readFileSync(path, "utf8");
-      return {
-        configFile: name,
-        flat: false,
-        referencedPlugins: extractPluginNames(content),
-      };
-    }
+    if (!existsSync(path)) continue;
+    const content = guardedRead(
+      path,
+      () => readFileSync(path, "utf8"),
+      undetermined,
+    );
+    return {
+      configFile: name,
+      flat,
+      referencedPlugins:
+        content === undefined ? [] : extractPluginNames(content),
+    };
   }
   return { configFile: undefined, flat: false, referencedPlugins: [] };
 }
@@ -222,9 +203,10 @@ function surveyWorkflows(dir: string, undetermined: string[]): WorkflowsSurvey {
   if (!existsSync(workflowsDir)) {
     return { files: [], needsReading: false };
   }
-  const files = readdirSync(workflowsDir).filter((name) =>
-    /\.ya?ml$/.test(name),
-  );
+  const names =
+    guardedRead(workflowsDir, () => readdirSync(workflowsDir), undetermined) ??
+    [];
+  const files = names.filter((name) => /\.ya?ml$/.test(name));
   if (files.length > 0) {
     undetermined.push(
       `${files.length} workflow file(s) under .github/workflows -- their job steps need reading, not parsing`,
@@ -245,7 +227,21 @@ function surveyScripts(
   return result;
 }
 
-/** Surveys toolchain enforcement at `dir`. Appends anything it could not parse to `undetermined`. */
+/**
+ * Surveys toolchain enforcement at `dir`. Appends anything it could not
+ * parse, or could not read (`EACCES`/`EPERM`), to `undetermined`; any other
+ * read failure throws, naming the path, with the original failure as
+ * `cause`.
+ *
+ * @example
+ * ```ts
+ * import { surveyToolchain } from "./survey-toolchain.js";
+ *
+ * const undetermined: string[] = [];
+ * const toolchain = surveyToolchain("/path/to/project", undetermined);
+ * console.log(toolchain.tsconfig.effectiveFlags, undetermined);
+ * ```
+ */
 export function surveyToolchain(
   dir: string,
   undetermined: string[],
@@ -255,7 +251,7 @@ export function surveyToolchain(
 
   return {
     tsconfig: surveyTsconfig(dir, undetermined),
-    eslint: surveyEslint(dir),
+    eslint: surveyEslint(dir, undetermined),
     testRunner: surveyTestRunner(dir, scripts),
     formatter: surveyFormatter(dir),
     gitHooks: surveyGitHooks(dir, undetermined),

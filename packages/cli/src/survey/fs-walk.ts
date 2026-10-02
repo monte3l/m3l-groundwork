@@ -11,6 +11,12 @@
 import { readdirSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join, relative } from "node:path";
+import {
+  errnoCode,
+  permissionCode,
+  readFailure,
+  unreadableNote,
+} from "./internal/read-guard.js";
 
 const SKIP_DIR_NAMES = new Set([
   "node_modules",
@@ -41,12 +47,30 @@ export interface WalkEntry {
   isDirectory: boolean;
 }
 
+// A directory that vanished (or was never one) is simply absent from the walk.
+const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR"]);
+
 /**
  * Recursively lists `root`, skipping known dependency/build directories and
  * stopping once a descendant is more than `maxDepth` directories below
- * `root`. Missing or unreadable directories are skipped, not thrown.
+ * `root`. A missing directory is skipped silently. An unreadable one
+ * (`EACCES`/`EPERM`) is skipped too, but recorded in `undetermined` when the
+ * caller passes one. Any other listing failure (`EIO`, `EMFILE`, ...) throws
+ * an `Error` naming the directory, with the original as `cause`.
+ *
+ * @example
+ * ```ts
+ * const undetermined: string[] = [];
+ * const markdown = walkBounded("/path/to/project", 2, undetermined).filter(
+ *   (entry) => !entry.isDirectory && entry.relPath.endsWith(".md"),
+ * );
+ * ```
  */
-export function walkBounded(root: string, maxDepth: number): WalkEntry[] {
+export function walkBounded(
+  root: string,
+  maxDepth: number,
+  undetermined?: string[],
+): WalkEntry[] {
   const results: WalkEntry[] = [];
 
   const visit = (dir: string, depth: number): void => {
@@ -57,8 +81,15 @@ export function walkBounded(root: string, maxDepth: number): WalkEntry[] {
     let entries: Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
+    } catch (error) {
+      const code = permissionCode(error);
+      if (code !== undefined) {
+        undetermined?.push(unreadableNote(dir, code));
+        return;
+      }
+      const absent = ABSENT_CODES.has(errnoCode(error) ?? "");
+      if (absent) return;
+      throw readFailure(dir, error);
     }
 
     for (const entry of entries) {

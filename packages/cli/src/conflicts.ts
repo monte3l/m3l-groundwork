@@ -13,6 +13,7 @@ import { basename, join, relative } from "node:path";
 import { restoreDotfilePath } from "./assets.js";
 import { parseJsonc } from "./jsonc.js";
 import { isRecord } from "./merge-json.js";
+import { permissionCode, readFailure } from "./survey/internal/read-guard.js";
 import { applyTokens } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
 
@@ -71,7 +72,18 @@ function compareFile(
     return { relPath, status: "absent", keyDiffs: undefined };
   }
 
-  const targetContent = readFileSync(targetPath, "utf8");
+  // A permission failure is a property of the project file itself: it cannot
+  // be shown identical, and adopt mode never overwrites, so it is divergent
+  // with no key-level detail. Any other errno is about the machine and throws.
+  let targetContent: string;
+  try {
+    targetContent = readFileSync(targetPath, "utf8");
+  } catch (error) {
+    if (permissionCode(error) !== undefined) {
+      return { relPath, status: "divergent", keyDiffs: undefined };
+    }
+    throw readFailure(targetPath, error);
+  }
 
   if (isKeyLevelJsonFile(relPath)) {
     const keyDiffs = compareJsonKeys(baselineContent, targetContent);
