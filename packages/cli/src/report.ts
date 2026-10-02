@@ -451,8 +451,49 @@ function renderStagedFilesNote(
   ];
 }
 
-/** Renders the full adoption report as Markdown. */
-export function renderReport(inventory: Inventory): string {
+/** The `## Next step` lead sentence used when the caller supplies none. */
+const DEFAULT_NEXT_STEP =
+  "Open this project in Claude Code and run `/customize`.";
+
+/**
+ * `nextStep` with a leading `Next: ` removed, trimmed, and its first
+ * character upper-cased; {@link DEFAULT_NEXT_STEP} when omitted or when
+ * nothing but whitespace is left.
+ */
+function nextStepLead(nextStep: string | undefined): string {
+  if (nextStep === undefined) {
+    return DEFAULT_NEXT_STEP;
+  }
+  const lead = (
+    nextStep.startsWith("Next: ") ? nextStep.slice("Next: ".length) : nextStep
+  ).trim();
+  if (lead === "") {
+    return DEFAULT_NEXT_STEP;
+  }
+  return `${lead.charAt(0).toUpperCase()}${lead.slice(1)}`;
+}
+
+/**
+ * Renders the full adoption report as Markdown.
+ *
+ * @param inventory - The inventory this report describes.
+ * @param nextStep - The sentence that leads the `## Next step` paragraph in
+ * place of the generic "Open this project in Claude Code and run
+ * `/customize`." -- a leading `Next: ` is removed, the rest trimmed and its
+ * first character upper-cased; the rest of the paragraph is kept. When
+ * omitted, or blank once the `Next: ` prefix is removed and the rest
+ * trimmed, the output is the generic sentence, unchanged.
+ *
+ * @example
+ * ```ts
+ * import { renderReport } from "./report.js";
+ *
+ * // inventory: the value buildInventory (inventory.ts) returned for this run
+ * const markdown = renderReport(inventory, "Next: run the plugin's own /customize.");
+ * // "...## Next step\n\nRun the plugin's own /customize. It reads this report..."
+ * ```
+ */
+export function renderReport(inventory: Inventory, nextStep?: string): string {
   const sections = [
     "# Adoption report",
     "",
@@ -481,7 +522,7 @@ export function renderReport(inventory: Inventory): string {
     "",
     "## Next step",
     "",
-    "Open this project in Claude Code and run `/customize`. It reads this " +
+    `${nextStepLead(nextStep)} It reads this ` +
       "report and `.groundwork/inventory.json`, does a deeper read of " +
       "anything above marked as needing one, and asks you to confirm before " +
       "changing anything. Did this report miss something about your " +

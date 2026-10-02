@@ -59,6 +59,19 @@ export function restoreDotfilePath(relPath: string): string {
   return relPath.slice(0, cut + 1) + restoreDotfileName(relPath.slice(cut + 1));
 }
 
+/**
+ * Normalizes a native relative path to forward slashes, so a path recorded
+ * in `inventory.json` reads the same whichever OS ran the CLI.
+ *
+ * @example
+ * ```ts
+ * toPosixPath("src\\index.ts"); // "src/index.ts"
+ * ```
+ */
+export function toPosixPath(p: string): string {
+  return p.replaceAll("\\", "/");
+}
+
 /** True when `dir` is this project's own source checkout, by two independent markers. */
 function isSourceCheckout(dir: string): boolean {
   if (!existsSync(join(dir, "pnpm-workspace.yaml"))) {

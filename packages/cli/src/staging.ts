@@ -29,6 +29,10 @@ import { assertNotSymlink } from "./fs-guard.js";
 import { applyTokens } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
 
+// `toPosixPath` lives in assets.ts, so inventory.ts can use it without
+// pulling in this stager; re-exported for this module's existing consumers.
+export { toPosixPath } from "./assets.js";
+
 /**
  * The suffix every staged file carries, so no extension-based glob
  * (`**\/*.ts`, `**\/*.md`, `vitest.config.*`) ever matches a staged copy.
@@ -51,19 +55,6 @@ export const STAGED_SUFFIX = ".staged";
  */
 export function stagedNameFor(path: string): string {
   return `${path}${STAGED_SUFFIX}`;
-}
-
-/**
- * Normalizes a native relative path to forward slashes, so a path recorded
- * in `inventory.json` reads the same whichever OS ran the CLI.
- *
- * @example
- * ```ts
- * toPosixPath("src\\index.ts"); // "src/index.ts"
- * ```
- */
-export function toPosixPath(p: string): string {
-  return p.replaceAll("\\", "/");
 }
 
 /**
@@ -215,11 +206,15 @@ function incompleteStagingError(
 
 /**
  * Removes every entry of `groundworkDir` whose name starts with
- * `.<dirName>-` -- work directories a crashed earlier run left behind --
- * best effort (a removal failure only warns). Any matching entry is removed,
- * whatever made it: `.groundwork/` is CLI-owned. Nothing else there is
- * touched; a missing `groundworkDir` is a no-op. Failing to list
- * `groundworkDir` at all throws {@link incompleteStagingError}.
+ * `.<dirName>-`, best effort (a removal failure only warns). Its purpose is
+ * reclaiming work directories a crashed earlier run left behind, but there
+ * is no PID or age check: any matching entry is removed, whatever made it,
+ * because `.groundwork/` is CLI-owned. So two concurrent runs against the
+ * same directory can delete each other's in-progress work directory; the
+ * run that loses fails with the generic {@link incompleteStagingError}
+ * ("`.groundwork/` is incomplete -- re-run the CLI"). Nothing else in
+ * `groundworkDir` is touched; a missing `groundworkDir` is a no-op. Failing
+ * to list `groundworkDir` at all throws {@link incompleteStagingError}.
  */
 function removeStaleWorkDirs(target: StagingTarget): void {
   const { groundworkDir, dirName, noun } = target;
@@ -337,8 +332,10 @@ export interface StagingTarget {
  * or `<groundworkDir>/<dirName>` (before anything is deleted or written),
  * then sweeps the `.<dirName>-*` work directories a crashed earlier run
  * left. The sweep removes **every** entry of the CLI-owned `.groundwork/`
- * whose name matches `.<dirName>-*`, whatever created it; a failure to
- * remove one only warns. Returns the staging directory's path.
+ * whose name matches `.<dirName>-*`, whatever created it -- including a
+ * concurrent run's in-progress work directory, so two runs against the same
+ * directory can fail each other with the standard incomplete/re-run error;
+ * a failure to remove one only warns. Returns the staging directory's path.
  *
  * @throws `Error` naming the path when either directory is a symlink; the
  * standard `.groundwork/ is incomplete -- re-run` `Error`, with `cause`, when

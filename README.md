@@ -124,6 +124,10 @@ the baseline files it would add under `.groundwork/baseline/`);
 | `--list-packs`          | Print every available pack and exit.                                          |
 | `--help`, `--version`   | Print usage, or the CLI's version.                                            |
 
+An unexpected failure (anything that is not a bad invocation) prints its
+error name before the message, for example `TypeError: ...`. Set `M3L_DEBUG`
+to any non-empty value to also print its stack trace.
+
 ## Requirements
 
 - **Node 24+**. `.node-version` is the authority.

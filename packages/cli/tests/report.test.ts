@@ -748,6 +748,53 @@ describe("renderReport", () => {
     expect(scriptsRow).toBeDefined();
   });
 
+  describe("the '## Next step' section's lead sentence", () => {
+    it("keeps the generic '/customize' sentence when nextStep is not given", () => {
+      const report = renderReport(baseInventory(templateRoot));
+
+      expect(report).toContain(
+        "Open this project in Claude Code and run `/customize`. It reads " +
+          "this report",
+      );
+    });
+
+    it.each([
+      ["an empty string", ""],
+      ["just the 'Next: ' prefix with nothing after it", "Next: "],
+      ["whitespace only", "   "],
+    ])(
+      "falls back to the generic sentence, same as the default, when nextStep is %s",
+      (_label, nextStep) => {
+        const defaultReport = renderReport(baseInventory(templateRoot));
+        const report = renderReport(baseInventory(templateRoot), nextStep);
+
+        expect(report).toBe(defaultReport);
+        expect(report).toContain(
+          "Open this project in Claude Code and run `/customize`. It reads " +
+            "this report",
+        );
+      },
+    );
+
+    it("replaces the lead sentence with nextStep (its 'Next: ' prefix stripped, first letter upper-cased), keeping the rest of the paragraph", () => {
+      const nextStep =
+        "Next: the current /customize skill is staged at " +
+        ".groundwork/customize/, but Claude Code does not load skills from " +
+        "there -- run the plugin's own /customize.";
+
+      const report = renderReport(baseInventory(templateRoot), nextStep);
+
+      expect(report).not.toContain(
+        "Open this project in Claude Code and run `/customize`.",
+      );
+      expect(report).toContain(
+        "The current /customize skill is staged at .groundwork/customize/, " +
+          "but Claude Code does not load skills from there -- run the " +
+          "plugin's own /customize. It reads this report",
+      );
+    });
+  });
+
   it("lists a pack's own divergent file conflicts in a table", () => {
     const report = renderReport(
       baseInventory(templateRoot, {

@@ -13,6 +13,7 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { toPosixPath } from "./assets.js";
 import { isPathContained } from "./emit.js";
 import type { Pack } from "./packs.js";
 import {
@@ -24,7 +25,6 @@ import {
   prepareStaging,
   stageAtomically,
   stagedNameFor,
-  toPosixPath,
   writeStagedBytes,
 } from "./staging.js";
 import type { StagingTarget } from "./staging.js";
@@ -371,9 +371,12 @@ function writePack(plan: PlannedPack, newDir: string): StagedPack {
  *   the pack and path, with the failure as `cause`.
  * - Then, still before anything is deleted or written, `groundworkDir` and
  *   `<groundworkDir>/packs` are checked not to be symlinks, and every
- *   `.packs-*` entry of the CLI-owned `groundworkDir` -- work directories a
- *   crashed earlier run left -- is removed (best effort; a failure to remove
- *   one only warns, a failure to list `groundworkDir` throws). `.baseline-*`
+ *   `.packs-*` entry of the CLI-owned `groundworkDir` -- meant for work
+ *   directories a crashed earlier run left, but removed whatever created
+ *   it, so a concurrent run against the same directory can lose its
+ *   in-progress work directory and fail with the incomplete/re-run error
+ *   -- is removed (best effort; a failure to remove one only warns, a
+ *   failure to list `groundworkDir` throws). `.baseline-*`
  *   entries are left alone.
  * - When `packs` is empty, any previous `packs/` is removed and nothing is
  *   created.

@@ -11,6 +11,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { toPosixPath } from "./assets.js";
 import type { FileConflict } from "./conflicts.js";
 import { isPathContained } from "./emit.js";
 import {
@@ -22,14 +23,12 @@ import {
   prepareStaging,
   stageAtomically,
   stagedNameFor,
-  toPosixPath,
   writeStagedBytes,
 } from "./staging.js";
 import type { StagingTarget } from "./staging.js";
 import type { TokenTable } from "./tokens.js";
 
-// Re-exported so existing consumers of this module keep one import site;
-// staging.ts owns the definitions.
+// Re-exported so existing consumers of this module keep one import site.
 export { STAGED_SUFFIX, stagedNameFor, toPosixPath };
 
 /**
@@ -229,9 +228,12 @@ export function plannedBaselineStagingPaths(
  *   `Error`, leaving `.groundwork/` exactly as it was.
  * - Then, still before anything is deleted or written, `groundworkDir` and
  *   `<groundworkDir>/baseline` are checked not to be symlinks, and every
- *   `.baseline-*` entry of the CLI-owned `groundworkDir` -- work directories
- *   a crashed earlier run left -- is removed (best effort; a failure to
- *   remove one only warns, a failure to list `groundworkDir` throws).
+ *   `.baseline-*` entry of the CLI-owned `groundworkDir` -- meant for work
+ *   directories a crashed earlier run left, but removed whatever created
+ *   it, so a concurrent run against the same directory can lose its
+ *   in-progress work directory and fail with the incomplete/re-run error
+ *   -- is removed (best effort; a failure to remove one only warns, a
+ *   failure to list `groundworkDir` throws).
  * - When nothing is absent, any previous staging is removed and nothing is
  *   created.
  * - Files are then written into a temporary `.baseline-*` sibling directory

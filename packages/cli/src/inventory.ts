@@ -34,6 +34,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { toPosixPath } from "./assets.js";
 import type { StagedBaselineFile } from "./baseline-stage.js";
 import type { CapCounts } from "./caps.js";
 import type { FileConflict } from "./conflicts.js";
@@ -43,7 +44,6 @@ import type { HarnessGrade } from "./harness/types.js";
 import type { ModeDetection } from "./mode.js";
 import type { StagedPack } from "./pack-stage.js";
 import type { PackWiring } from "./packs.js";
-import { toPosixPath } from "./staging.js";
 import type { ProjectSurvey } from "./survey/survey.js";
 import { summarizeToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainConformance } from "./toolchain/conformance.js";

@@ -29,6 +29,7 @@ import {
   mkdirSync,
   rmSync,
   writeFileSync,
+  readFileSync,
   existsSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -210,4 +211,183 @@ describe("runAdopt's /customize next-step message distinguishes fallbackCause 'c
       existsSync(join(projectDir, ".groundwork", "adoption-report.md")),
     ).toBe(false);
   });
+});
+
+const GENERIC_NEXT_STEP_IN_REPORT =
+  "Open this project in Claude Code and run `/customize`.";
+
+/**
+ * The written `.groundwork/adoption-report.md`'s own `## Next step` section
+ * (via `renderReport`'s second, optional `nextStep` parameter -- see
+ * `../src/report.ts`) must agree with what the console already prints (the
+ * describe block above): when `installCustomizeSkillGuarded`'s result forces
+ * the `.groundwork/customize/` fallback, the report must say so too, instead
+ * of keeping its own generic "Open this project in Claude Code and run
+ * `/customize`." default -- false in exactly the case that console message
+ * exists to correct. For `"claude"`/`"already-present"` the generic sentence
+ * is still correct and must remain exactly as `renderReport` renders it with
+ * no `nextStep` argument at all.
+ *
+ * `runAdopt` (`../src/main.ts`) is expected to build its `reportNextStep`
+ * for a `"groundwork"` result from `pluginResult.fallbackReason` followed by
+ * `groundworkNextStep`'s own staged-location sentence -- the reason a
+ * fallback was taken must be named BEFORE that sentence, since
+ * `groundworkNextStep`'s `"component"` text says to fix or replace "the
+ * .claude path named above", which is only true once the reason naming that
+ * path has already appeared earlier in the same text. The tests below read
+ * the written report file (not the console) and fail if either half of that
+ * wiring regresses: the reason going missing, or the two halves landing in
+ * the wrong order.
+ */
+describe("the written adoption-report.md's ## Next step agrees with the console", () => {
+  let targetDir: string;
+  let projectDir: string;
+  let reportPath: string;
+
+  beforeEach(() => {
+    targetDir = mkdtempSync(join(tmpdir(), "main-next-step-report-"));
+    projectDir = join(targetDir, "project");
+    reportPath = join(projectDir, ".groundwork", "adoption-report.md");
+    mkdirSync(projectDir);
+    writeFileSync(
+      join(projectDir, "package.json"),
+      JSON.stringify({ name: "acme", type: "module" }),
+    );
+    installCustomizeSkillGuardedMock.mockReset();
+  });
+
+  afterEach(() => {
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  /** Runs main() against projectDir with console.log suppressed (the console text is covered by the describe block above, not here), then returns the written adoption-report.md's full text. */
+  function runAndReadReport(): string {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      main([projectDir]);
+    } finally {
+      logSpy.mockRestore();
+    }
+    return readFileSync(reportPath, "utf8");
+  }
+
+  it.each(["entry", "component"] as const)(
+    'reports the truthful .groundwork/customize/ next step, not the generic one, when location is "groundwork" and fallbackCause is "%s"',
+    (fallbackCause) => {
+      installCustomizeSkillGuardedMock.mockReturnValue({
+        filesWritten: [join(".groundwork", "customize", "SKILL.md")],
+        location: "groundwork",
+        fallbackReason: "irrelevant to this assertion",
+        fallbackCause,
+      });
+
+      const report = runAndReadReport();
+
+      expect(report).toContain(".groundwork/customize/");
+      expect(report.toLowerCase()).toMatch(/does not load/);
+      expect(report).not.toContain(GENERIC_NEXT_STEP_IN_REPORT);
+    },
+  );
+
+  it.each(["entry", "component"] as const)(
+    'names the fallback reason, BEFORE the staged-location sentence, when location is "groundwork" and fallbackCause is "%s"',
+    (fallbackCause) => {
+      const fallbackReason = `${join(projectDir, ".claude", "skills")} is a symlink, so the /customize skill was installed into .groundwork/customize/ instead`;
+      installCustomizeSkillGuardedMock.mockReturnValue({
+        filesWritten: [join(".groundwork", "customize", "SKILL.md")],
+        location: "groundwork",
+        fallbackReason,
+        fallbackCause,
+      });
+
+      const report = runAndReadReport();
+
+      const reasonIndex = report.indexOf(fallbackReason);
+      const stagedSentenceIndex = report.indexOf(
+        "is staged at .groundwork/customize/",
+      );
+      expect(reasonIndex).toBeGreaterThan(-1);
+      expect(stagedSentenceIndex).toBeGreaterThan(-1);
+      expect(reasonIndex).toBeLessThan(stagedSentenceIndex);
+    },
+  );
+
+  it.each(["claude", "already-present"] as const)(
+    'keeps the generic next step in the report unchanged when location is "%s"',
+    (location) => {
+      installCustomizeSkillGuardedMock.mockReturnValue(
+        location === "claude"
+          ? {
+              filesWritten: [
+                join(".claude", "skills", "customize", "SKILL.md"),
+              ],
+              location: "claude",
+            }
+          : { filesWritten: [], location: "already-present" },
+      );
+
+      const report = runAndReadReport();
+
+      expect(report).toContain(GENERIC_NEXT_STEP_IN_REPORT);
+    },
+  );
+
+  it.each(["entry", "component"] as const)(
+    'omits a fallback reason cleanly (no literal "undefined" text) and still prints the staged-location sentence, when location is "groundwork", fallbackCause is "%s" and fallbackReason is absent',
+    (fallbackCause) => {
+      installCustomizeSkillGuardedMock.mockReturnValue({
+        filesWritten: [join(".groundwork", "customize", "SKILL.md")],
+        location: "groundwork",
+        fallbackCause,
+        // fallbackReason deliberately omitted.
+      });
+
+      const report = runAndReadReport();
+
+      expect(report).not.toContain("undefined");
+      expect(report).toContain(".groundwork/customize/");
+      expect(report.toLowerCase()).toMatch(/does not load/);
+      expect(report).not.toContain(GENERIC_NEXT_STEP_IN_REPORT);
+    },
+  );
+
+  it.each([
+    ["a fallback reason ending in a period", "A custom skill copy exists."],
+    [
+      "a fallback reason ending in an exclamation mark",
+      "A custom skill copy exists!",
+    ],
+    [
+      "a fallback reason ending in a question mark",
+      "Does a custom skill copy exist?",
+    ],
+  ] as const)(
+    "joins the fallback reason and the staged-location sentence with exactly one separator, reason first, for %s",
+    (_description, fallbackReason) => {
+      installCustomizeSkillGuardedMock.mockReturnValue({
+        filesWritten: [join(".groundwork", "customize", "SKILL.md")],
+        location: "groundwork",
+        fallbackReason,
+        fallbackCause: "entry",
+      });
+
+      const report = runAndReadReport();
+
+      // Already-terminal punctuation gets exactly one joining space before
+      // the capitalized sentence -- never a second "." appended, and never
+      // a "reason. ." double-separator.
+      expect(report).toContain(`${fallbackReason} The current`);
+      expect(report).not.toContain(`${fallbackReason}.`);
+      expect(report).not.toContain(`${fallbackReason}..`);
+      expect(report).not.toContain(`${fallbackReason}. .`);
+
+      const reasonIndex = report.indexOf(fallbackReason);
+      const stagedSentenceIndex = report.indexOf(
+        "is staged at .groundwork/customize/",
+      );
+      expect(reasonIndex).toBeGreaterThan(-1);
+      expect(stagedSentenceIndex).toBeGreaterThan(-1);
+      expect(reasonIndex).toBeLessThan(stagedSentenceIndex);
+    },
+  );
 });

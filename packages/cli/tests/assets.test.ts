@@ -10,6 +10,7 @@ import {
   resolveAsset,
   restoreDotfileName,
   restoreDotfilePath,
+  toPosixPath,
 } from "../src/assets.js";
 
 const PATHS = { repo: "templates/core", local: "templates/core" };
@@ -164,5 +165,13 @@ describe("dotfile escaping", () => {
     expect(restoreDotfilePath("_gitignore/keep.txt")).toBe(
       "_gitignore/keep.txt",
     );
+  });
+});
+
+describe("toPosixPath", () => {
+  it("replaces every backslash with a forward slash", () => {
+    expect(toPosixPath("a\\b\\c.txt")).toBe("a/b/c.txt");
+    expect(toPosixPath("already/posix.txt")).toBe("already/posix.txt");
+    expect(toPosixPath("")).toBe("");
   });
 });
