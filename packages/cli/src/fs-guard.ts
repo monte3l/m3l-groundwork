@@ -8,6 +8,8 @@
  * redirect a recursive delete or a write outside the adopted project. Also
  * the one recogniser for the "re-run the CLI" advice that refusal (and every
  * other adopt-mode failure) ends with, so a wrapper never states it twice.
+ * Fresh mode's writers (`emit.ts`, `plugin.ts`) share the same refusals with
+ * fresh mode's own single retry instruction ({@link FRESH_RETRY}) instead.
  */
 import { lstatSync } from "node:fs";
 
@@ -81,3 +83,59 @@ export function assertNotSymlink(
     );
   }
 }
+
+/**
+ * Throws when `path` exists and is not a real directory -- a symlink
+ * (dangling or not) or a file where a writer needs a directory. A missing
+ * path passes. Uses `lstat`, so a symlinked directory is refused rather
+ * than followed out of the tree being written.
+ *
+ * @param advice - What the message ends with after `--`, same convention as
+ *   {@link assertNotSymlink}'s.
+ * @throws `Error` naming `path` when it is a symlink or a non-directory.
+ *
+ * @example
+ * ```ts
+ * import { assertDirectoryComponent, FRESH_SYMLINK_ADVICE } from "./fs-guard.js";
+ *
+ * assertDirectoryComponent("/work/app/.claude", FRESH_SYMLINK_ADVICE);
+ * ```
+ */
+export function assertDirectoryComponent(path: string, advice: string): void {
+  assertNotSymlink(path, advice);
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  if (stat !== undefined && !stat.isDirectory()) {
+    throw new Error(
+      `refusing to write under a non-directory: ${path} -- ${advice}`,
+    );
+  }
+}
+
+/**
+ * Fresh mode's retry instruction. Its target is no longer empty after a
+ * failed write, so a plain re-run would adopt it; only `--fresh --force`
+ * repeats that run. Never contains adopt mode's bare "re-run the CLI".
+ *
+ * @example
+ * ```ts
+ * import { FRESH_RETRY } from "./fs-guard.js";
+ *
+ * const advice = `fix the cause, then ${FRESH_RETRY}`;
+ * ```
+ */
+export const FRESH_RETRY = "retry the same command with --fresh --force added";
+
+/**
+ * Fresh mode's advice for a refused destination path (a symlink, or a
+ * non-directory where a directory is needed), replacing
+ * {@link assertNotSymlink}'s adopt-mode default. Carries {@link FRESH_RETRY}
+ * exactly once.
+ *
+ * @example
+ * ```ts
+ * import { assertNotSymlink, FRESH_SYMLINK_ADVICE } from "./fs-guard.js";
+ *
+ * assertNotSymlink("/work/app/package.json", FRESH_SYMLINK_ADVICE);
+ * ```
+ */
+export const FRESH_SYMLINK_ADVICE = `remove it, then ${FRESH_RETRY}`;

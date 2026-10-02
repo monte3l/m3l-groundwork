@@ -30,7 +30,11 @@ import process from "node:process";
 import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
-import { emitTemplate, isPathContained } from "./emit.js";
+import {
+  assertSafeEmitDestinations,
+  emitTemplate,
+  isPathContained,
+} from "./emit.js";
 import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
@@ -374,9 +378,18 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   // target exactly as it was found.
   const packs = options.packs.map((name) => resolveFreshPack(name));
 
-  mkdirSync(options.targetDir, { recursive: true });
-
   const tokens = buildTokens(options.projectName);
+
+  // Validate every destination the baseline AND each pack would write
+  // before the first write: a symlinked or non-directory component refuses
+  // the whole run with nothing written.
+  assertSafeEmitDestinations(
+    [templatesCoreDir(), ...packs.map((pack) => pack.filesDir)],
+    options.targetDir,
+    tokens,
+  );
+
+  mkdirSync(options.targetDir, { recursive: true });
 
   const result = emitTemplate(templatesCoreDir(), options.targetDir, tokens);
   console.log(

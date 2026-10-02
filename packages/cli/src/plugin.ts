@@ -28,6 +28,8 @@ import {
   assertNotSymlink,
   endsWithRerunAdvice,
   FIX_AND_RERUN_ADVICE,
+  FRESH_RETRY,
+  FRESH_SYMLINK_ADVICE,
 } from "./fs-guard.js";
 
 /** Resolves the plugin payload for a source checkout (`packages/plugin`) or a published tarball (`plugin/`). */
@@ -51,17 +53,16 @@ export interface InstallPluginResult {
   filesWritten: string[];
 }
 
-/**
- * Fresh mode's retry instruction. Its target is no longer empty after a
- * failed install, so a plain re-run would adopt it; only `--fresh --force`
- * repeats that run. Reached through `main.ts`'s fresh mode, the chain
- * carries two compatible instructions: the outer error's "re-run with
- * --fresh --force (plus your original --name/--pack/--skip-install)"
- * restates this one with the flag list spelled out. Neither line is
- * dropped -- the cause also stands alone for a direct caller -- and they
- * never contradict, since neither gives adopt mode's bare "re-run the CLI".
+/*
+ * Fresh mode's retry instruction is `fs-guard.ts`'s FRESH_RETRY, shared with
+ * `emit.ts`'s destination guard. Reached through `main.ts`'s fresh mode, an
+ * install failure's chain carries two compatible instructions: the outer
+ * error's "re-run with --fresh --force (plus your original
+ * --name/--pack/--skip-install)" restates this one with the flag list
+ * spelled out. Neither line is dropped -- the cause also stands alone for a
+ * direct caller -- and they never contradict, since neither gives adopt
+ * mode's bare "re-run the CLI".
  */
-const FRESH_RETRY = "retry the same command with --fresh --force added";
 
 /** How a public entry point's failures end: the advice to append, and whether a message already ENDS with equivalent advice. */
 interface Remediation {
@@ -82,9 +83,6 @@ const ADOPT_REMEDIATION: Remediation = {
   advice: FIX_AND_RERUN_ADVICE,
   isAdvised: endsWithRerunAdvice,
 };
-
-/** Fresh mode's symlinked-component advice, replacing {@link assertNotSymlink}'s adopt-mode default. */
-const FRESH_SYMLINK_ADVICE = `remove it, then ${FRESH_RETRY}`;
 
 /** The prefix every install failure's message starts with -- stated once, never twice. */
 const INSTALL_ERROR_PREFIX = "could not install the /customize skill: ";
