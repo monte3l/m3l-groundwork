@@ -15,8 +15,6 @@
  * and that once fixed, each path is named (with its errno) under both
  * `.groundwork/inventory.json`'s `survey.undetermined` and
  * `adoption-report.md`'s "## Could not be determined" section.
- *
- * RED today: `main()` throws before `.groundwork/` is ever written.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -134,10 +132,8 @@ describe("adopt mode (main()): a dangling symlink, a symlink loop and a director
  * subsequent `readFileSync` raise `EISDIR` -- a property of the project's
  * own tree, exactly like the dangling-symlink/symlink-loop/EISDIR cases the
  * sibling describe above already proves at the survey-collector level.
- * RED today: `observeWiring` throws, which aborts the whole adopt-mode
- * `packs` computation before `.groundwork/` is ever written -- the same
- * "one unreadable project file takes down the entire run" failure mode
- * `main-adopt-survey-links.test.ts`'s own header comment describes, just
+ * `observeWiring` records the EISDIR failure and continues, so the
+ * adopt-mode `packs` computation completes and `.groundwork/` is written,
  * reached through `packs.ts` instead of a `survey-*.ts` collector.
  */
 describe("adopt mode (main()): a directory sitting at .claude/settings.json does not abort the run (observeWiring's EISDIR)", () => {

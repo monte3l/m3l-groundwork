@@ -225,13 +225,12 @@ describe("readJsoncFile", () => {
    */
   describe("a directory where a file was expected (EISDIR)", () => {
     /**
-     * GAP: `readJsoncFile`'s single `try` runs `statSync` then
-     * `readFileSync` back to back. A directory at `path` makes `statSync`
-     * succeed (it needs no read permission and works fine on a directory),
-     * so the failure actually comes from `readFileSync` raising `EISDIR` --
-     * today `unresolvableCode` does not recognize it (only
-     * `EACCES`/`EPERM`/`ELOOP`), so it falls through to the generic throw.
-     * RED: this currently throws instead of returning `{ ok: false }`.
+     * `readJsoncFile`'s single `try` runs `statSync` then `readFileSync`
+     * back to back. A directory at `path` makes `statSync` succeed (it
+     * needs no read permission and works fine on a directory), so the
+     * failure actually comes from `readFileSync` raising `EISDIR` --
+     * recognized explicitly, so it returns `{ ok: false }` naming the path
+     * rather than throwing.
      */
     it("reports 'not a regular file' rather than throwing", () => {
       const path = join(dir, "tsconfig.json");

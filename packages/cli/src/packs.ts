@@ -25,6 +25,7 @@ import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { emitTemplate } from "./emit.js";
 import { parseJsonc } from "./jsonc.js";
+import { blockedAbsentNote } from "./survey/internal/blocked-path.js";
 import {
   probePath,
   readFailure,
@@ -457,11 +458,17 @@ function readSettingsOrObserve(
  * not observed as missing: an `EACCES`/`EPERM`/`ELOOP` is recorded as an
  * observation naming the path and errno, and `undefined` is returned so the
  * caller states neither "found" nor "not found". `ENOENT`/`ENOTDIR` answers
- * `false`; any other errno throws (see `probePath`).
+ * `false` only when nothing is really there: a dangling symlink at the path
+ * or an ancestor, or a regular file blocking an ancestor, is observed and
+ * recorded once in `undetermined` (the same note `conflicts.ts` records via
+ * `blockedAbsentNote`) and answers `undefined`. Any other errno throws (see
+ * `probePath`).
  */
 function existsOrObserve(
   path: string,
+  targetDir: string,
   observations: string[],
+  undetermined: string[],
 ): boolean | undefined {
   const probe = probePath(path);
   if (probe.kind === "unresolvable") {
@@ -470,7 +477,13 @@ function existsOrObserve(
     );
     return undefined;
   }
-  return probe.kind === "present";
+  if (probe.kind === "present") return true;
+  const note = blockedAbsentNote(path, targetDir);
+  if (note === undefined) return false;
+  observations.push(`${note} -- left undetermined, not reported missing`);
+  // Called once per pack against the same path: record the note once.
+  if (!undetermined.includes(note)) undetermined.push(note);
+  return undefined;
 }
 
 /**
@@ -481,7 +494,8 @@ function existsOrObserve(
  * adopt-mode reconcile step in `/customize`) to make after reading the
  * project's real gate runner and hook config. A path this process cannot
  * reach (`EACCES`/`EPERM`/`ELOOP`) is observed with its errno, never as
- * "not found". A `.claude/settings.json` that exists but cannot be read for
+ * "not found"; nor is a dangling symlink or a file blocking an ancestor
+ * directory, which is also recorded once in `undetermined`. A `.claude/settings.json` that exists but cannot be read for
  * a reason that is a property of the project's tree (`EACCES`/`EPERM`,
  * `EISDIR`, `ENOENT`, `ELOOP`) is observed with its errno and also recorded
  * once in `undetermined` -- adopt mode passes the survey's own list, so the
@@ -501,7 +515,12 @@ export function observeWiring(
   const observations: string[] = [];
 
   const settingsPath = join(targetDir, ".claude", "settings.json");
-  const settingsExists = existsOrObserve(settingsPath, observations);
+  const settingsExists = existsOrObserve(
+    settingsPath,
+    targetDir,
+    observations,
+    undetermined,
+  );
   if (settingsExists === false) {
     observations.push("no .claude/settings.json found");
   } else if (settingsExists) {
@@ -538,7 +557,9 @@ export function observeWiring(
   if (
     existsOrObserve(
       join(targetDir, ".claude", "settings.local.json"),
+      targetDir,
       observations,
+      undetermined,
     ) === true
   ) {
     observations.push(
@@ -548,7 +569,12 @@ export function observeWiring(
 
   if (manifest.wiring.verifySteps.length > 0) {
     const stepsPath = join(targetDir, "bin", "lib", "verify-steps.packs.json");
-    const stepsExist = existsOrObserve(stepsPath, observations);
+    const stepsExist = existsOrObserve(
+      stepsPath,
+      targetDir,
+      observations,
+      undetermined,
+    );
     if (stepsExist !== undefined) {
       observations.push(
         stepsExist

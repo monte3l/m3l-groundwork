@@ -1,7 +1,14 @@
 // SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
 // SPDX-License-Identifier: MIT
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+} from "vitest";
 import {
   mkdtempSync,
   rmSync,
@@ -30,10 +37,12 @@ describe("walkBounded", () => {
     writeFileSync(join(dir, "src", "index.ts"), "export {};");
     writeFileSync(join(dir, "readme.md"), "hi");
 
-    const entries = walkBounded(dir, 5);
+    const undetermined: string[] = [];
+    const entries = walkBounded(dir, 5, undetermined);
     const relPaths = entries.map((e) => e.relPath).sort();
 
     expect(relPaths).toEqual(["readme.md", "src", "src/index.ts"]);
+    expect(undetermined).toEqual([]);
   });
 
   it("skips node_modules and other dependency/build directories", () => {
@@ -43,10 +52,12 @@ describe("walkBounded", () => {
     writeFileSync(join(dir, "dist", "index.js"), "");
     writeFileSync(join(dir, "kept.ts"), "");
 
-    const entries = walkBounded(dir, 5);
+    const undetermined: string[] = [];
+    const entries = walkBounded(dir, 5, undetermined);
     const relPaths = entries.map((e) => e.relPath);
 
     expect(relPaths).toEqual(["kept.ts"]);
+    expect(undetermined).toEqual([]);
   });
 
   it("skips exactly .claude/worktrees", () => {
@@ -59,12 +70,14 @@ describe("walkBounded", () => {
     writeFileSync(join(dir, ".claude", "worktrees", "x", "index.ts"), "");
     writeFileSync(join(dir, "kept.ts"), "");
 
-    const entries = walkBounded(dir, 5);
+    const undetermined: string[] = [];
+    const entries = walkBounded(dir, 5, undetermined);
     const relPaths = entries.map((e) => e.relPath).sort();
 
     // `.claude` itself is a real, non-skipped directory and stays listed;
     // nothing under (or at) `.claude/worktrees` appears at all.
     expect(relPaths).toEqual([".claude", "kept.ts"]);
+    expect(undetermined).toEqual([]);
   });
 
   // The skip is scoped by exact relative PATH (`.claude/worktrees`), not by
@@ -80,7 +93,8 @@ describe("walkBounded", () => {
     mkdirSync(join(dir, "src", "worktrees"), { recursive: true });
     writeFileSync(join(dir, "src", "worktrees", "y.ts"), "");
 
-    const entries = walkBounded(dir, 5);
+    const undetermined: string[] = [];
+    const entries = walkBounded(dir, 5, undetermined);
     const relPaths = entries.map((e) => e.relPath);
 
     expect(relPaths).toContain("worktrees");
@@ -89,6 +103,7 @@ describe("walkBounded", () => {
     expect(relPaths).toContain("src");
     expect(relPaths).toContain("src/worktrees");
     expect(relPaths).toContain("src/worktrees/y.ts");
+    expect(undetermined).toEqual([]);
   });
 
   // Same path-scoping guarantee as above, exercised against a plausible
@@ -101,27 +116,35 @@ describe("walkBounded", () => {
     });
     writeFileSync(join(dir, ".claude", "skills", "worktrees", "SKILL.md"), "");
 
-    const entries = walkBounded(dir, 5);
+    const undetermined: string[] = [];
+    const entries = walkBounded(dir, 5, undetermined);
     const relPaths = entries.map((e) => e.relPath);
 
     expect(relPaths).toContain(".claude/skills/worktrees");
     expect(relPaths).toContain(".claude/skills/worktrees/SKILL.md");
+    expect(undetermined).toEqual([]);
   });
 
   it("stops descending past maxDepth", () => {
     mkdirSync(join(dir, "a", "b", "c"), { recursive: true });
     writeFileSync(join(dir, "a", "b", "c", "deep.ts"), "");
 
-    const entries = walkBounded(dir, 1);
+    const undetermined: string[] = [];
+    const entries = walkBounded(dir, 1, undetermined);
     const relPaths = entries.map((e) => e.relPath).sort();
 
     // depth 0 = "a", depth 1 = "a/b" -- "a/b/c" is depth 2, excluded.
     expect(relPaths).toEqual(["a", "a/b"]);
+    expect(undetermined).toEqual([]);
   });
 
   it("skips an unreadable/missing directory rather than throwing", () => {
     const missing = join(dir, "does-not-exist");
-    expect(walkBounded(missing, 3)).toEqual([]);
+    const undetermined: string[] = [];
+    expect(walkBounded(missing, 3, undetermined)).toEqual([]);
+    // ENOENT is "absent", not "unresolvable" -- a genuinely missing
+    // directory is skipped silently and never recorded in `undetermined`.
+    expect(undetermined).toEqual([]);
   });
 
   // GAP 2: a chmod 000 subdirectory (EACCES, as opposed to simply missing)
@@ -161,4 +184,14 @@ describe("walkBounded", () => {
       ).toBe(true);
     },
   );
+
+  // Type-level only: `undetermined` is documented and every call site
+  // (`conflicts.ts`, the survey collectors) threads a real `string[]`, so
+  // the parameter being merely optional lets a new caller silently forget
+  // it and lose every recorded note. Runtime behavior is unchanged -- this
+  // is purely a signature tightening, asserted at the type level since
+  // vitest doesn't type-check at runtime.
+  it("types undetermined as a required parameter, not optional", () => {
+    expectTypeOf<Parameters<typeof walkBounded>[2]>().toEqualTypeOf<string[]>();
+  });
 });

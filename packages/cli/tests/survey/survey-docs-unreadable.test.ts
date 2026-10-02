@@ -108,35 +108,31 @@ describe("surveyDocs: an unreadable project file is recorded in undetermined, ne
     },
   );
 
-  it(
-    "a symlink loop within docs/adr/ is excluded from files[] and recorded in undetermined with ELOOP, without throwing " +
-      "(RED: indexFile's own statSync call only recognizes EACCES/EPERM today, so ELOOP throws)",
-    () => {
-      mkdirSync(join(dir, "docs", "adr"), { recursive: true });
-      const loopA = join(dir, "docs", "adr", "loop.md");
-      const loopB = join(dir, "docs", "adr", "loop-b");
-      symlinkSync(loopB, loopA);
-      symlinkSync(loopA, loopB);
-      writeFileSync(join(dir, "docs", "adr", "0001-foo.md"), "# ADR 1\n");
+  it("a symlink loop within docs/adr/ is excluded from files[] and recorded in undetermined with ELOOP, without throwing", () => {
+    mkdirSync(join(dir, "docs", "adr"), { recursive: true });
+    const loopA = join(dir, "docs", "adr", "loop.md");
+    const loopB = join(dir, "docs", "adr", "loop-b");
+    symlinkSync(loopB, loopA);
+    symlinkSync(loopA, loopB);
+    writeFileSync(join(dir, "docs", "adr", "0001-foo.md"), "# ADR 1\n");
 
-      let thrown: unknown;
-      let survey;
-      try {
-        survey = surveyDocs(dir, undetermined);
-      } catch (error) {
-        thrown = error;
-      }
+    let thrown: unknown;
+    let survey;
+    try {
+      survey = surveyDocs(dir, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
 
-      expect(thrown).toBeUndefined();
-      expect(survey?.files.some((f) => f.path === loopA)).toBe(false);
-      expect(survey?.files.some((f) => f.path.includes("0001-foo.md"))).toBe(
-        true,
-      );
-      expect(
-        undetermined.some(
-          (entry) => entry.includes(loopA) && entry.includes("ELOOP"),
-        ),
-      ).toBe(true);
-    },
-  );
+    expect(thrown).toBeUndefined();
+    expect(survey?.files.some((f) => f.path === loopA)).toBe(false);
+    expect(survey?.files.some((f) => f.path.includes("0001-foo.md"))).toBe(
+      true,
+    );
+    expect(
+      undetermined.some(
+        (entry) => entry.includes(loopA) && entry.includes("ELOOP"),
+      ),
+    ).toBe(true);
+  });
 });

@@ -104,7 +104,7 @@ function walk(
  * `root`. A missing directory (`ENOENT`/`ENOTDIR`, the same absent set
  * `guardedExists` uses) is skipped silently. An unreadable or unresolvable
  * one (`EACCES`/`EPERM`, or a symlink loop's `ELOOP`) is skipped too, but
- * recorded in `undetermined` when the caller passes one. Any other listing
+ * recorded in `undetermined`. Any other listing
  * failure (`EIO`, `EMFILE`, ...) throws an `Error` naming the directory, with
  * the original as `cause`. For the survey collectors; the graders use
  * {@link walkBoundedForGrading} instead.
@@ -120,12 +120,12 @@ function walk(
 export function walkBounded(
   root: string,
   maxDepth: number,
-  undetermined?: string[],
+  undetermined: string[],
 ): WalkEntry[] {
   return walk(root, maxDepth, (dir, error) => {
     const code = unresolvableCode(error);
     if (code !== undefined) {
-      undetermined?.push(unreadableNote(dir, code));
+      undetermined.push(unreadableNote(dir, code));
       return;
     }
     if (isAbsentError(error)) return;

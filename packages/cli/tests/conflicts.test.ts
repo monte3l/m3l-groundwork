@@ -23,7 +23,10 @@ import type * as FsModule from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planConflicts } from "../src/conflicts.js";
-import { unreadableNote } from "../src/survey/internal/read-guard.js";
+import {
+  SurveyReadError,
+  unreadableNote,
+} from "../src/survey/internal/read-guard.js";
 import { chmodIneffective } from "./chmod-ineffective.js";
 
 /**
@@ -648,5 +651,140 @@ describe("planConflicts: a target path's stat reports absent (ENOENT) but a race
     expect(entry?.status).toBe("divergent");
     expect(entry?.status).not.toBe("absent");
     expect(undetermined).toEqual([unreadableNote(targetPath, "ENOENT")]);
+  });
+});
+
+describe("planConflicts: .claude itself is a symlink whose target does not exist (ancestor ENOENT on every nested baseline path)", () => {
+  let templateRoot: string;
+  let targetDir: string;
+
+  beforeEach(() => {
+    templateRoot = mkdtempSync(
+      join(tmpdir(), "conflicts-dangling-ancestor-template-"),
+    );
+    targetDir = mkdtempSync(
+      join(tmpdir(), "conflicts-dangling-ancestor-target-"),
+    );
+  });
+
+  afterEach(() => {
+    rmSync(templateRoot, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  /**
+   * `.claude` here is a symlink to a path that never existed, not a plain
+   * file: resolving ANY nested path through it (`stat` or `lstat`) fails
+   * with `ENOENT`, not `ENOTDIR` -- there is no file blocking the way, the
+   * component itself just never resolves. `blockedAbsentNote`'s catch only
+   * discriminates `ENOTDIR` (walking via `statSync` to find the blocking
+   * file); it never walks ancestors with `lstat` to find a dangling symlink
+   * one or more levels up, so both baseline files land `absent` with
+   * nothing recorded instead of `divergent` naming `.claude`.
+   */
+  it("reports every baseline file under the dangling ancestor as divergent, with one note naming the symlink ancestor", () => {
+    mkdirSync(join(templateRoot, ".claude"), { recursive: true });
+    writeFileSync(join(templateRoot, ".claude", "settings.json"), "{}");
+    writeFileSync(join(templateRoot, ".claude", "settings.local.json"), "{}");
+    const danglingAncestor = join(targetDir, ".claude");
+    symlinkSync(
+      join(targetDir, "does-not-exist-claude-target"),
+      danglingAncestor,
+    );
+
+    const undetermined: string[] = [];
+    let thrown: unknown;
+    let result: ReturnType<typeof planConflicts> | undefined;
+    try {
+      result = planConflicts(templateRoot, targetDir, {}, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(result).toHaveLength(2);
+    for (const entry of result ?? []) {
+      expect(entry.status).toBe("divergent");
+      expect(entry.status).not.toBe("absent");
+    }
+    expect(undetermined).toHaveLength(1);
+    expect(undetermined[0]).toContain(danglingAncestor);
+    expect(undetermined[0]?.toLowerCase()).toContain("dangling symlink");
+  });
+});
+
+describe("planConflicts: blockedAbsentNote's lstat fails with an errno other than ENOENT/ENOTDIR", () => {
+  let templateRoot: string;
+  let targetDir: string;
+
+  beforeEach(() => {
+    templateRoot = mkdtempSync(join(tmpdir(), "conflicts-lstat-eio-template-"));
+    targetDir = mkdtempSync(join(tmpdir(), "conflicts-lstat-eio-target-"));
+  });
+
+  afterEach(() => {
+    rmSync(templateRoot, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  /**
+   * `blockedAbsentNote`'s catch block treats every errno other than
+   * `ENOTDIR` identically -- including one that says something about the
+   * machine (`EIO`), not the project's tree. Today it silently returns
+   * `undefined`, which `compareFile` reads as a genuine, clean "absent"; it
+   * must instead throw, the same way `probePath`/`guardedRead` throw a
+   * `SurveyReadError` naming the path with the original chained as `cause`
+   * for any non-recorded errno.
+   */
+  it("throws a SurveyReadError chaining the lstat failure as cause, rather than reporting absent", () => {
+    mkdirSync(join(templateRoot, ".claude"), { recursive: true });
+    writeFileSync(join(templateRoot, ".claude", "settings.json"), "{}");
+    mkdirSync(join(targetDir, ".claude"), { recursive: true });
+    const targetPath = join(targetDir, ".claude", "settings.json");
+    const lstatFailure = Object.assign(new Error("simulated EIO on lstat"), {
+      code: "EIO",
+    });
+
+    statSyncMock.mockImplementation((path: unknown, ...args: unknown[]) => {
+      if (path === targetPath) {
+        throw Object.assign(new Error("simulated ENOENT"), {
+          code: "ENOENT",
+        });
+      }
+      return actualStatSync(
+        ...([path, ...args] as Parameters<typeof actualStatSync>),
+      );
+    });
+    lstatSyncMock.mockImplementation((path: unknown, ...args: unknown[]) => {
+      if (path === targetPath) {
+        throw lstatFailure;
+      }
+      return actualLstatSync(
+        ...([path, ...args] as Parameters<typeof actualLstatSync>),
+      );
+    });
+
+    let thrown: unknown;
+    try {
+      planConflicts(templateRoot, targetDir, {});
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(SurveyReadError);
+    expect((thrown as SurveyReadError).cause).toBe(lstatFailure);
+  });
+
+  // The default, un-raced case: a genuinely missing target path with no
+  // symlink ancestor anywhere stays "absent", never divergent -- already
+  // exercised by "reports absent for a file the target doesn't have" above;
+  // restated here as a sibling fact to the two error-path tests in this
+  // file, not a duplicate of its assertions.
+  it("stays absent (never divergent) for a genuinely missing path with no symlink ancestor", () => {
+    writeFileSync(join(templateRoot, "CLAUDE.md"), "# hi\n");
+    const result = planConflicts(templateRoot, targetDir, {});
+    expect(result).toEqual([
+      { relPath: "CLAUDE.md", status: "absent", keyDiffs: undefined },
+    ]);
   });
 });

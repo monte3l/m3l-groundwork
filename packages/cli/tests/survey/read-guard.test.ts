@@ -98,7 +98,7 @@ describe("guardedExists -- a non-permission statSync failure throws, rather than
   );
 });
 
-describe("guardedExists -- ELOOP is recorded in undetermined, not silently absent (RED: was answering false with nothing recorded)", () => {
+describe("guardedExists -- ELOOP is recorded in undetermined, not silently absent", () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -150,7 +150,7 @@ describe("guardedExists -- ELOOP is recorded in undetermined, not silently absen
   });
 });
 
-describe("guardedRead -- ENOENT, ELOOP and EISDIR failures on the READ itself (not guardedExists's stat) are recorded in undetermined, not thrown (RED: today only EACCES/EPERM are recognized by permissionCode, so everything else -- including these three -- throws a SurveyReadError)", () => {
+describe("guardedRead -- ENOENT, ELOOP and EISDIR failures on the READ itself (not guardedExists's stat) are recorded in undetermined, not thrown", () => {
   let dir: string;
 
   beforeEach(() => {
@@ -239,10 +239,10 @@ describe("guardedRead -- ENOENT, ELOOP and EISDIR failures on the READ itself (n
    * A directory listing (`readdirSync`) on a regular file raises `ENOTDIR` --
    * a property of the project's own tree (an ancestor a collector expected to
    * be a directory turns out to be a file), exactly like `EISDIR` is for a
-   * single-file read. `recordedReadCode` does not recognize `ENOTDIR` today
-   * (`RECORDED_READ_CODES` only lists `ENOENT`/`ELOOP`/`EISDIR`), so this is
-   * RED: `guardedRead` currently throws a `SurveyReadError` instead of
-   * recording the failure and continuing.
+   * single-file read. `recordedReadCode` recognizes `ENOTDIR`
+   * (`RECORDED_READ_CODES` lists `ENOENT`/`ELOOP`/`EISDIR`/`ENOTDIR`), so
+   * `guardedRead` records the failure and continues rather than throwing a
+   * `SurveyReadError`.
    */
   it("a directory listing attempted on a regular file (ENOTDIR raised by readdirSync itself) is recorded in undetermined naming the path and ENOTDIR, answers undefined, and does not throw", () => {
     const filePath = join(dir, "not-a-directory");

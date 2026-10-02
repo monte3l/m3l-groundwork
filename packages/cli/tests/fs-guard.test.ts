@@ -9,12 +9,11 @@
  * failure (most realistically `EACCES`, a search-permission-denied ancestor
  * -- fresh mode writing into a pre-existing `.claude` directory a previous
  * run left `chmod 000`, re-run with `--fresh --force`) propagates as the
- * RAW underlying error: no path named in a readable message, no `--fresh
- * --force` retry advice, and no `cause` set (it the original error itself).
- * This file's RED state: every row below currently fails because nothing
- * wraps that raw error yet. `code-implementer` closes the gap by wrapping
- * every `lstatSync` call the same way the rest of this package already
- * wraps a guarded read failure (see `survey/internal/read-guard.ts`).
+ * RAW underlying error would propagate with no path named in a readable
+ * message, no `--fresh --force` retry advice, and no `cause` set. Every row
+ * below asserts that each call instead wraps the failure the same way the
+ * rest of this package already wraps a guarded read failure (see
+ * `survey/internal/read-guard.ts`).
  *
  * `node:fs` is mocked (`importOriginal`-preserving) only in the "other
  * errnos" describe below, to reach a code a real chmod can't easily

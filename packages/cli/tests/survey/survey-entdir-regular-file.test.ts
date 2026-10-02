@@ -13,9 +13,9 @@
  * callers, the same shape `survey-harness-unreadable.test.ts` and
  * `survey-toolchain-unreadable.test.ts` use for EACCES/EISDIR.
  *
- * RED today: `recordedReadCode` (`read-guard.ts`) does not recognize
- * `ENOTDIR`, so both collectors throw a `SurveyReadError` instead of
- * recording the path and continuing.
+ * `recordedReadCode` (`read-guard.ts`) recognizes `ENOTDIR` on a read, so
+ * both collectors record the path in `undetermined` and continue rather
+ * than throwing a `SurveyReadError`.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";

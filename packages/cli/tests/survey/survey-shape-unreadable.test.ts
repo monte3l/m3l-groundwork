@@ -151,28 +151,24 @@ describe("surveyShape: an unreadable project file is recorded in undetermined, n
     },
   );
 
-  it(
-    "a directory named package.json is recorded in undetermined with EISDIR rather than thrown " +
-      "(RED: readPackageJson's guardedExists sees the directory as present, then guardedRead's readFileSync raises EISDIR, which is not yet recognized)",
-    () => {
-      const path = join(dir, "package.json");
-      mkdirSync(path);
+  it("a directory named package.json is recorded in undetermined with EISDIR rather than thrown", () => {
+    const path = join(dir, "package.json");
+    mkdirSync(path);
 
-      let thrown: unknown;
-      let survey;
-      try {
-        survey = surveyShape(dir, undetermined);
-      } catch (error) {
-        thrown = error;
-      }
+    let thrown: unknown;
+    let survey;
+    try {
+      survey = surveyShape(dir, undetermined);
+    } catch (error) {
+      thrown = error;
+    }
 
-      expect(thrown).toBeUndefined();
-      expect(survey?.moduleType).toBe("unspecified");
-      expect(
-        undetermined.some(
-          (entry) => entry.includes(path) && entry.includes("EISDIR"),
-        ),
-      ).toBe(true);
-    },
-  );
+    expect(thrown).toBeUndefined();
+    expect(survey?.moduleType).toBe("unspecified");
+    expect(
+      undetermined.some(
+        (entry) => entry.includes(path) && entry.includes("EISDIR"),
+      ),
+    ).toBe(true);
+  });
 });

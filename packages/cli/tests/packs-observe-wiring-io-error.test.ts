@@ -111,9 +111,9 @@ describe("observeWiring -- a non-permission readFileSync failure on settings.jso
  * `present` (a `stat` on a directory succeeds), and the subsequent
  * `readFileSync` then raises `EISDIR` -- exactly like the bare-file EISDIR
  * case `conflicts.test.ts`/`read-guard.test.ts` already guard elsewhere.
- * RED today: `observeWiring` throws instead of recording an observation,
- * which aborts the whole adopt-mode `packs` computation for every pack
- * (see `main.ts`'s un-try/catch'd `.map` over `observeWiring`).
+ * `observeWiring` records an observation instead of throwing, so it never
+ * aborts the whole adopt-mode `packs` computation for any pack (see
+ * `main.ts`'s un-try/catch'd `.map` over `observeWiring`).
  */
 describe("observeWiring -- a directory sitting at .claude/settings.json (EISDIR on the read) is recorded as an observation, not thrown", () => {
   let targetDir: string;
@@ -158,9 +158,9 @@ describe("observeWiring -- a directory sitting at .claude/settings.json (EISDIR 
  * subsequent `readFileSync` runs, which then raises `ENOENT`. This is a
  * property of the project's tree at the moment of the race, not of the
  * machine -- the same reasoning `read-guard.ts`'s `guardedRead` already
- * applies to a dangling-symlink `ENOENT`. RED today: `permissionCode`
- * does not recognize `ENOENT`, so `observeWiring` throws instead of
- * recording an observation and continuing.
+ * applies to a dangling-symlink `ENOENT`. `recordedReadCode` recognizes
+ * `ENOENT`, so `observeWiring` records an observation and continues rather
+ * than throwing.
  */
 describe("observeWiring -- settings.json vanishes between the exists probe and the read (ENOENT race) is recorded as an observation, not thrown", () => {
   let targetDir: string;

@@ -346,7 +346,7 @@ describe("surveyHarness: an unreadable project file is recorded in undetermined,
   );
 });
 
-describe("surveyHarness: ENOENT (dangling symlink), ELOOP (symlink loop) and EISDIR (a directory where a file was expected) are recorded in undetermined, never thrown (RED: today each one throws -- guardedRead only recognizes EACCES/EPERM)", () => {
+describe("surveyHarness: ENOENT (dangling symlink), ELOOP (symlink loop) and EISDIR (a directory where a file was expected) are recorded in undetermined, never thrown", () => {
   let dir: string;
   let undetermined: string[];
 
