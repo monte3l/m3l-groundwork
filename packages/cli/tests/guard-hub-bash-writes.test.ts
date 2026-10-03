@@ -1700,6 +1700,7 @@ describe.each([
           tool_input: { command: "echo x > packages/cli/src/a.ts" },
           cwd: fakeProject,
           agent_type: "code-implementer",
+          agent_id: "agent-abc123",
         },
         { cwd: fakeProject, projectDir: fakeProject },
       );
@@ -2023,6 +2024,119 @@ describe("hook file count stays the same -- Bash support is added to the existin
       name.endsWith(".mjs"),
     );
     expect(mjsFiles).toHaveLength(10);
+  });
+});
+
+/**
+ * `agent_type` alone does not identify a subagent: Claude Code also sends it
+ * for a MAIN session started with `--agent <name>`. Only a call that carries
+ * a non-empty string `agent_id` fires inside a subagent, so a writer-spoke
+ * `agent_type` without one is the hub and must be blocked.
+ */
+describe.each([
+  ["root hook", hookPath],
+  ["templates/core hook", corePath],
+])("%s agent_id requirement (subprocess)", (_label, scriptPath) => {
+  const tools = [
+    {
+      name: "Write",
+      guarded: { tool_input: { file_path: "packages/cli/src/a.ts" } },
+      unguarded: { tool_input: { file_path: "docs/a.md" } },
+    },
+    {
+      name: "Edit",
+      guarded: { tool_input: { file_path: "packages/cli/src/a.ts" } },
+      unguarded: { tool_input: { file_path: "docs/a.md" } },
+    },
+    {
+      name: "Bash",
+      guarded: { tool_input: { command: "echo x > packages/cli/src/a.ts" } },
+      unguarded: { tool_input: { command: "echo x > docs/a.md" } },
+    },
+  ];
+
+  function runIn(extra: Record<string, unknown>): number | null {
+    const fakeProject = mkdtempSync(join(tmpdir(), "guard-hub-agent-id-"));
+    mkdirSync(join(fakeProject, "packages", "cli", "src"), {
+      recursive: true,
+    });
+    try {
+      return runHook(
+        scriptPath,
+        { cwd: fakeProject, ...extra },
+        { cwd: fakeProject, projectDir: fakeProject },
+      ).status;
+    } finally {
+      rmSync(fakeProject, { recursive: true, force: true });
+    }
+  }
+
+  describe.each(tools)("$name", ({ name, guarded, unguarded }) => {
+    it.each(["code-implementer", "test-author"])(
+      "allows writer agent_type %s with a valid agent_id",
+      (agentType) => {
+        expect(
+          runIn({
+            tool_name: name,
+            ...guarded,
+            agent_type: agentType,
+            agent_id: "agent-abc123",
+          }),
+        ).toBe(0);
+      },
+    );
+
+    it.each<[string, Record<string, unknown>]>([
+      ["no agent_id", {}],
+      ["an empty-string agent_id", { agent_id: "" }],
+      ["a non-string agent_id", { agent_id: 42 }],
+      ["a whitespace-only agent_id", { agent_id: "  " }],
+      ["a tab/newline-only agent_id", { agent_id: "\t\n" }],
+      ["a null agent_id", { agent_id: null }],
+      ["an array agent_id", { agent_id: ["x"] }],
+      ["an object agent_id", { agent_id: {} }],
+    ])("blocks writer agent_type with %s", (_l, idFields) => {
+      expect(
+        runIn({
+          tool_name: name,
+          ...guarded,
+          agent_type: "code-implementer",
+          ...idFields,
+        }),
+      ).toBe(2);
+    });
+
+    it("blocks a non-string (array) agent_type even with a valid agent_id", () => {
+      expect(
+        runIn({
+          tool_name: name,
+          ...guarded,
+          agent_type: ["code-implementer"],
+          agent_id: "agent-abc123",
+        }),
+      ).toBe(2);
+    });
+
+    it("still blocks a non-writer agent_type that has an agent_id", () => {
+      expect(
+        runIn({
+          tool_name: name,
+          ...guarded,
+          agent_type: "code-reviewer",
+          agent_id: "agent-abc123",
+        }),
+      ).toBe(2);
+    });
+
+    it("allows a non-guarded path for a writer agent_type with no agent_id", () => {
+      expect(
+        runIn({
+          tool_name: name,
+          ...unguarded,
+          agent_type: "code-implementer",
+        }),
+      ).toBe(0);
+    });
   });
 });
 

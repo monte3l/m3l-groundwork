@@ -492,8 +492,9 @@ matching this repo's real two-package layout.
 project-level opt-out.** The hub plans and dispatches to spokes, and never
 writes `packages/*/src/` or `packages/*/tests/` itself -- enforced
 unconditionally by `.claude/hooks/guard-hub-src-writes.mjs` (blocks any
-Write/Edit whose PreToolUse payload carries no `agent_type`, i.e. every
-direct top-level edit) and `guard-branch-isolation.mjs` (the same block
+Write/Edit whose PreToolUse payload does not carry both a writer-spoke
+`agent_type` and an `agent_id`, i.e. every direct top-level edit, including
+one from a session started with `--agent`) and `guard-branch-isolation.mjs` (the same block
 specifically on `main`), plus `disallowedTools: Agent` on every spoke. This
 was a deliberate choice among real alternatives (installing the harness
 minus these two hooks, or holding off entirely) confirmed with the
@@ -562,6 +563,25 @@ trusting hub-and-spoke enforcement on a machine you don't control: its
 `guard-hub-src-writes.mjs`/`guard-branch-isolation.mjs` aren't among what's
 actually running, treat this section as an unenforced checklist rather than
 an enforced gate until confirmed otherwise.
+
+**An installed Claude Code mod is a second silent override, below managed
+settings.** Claude Code 2.1.287 added mods (plugin-shipped TypeScript
+handlers). Per the
+[hooks guide](https://code.claude.com/docs/en/hooks-guide), a mod that
+handles `tool.check` "can approve a call that your `PreToolUse` hook blocked,
+unless the hook is in managed settings", and project `PreToolUse` hooks run
+only after the last mod calls `next`, so a mod that answers `tool.call`
+without it keeps them from running at all (see the
+[mods events reference](https://code.claude.com/docs/en/plugins/mods/events)).
+Only managed-settings hooks outrank a mod. Same limit as above: nothing in
+the repo can detect it. Check `/plugin` for installed mods alongside
+`/status` before trusting the guards on a machine you don't control.
+
+**The guard keys on `agent_id` as well as `agent_type`.** Claude Code sends
+`agent_type` both inside a subagent and in a main session started with
+`--agent <name>`; only a call inside a subagent also carries `agent_id`. A
+call counts as a writer spoke only with both present, so a hub launched as
+`claude --agent code-implementer` is still the hub and is blocked.
 
 Full dispatch-sizing and recovery guidance:
 `.claude/rules/agent-dispatch.md` (auto-loads when editing

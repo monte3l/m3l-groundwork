@@ -16,19 +16,24 @@
  * (`cat > src/a.ts <<EOF`, `sed -i`, `cp`, a `python -c` one-liner).
  *
  * The seam: the PreToolUse payload carries a top-level `agent_type` field
- * when the tool call fires inside a subagent context. The field is absent
- * (or empty) for hub-level calls, and contains the subagent's name for
- * spoke calls.
+ * both when the tool call fires inside a subagent AND in a main session
+ * started with `claude --agent <name>`, while `agent_id` is sent ONLY when
+ * the call fires inside a subagent. A spoke is therefore identified by both
+ * fields together: a call naming a writer in `agent_type` but carrying no
+ * non-blank string `agent_id` is the hub itself running as `--agent`, not a
+ * dispatched spoke, and is treated as the hub.
  *
  * The decision: block when BOTH conditions hold:
  *   (a) the target path is a guarded source/test path, AND
- *   (b) `agent_type` is NOT the name of an authorised writer spoke
- *       (`code-implementer` or `test-author`, per WRITER_SPOKES in
+ *   (b) the call is not from an authorised writer spoke -- i.e. `agent_id`
+ *       is absent/empty/whitespace-only/non-string, or `agent_type` is NOT the name of a
+ *       writer (`code-implementer` or `test-author`, per WRITER_SPOKES in
  *        bin/lib/agent-roster.mjs).
  *
- * Hub calls (absent/empty agent_type) and non-writer subagents are treated
- * identically -- both are blocked from guarded paths. Writer spokes are
- * allowed through. All other paths are allowed through unconditionally.
+ * Hub calls (no agent_id, whatever agent_type says) and non-writer subagents
+ * are treated identically -- both are blocked from guarded paths. Writer
+ * spokes are allowed through. All other paths are allowed through
+ * unconditionally.
  *
  * Write|Edit: the target is `tool_input.file_path`, checked directly.
  *
@@ -214,6 +219,8 @@ function isWriterSpoke(agentType) {
 
 /**
  * Pure decision function -- exported for unit testing.
+ * Callers must pass `spokeAgentType(input)`, not the raw payload `agent_type`,
+ * or a `claude --agent` main session passes as a writer spoke.
  *
  * @param {string | undefined} filePath  The file_path from the tool_input payload.
  * @param {unknown} agentType            The top-level agent_type from the payload.
@@ -1773,6 +1780,8 @@ export function findBashWriteToProtectedPath(command, opts) {
  * Bash counterpart of shouldBlockHubSrcWrite -- exported for unit testing.
  * Writer spokes are never blocked; any other caller is blocked when the
  * command writes into a guarded path.
+ * Callers must pass `spokeAgentType(input)`, not the raw payload `agent_type`,
+ * or a `claude --agent` main session passes as a writer spoke.
  *
  * @param {string} command
  * @param {unknown} agentType  The top-level agent_type from the payload.
@@ -1801,6 +1810,18 @@ function isEntryPoint() {
   }
 }
 
+// The agent_type the pure decision functions should see: the payload's own
+// only when a string `agent_id` that is non-empty after `.trim()` proves the
+// call fires inside a subagent; otherwise (absent, non-string, empty or
+// whitespace-only) undefined, i.e. the hub. `agent_type` alone is not
+// enough -- a `claude --agent code-implementer` main session sends it too
+// (see the header's "The seam").
+function spokeAgentType(input) {
+  return typeof input.agent_id === "string" && input.agent_id.trim() !== ""
+    ? input.agent_type
+    : undefined;
+}
+
 function runWriteGuard(input) {
   const filePath = input.tool_input?.file_path ?? "";
   if (typeof filePath !== "string") {
@@ -1809,7 +1830,7 @@ function runWriteGuard(input) {
     );
     process.exit(0);
   }
-  const agentType = input.agent_type;
+  const agentType = spokeAgentType(input);
   // Canonicalized (case-correct, symlinks resolved) where the real
   // filesystem can confirm it -- isProtectedPath's own case-insensitive
   // comparison (see its doc comment) is the fallback for whatever a
@@ -1856,7 +1877,7 @@ function runBashGuard(input) {
         : process.cwd(),
     );
     const projectDir = canonicalize(process.env.CLAUDE_PROJECT_DIR ?? cwd);
-    hit = shouldBlockHubBashWrite(command, input.agent_type, {
+    hit = shouldBlockHubBashWrite(command, spokeAgentType(input), {
       cwd,
       projectDir,
       notes,

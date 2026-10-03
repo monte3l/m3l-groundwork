@@ -102,6 +102,22 @@ sources" line names every active source, and if these hooks aren't among
 what's actually running, treat hub-and-spoke as an unenforced checklist
 until confirmed otherwise.
 
+**An installed Claude Code mod is a second silent override, below managed
+settings.** Per the
+[hooks guide](https://code.claude.com/docs/en/hooks-guide), a mod that
+handles `tool.check` "can approve a call that your `PreToolUse` hook blocked,
+unless the hook is in managed settings", and project `PreToolUse` hooks run
+only after the last mod calls `next` (see the
+[mods events reference](https://code.claude.com/docs/en/plugins/mods/events)).
+Only managed-settings hooks outrank a mod, and nothing in the repo can detect
+one. Check `/plugin` for installed mods alongside `/status`.
+
+**The guard keys on `agent_id` as well as `agent_type`.** Claude Code sends
+`agent_type` both inside a subagent and in a main session started with
+`--agent <name>`; only a call inside a subagent also carries `agent_id`. A
+call counts as a writer spoke only with both present, so a hub launched as
+`claude --agent code-implementer` is still the hub and is blocked.
+
 Full dispatch-sizing and recovery guidance: `.claude/rules/agent-dispatch.md`
 (auto-loads when editing `.claude/skills/**` or `.claude/agents/**`).
 

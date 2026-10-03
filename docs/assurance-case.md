@@ -273,6 +273,16 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   trusted-content boundary (see the table above), so it's accepted as a
   tracked residual risk rather than a live one -- tracked as
   [#48](https://github.com/monte3l/m3l-groundwork/issues/48).
+- **The hub-and-spoke and branch guards can be overridden by an installed
+  Claude Code mod, or by managed settings.** A mod that handles `tool.check`
+  can approve a call a project `PreToolUse` hook blocked, unless that hook is
+  in managed settings (see the
+  [hooks guide](https://code.claude.com/docs/en/hooks-guide) and the
+  [mods events reference](https://code.claude.com/docs/en/plugins/mods/events)).
+  Nothing in this repository can detect an installed mod or a managed
+  policy, so hub-and-spoke is a convention backed by a guard that raises the
+  bar, not a proof; the review spokes and the `main` ruleset remain the
+  backstop.
 - **`/customize` (Phase B) runs as an LLM acting inside the user's own
   Claude Code session** with whatever tools that session has. Its
   guardrails (showing its evidence, confirming changes, staying inside the

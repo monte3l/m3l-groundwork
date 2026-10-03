@@ -21,8 +21,11 @@
  *
  * Scope: only tool calls made from inside one of those read-only subagents
  * are checked -- identified via the hook payload's `agent_type` field
- * (present when `PreToolUse` fires inside a subagent context; absent for
- * the hub's own Bash calls, which this hook does not restrict).
+ * (present when `PreToolUse` fires inside a subagent context, and also in a
+ * main session started with `claude --agent <name>`; absent for an ordinary
+ * hub's own Bash calls, which this hook does not restrict). Keeping the
+ * read-only restriction on a `--agent <read-only agent>` main session is
+ * fail-safe -- it only refuses more -- so no `agent_id` check is needed here.
  *
  * Design tradeoff, matching every sibling guard hook's fail-open
  * philosophy: this is a DENYLIST of known-mutating patterns, not a strict
