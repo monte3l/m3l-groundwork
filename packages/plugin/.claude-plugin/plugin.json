@@ -1,6 +1,6 @@
 {
   "name": "m3l-groundwork-customize",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "displayName": "m3l-groundwork /customize",
   "description": "Adds the /customize skill: interviews a bootstrapped project's owner, tailors the baseline to their answers, then checks the result against current official TypeScript and Anthropic guidance.",
   "author": {
