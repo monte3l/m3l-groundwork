@@ -125,7 +125,7 @@ checks yet.
 
 Every pull request is reviewed before merging -- by the maintainer, and by
 [`claude-pr-review.yml`](.github/workflows/claude-pr-review.yml)'s automated
-comment on every non-bot, non-fork PR. What review checks:
+review on every non-bot, non-fork, non-draft PR -- posted once, as `claude[bot]`, with only validated high-signal findings. What review checks:
 
 - **Correctness**: the change does what it says, and new functionality or a
   bug fix comes with tests (see "Scope of a PR" below).
