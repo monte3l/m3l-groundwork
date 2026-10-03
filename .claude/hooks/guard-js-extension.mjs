@@ -8,7 +8,8 @@
  *
  * This is the #1 documented ESM gotcha -- a relative import without `.js`
  * type-checks but fails to resolve at runtime in Node. Path-scoped rules
- * inject on Read, not reliably at Write, so this runs as a hook.
+ * load on Read, Write and Edit (Claude Code 2.1.288) but only advise, so
+ * this runs as a hook, which blocks.
  *
  * Blocks by exiting 2 with a message on stderr (Claude Code convention).
  */
