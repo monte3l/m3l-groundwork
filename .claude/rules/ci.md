@@ -77,62 +77,31 @@ paths:
   what a PR changes, so this is the only thing that notices an advisory
   published against an already-locked dependency. It mirrors the workflow
   `templates/core` emits, at the root's own `pnpm/action-setup` pin.
-- **`claude.yml` and `claude-pr-review.yml` run Anthropic's official
-  `anthropics/claude-code-action`** (SHA-pinned, same convention as every
-  other action here), both running but failing cleanly on an auth error
-  until the one-time setup below is done. `claude.yml` is interactive
-  `@claude`-mention mode: it never opens a PR itself (it commits to a
-  branch and links back to a PR-creation page), so it never bypasses the
-  human-opened-PR rule above.
-- **`claude-pr-review.yml` is Anthropic's documented review workflow, kept
-  as close to it as the repo allows** (code.claude.com/docs/en/github-actions,
-  "Run a skill"; what `/install-github-app` generates): the action in
-  automation mode, the `code-review@claude-code-plugins` plugin, prompt
-  `/code-review:code-review --comment <repo>/pull/<n>`, and
-  `--allowedTools` naming the inline-comment MCP tool (the action starts that
-  server only when the flag names it). With no `github_token` input it posts
-  as the Claude GitHub App, i.e. `claude[bot]`. It never approves, blocks or
-  submits a formal review, so it cannot satisfy or bypass `main`'s required
-  checks or its 0-approval rule. There is deliberately **no model pin**: the
-  plugin picks Haiku/Sonnet/Opus per step and the official example omits
-  one. The trade-offs of staying official: the plugin reviews a PR **once**
-  (it stops if Claude already commented, so a push posts nothing and a fresh
-  review needs Claude's comment deleted), it reports only validated
-  high-signal findings with no severity tiers, and it never resolves its own
-  threads -- `main`'s `required_review_thread_resolution` still means the
-  maintainer resolves each one. The job's `if:` excludes bot-authored, fork
-  and draft PRs explicitly (the action rejects a bot actor and a fork gets no
-  secrets), as defense in depth behind CLAUDE.md's collaborators-only pull
-  request policy.
-- **The silent-no-post bug class is mitigated, not fixed -- keep the three
-  mitigations, and re-check them upstream before touching them.** A green
-  run that posts nothing is claude-code-action#1646 (this exact plugin +
-  action pairing), #1499, #1852, #1523, #1679 and #1823, all open with no
-  Anthropic reply and no official workaround as of 2026-10-02: the plugin
-  backgrounds its sub-reviewers and the action ends the session at the
-  first `result`. (1) `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` on the
-  action step -- a documented Claude Code variable that disables background
-  subagents, so they run in the foreground the plugin assumes; the only
-  evidence it helps is community-measured (#1646: 4 of 4 runs posted after,
-  against 2 of 7 before). (2) `Bash(gh pr comment:*)` in `--allowedTools`:
-  the "No issues found" summary posts with it and #1646 reports the plugin's
-  own `allowed-tools` doesn't carry it under the action. (3) The
-  `Verify Claude posted` step (`if: always()`, plain `gh` + `jq`, values only
-  through `env:`) fails the job when no comment, review or inline comment by
-  `claude[bot]` exists afterwards, so a silent green is a red a re-run fixes.
-  Rejected on evidence: a prompt telling the model to wait for its
-  subagents (#1646 measured no effect), `show_full_output` (the action warns
-  it leaks tool output into public logs), and forking the action or plugin.
-  The earlier design -- a read-only `review` job returning `--json-schema`
-  output to a `post` job under `github.token` -- avoided the bug but posted
-  as `github-actions[bot]`, because the action revokes its Claude App token
-  at the end of its own step; that identity is the reason it was dropped.
-  A PR that edits `claude-pr-review.yml` itself gets no review: the action
-  refuses to run a workflow that differs from the default branch's copy and
-  exits green with no outputs, which `Verify Claude posted` recognizes (no
-  `conclusion` and the PR changes this file) and passes with a notice. Don't
-  treat that skip as a regression, and verify a change to this file on the
-  first PR after it merges, not on its own PR.
+- **`claude.yml` runs Anthropic's official `anthropics/claude-code-action`**
+  (SHA-pinned, same convention as every other action here), running but
+  failing cleanly on an auth error until the one-time setup below is done.
+  It is interactive `@claude`-mention mode: it never opens a PR itself (it
+  commits to a branch and links back to a PR-creation page), so it never
+  bypasses the human-opened-PR rule above.
+- **There is deliberately no automated PR review workflow.** The root
+  `claude-pr-review.yml` (Anthropic's documented "Run a skill" review, the
+  `code-review@claude-code-plugins` plugin posting as `claude[bot]`) was
+  removed on 2026-10-03, to stay out until Anthropic fixes the bug it kept
+  hitting: a green run that posts nothing is claude-code-action#1646 (this
+  exact plugin and action pairing), #1499, #1852, #1523, #1679 and #1823, all
+  open with no Anthropic reply and no official workaround as of 2026-10-02.
+  The plugin backgrounds its sub-reviewers and the action ends the session at
+  the first `result`. The last version carried three mitigations that only
+  reduced it (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, `Bash(gh pr
+comment:*)` in `--allowedTools`, and a `Verify Claude posted` step failing
+  the job when `claude[bot]` had posted nothing) and it posted as the Claude
+  GitHub App, never approving or blocking, so no ruleset check ever depended
+  on it. To restore it, take the file from git history (`git log --diff-filter=D
+-- .github/workflows/claude-pr-review.yml`), re-check those issues first,
+  and re-add the references this change removed from `CLAUDE.md`,
+  `CONTRIBUTING.md` and `docs/assurance-case.md`. The `github` pack still
+  ships its own `claude-pr-review.yml` twin to bootstrapped projects; that is
+  deliberately unchanged here.
 - `claude.yml` has no PR to gate (it only triggers on
   issues and comments, which stay open to everyone even under
   collaborators-only PRs), so its `if:` instead requires the triggering

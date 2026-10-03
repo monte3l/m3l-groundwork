@@ -108,7 +108,7 @@ packages/plugin/        Phase B: the /customize skill
                          dependency-review.yml, scorecard.yml, gitleaks.yml,
                          security-audit.yml (daily `pnpm audit`, opens one
                          issue on a high-severity advisory),
-                         claude.yml, claude-pr-review.yml, dependabot.yml,
+                         claude.yml, dependabot.yml,
                          deploy-tools/ (pins the exact wrangler version
                          docs.yml's deploy job installs, same pattern as
                          release-tools/), environments.json (the cleanup
@@ -373,11 +373,14 @@ steps) before considering any task here done.
   pack-contributed steps this repo's own list has no use for). Add a new
   gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
   bespoke script invocation in either YAML file.
-- **Continuous integration (`.github/`) and the two Claude Code Actions
-  workflows.** `ci.yml` runs five verify lanes plus `e2e`/`e2e-macos`/`node-current`
+- **Continuous integration (`.github/`) and the Claude Code Action
+  workflow.** `ci.yml` runs five verify lanes plus `e2e`/`e2e-macos`/`node-current`
   behind a `verify` aggregator (the check `main`'s ruleset gates on --
-  see "Git Workflow"); `claude.yml`/`claude-pr-review.yml` run Anthropic's
-  official action; the review is the official `code-review` plugin posting as `claude[bot]`, once per PR. Full
+  see "Git Workflow"); `claude.yml` runs Anthropic's official action in
+  `@claude`-mention mode. **There is no automated PR review here**:
+  `claude-pr-review.yml` was removed until Anthropic fixes the action's
+  silent no-post bug (see `.claude/rules/ci.md`), so a PR is reviewed by the
+  maintainer and the review spokes only. Full
   detail, including the `gate-lane-parity` rules that must never be broken
   and the one-time GitHub App setup: `.claude/rules/ci.md` (auto-loads on
   `.github/**`, `lefthook.yml`, `bin/verify.mjs`, `bin/lib/verify-steps.mjs`).
@@ -427,9 +430,8 @@ farming (a thin, low-signal profile bulk-forking many unrelated repos in a
 tight window). Issues stay open to everyone; a contribution starts as an
 issue, and a collaborator opens the PR (see CONTRIBUTING.md's "Small tasks
 for newcomers"). This also simplifies the fork-PR secrets question:
-`gitleaks.yml`'s license secret and `claude-pr-review.yml`'s OAuth token no
-longer need to handle a fork-originated PR run at all, since one can't
-exist.
+`gitleaks.yml`'s license secret no longer needs to handle a fork-originated PR
+run at all, since one can't exist.
 Conventional Commits, enforced by the `commit-msg` hook
 (`bin/lint-commit.mjs`) -- same convention `templates/core` emits into every
 bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
