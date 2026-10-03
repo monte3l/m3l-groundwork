@@ -131,10 +131,10 @@ matter how the project is otherwise run. Each is recorded as **Unmet** in
 - **`two_person_review` (MUST, requiring at least 50% of changes reviewed by
   someone other than the author before release).** With one maintainer, no
   proposed change can be reviewed by a second human before it's merged and
-  released -- `claude-pr-review.yml`'s automated comment (see
-  [`CONTRIBUTING.md`](CONTRIBUTING.md#code-review)) is real review signal,
-  but the criterion's own wording asks for "a person other than the
-  author," and an automated tool review isn't a substitute for that.
+  released -- the criterion's own wording asks for "a person other than the
+  author," and an automated tool review isn't a substitute for that (see
+  [`CONTRIBUTING.md`](CONTRIBUTING.md#code-review) for the review this
+  project does run).
 
 Every other Gold-level criterion is met or is not applicable to this
 project -- see `.bestpractices.json` for the full, itemized self-assessment.

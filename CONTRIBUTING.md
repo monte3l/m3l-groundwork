@@ -123,9 +123,10 @@ checks yet.
 
 ## Code review
 
-Every pull request is reviewed before merging -- by the maintainer, and by
-[`claude-pr-review.yml`](.github/workflows/claude-pr-review.yml)'s automated
-review on every non-bot, non-fork, non-draft PR -- posted once, as `claude[bot]`, with only validated high-signal findings. What review checks:
+Every pull request is reviewed by the maintainer before merging, with the
+repository's review agents run over the diff first. There is no automated
+PR-review workflow at the moment: it was removed until Anthropic fixes the
+Claude Code Action's silent no-post bug. What review checks:
 
 - **Correctness**: the change does what it says, and new functionality or a
   bug fix comes with tests (see "Scope of a PR" below).

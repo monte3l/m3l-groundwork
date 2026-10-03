@@ -243,7 +243,7 @@
   "code_review_standards_status": "Met",
   "code_review_standards_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/CONTRIBUTING.md#code-review.",
   "two_person_review_status": "Unmet",
-  "two_person_review_justification": "With one maintainer, no proposed change can be reviewed by a second human before release; see https://github.com/monte3l/m3l-groundwork/blob/main/GOVERNANCE.md#gold-level-criteria-this-project-does-not-meet. `claude-pr-review.yml`'s automated comment is real review signal but not a substitute for the criterion's own \"a person other than the author\" wording.",
+  "two_person_review_justification": "With one maintainer, no proposed change can be reviewed by a second human before release; see https://github.com/monte3l/m3l-groundwork/blob/main/GOVERNANCE.md#gold-level-criteria-this-project-does-not-meet. An automated tool review is not a substitute for the criterion's own \"a person other than the author\" wording.",
   "build_reproducible_status": "Met",
   "build_reproducible_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/packages/cli/tests/pack.e2e.test.ts's reproducible-build case: two independent, clean `pnpm build && pnpm pack` runs produce a byte-identical tarball. See also https://github.com/monte3l/m3l-groundwork/blob/main/SECURITY.md#reproducing-a-release.",
   "test_statement_coverage90_status": "Met",
