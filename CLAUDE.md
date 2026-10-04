@@ -857,14 +857,10 @@ set for one file.
   "Git Workflow") and `gitleaks.yml`/the `claude.yml` `author_association`
   guard, both landed in the same change as this entry.
 
-  A 2026-09-29 re-audit read the live settings and found every item below
-  still pending, plus four more: `prevent_self_review` is `false` on the
-  `npm-publish` environment, the org's defaults for new repositories have no
-  security feature on, the standard labels (`dependencies`, `security`) don't
-  exist, and rebase-merge is still enabled at repo level (the ruleset blocks
-  it, so it only confuses). Immutable releases are deliberately **not** on
-  the list: `release.yml` uploads assets after the Release exists, which
-  immutability would block. The exact commands are in
+  A 2026-09-29 re-audit read the live settings and found every item then
+  listed still pending, plus four more. Immutable releases are deliberately
+  **not** on the list: `release.yml` uploads assets after the Release exists,
+  which immutability would block. The exact commands are in
   [`docs/github-blueprint.md`](docs/github-blueprint.md); the repo-scope ones
   are also scripted in `monte3l/.github` (`bin/apply-repo-baseline.sh`,
   `--check` first). An agent's attempt to apply them was refused by Claude
@@ -873,16 +869,29 @@ set for one file.
   actions (`changesets/action/pack@...`), so allow `changesets/action/*` as well as
   `changesets/action@*`.
 
-  | Pending item                                                                            | How to apply                                                                                                                              | Why it's safe                                                                                         |
-  | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-  | Turn off `can_approve_pull_request_reviews` (repo and org)                              | `PUT .../actions/permissions/workflow`                                                                                                    | The release version PR uses a GitHub App token, not `GITHUB_TOKEN` -- see `.claude/rules/releases.md` |
-  | Require approval for all external contributors' workflow runs, not just first-time ones | `PUT .../actions/permissions/fork-pr-contributor-approval` with `all_external_contributors`                                               | Closes the gap left by first-time-only approval                                                       |
-  | Enforce SHA pinning and an actions allowlist                                            | `sha_pinning_required: true`, `allowed_actions: selected`, covering `gitleaks/gitleaks-action` alongside the existing third-party actions | Matches what's already done by hand                                                                   |
-  | Add a tag-protection ruleset on `refs/tags/**`                                          | Deletion/non-fast-forward/update, empty `bypass_actors`                                                                                   | There is currently none, only the branch ruleset                                                      |
-  | Restrict `CLAUDE_CODE_OAUTH_TOKEN` and `GITLEAKS_LICENSE` to the repos that use them    | Org secret settings                                                                                                                       | Currently org-wide visibility                                                                         |
-  | Set the org's default repository permission below `admin`                               | Org settings                                                                                                                              | Reduces blast radius of a compromised member account                                                  |
-  | Scope the Cloudflare and Claude GitHub App installations to selected repositories       | App settings                                                                                                                              | Currently installed on every org repo                                                                 |
+  A 2026-10-04 re-read of the live settings confirmed every repo-scope item
+  is now applied:
 
-  Once `gitleaks.yml` has a clean run on `main`, add it to the `main`
-  ruleset's `required_status_checks` the same way `verify`/
-  `Dependency Review`/`CodeQL` are pinned by `integration_id`.
+  | Applied item                                           | Live state                                                                          |
+  | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+  | `can_approve_pull_request_reviews` off                 | `false` at repo scope                                                               |
+  | Approval for all external contributors' workflow runs  | `fork-pr-contributor-approval` is `all_external_contributors`                       |
+  | SHA pinning and an actions allowlist                   | `sha_pinning_required: true`, `selected`, includes `changesets/action/*`            |
+  | Tag-protection ruleset                                 | `tags`: deletion, non-fast-forward and update blocked, empty `bypass_actors`        |
+  | `prevent_self_review` on the `npm-publish` environment | `true`; the other reviewer must approve a publish                                   |
+  | Rebase-merge off at repo level                         | `allow_rebase_merge: false`                                                         |
+  | Gitleaks a required check on `main`                    | `Gitleaks` pinned to its producing app beside `verify`/`Dependency Review`/`CodeQL` |
+
+  Still pending, none of them blocking a release:
+
+  | Pending item                                                                         | How to apply                                    | Why it's safe                                            |
+  | ------------------------------------------------------------------------------------ | ----------------------------------------------- | -------------------------------------------------------- |
+  | Create the standard `dependencies` and `security` labels                             | `gh label create` per label                     | Dependabot and `security-audit.yml` expect them to exist |
+  | Turn off `can_approve_pull_request_reviews` at org scope                             | `PUT orgs/monte3l/actions/permissions/workflow` | Same reason as the repo-scope row above                  |
+  | Restrict `CLAUDE_CODE_OAUTH_TOKEN` and `GITLEAKS_LICENSE` to the repos that use them | Org secret settings                             | Currently org-wide visibility                            |
+  | Set the org's default repository permission below `admin`                            | Org settings                                    | Reduces blast radius of a compromised member account     |
+  | Scope the Cloudflare and Claude GitHub App installations to selected repositories    | App settings                                    | Currently installed on every org repo                    |
+  | Turn on a security feature in the org's defaults for new repositories                | Org settings, code security                     | New repos start with none of them on                     |
+
+  The org-scope rows were last read on 2026-09-29, not 2026-10-04: re-read them
+  before relying on them.
