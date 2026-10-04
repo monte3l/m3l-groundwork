@@ -869,29 +869,27 @@ set for one file.
   actions (`changesets/action/pack@...`), so allow `changesets/action/*` as well as
   `changesets/action@*`.
 
-  A 2026-10-04 re-read of the live settings confirmed every repo-scope item
-  is now applied:
+  A 2026-10-04 re-read of the live settings (repo and org scope) confirmed
+  these are applied:
 
-  | Applied item                                           | Live state                                                                          |
-  | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-  | `can_approve_pull_request_reviews` off                 | `false` at repo scope                                                               |
-  | Approval for all external contributors' workflow runs  | `fork-pr-contributor-approval` is `all_external_contributors`                       |
-  | SHA pinning and an actions allowlist                   | `sha_pinning_required: true`, `selected`, includes `changesets/action/*`            |
-  | Tag-protection ruleset                                 | `tags`: deletion, non-fast-forward and update blocked, empty `bypass_actors`        |
-  | `prevent_self_review` on the `npm-publish` environment | `true`; the other reviewer must approve a publish                                   |
-  | Rebase-merge off at repo level                         | `allow_rebase_merge: false`                                                         |
-  | Gitleaks a required check on `main`                    | `Gitleaks` pinned to its producing app beside `verify`/`Dependency Review`/`CodeQL` |
+  | Applied item                                           | Live state                                                                                                     |
+  | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+  | `can_approve_pull_request_reviews` off                 | `false` at repo and org scope                                                                                  |
+  | Approval for all external contributors' workflow runs  | `all_external_contributors` at repo and org scope                                                              |
+  | SHA pinning and an actions allowlist                   | `sha_pinning_required: true` and `selected` at repo and org scope; repo allowlist has `changesets/action/*`    |
+  | Tag-protection ruleset                                 | `tags`: deletion, non-fast-forward and update blocked, empty `bypass_actors`                                   |
+  | `prevent_self_review` on the `npm-publish` environment | `true`; the other reviewer must approve a publish                                                              |
+  | Rebase-merge off at repo level                         | `allow_rebase_merge: false`                                                                                    |
+  | Gitleaks a required check on `main`                    | `Gitleaks` pinned to its producing app beside `verify`/`Dependency Review`/`CodeQL`                            |
+  | Org default repository permission below `admin`        | `read`                                                                                                         |
+  | Security defaults for new public repositories          | The "GitHub recommended" configuration: Dependabot alerts, secret scanning with push protection, code scanning |
 
   Still pending, none of them blocking a release:
 
-  | Pending item                                                                         | How to apply                                    | Why it's safe                                            |
-  | ------------------------------------------------------------------------------------ | ----------------------------------------------- | -------------------------------------------------------- |
-  | Create the standard `dependencies` and `security` labels                             | `gh label create` per label                     | Dependabot and `security-audit.yml` expect them to exist |
-  | Turn off `can_approve_pull_request_reviews` at org scope                             | `PUT orgs/monte3l/actions/permissions/workflow` | Same reason as the repo-scope row above                  |
-  | Restrict `CLAUDE_CODE_OAUTH_TOKEN` and `GITLEAKS_LICENSE` to the repos that use them | Org secret settings                             | Currently org-wide visibility                            |
-  | Set the org's default repository permission below `admin`                            | Org settings                                    | Reduces blast radius of a compromised member account     |
-  | Scope the Cloudflare and Claude GitHub App installations to selected repositories    | App settings                                    | Currently installed on every org repo                    |
-  | Turn on a security feature in the org's defaults for new repositories                | Org settings, code security                     | New repos start with none of them on                     |
-
-  The org-scope rows were last read on 2026-09-29, not 2026-10-04: re-read them
-  before relying on them.
+  | Pending item                                                                         | How to apply                                                           | Why it's safe                                            |
+  | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------------------- |
+  | Create the standard `dependencies` and `security` labels                             | `gh label create` per label                                            | Dependabot and `security-audit.yml` expect them to exist |
+  | Restrict `CLAUDE_CODE_OAUTH_TOKEN` and `GITLEAKS_LICENSE` to the repos that use them | `gh secret set ... --org monte3l --repos REPO`                         | Both are `visibility: all` today                         |
+  | Scope the Claude GitHub App installation to selected repositories                    | App settings                                                           | Installed on every org repo                              |
+  | Find and scope the Cloudflare GitHub App                                             | App settings; it is not in the org's installations, so check the owner | Currently unlocated                                      |
+  | Turn on Dependabot security updates in the default security configuration            | Org settings, code security                                            | `dependabot_security_updates` is `not_set`               |
