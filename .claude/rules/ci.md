@@ -77,6 +77,18 @@ paths:
   what a PR changes, so this is the only thing that notices an advisory
   published against an already-locked dependency. It mirrors the workflow
   `templates/core` emits, at the root's own `pnpm/action-setup` pin.
+- `soak.yml` is manual only (`workflow_dispatch`, input `version`, a dist-tag
+  or exact version) and not a required check. It runs `bin/soak.sh` against
+  the **published** `@monte3l/groundwork` from the registry, never the
+  checkout, on `ubuntu-24.04`, `ubuntu-24.04-arm` and `macos-latest`: the
+  only place the registry artifact, and Linux arm64, are exercised
+  (`ci.yml`'s `e2e-macos` already covers macOS arm64, from the checkout). An `os` matrix
+  is fine here, unlike the verify lanes, because the file runs no verify
+  group and so never reaches `gate-lane-parity`; keep it that way (no
+  `verify.mjs`, `--group` or `--step` anywhere in it, comments included).
+  The runner needs several GiB of free memory: the baseline's `knip` step
+  fails with `RangeError: Array buffer allocation failed` in `oxc-parser` on
+  a 4 GB machine, which GitHub's runners are well above.
 - **`claude.yml` runs Anthropic's official `anthropics/claude-code-action`**
   (SHA-pinned, same convention as every other action here), running but
   failing cleanly on an auth error until the one-time setup below is done.
