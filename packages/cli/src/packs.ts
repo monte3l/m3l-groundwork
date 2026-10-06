@@ -64,6 +64,8 @@ export interface PackManifest {
   requires: { paths: string[] } | undefined;
   wiring: PackWiring;
   adoptNotes: string | undefined;
+  /** Shell commands, run in the target directory, that a fresh install needs before its first `pnpm verify` (fresh mode prints them; see main.ts). Optional: absent means no setup. */
+  setupSteps?: string[] | undefined;
 }
 
 export interface Pack {
@@ -221,7 +223,18 @@ function assertValidWiringShape(
   });
 }
 
-/** Loads and validates one pack's manifest from under `root` (default `templates/packs`, overridable for tests). Throws, naming the available packs, if unknown; throws naming the pack and the problem if malformed, including a prototype-sensitive key in its wiring (see {@link assertValidWiringShape}). */
+/** True when `steps` is a non-empty array of non-empty strings, none containing a line break -- each is printed as one indented line. */
+function isValidSetupSteps(steps: unknown): steps is string[] {
+  return (
+    Array.isArray(steps) &&
+    steps.length > 0 &&
+    (steps as unknown[]).every(
+      (step) => typeof step === "string" && step !== "" && !/[\r\n]/.test(step),
+    )
+  );
+}
+
+/** Loads and validates one pack's manifest from under `root` (default `templates/packs`, overridable for tests). Throws, naming the available packs, if unknown; throws naming the pack and the problem if malformed, including a prototype-sensitive key in its wiring (see {@link assertValidWiringShape}) or a `setupSteps` that is present but not a non-empty array of single-line, non-empty strings. */
 export function loadPack(name: string, root: string = packsRootDir()): Pack {
   const packDir = join(root, name);
   const manifestPath = join(packDir, "pack.json");
@@ -286,6 +299,12 @@ export function loadPack(name: string, root: string = packsRootDir()): Pack {
   if (!isValidBudget(budget)) {
     throw new Error(
       `pack "${name}": pack.json's budget must set ${CAP_KEYS.join(", ")} to non-negative integers`,
+    );
+  }
+  const setupSteps: unknown = manifest.setupSteps;
+  if (setupSteps !== undefined && !isValidSetupSteps(setupSteps)) {
+    throw new Error(
+      `pack "${name}": pack.json's setupSteps must be a non-empty array of single-line, non-empty strings`,
     );
   }
   // pack-stage.ts's stagePacks keys each pack's staging directory on

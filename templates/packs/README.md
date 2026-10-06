@@ -65,6 +65,15 @@ already enumerate groups rather than individual steps.
 - `wiring.verifySteps` — entries appended to `bin/lib/verify-steps.packs.json`.
 - `adoptNotes` — free text surfaced verbatim in `/customize`'s Step 0
   confirmation round when the pack applies to an adopted project.
+- `setupSteps` — the exact commands a user must run in the new project after
+  the pack is installed and before the first `pnpm verify`, or verify fails
+  (for example, `publishing` needs `@changesets/cli` added, since a pack can
+  never edit `dependencies`). A non-empty array of single-line, non-empty
+  strings; `loadPack` rejects anything else. Fresh mode prints every installed
+  pack's steps in one block after its `ready` line. Adopt mode neither prints
+  them nor adds them to the inventory (the staged `pack.json` still carries the
+  field verbatim): a pack that is adopt-capable and needs setup says so in
+  `adoptNotes`. Optional.
 
 ## Install path
 

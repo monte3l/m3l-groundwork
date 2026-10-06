@@ -369,6 +369,29 @@ export function formatCapsSummary(
 }
 
 /**
+ * Fresh mode's closing "setup required" block: one heading, then each pack
+ * that declares `setupSteps` (in `packs` order) followed by its commands,
+ * each indented two spaces. `undefined` when no pack declares any, so the
+ * caller prints nothing extra.
+ */
+function formatSetupBlock(
+  targetDir: string,
+  packs: readonly Pack[],
+): string | undefined {
+  const lines: string[] = [];
+  for (const { manifest } of packs) {
+    const steps = manifest.setupSteps ?? [];
+    if (steps.length === 0) continue;
+    lines.push(`pack "${manifest.name}":`, ...steps.map((step) => `  ${step}`));
+  }
+  if (lines.length === 0) return undefined;
+  return [
+    `\nthe installed pack(s) need setup before the first \`pnpm verify\` -- run these in ${targetDir}:`,
+    ...lines,
+  ].join("\n");
+}
+
+/**
  * Fresh mode's pre-flight over the `/customize` skill's own destination
  * (`.claude/skills/customize/`): each directory component must be missing
  * or a real directory, and no payload file name may be a directory. A
@@ -448,6 +471,20 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   }
 
   const { targetDir, skipInstall, projectName } = options;
+
+  // Built once, now that the project and its packs are on disk, and printed
+  // exactly once per run: at the very end on success, or just before the
+  // throw when git init / pnpm install fails -- a plain re-run of a
+  // non-empty target adopts it, and adopt mode never prints setupSteps. The
+  // /customize-skill failure below deliberately does not print it: its
+  // message says to re-run with --fresh --force, which prints it on success.
+  const setupBlock = formatSetupBlock(targetDir, packs);
+  const printSetupBlock = (): void => {
+    if (setupBlock !== undefined) {
+      console.log(paint(process.stdout, "warning", setupBlock));
+    }
+  };
+
   let pluginResult: InstallPluginResult;
   try {
     pluginResult = installCustomizeSkill(targetDir);
@@ -471,6 +508,7 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   try {
     gitInit(targetDir);
   } catch (error) {
+    printSetupBlock();
     throw new Error(
       `git init failed, but the project was written to ${targetDir}; run \`git init\`${skipInstall ? "" : " and `pnpm install`"} there yourself`,
       { cause: error },
@@ -489,6 +527,7 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
           `\n${projectName} written to ${targetDir}, but dependencies are not installed`,
         ),
       );
+      printSetupBlock();
       throw new Error(
         `${describeInstallFailure(error)}; the project was written to ${targetDir} -- run \`pnpm install\` there yourself to finish`,
         { cause: error },
@@ -504,6 +543,7 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
       `\n✓ ${projectName} is ready at ${targetDir}`,
     ),
   );
+  printSetupBlock();
 }
 
 /**

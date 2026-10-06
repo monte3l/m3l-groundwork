@@ -89,10 +89,15 @@ fresh() { # name pack...
   note=""; vlog="fresh-$name.verify.log"
   case " $* " in *" publishing "*)
     if [ "$vrc" != 0 ]; then # the pack's documented required setup (its adoptNotes)
-      (cd "$d" && pnpm add -D @changesets/cli && node bin/check-license-headers.mjs --fix) >"$WORK/logs/fresh-$name.setup.log" 2>&1
+      # The pack's setupSteps, in order. The header gate only sees tracked
+      # files, and a fresh project has none until it is staged.
+      (cd "$d" && pnpm add -D @changesets/cli && git add -A && node bin/check-license-headers.mjs --fix && git add -A) >"$WORK/logs/fresh-$name.setup.log" 2>&1
       (cd "$d" && pnpm verify) >"$WORK/logs/fresh-$name.verify2.log" 2>&1; vrc=$?
       note=" (first verify failed; passes after the pack's documented setup)"
       vlog="fresh-$name.verify2.log"
+      # A green verify proves nothing if the header gate had zero files to check.
+      lh=$(cd "$d" && node bin/check-license-headers.mjs 2>&1 | tail -1)
+      case "$lh" in *"ok -- 0 file"*) vrc=1; note=" (license-header gate checked 0 files)" ;; esac
     fi ;;
   esac
   left=$(grep -rIlE '__[A-Z][A-Z_]+__' "$d" --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=customize --exclude=pnpm-lock.yaml 2>/dev/null | head -3 | tr '\n' ' ')
@@ -100,7 +105,7 @@ fresh() { # name pack...
   if [ "$vrc" = 0 ] && [ -z "$left" ] && [ -z "$staged" ]; then
     row "fresh: $name" PASS "verify ok, $((SECONDS - t))s$note"
   else
-    row "fresh: $name" FAIL "verify=$vrc tokens=[${left}] staged=[${staged}] (logs/$vlog)"
+    row "fresh: $name" FAIL "verify=$vrc tokens=[${left}] staged=[${staged}]${note} (logs/$vlog)"
   fi
 }
 

@@ -76,7 +76,8 @@ fails the run rather than passing silently.
 `.github/release-tools/package-lock.json` and the same 10 in
 `templates/packs/publishing/files/.github/release-tools/package-lock.json`
 (the copy the `publishing` pack ships to users). All 20 are `inBundle`
-dependencies inside the pinned `npm` package (11.20.0, read from the lockfile's
+dependencies inside the pinned `npm` package (11.20.0 in this repository's own
+lockfile, 12.2.0 in the pack's since #122, read from each lockfile's
 `node_modules/npm` entry). The advisories were published 2026-09-29 and
 2026-10-01.
 
