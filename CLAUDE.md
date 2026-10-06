@@ -108,6 +108,9 @@ packages/plugin/        Phase B: the /customize skill
                          dependency-review.yml, scorecard.yml, gitleaks.yml,
                          security-audit.yml (daily `pnpm audit`, opens one
                          issue on a high-severity advisory),
+                         soak.yml (manual only: runs bin/soak.sh against the
+                         published package on Linux x64/arm64 and macOS -- see
+                         .claude/rules/ci.md),
                          claude.yml, dependabot.yml,
                          deploy-tools/ (pins the exact wrangler version
                          docs.yml's deploy job installs, same pattern as
