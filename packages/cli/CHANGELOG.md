@@ -1,5 +1,13 @@
 # @monte3l/groundwork
 
+## 1.0.0-rc.4
+
+### Patch Changes
+
+- [#125](https://github.com/monte3l/m3l-groundwork/pull/125) [`a95028a`](https://github.com/monte3l/m3l-groundwork/commit/a95028a89fc8c5ffef92fd32e233986780d5712b) Thanks [@enri3l](https://github.com/enri3l)! - A pack can now declare `setupSteps` in its `pack.json`: the exact commands a user must run in the new project before the first `pnpm verify`. Fresh mode prints them in one block after the `ready` line (and also before the error when `git init` or `pnpm install` fails after the project is written), so `--pack publishing` no longer ends in a green "ready" followed by a red first verify with no hint why. The `publishing` pack declares `pnpm add -D @changesets/cli`, `git add -A`, `node bin/check-license-headers.mjs --fix` and `git add -A`: the license-header gate only checks git-tracked files, so without staging first `--fix` fixes nothing and the gate trivially passes until the first commit. `loadPack` rejects a `setupSteps` that is not a non-empty array of single-line, non-empty strings. Adopt mode and the inventory are unchanged.
+
+- [#125](https://github.com/monte3l/m3l-groundwork/pull/125) [`a95028a`](https://github.com/monte3l/m3l-groundwork/commit/a95028a89fc8c5ffef92fd32e233986780d5712b) Thanks [@enri3l](https://github.com/enri3l)! - The `publishing` pack's pinned release-tools npm moves from 11.20.0 to 12.2.0 (Dependabot, [#122](https://github.com/monte3l/m3l-groundwork/issues/122)). npm 12.2.0 needs Node `^22.22.2 || ^24.15.0 || >=26`, which the baseline's `.node-version` (24) satisfies. The pack's security note, which named the old version, is updated to match; the advisory analysis it records is unchanged, since 12.2.0 bundles the same undici, ip-address and brace-expansion versions as 11.20.0.
+
 ## 1.0.0-rc.3
 
 ### Patch Changes
