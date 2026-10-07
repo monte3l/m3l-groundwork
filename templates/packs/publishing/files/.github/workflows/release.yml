@@ -185,12 +185,14 @@ jobs:
           package-manager-cache: false
       # Only the changesets CLI is needed here, not any package's lifecycle scripts.
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      # `npm stage publish` needs npm >= 11.15.0 (Node >= 22.14.0 -- already
-      # covered by .node-version). Pinned to an exact version, not a range or
-      # `latest`: this job holds the OIDC token, and an unpinned
-      # package-manager install is exactly what OpenSSF Scorecard's
-      # Pinned-Dependencies check flags. `.github/release-tools/` pins the
-      # exact tarball via its committed lockfile's integrity hash, and
+      # `npm stage publish` needs npm >= 11.15.0. The pinned npm (12.2.0)
+      # declares engines Node ^22.22.2 || ^24.15.0 || >=26. .node-version's
+      # `24` meets that on GitHub-hosted runners, whose cached 24.x is recent;
+      # a self-hosted runner with an older cached 24.x does not. Pinned to an
+      # exact version, not a range or `latest`: this job holds the OIDC token,
+      # and an unpinned package-manager install is exactly what OpenSSF
+      # Scorecard's Pinned-Dependencies check flags. `.github/release-tools/`
+      # pins the exact tarball via its committed lockfile's integrity hash, and
       # `npm ci` verifies the install against it -- bumping the pin is then
       # a normal reviewed PR (a lockfile diff), not a hand-edited version
       # string.

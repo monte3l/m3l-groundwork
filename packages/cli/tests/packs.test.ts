@@ -231,6 +231,88 @@ describe("listPackNames / loadPack", () => {
   });
 });
 
+describe("loadPack setupSteps validation", () => {
+  let packsRoot: string;
+
+  beforeEach(() => {
+    packsRoot = mkdtempSync(join(tmpdir(), "packs-setup-steps-"));
+  });
+
+  afterEach(() => {
+    rmSync(packsRoot, { recursive: true, force: true });
+  });
+
+  it("loads with setupSteps undefined when the field is absent", () => {
+    writeManifest(packsRoot, "no-steps");
+    expect(loadPack("no-steps", packsRoot).manifest.setupSteps).toBeUndefined();
+  });
+
+  it("loads a valid setupSteps array unchanged", () => {
+    const setupSteps = ["pnpm add -D thing", "node bin/fix.mjs --fix"];
+    writeManifest(packsRoot, "with-steps", { setupSteps });
+    expect(loadPack("with-steps", packsRoot).manifest.setupSteps).toEqual(
+      setupSteps,
+    );
+  });
+
+  test.each([
+    ["an empty array", []],
+    ["a string rather than an array", "pnpm add -D thing"],
+    ["an array containing a non-string", ["pnpm add -D thing", 7]],
+    ["an array containing an empty string", ["pnpm add -D thing", ""]],
+    ["an entry containing a newline", ["pnpm add -D a\npnpm add -D b"]],
+  ])("throws when setupSteps is %s", (_label, setupSteps) => {
+    writeRawManifest(packsRoot, "bad-steps", {
+      schemaVersion: 1,
+      name: "bad-steps",
+      description: "a test pack",
+      modes: ["fresh", "adopt"],
+      budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
+      wiring: { settings: {}, packageScripts: {}, verifySteps: [] },
+      setupSteps,
+    });
+    expect(() => loadPack("bad-steps", packsRoot)).toThrow(
+      `pack "bad-steps": pack.json's setupSteps must be a non-empty array of single-line, non-empty strings`,
+    );
+  });
+});
+
+describe("real packs' setupSteps", () => {
+  it("publishing declares exactly its four setup commands, in order", () => {
+    expect(loadPack("publishing").manifest.setupSteps).toEqual([
+      "pnpm add -D @changesets/cli",
+      "git add -A",
+      "node bin/check-license-headers.mjs --fix",
+      "git add -A",
+    ]);
+  });
+
+  // Includes packs whose modes contain "adopt", where setupSteps is silently
+  // dropped, so the prose in adoptNotes is the only place the user sees them.
+  test.each(
+    listPackNames().filter(
+      (name) => loadPack(name).manifest.setupSteps !== undefined,
+    ),
+  )(
+    "the real %s pack's adoptNotes contain every setupSteps entry verbatim",
+    (name) => {
+      const { setupSteps, adoptNotes } = loadPack(name).manifest;
+      for (const step of setupSteps ?? []) {
+        expect(adoptNotes, `adoptNotes is missing step "${step}"`).toContain(
+          step,
+        );
+      }
+    },
+  );
+
+  test.each(listPackNames().filter((name) => name !== "publishing"))(
+    "the real %s pack declares no setupSteps",
+    (name) => {
+      expect(loadPack(name).manifest.setupSteps).toBeUndefined();
+    },
+  );
+});
+
 describe("loadPack hardened validation", () => {
   let packsRoot: string;
 
