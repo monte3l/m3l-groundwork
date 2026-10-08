@@ -72,9 +72,9 @@ packages/cli/          Phase A: the offline bootstrapper CLI
   bin/                    m3l-groundwork.mjs -- the published entry point
   scripts/                vendor-assets.mjs -- prepack/postpack: copies templates/
                           and the plugin payload into the package for a pack
-  tests/                  unit tests + bootstrap.e2e.test.ts + adopt.e2e.test.ts
-                          + packs.e2e.test.ts + packs-github.e2e.test.ts
-                          + pack.e2e.test.ts (the published tarball, run
+  tests/                  unit tests + `*.e2e.test.ts` (bootstrap, adopt, bin,
+                          one per pack or pack combination, and
+                          pack.e2e.test.ts -- the published tarball, run
                           from outside the repo)
 
 packages/plugin/        Phase B: the /customize skill
@@ -117,6 +117,13 @@ packages/plugin/        Phase B: the /customize skill
                          release-tools/), environments.json (the cleanup
                          policy), ISSUE_TEMPLATE/, pull_request_template.md
 
+bin/                    This repo's own gate scripts: verify.mjs, check-*.mjs,
+                         build-docs.mjs, eval.mjs, soak.sh. The step list
+                         they all read from is bin/lib/verify-steps.mjs.
+
+evals/                  `pnpm eval` suites. `.eval-results/` is gitignored
+                         output.
+
 design/                 m3l-design, vendored -- see design/README.md and
                          .claude/rules/design-system.md. source/ is a
                          verbatim copy; tokens.css is generated from it by
@@ -134,6 +141,9 @@ docs/assurance-case.md  The OpenSSF Best Practices Silver `assurance_case`:
 docs/security-review.md The Gold-level `dynamic_analysis` write-up -- see
                          "Testing" below.
 docs/glossary.md        Term definitions shared across the other docs pages.
+docs/github-blueprint.md
+                         The exact `gh api` commands for the GitHub settings
+                         that live outside the repo -- see "Known gaps".
 docs/cloudflare-docs.md The docs-site deploy target -- see
                          .claude/rules/docs-site.md.
 docs/environment-janitor.md
@@ -172,7 +182,7 @@ Run any task with `pnpm <script>`.
 | `pnpm lint` / `lint:fix`              | ESLint over the whole repo (excludes `templates/**`), `--max-warnings 0` -- a warning fails the gate the same as an error                                                                                                                                                                                                                                                                                                                                     |
 | `pnpm format` / `format:check`        | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm test` / `test:coverage`         | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `pnpm test:e2e`                       | The real acceptance test: `bootstrap.e2e.test.ts`, `adopt.e2e.test.ts`, `packs.e2e.test.ts`, `packs-github.e2e.test.ts` and `pack.e2e.test.ts` -- slow and network-touching (real `pnpm install`s and a packed tarball). None are part of `pnpm test`; see "Testing" below for what each one guards.                                                                                                                                                          |
+| `pnpm test:e2e`                       | Every `*.e2e.test.ts` (`vitest.e2e.config.ts`) -- slow and network-touching (real `pnpm install`s, a packed tarball), run **serially** (`fileParallelism: false`, because `pack.e2e.test.ts` rebuilds `dist/` mid-run). None are part of `pnpm test`; see "Testing" below.                                                                                                                                                                                    |
 | `pnpm knip`                           | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                                                                                                                                                 |
 | `pnpm check:exports`                  | publint + attw against `packages/cli`'s packed tarball -- the one published package                                                                                                                                                                                                                                                                                                                                                                           |
 | `pnpm check:plugin-version`           | `plugin.json`'s version matches the CLI's, `packages/plugin/package.json` stays private, and `marketplace.json`'s entry names it correctly and carries no npm source or version pin of its own                                                                                                                                                                                                                                                                |
@@ -675,10 +685,11 @@ guessing, not a twin diff). See
 "Dynamic analysis" for the full write-up, and `.claude/rules/tests.md` for
 where a property test belongs alongside its example-based sibling.
 
-`bootstrap.e2e.test.ts` is the only test that spawns real child processes
-(the built CLI, then `pnpm install`/`pnpm verify` inside the emitted
-project) -- it's excluded from `pnpm test`'s default run
-(`vitest.config.ts`'s `**/*.e2e.test.ts` exclude) and only runs via
+The `*.e2e.test.ts` files are the only tests that spawn real child processes.
+`bootstrap.e2e.test.ts` (the built CLI, then `pnpm install`/`pnpm verify`
+inside the emitted project) is the acceptance test, and each `packs-*.e2e.test.ts`
+does the same with a pack installed. They're excluded from `pnpm test`'s
+default run (`vitest.config.ts`'s `**/*.e2e.test.ts` exclude) and only run via
 `pnpm test:e2e`. Run it after any change to `packages/cli/src/`,
 `templates/core/`, or `packages/plugin/skills/customize/` -- it has already
 caught real bugs a unit-test mock would have hidden (a wrong
@@ -717,81 +728,26 @@ set for one file.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships six packs, each covering one theme rather than
-  one theme per artifact. `harness-extras` is Claude Code session
-  ergonomics: the compaction-handoff hook pair, `guard-readonly-bash`, and a
-  five-row statusLine and a `subagentStatusLine` renderer (recovered from the retired
-  predecessor's transcripts and stripped of its project-specific segments,
-  originally its own `statusline` pack, folded in here because both halves
-  are language- and harness-level rather than domain-level). It's the only
-  pack that uses `wiring.settingsTopLevel`, and in adopt mode a project that
-  already defines `statusLine`/`subagentStatusLine` skips just those keys
-  and the three statusline scripts rather than failing the whole install.
-  `quality` holds the other two of the four artifacts the original baseline
-  build cut purely to fit a cap, not because they failed the generalization
-  test: a `type-design-analyzer` review agent and a `check-file-budget`
-  per-file size ratchet (a `build`-group verify step). It was split out of
-  `harness-extras` because those two are code-quality aids rather than
-  session ergonomics. The agent is not dispatched by name from the
-  baseline's hub-and-spoke instructions (a pack cannot edit `CLAUDE.md`), so
-  it is used on request or after a project adds it to its own review step.
-  `github` (renamed from `claude-action`) is GitHub-hosted collaboration:
-  Anthropic's official `anthropics/claude-code-action` in mention-mode, a
-  second Action that posts an automated Claude review comment on every PR,
-  and three `gh`-CLI skills recovered from the predecessor build's
-  `EXTRACTION-MANIFEST.md` (its "best first-pack candidates", generalized
-  rather than shipped verbatim) -- `reviewing-dependabot-prs` (classify and
-  batch-merge open Dependabot PRs), `triaging-scan-alerts` (triage open
-  code-scanning alerts to file:line, report only, never edits code), and
-  `watching-pr-checks` (check a PR's CI status, hand off to a project's own
-  `/triaging-ci` on a real failure). Both workflows need an auth secret the
-  pack cannot create -- see its `adoptNotes`. `publishing` is a release
-  pipeline, adapted from this repo's own working implementation (see
-  "Releases"): `release.yml` (changesets
-  version-PR / staged, provenance-attested npm publish via trusted
-  publishing OIDC), `check-publish-version.mjs` (no-ops on `private: true`
-  or an unreachable registry), `check-dts-deps.mjs` (a published `.d.ts`
-  file must not import a package that's only a devDependency),
-  `check-license-headers.mjs` (generalized from this
-  repo's own copy with a `__PROJECT_NAME__` token in place of a hardcoded
-  copyright holder, and with the `templates/**` brand-neutrality exemption
-  dropped -- an emitted project has no such tree of its own) and a
-  `REUSE.toml` template. Fresh mode only: the release flow encodes
-  decisions (registry access, npm trusted-publisher setup, a GitHub App for
-  the version PR) too project-specific for an automated adopt-mode install
-  -- see its `adoptNotes`. It cannot wire `@changesets/cli` itself either,
-  since the wiring contract only extends `package.json`'s `scripts`, never
-  its `dependencies`/`devDependencies` -- its shipped `.changeset/README.md`
-  says so. `supply-chain` is the OpenSSF supply-chain half, split out of
-  `publishing` because it is useful to any GitHub project, published or not:
-  `gitleaks.yml` (secret scanning, with a `.gitleaks.toml`) and
-  `scorecard.yml`, two read-only workflows and nothing else -- adopt-capable
-  and recommended for every project kind. The SPDX license-header gate stays
-  in `publishing`: it fails an established project's `pnpm verify` until a
-  one-time backfill touches every file, so it cannot be an adopt-mode
-  install. `worktrees` enforces that all src/tests development happens
-  inside an isolated git worktree, on any branch, for any caller
-  (`guard-worktree-only.mjs`, stricter than the baseline's own
-  `guard-branch-isolation.mjs`/`guard-hub-src-writes.mjs`, which only block
-  on `main` and only block the hub respectively), plus a
-  `working-in-worktrees` skill (start/status/sync/finish/fan-out), an
-  `ensure-worktree-deps.mjs` `SessionStart` backstop that installs
-  dependencies into a freshly created worktree, a `repair-core-bare.mjs`
-  hook (`SessionStart`, and `PostToolUse` after `EnterWorktree`/
-  `ExitWorktree`/`Agent`) that resets the `core.bare = true` those Claude Code
-  tools are reported to leave in a normal repo's shared `.git/config`
-  (anthropics/claude-code#58345, #69802 -- it breaks `git status` in the main
-  checkout; this repo's own `.claude/` carries a copy of that hook though it
-  never installed the pack), and a `.worktreeinclude`
-  copying `.env`/`.env.local`/`.env.*.local` into every worktree Claude Code creates. It's
-  the pack this repo's
-  own `.claude/hooks/post-edit-verify.mjs` and `finishing-work`/
-  `starting-work` worktree-awareness (see `.claude/hooks/post-edit-verify.mjs`'s
-  own header comment) were a prerequisite for, not a replacement of -- those
-  fixes make the harness _correct_ inside a worktree that already exists;
-  this pack is what makes worktree-only development the _default_ workflow.
-  `recommended: false` in `pack-map.ts` deliberately, since it changes the
-  day-to-day workflow rather than adding a nicety -- see its `adoptNotes`.
+- `templates/packs/` ships six packs, each covering one theme (wiring contract
+  and each pack's `adoptNotes` live in `templates/packs/README.md` and its
+  `pack.json` files). `harness-extras`: Claude Code session ergonomics
+  (compaction-handoff hooks, `guard-readonly-bash`, statusLine and
+  `subagentStatusLine` renderers); the only pack using `wiring.settingsTopLevel`,
+  and in adopt mode it skips just the keys a project already defines. `quality`:
+  `type-design-analyzer` agent and the `check-file-budget` ratchet. `github`:
+  `claude-action` in mention-mode, an automated PR-review workflow and three
+  `gh` skills; both workflows need an auth secret the pack cannot create.
+  `publishing`: the release pipeline adapted from this repo's own
+  (see "Releases"); **fresh mode only**, since it encodes registry and GitHub
+  App decisions too project-specific to automate in adopt mode, and it cannot
+  wire `@changesets/cli` because a pack never edits dependencies. `supply-chain`:
+  `gitleaks.yml` and `scorecard.yml`, adopt-capable for every project kind (the
+  SPDX header gate stays in `publishing` because it fails an established
+  project's `pnpm verify` until a one-time backfill). `worktrees`: enforces
+  worktree-only src/tests development (`guard-worktree-only.mjs`, a
+  `working-in-worktrees` skill, dependency-install and `core.bare` repair
+  hooks, a `.worktreeinclude`); `recommended: false` in `pack-map.ts` on
+  purpose, since it changes the day-to-day workflow.
 - **No standalone "add a pack to an already-bootstrapped project" flag.**
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is
@@ -859,45 +815,15 @@ set for one file.
   agents/skills/hooks and the project's own -- good enough to flag "you may
   go over budget," not precise enough to be the final word; `/customize`'s
   Step 0 confirmation round settles it for real.
-- **A 2026-09-26 GitHub-settings audit found real gaps this repo's own docs
-  hadn't caught up to.** Both org-write and secret-write actions need a
-  human, not an agent, in this project's own tooling, so the items below
-  were applied by hand with a `gh api` call or a dashboard toggle -- tracked
-  here rather than left to drift like the ruleset already warns against.
-  Applied so far: `pull_request_creation_policy: collaborators_only` (see
-  "Git Workflow") and `gitleaks.yml`/the `claude.yml` `author_association`
-  guard, both landed in the same change as this entry.
-
-  A 2026-09-29 re-audit read the live settings and found every item then
-  listed still pending, plus four more. Immutable releases are deliberately
-  **not** on the list: `release.yml` uploads assets after the Release exists,
-  which immutability would block. The exact commands are in
-  [`docs/github-blueprint.md`](docs/github-blueprint.md); the repo-scope ones
-  are also scripted in `monte3l/.github` (`bin/apply-repo-baseline.sh`,
-  `--check` first). An agent's attempt to apply them was refused by Claude
-  Code's permission classifier, which confirms the rule above: run them
-  yourself. When you do, the SHA-pinning allowlist must cover sub-path
-  actions (`changesets/action/pack@...`), so allow `changesets/action/*` as well as
-  `changesets/action@*`.
-
-  A 2026-10-04 re-read of the live settings (repo and org scope) confirmed
-  every item is applied:
-
-  | Applied item                                              | Live state                                                                                                     |
-  | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-  | `can_approve_pull_request_reviews` off                    | `false` at repo and org scope                                                                                  |
-  | Approval for all external contributors' workflow runs     | `all_external_contributors` at repo and org scope                                                              |
-  | SHA pinning and an actions allowlist                      | `sha_pinning_required: true` and `selected` at repo and org scope; repo allowlist has `changesets/action/*`    |
-  | Tag-protection ruleset                                    | `tags`: deletion, non-fast-forward and update blocked, empty `bypass_actors`                                   |
-  | `prevent_self_review` on the `npm-publish` environment    | `true`; the other reviewer must approve a publish                                                              |
-  | Rebase-merge off at repo level                            | `allow_rebase_merge: false`                                                                                    |
-  | Gitleaks a required check on `main`                       | `Gitleaks` pinned to its producing app beside `verify`/`Dependency Review`/`CodeQL`                            |
-  | Org default repository permission below `admin`           | `read`                                                                                                         |
-  | Security defaults for new public repositories             | The "GitHub recommended" configuration: Dependabot alerts, secret scanning with push protection, code scanning |
-  | `dependencies` and `security` labels                      | Both exist                                                                                                     |
-  | Org secrets `CLAUDE_CODE_OAUTH_TOKEN`, `GITLEAKS_LICENSE` | `visibility: selected`, this repo only                                                                         |
-  | Claude and Cloudflare GitHub App installations            | Both `repository_selection: selected`                                                                          |
-  | Dependabot security updates                               | On for this repo through its own `m3l-groundwork` security configuration (id 281064)                           |
+- **GitHub settings live outside the repo.** Org-write and secret-write actions
+  need a human, not an agent (Claude Code's permission classifier refuses an
+  agent's attempt), so they were applied by hand and every item was confirmed
+  applied on 2026-10-04. [`docs/github-blueprint.md`](docs/github-blueprint.md)
+  holds the exact `gh api` commands; the repo-scope ones are also scripted in
+  `monte3l/.github` (`bin/apply-repo-baseline.sh`, `--check` first). The
+  SHA-pinning allowlist must cover sub-path actions, so allow
+  `changesets/action/*` as well as `changesets/action@*`. Immutable releases
+  are deliberately off: `release.yml` uploads assets after the Release exists.
 
   Two caveats remain. New repositories still default to the "GitHub recommended"
   configuration, which leaves Dependabot security updates `not_set`. And the
