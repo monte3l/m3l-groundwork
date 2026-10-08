@@ -36,7 +36,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Flips the case of every letter -- guaranteed to differ from the input
  * (as long as it contains at least one letter) while still denoting the
@@ -611,4 +611,77 @@ describe("no shipped script compares process.argv[1] to import.meta.url directly
       expect(source).toContain("realpathSync(process.argv[1])");
     },
   );
+});
+
+describe.each([
+  ["templates/core copy", hooksDir],
+  ["root copy", join(here, "..", "..", "..", ".claude", "hooks")],
+])("inject-decision-gate buildContext (%s)", (_label, dir) => {
+  let buildContext: (branch: string) => string;
+
+  beforeAll(async () => {
+    const mod = (await import(
+      pathToFileURL(join(dir, "inject-decision-gate.mjs")).href
+    )) as { buildContext: typeof buildContext };
+    buildContext = mod.buildContext;
+  });
+
+  it("states the branch state", () => {
+    expect(buildContext("feat/x")).toContain("on `feat/x`");
+    expect(buildContext("HEAD")).toContain("detached HEAD");
+    expect(buildContext("")).toContain("not a git repo");
+  });
+
+  it.each(["main", "HEAD", "", "feat/x"])(
+    "carries the factual pieces for %j",
+    (branch) => {
+      const text = buildContext(branch);
+      expect(text).toContain("starting-work");
+      expect(text).toContain("feat/<slug>");
+      expect(text).toContain("fix/<slug>");
+      expect(text).toMatch(/PR/);
+      expect(text).toMatch(/direct commit to `?main`?/);
+      expect(text).toContain("origin <branch>");
+      expect(text).toContain("origin main");
+      expect(text).toContain("guard-branch-isolation.mjs");
+    },
+  );
+
+  it.each(["main", "HEAD", "", "feat/x"])(
+    "drops the imperative phrasing for %j",
+    (branch) => {
+      const text = buildContext(branch);
+      expect(text).not.toContain("Settle these first");
+      expect(text).not.toContain("so branch first");
+    },
+  );
+
+  it("adds an on-main clause for main, HEAD and no repo, not a feature branch", () => {
+    const mentions = (text: string): number =>
+      text.split(/\bmain\b/).length - 1;
+    const feature = mentions(buildContext("feat/x"));
+    for (const branch of ["HEAD", ""]) {
+      expect(mentions(buildContext(branch))).toBeGreaterThan(feature);
+    }
+    expect(mentions(buildContext("main"))).toBeGreaterThan(feature + 1);
+  });
+});
+
+describe.each([
+  ["templates/core copy", hooksDir],
+  ["root copy", join(here, "..", "..", "..", ".claude", "hooks")],
+])("guard-no-commonjs block message (%s)", (_label, dir) => {
+  it("names import.meta.dirname and import.meta.filename as replacements", () => {
+    const { status, stderr } = run(join(dir, "guard-no-commonjs.mjs"), {
+      tool_name: "Write",
+      tool_input: {
+        file_path: "/tmp/x.js",
+        content: 'const p = __dirname + "/a";',
+      },
+    });
+    expect(status).toBe(2);
+    expect(stderr).toContain("import.meta.dirname");
+    expect(stderr).toContain("import.meta.filename");
+    expect(stderr).toContain("fileURLToPath(import.meta.url)");
+  });
 });

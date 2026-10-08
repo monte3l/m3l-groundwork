@@ -49,6 +49,12 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
+  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+    writeFileSync(
+      join(sourceDir, "skills", "customize", stepName),
+      `# ${stepName}\n`,
+    );
+  }
 }
 
 describe("a source payload file that exists but is unreadable keeps its real errno, never 'missing' (item 4)", () => {
@@ -167,5 +173,35 @@ describe("a source payload file that exists but is unreadable keeps its real err
 
     expect(thrown).toBeInstanceOf(Error);
     expect((thrown as Error).message).toContain("is missing");
+  });
+
+  it.each(["step-0-reconcile.md", "step-3-round-1.md"])(
+    "a missing %s throws the 'is missing' error naming its path under skills/customize/",
+    (stepName) => {
+      const stepPath = join(sourceDir, "skills", "customize", stepName);
+      rmSync(stepPath, { force: true });
+
+      let thrown: unknown;
+      try {
+        installCustomizeSkill(targetDir, sourceDir);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toContain("is missing");
+      expect((thrown as Error).message).toContain(stepPath);
+    },
+  );
+
+  it("reads a step file from skills/customize/, never from src/", () => {
+    const stepName = "step-0-reconcile.md";
+    rmSync(join(sourceDir, "skills", "customize", stepName), { force: true });
+    // A decoy under src/ must not satisfy the read.
+    writeFileSync(join(sourceDir, "src", stepName), "# decoy\n");
+
+    expect(() => installCustomizeSkill(targetDir, sourceDir)).toThrow(
+      /is missing/,
+    );
   });
 });

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    "target": "es2023",
-    "lib": ["es2023"],
+    "target": "es2025",
+    "lib": ["es2025"],
     "types": ["node"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
@@ -12,20 +12,24 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
     "allowUnreachableCode": false,
     // isolatedDeclarations stays out of the base config deliberately: the
-    // build project sets it individually (see tsconfig.build.json), but the
-    // tooling project (tsconfig.json) sets declaration: false and includes
-    // tests/, which isolatedDeclarations does not tolerate.
+    // per-package build projects set it individually, but a tooling project
+    // that includes tests/ can't tolerate it (a test file re-exporting a
+    // fixture without an explicit return type is normal and fine). Promoting
+    // it here would fail typecheck on every test file rather than catch a
+    // real declaration-emit gap.
     //
     // noUnusedLocals / noUnusedParameters are deliberately NOT set:
     // @typescript-eslint/no-unused-vars already covers both at error level
     // (eslint.config.js) with an `^_`-prefix escape hatch this codebase
-    // relies on; tsc's flags honor no such pattern for locals.
+    // relies on; tsc's flags honor no such pattern for locals, so adding
+    // them would duplicate an existing gate while breaking that convention.
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,

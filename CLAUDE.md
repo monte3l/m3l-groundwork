@@ -589,6 +589,13 @@ the repo can detect it. Check `/plugin` for installed mods alongside
 call counts as a writer spoke only with both present, so a hub launched as
 `claude --agent code-implementer` is still the hub and is blocked.
 
+**Agent teams (experimental) are not covered or verified.** A split-pane
+teammate is a full session with no `agent_id`, so the guard treats it as the
+hub and blocks it (fail-closed). Whether an in-process teammate's tool calls
+carry `agent_type` and `agent_id` is undocumented, so one passing as a writer
+spoke is unconfirmed. Every spoke's `tools` list omits `Agent`, which keeps the
+roster flat even where `disallowedTools` is not applied to a teammate.
+
 Full dispatch-sizing and recovery guidance:
 `.claude/rules/agent-dispatch.md` (auto-loads when editing
 `.claude/skills/**` or `.claude/agents/**`). Path-scoped rules auto-load on

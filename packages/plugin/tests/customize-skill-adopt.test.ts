@@ -24,7 +24,15 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const skillPath = join(here, "..", "skills", "customize", "SKILL.md");
-const raw = readFileSync(skillPath, "utf8");
+// Step 0 and Step 3 live in sibling files (SKILL.md links to them, to stay under
+// the post-compaction re-injection cap), so the contract text spans all three.
+const raw = [
+  join(here, "..", "skills", "customize", "step-0-reconcile.md"),
+  join(here, "..", "skills", "customize", "step-3-round-1.md"),
+  skillPath,
+]
+  .map((path) => readFileSync(path, "utf8"))
+  .join("\n");
 const text = raw.replace(/\s+/g, " ");
 
 describe("SKILL.md Step 0 -- incomplete-run rule", () => {

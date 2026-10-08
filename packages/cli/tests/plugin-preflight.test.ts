@@ -55,6 +55,12 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
+  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+    writeFileSync(
+      join(sourceDir, "skills", "customize", stepName),
+      `# ${stepName}\n`,
+    );
+  }
 }
 
 /** A pre-existing, differing `.claude/skills/customize/SKILL.md` -- forces `installCustomizeSkillGuarded` into its "groundwork" branch. */
@@ -172,7 +178,9 @@ describe.each(positions)(
       destDir = join(targetDir, ".claude", "skills", "customize");
       // A successful first install.
       const first = installCustomizeSkill(targetDir, sourceDir);
-      expect(first.filesWritten).toHaveLength(5);
+      expect(first.filesWritten).toHaveLength(
+        CUSTOMIZE_SKILL_FILE_NAMES.length,
+      );
       rmSync(join(destDir, name), { force: true });
       plantNonEmptyDirectoryAt(join(destDir, name));
     });

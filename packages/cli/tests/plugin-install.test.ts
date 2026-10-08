@@ -81,6 +81,12 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
+  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+    writeFileSync(
+      join(sourceDir, "skills", "customize", stepName),
+      `# ${stepName}\n`,
+    );
+  }
 }
 
 /** A pre-existing, differing `.claude/skills/customize/SKILL.md` -- forces `installCustomizeSkillGuarded` into its "groundwork" branch. */
@@ -159,6 +165,25 @@ describe("copyCustomizeSkillFiles writes SKILL.md last and rolls back all-or-not
     expect(typeof result.fallbackReason).toBe("string");
     expect(result.fallbackReason as string).toContain(
       join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
+    );
+  });
+
+  it("a fresh install copies both step files from skills/customize/ byte-for-byte, writing them before SKILL.md", () => {
+    const result = installCustomizeSkill(targetDir, sourceDir);
+    const destDir = join(targetDir, ".claude", "skills", "customize");
+
+    for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+      expect(readFileSync(join(destDir, stepName), "utf8")).toBe(
+        readFileSync(join(sourceDir, "skills", "customize", stepName), "utf8"),
+      );
+      const stepIndex = result.filesWritten.indexOf(
+        join(".claude", "skills", "customize", stepName),
+      );
+      expect(stepIndex).toBeGreaterThanOrEqual(0);
+      expect(stepIndex).toBeLessThan(result.filesWritten.length - 1);
+    }
+    expect(result.filesWritten.at(-1)).toBe(
+      join(".claude", "skills", "customize", "SKILL.md"),
     );
   });
 
@@ -302,7 +327,9 @@ describe("raw fs errors are wrapped (item C)", () => {
       expect(result.location).toBe("groundwork");
       expect(typeof result.fallbackReason).toBe("string");
       expect(result.fallbackReason as string).toContain(collisionPath);
-      expect(result.filesWritten).toHaveLength(5);
+      expect(result.filesWritten).toHaveLength(
+        CUSTOMIZE_SKILL_FILE_NAMES.length,
+      );
       expect(
         readFileSync(
           join(targetDir, ".groundwork", "customize", "SKILL.md"),
@@ -446,7 +473,7 @@ describe("a pre-existing .groundwork/customize/SKILL.md is removed before any da
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
 
     expect(result.location).toBe("groundwork");
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
       expect(readFileSync(join(destDir, name), "utf8")).not.toContain("OLD");
     }
@@ -503,12 +530,15 @@ describe("interrupted-install repair: all data files already current, only SKILL
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  /** Writes the four non-SKILL.md payload files with byte-identical current content, leaving SKILL.md absent. */
+  /** Writes the six non-SKILL.md payload files (four data, two step) with byte-identical current content, leaving SKILL.md absent. */
   function writeCurrentDataFilesOnly(): void {
     writeFileSync(join(destDir, "kind-facet-map.ts"), "export const x = 1;\n");
     writeFileSync(join(destDir, "domain-map.ts"), "export const y = 2;\n");
     writeFileSync(join(destDir, "pack-map.ts"), "export const z = 3;\n");
     writeFileSync(join(destDir, "plugin-map.ts"), "export const w = 4;\n");
+    for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+      writeFileSync(join(destDir, stepName), `# ${stepName}\n`);
+    }
   }
 
   it("completes the install in .claude: writes only the missing SKILL.md, leaves the four already-correct data files untouched", () => {

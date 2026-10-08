@@ -5,9 +5,9 @@
  * Installs the `/customize` skill into a bootstrapped or adopted project.
  * Claude Code's marketplace-based plugin installation is an interactive,
  * network-involving flow this offline CLI can't drive; instead this copies
- * the skill's SKILL.md plus its deterministic backing data directly into a
- * destination directory, so `/customize` works immediately with no further
- * setup step.
+ * the skill's SKILL.md, its step files and its deterministic backing data
+ * into a destination directory, so `/customize` works immediately with no
+ * further setup step.
  */
 import {
   lstatSync,
@@ -21,6 +21,7 @@ import { resolveAsset } from "./assets.js";
 import {
   CLAUDE_DEST_SEGMENTS,
   CUSTOMIZE_SKILL_ENTRY_FILE,
+  CUSTOMIZE_SKILL_STEP_FILE_NAMES,
   CUSTOMIZE_SKILL_WRITE_ORDER,
   GROUNDWORK_DEST_SEGMENTS,
 } from "./customize-paths.js";
@@ -185,6 +186,15 @@ interface PayloadFile {
 }
 
 /**
+ * The payload files sourced from the plugin's `skills/customize/` (the
+ * entry file and its step files); every other one comes from its `src/`.
+ */
+const SKILL_DIR_FILE_NAMES: ReadonlySet<string> = new Set<string>([
+  CUSTOMIZE_SKILL_ENTRY_FILE,
+  ...CUSTOMIZE_SKILL_STEP_FILE_NAMES,
+]);
+
+/**
  * Reads every payload file from the plugin source, in
  * {@link CUSTOMIZE_SKILL_WRITE_ORDER} (`SKILL.md` last), before anything is
  * written. A missing or unreadable source file is a broken install, not
@@ -194,10 +204,9 @@ interface PayloadFile {
  */
 function readCustomizeSkillPayload(sourceDir: string): readonly PayloadFile[] {
   return CUSTOMIZE_SKILL_WRITE_ORDER.map((name) => {
-    const from =
-      name === CUSTOMIZE_SKILL_ENTRY_FILE
-        ? join(sourceDir, "skills", "customize", name)
-        : join(sourceDir, "src", name);
+    const from = SKILL_DIR_FILE_NAMES.has(name)
+      ? join(sourceDir, "skills", "customize", name)
+      : join(sourceDir, "src", name);
     try {
       return { name, bytes: readFileSync(from) };
     } catch (cause) {
@@ -324,13 +333,13 @@ function assertNoDirectoryAtPayloadNames(
 /**
  * For every policy that replaces existing entries: removes an existing
  * `SKILL.md` entry (a file or a symlink, unlinked, never followed) BEFORE any
- * data file is rewritten, so a later failure never leaves a stale `SKILL.md`
- * loadable beside missing or half-rewritten data. Runs after
- * {@link assertNoDirectoryAtPayloadNames}, so a directory there has already
- * been refused (one raced in since makes `rmSync` throw). Returns the
- * removed path, if any; throws (wrapped) before anything is written when the
- * removal fails. `label` is how the entry is described: `"existing"` for a
- * project's own `.claude/` copy, `"stale"` for the CLI-owned staging.
+ * data or step file is rewritten, so a later failure never leaves a stale
+ * `SKILL.md` loadable beside missing or half-rewritten data or step files.
+ * Runs after {@link assertNoDirectoryAtPayloadNames}, so a directory there
+ * has already been refused (one raced in since makes `rmSync` throw). Returns
+ * the removed path, if any; throws (wrapped) before anything is written when
+ * the removal fails. `label` is how the entry is described: `"existing"` for
+ * a project's own `.claude/` copy, `"stale"` for the CLI-owned staging.
  */
 function removeStaleSkillEntry(
   destDir: string,
@@ -495,8 +504,8 @@ function replacedClause(
       if (skillRemoved === undefined && others === "") {
         return "";
       }
-      // One sentence for SKILL.md and the data files alike: every one of
-      // them was removed and none is restored.
+      // One sentence for SKILL.md and the other payload files alike: every
+      // one of them was removed and none is restored.
       const removedPaths = [
         ...(skillRemoved === undefined
           ? []
@@ -956,20 +965,20 @@ function installGuarded(
  *   `fallbackCause` is `"component"` -- the entry (and any link target) is
  *   left untouched.
  * - Otherwise, if every payload file already there is a regular file
- *   matching what this CLI ships byte-for-byte: with all five present the
- *   result is `"already-present"` (nothing written); with no `SKILL.md` file
- *   (none at all, or an install interrupted before writing it) the missing
- *   files are written into `.claude/skills/customize/`, `SKILL.md` last,
- *   never rewriting or removing the correct ones.
+ *   matching what this CLI ships byte-for-byte: with every payload file
+ *   present the result is `"already-present"` (nothing written); with no
+ *   `SKILL.md` file (none at all, or an install interrupted before writing
+ *   it) the missing files are written into `.claude/skills/customize/`,
+ *   `SKILL.md` last, never rewriting or removing the correct ones.
  * - Anything else under a payload name (a differing file, a regular file
  *   that cannot be read, a symlink -- dangling or not -- a directory, a
- *   `SKILL.md` without its data; detected by `lstat`) is kept as the
- *   project's own: the skill is written to `.groundwork/customize/` instead,
- *   `fallbackReason` names that entry (saying so when it could not be read)
- *   and `fallbackCause` is `"entry"`. Adopt mode never guesses at a project
- *   entry it cannot compare, and the fallback does not guess either: it
- *   leaves that entry exactly as it was. Claude Code does not load a skill
- *   from there; the caller must say so.
+ *   `SKILL.md` without its data or step files; detected by `lstat`) is kept
+ *   as the project's own: the skill is written to `.groundwork/customize/`
+ *   instead, `fallbackReason` names that entry (saying so when it could not
+ *   be read) and `fallbackCause` is `"entry"`. Adopt mode never guesses at a
+ *   project entry it cannot compare, and the fallback does not guess either:
+ *   it leaves that entry exactly as it was. Claude Code does not load a
+ *   skill from there; the caller must say so.
  *
  * Writes into `.claude/skills/customize/` use `"wx"` only, so an entry that
  * appears there mid-install fails the run (rolled back) rather than being

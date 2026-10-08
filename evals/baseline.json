@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "suites": {
     "plugin": {
-      "adopt-reconcile": 0.9333,
+      "adopt-reconcile": 1,
       "fresh-interview": 1
     },
     "harness": {
       "creating-prs-fires-1": 1,
-      "creating-prs-fires-2": 0.8,
+      "creating-prs-fires-2": 1,
       "creating-prs-quiet-1": 1,
       "finishing-work-fires-1": 1,
       "finishing-work-fires-2": 1,
@@ -25,10 +25,10 @@
       "typescript-guidance-fires-2": 1,
       "typescript-guidance-fires-3": 1,
       "typescript-guidance-quiet-1": 1,
+      "typescript-guidance-quiet-2": 1,
       "writing-commits-fires-1": 1,
       "writing-commits-fires-2": 1,
-      "writing-commits-quiet-1": 1,
-      "typescript-guidance-quiet-2": 1
+      "writing-commits-quiet-1": 1
     },
     "toolchain": {
       "toolchain-repair": 1

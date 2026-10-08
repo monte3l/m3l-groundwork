@@ -73,13 +73,13 @@ export function buildContext(branch) {
         : `on \`${branch}\``;
   return [
     "Decision gate (before editing code/tests) -- currently " +
-      `${branchLine}. Settle these first, ideally via the \`starting-work\` skill:`,
-    "  • Branch -- `feat/<slug>` or `fix/<slug>` off `main` (never `main`" +
-      (onMain ? ", and you appear to be on/at `main` now" : "") +
-      ").",
-    "  • PR -- any `src/`/`tests/` change lands via PR, never a direct commit to `main`.",
-    "  • Push -- `origin <branch>`, not `origin main`.",
-    "guard-branch-isolation.mjs will block src/test writes on `main`, so branch first.",
+      `${branchLine}. These decisions come first, ideally via the \`starting-work\` skill:`,
+    "  • Branch -- a `feat/<slug>` or `fix/<slug>` branch off `main`, not `main` itself" +
+      (onMain ? "; HEAD may be on/at `main` now" : "") +
+      ".",
+    "  • PR -- any `src/`/`tests/` change lands via a PR, not a direct commit to `main`.",
+    "  • Push -- the target is `origin <branch>`, not `origin main`.",
+    "guard-branch-isolation.mjs blocks src/test writes while HEAD is on `main`.",
   ].join("\n");
 }
 

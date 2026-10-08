@@ -48,6 +48,7 @@ import { main } from "../src/main.js";
 import {
   CUSTOMIZE_SKILL_ENTRY_FILE,
   CUSTOMIZE_SKILL_FILE_NAMES,
+  CUSTOMIZE_SKILL_STEP_FILE_NAMES,
 } from "../src/customize-paths.js";
 import { chmodIneffective } from "./chmod-ineffective.js";
 
@@ -58,7 +59,8 @@ const pluginSrcDir = join(here, "..", "..", "plugin");
 /** This CLI's current bytes for one payload file, read from the real source tree. */
 function realPayloadBytes(name: string): Buffer {
   const from =
-    name === CUSTOMIZE_SKILL_ENTRY_FILE
+    name === CUSTOMIZE_SKILL_ENTRY_FILE ||
+    (CUSTOMIZE_SKILL_STEP_FILE_NAMES as readonly string[]).includes(name)
       ? join(pluginSrcDir, "skills", "customize", name)
       : join(pluginSrcDir, "src", name);
   return readFileSync(from);
