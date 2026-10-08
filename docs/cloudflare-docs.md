@@ -106,7 +106,7 @@ than this rollout's scope covers.
 
 ## Adding project #2's docs site
 
-`.github/deploy-tools/package.json` carries an `overrides` floor, `undici: ^7.29.1`, because wrangler 4.141.0's miniflare resolves an undici with open advisories; drop it once miniflare itself requires undici >= 7.29.1.
+`.github/deploy-tools/package.json` carries an `overrides` floor for two packages. `undici: ^7.29.1`, because wrangler 4.141.0's miniflare resolves an undici with open advisories; drop it once miniflare itself requires undici >= 7.29.1. `sharp: ^0.35.5`, because miniflare pins sharp 0.35.4 exactly, which carries GHSA-wq5f-xc86-pv6w (fixed in 0.35.5); drop it once miniflare itself requires sharp >= 0.35.5.
 
 This setup is deliberately local to this repo for now (see this repo's
 `CLAUDE.md`, "Known gaps" analog for the docs pipeline). Until it's

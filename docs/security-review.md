@@ -130,7 +130,7 @@ directories, so a patched npm arrives as a PR.
 
 > [!WARNING]
 > **Not zero alerts.** Do not describe this repository as having zero open
-> advisories while these 24 are open (and the deploy-tools one below). A dismissed or fixed alert does not stop
+> advisories while these 24 are open. A dismissed or fixed alert does not stop
 > a new advisory against the same bundled packages from opening a new alert.
 
 **Day-of-release re-check.** Run this before approving a release, and bump the
@@ -191,10 +191,10 @@ commands the release flow runs, and their patterns come from our own files and
 from signed registry metadata; whether the other callers run at all in this
 flow was not traced.
 
-## Open advisory in the docs deploy tooling (deploy-tools lockfile)
+## Advisory in the docs deploy tooling (deploy-tools lockfile)
 
-**Dated 2026-10-08.** Dependabot has one open alert in
-`.github/deploy-tools/package-lock.json`, the lockfile that pins the wrangler
+**Dated 2026-10-08; fixed by an override (see "The fix" below).** Dependabot opened one
+alert in `.github/deploy-tools/package-lock.json`, the lockfile that pins the wrangler
 the docs workflow's deploy job installs. That job holds a Cloudflare API token
 (see [`cloudflare-docs.md`](cloudflare-docs.md)).
 
@@ -219,7 +219,7 @@ runs. It was published
   Worker: no Images binding, no `wrangler dev`, and no request handled locally
   (`.github/workflows/docs.yml`, `.github/deploy-tools/wrangler.jsonc`).
 - A dry run of that command (`wrangler deploy --dry-run`) with wrangler 4.141.0
-  and the committed lockfile, run on 2026-10-08 in a scratch directory with no
+  and the lockfile as it stood then (sharp 0.35.4), run on 2026-10-08 in a scratch directory with no
   credentials and with module-load hooks for both CommonJS and ESM, loaded
   miniflare, never resolved sharp, and reported "No bindings found". It ran
   on macOS and stops before the upload, so past that point only the source
@@ -227,16 +227,24 @@ runs. It was published
 - Nothing in the job gives sharp an SVG to decode: it uploads our own built
   static files.
 
-**Why a version bump does not fix it today.** Dependabot's security-update job
-fails with `security_update_not_possible`. wrangler 4.148.0, which gets sharp
-through miniflare 5.20261006.0-alpha, the latest releases on 2026-10-08, still
-resolves sharp 0.35.4. Unlike the npm-bundled packages above, sharp is an ordinary
-dependency, and `.github/deploy-tools/package.json` already has an `overrides`
-entry (for undici), so an override to `^0.35.5` is possible. It has not been
-applied or tested, and miniflare pins 0.35.4 exactly.
+**Why a version bump did not fix it.** Dependabot's security-update job failed
+with `security_update_not_possible`. wrangler 4.148.0, which gets sharp through
+miniflare 5.20261006.0-alpha, the latest releases on 2026-10-08, still resolves
+sharp 0.35.4, because miniflare pins it exactly.
 
-**Decision.** The alert stays open and is documented. Nothing is dismissed. A
-change that adds an Images binding to `wrangler.jsonc`, or runs `wrangler dev`
+**The fix.** Unlike the npm-bundled packages above, sharp is an ordinary
+dependency, so an `overrides` entry works. `.github/deploy-tools/package.json`
+now overrides `sharp` to `^0.35.5` beside the existing `undici` entry, and the
+lockfile resolves sharp 0.35.5 (with its platform packages and libvips 1.3.4)
+while wrangler stays at 4.141.0. Checked on 2026-10-08: every changed
+integrity hash matches the registry, a clean `npm ci --ignore-scripts` succeeds,
+`npm audit` in that directory reports no vulnerabilities, and the same
+`wrangler deploy --dry-run` completes. The alert should close when Dependabot
+next scans after the change merges. Drop the override once miniflare itself
+requires sharp >= 0.35.5.
+
+**Decision.** Nothing is dismissed. The reachability analysis above stands
+even with the fix: a change that adds an Images binding to `wrangler.jsonc`, or runs `wrangler dev`
 in CI, changes the reachability answer and needs this entry revisited.
 
 ## Next review
