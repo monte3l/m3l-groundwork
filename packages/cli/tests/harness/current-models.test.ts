@@ -112,6 +112,29 @@ describe("model-pin-currency -- accepts the 2026-10-01 refresh's new id", () => 
   });
 });
 
+describe("model-pin-currency -- accepts Haiku 5.5 and keeps Haiku 4.5", () => {
+  it.each([
+    "claude-haiku-5-5",
+    "claude-haiku-4-5",
+    "claude-haiku-4-5-20251001",
+  ])("produces no finding for an agent pinned to %s", (id) => {
+    writeAgentPinnedTo(id);
+
+    expect(modelPinFindings(gradeHarness(root))).toEqual([]);
+    expect(modelPinFindings(emitted.gradeHarness(root))).toEqual([]);
+  });
+
+  it("lists claude-haiku-5-5 and both Haiku 4.5 ids in CURRENT_MODELS", () => {
+    expect(CURRENT_MODELS).toEqual(
+      expect.arrayContaining([
+        "claude-haiku-5-5",
+        "claude-haiku-4-5",
+        "claude-haiku-4-5-20251001",
+      ]),
+    );
+  });
+});
+
 describe("model-pin-currency -- an id outside CURRENT_MODELS is flagged by name", () => {
   it("flags a still-unlisted id (claude-sonnet-9-9)", () => {
     writeAgentPinnedTo("claude-sonnet-9-9");

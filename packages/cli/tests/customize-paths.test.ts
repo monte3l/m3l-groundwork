@@ -14,10 +14,60 @@ import { join } from "node:path";
 import {
   CLAUDE_DEST_SEGMENTS,
   CUSTOMIZE_SKILL_FILE_NAMES,
+  CUSTOMIZE_SKILL_STEP_FILE_NAMES,
+  CUSTOMIZE_SKILL_WRITE_ORDER,
   GROUNDWORK_DEST_SEGMENTS,
   plannedCustomizeSkillPaths,
 } from "../src/customize-paths.js";
 import { assertAdoptWriteScope } from "../src/main.js";
+
+describe("the step-file payload constants", () => {
+  it("CUSTOMIZE_SKILL_STEP_FILE_NAMES names the two step files", () => {
+    expect([...CUSTOMIZE_SKILL_STEP_FILE_NAMES]).toEqual([
+      "step-0-reconcile.md",
+      "step-3-round-1.md",
+    ]);
+  });
+
+  it("CUSTOMIZE_SKILL_FILE_NAMES holds all seven payload files", () => {
+    expect(CUSTOMIZE_SKILL_FILE_NAMES).toHaveLength(7);
+    for (const name of [
+      "SKILL.md",
+      "kind-facet-map.ts",
+      "domain-map.ts",
+      "pack-map.ts",
+      "plugin-map.ts",
+      "step-0-reconcile.md",
+      "step-3-round-1.md",
+    ]) {
+      expect(CUSTOMIZE_SKILL_FILE_NAMES).toContain(name);
+    }
+  });
+
+  it("CUSTOMIZE_SKILL_WRITE_ORDER writes SKILL.md last, after both step files", () => {
+    expect(CUSTOMIZE_SKILL_WRITE_ORDER).toHaveLength(7);
+    expect(CUSTOMIZE_SKILL_WRITE_ORDER.at(-1)).toBe("SKILL.md");
+    for (const stepName of CUSTOMIZE_SKILL_STEP_FILE_NAMES) {
+      expect(CUSTOMIZE_SKILL_WRITE_ORDER).toContain(stepName);
+      expect(CUSTOMIZE_SKILL_WRITE_ORDER.indexOf(stepName)).toBeLessThan(
+        CUSTOMIZE_SKILL_WRITE_ORDER.indexOf("SKILL.md"),
+      );
+    }
+  });
+
+  it("CUSTOMIZE_SKILL_WRITE_ORDER writes the data .ts files before the step files", () => {
+    const firstStep = Math.min(
+      ...CUSTOMIZE_SKILL_STEP_FILE_NAMES.map((n) =>
+        CUSTOMIZE_SKILL_WRITE_ORDER.indexOf(n),
+      ),
+    );
+    for (const name of CUSTOMIZE_SKILL_WRITE_ORDER.filter((n) =>
+      n.endsWith(".ts"),
+    )) {
+      expect(CUSTOMIZE_SKILL_WRITE_ORDER.indexOf(name)).toBeLessThan(firstStep);
+    }
+  });
+});
 
 describe("plannedCustomizeSkillPaths", () => {
   it("returns one path per payload name, for both install locations", () => {

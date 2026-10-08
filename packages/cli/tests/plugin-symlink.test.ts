@@ -28,6 +28,7 @@ import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
 } from "../src/plugin.js";
+import { CUSTOMIZE_SKILL_FILE_NAMES } from "../src/customize-paths.js";
 import { main } from "../src/main.js";
 
 /** Builds the same five-file payload fixture `plugin.test.ts` uses. */
@@ -51,6 +52,12 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
+  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+    writeFileSync(
+      join(sourceDir, "skills", "customize", stepName),
+      `# ${stepName}\n`,
+    );
+  }
 }
 
 /** A pre-existing, differing `.claude/skills/customize/SKILL.md` -- forces `installCustomizeSkillGuarded` into its "groundwork" branch. */
@@ -217,7 +224,9 @@ describe("copyCustomizeSkillFiles directory-component symlink guard", () => {
       expect(result.location).toBe("groundwork");
       expect(typeof result.fallbackReason).toBe("string");
       expect(result.fallbackReason as string).toContain(symlinkPath);
-      expect(result.filesWritten).toHaveLength(5);
+      expect(result.filesWritten).toHaveLength(
+        CUSTOMIZE_SKILL_FILE_NAMES.length,
+      );
 
       // The symlink itself, and whatever it points at, are untouched.
       expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
@@ -300,7 +309,7 @@ describe("copyCustomizeSkillFiles payload-file symlink guard (remove-then-wx)", 
 
     const result = installCustomizeSkill(targetDir, sourceDir);
 
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(outsideFile, "utf8")).toBe("SENTINEL - do not touch\n");
     expect(lstatSync(destPath).isSymbolicLink()).toBe(false);
     expect(readFileSync(destPath, "utf8")).toContain("name: customize");
@@ -355,7 +364,7 @@ describe("copyCustomizeSkillFiles payload-file symlink guard (remove-then-wx)", 
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
 
     expect(result.location).toBe("groundwork");
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(outsideFile, "utf8")).toBe("// SENTINEL3\n");
     expect(lstatSync(destPath).isSymbolicLink()).toBe(false);
     expect(readFileSync(destPath, "utf8")).toBe("export const y = 2;\n");
@@ -579,6 +588,8 @@ describe("plain run (no symlinks) is unchanged by the guard", () => {
       join(".claude", "skills", "customize", "domain-map.ts"),
       join(".claude", "skills", "customize", "pack-map.ts"),
       join(".claude", "skills", "customize", "plugin-map.ts"),
+      join(".claude", "skills", "customize", "step-0-reconcile.md"),
+      join(".claude", "skills", "customize", "step-3-round-1.md"),
     ].sort();
 
     const result1 = installCustomizeSkill(targetDir, sourceDir);

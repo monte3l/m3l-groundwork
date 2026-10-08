@@ -19,7 +19,8 @@ import { fieldList, fieldText, parseFrontmatter } from "./frontmatter.mjs";
  * Model ids and aliases the rubric accepts: the current ids and aliases, plus
  * ids that were once listed here, kept until Anthropic deprecates them. The
  * ids follow Anthropic's models overview and model-deprecations pages
- * (retrieved 2026-10-01). A legacy id that was never listed here is
+ * (retrieved 2026-10-08): Haiku 5.5 (released 2026-10-07) is current, and
+ * Haiku 4.5 is legacy but still active. A legacy id that was never listed here is
  * deliberately not added, so the rule keeps nudging pins toward current
  * models. Bump alongside a harness-guidance refresh sweep.
  * @public Not imported anywhere else in this project -- exported only for
@@ -36,6 +37,7 @@ export const CURRENT_MODELS = [
   "claude-sonnet-5",
   "claude-sonnet-5-5",
   "claude-fable-5-1",
+  "claude-haiku-5-5",
   "claude-haiku-4-5",
   "claude-haiku-4-5-20251001",
 ];

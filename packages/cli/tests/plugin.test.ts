@@ -16,6 +16,7 @@ import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
 } from "../src/plugin.js";
+import { CUSTOMIZE_SKILL_FILE_NAMES } from "../src/customize-paths.js";
 
 describe("installCustomizeSkill", () => {
   let sourceDir: string;
@@ -47,6 +48,12 @@ describe("installCustomizeSkill", () => {
       join(sourceDir, "src", "plugin-map.ts"),
       "export const w = 4;\n",
     );
+    for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+      writeFileSync(
+        join(sourceDir, "skills", "customize", stepName),
+        `# ${stepName}\n`,
+      );
+    }
   });
 
   afterEach(() => {
@@ -57,7 +64,7 @@ describe("installCustomizeSkill", () => {
   it("copies SKILL.md and all four data files into .claude/skills/customize/", () => {
     const result = installCustomizeSkill(targetDir, sourceDir);
 
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
 
     const destDir = join(targetDir, ".claude", "skills", "customize");
     expect(readFileSync(join(destDir, "SKILL.md"), "utf8")).toContain(
@@ -83,7 +90,7 @@ describe("installCustomizeSkill", () => {
     // packages/plugin, which really exists, so this just confirms the
     // default-parameter branch resolves to real files rather than throwing.
     const result = installCustomizeSkill(targetDir);
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
   });
 
   it("throws rather than silently skip a missing source file", () => {
@@ -133,6 +140,12 @@ describe("installCustomizeSkillGuarded", () => {
       join(sourceDir, "src", "plugin-map.ts"),
       "export const w = 4;\n",
     );
+    for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+      writeFileSync(
+        join(sourceDir, "skills", "customize", stepName),
+        `# ${stepName}\n`,
+      );
+    }
   });
 
   afterEach(() => {

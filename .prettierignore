@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.vitest/
 pnpm-lock.yaml
 CHANGELOG.md
 # The docs site build output -- see .gitignore.

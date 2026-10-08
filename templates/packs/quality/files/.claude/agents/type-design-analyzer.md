@@ -3,7 +3,7 @@ name: type-design-analyzer
 description: Read-only type-design reviewer. Rates the type design quality of changed exports on four dimensions (encapsulation, invariant expression, invariant usefulness, invariant enforcement), each scored 1–10, and flags violations of strict-TS / branded-type / make-illegal-states-unrepresentable rules. Use after writing or changing any exported TypeScript types, interfaces, or function signatures. Complements code-reviewer (general structure/SOLID).
 tools: Read, Grep, Glob, Bash
 disallowedTools: Agent
-model: claude-opus-5
+model: claude-opus-5-5
 effort: xhigh
 maxTurns: 40
 color: orange

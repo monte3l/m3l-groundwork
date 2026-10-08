@@ -104,7 +104,7 @@ Co-Authored-By: <exact model name from your environment> <noreply@anthropic.com>
 
 **Co-Authored-By footer**: include whenever Claude authored or substantially
 assisted the commit. Use the exact model name from the environment (e.g.,
-`Claude Sonnet 5`, `Claude Opus 5`) — never copy a model name from an example
+`Claude Sonnet 5.5`, `Claude Opus 5.5`) — never copy a model name from an example
 or template. The trailer is a provenance marker, not a legal authorship
 claim.
 
@@ -163,7 +163,7 @@ EventEmitter<TEventMap> to the public entry point.
 
 Three new named exports; no existing export changed.
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 ```
 
 ---
@@ -215,7 +215,7 @@ the durable fixes so later modules don't re-hit them.
 
 No src/, test, or exports-map changes; zero semver impact.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ---
@@ -244,5 +244,5 @@ output/ holds run archives, not raw output; the old name was misleading.
 
 BREAKING CHANGE: Paths.outputDir removed; use archiveDir instead.
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 ```

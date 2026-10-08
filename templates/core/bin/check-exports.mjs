@@ -79,9 +79,11 @@ try {
         // This project is ESM-only by design (no CommonJS -- see
         // guard-no-commonjs.mjs); attw's default node16-from-CJS check
         // flags exactly the interop this package intentionally doesn't
-        // support. Ignoring this one rule is attw's own documented
-        // escape hatch for a deliberately ESM-only package, not a
-        // suppression of a real problem.
+        // support. Ignoring this one rule (`--ignore-rules`) is a narrow
+        // suppression of that known interop gap, not of a real problem. attw's
+        // documented ESM-only mechanism is the broader `--profile esm-only`,
+        // which ignores every CJS-mode resolution failure; this keeps the
+        // narrower rule on purpose so other CJS-side problems still surface.
         "--ignore-rules",
         "cjs-resolves-to-esm",
       ],

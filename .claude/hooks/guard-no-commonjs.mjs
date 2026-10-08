@@ -100,8 +100,9 @@ if (isEntryPoint()) {
     process.stderr.write(
       `Blocked: CommonJS construct(s) found (this project is ESM only):\n` +
         hits.map((h) => `  - ${h}`).join("\n") +
-        `\nUse ESM equivalents: import/export, import.meta.url, ` +
-        `fileURLToPath(import.meta.url).\n`,
+        `\nUse ESM equivalents: import/export, import.meta.dirname and ` +
+        `import.meta.filename (stable on Node 24+) in place of __dirname and ` +
+        `__filename, or fileURLToPath(import.meta.url).\n`,
     );
     process.exit(2);
   }

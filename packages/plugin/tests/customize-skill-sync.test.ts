@@ -12,7 +12,7 @@
  * is the only thing that catches one edited without the other.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,8 @@ const syncedFiles: [name: string, sourceDir: string][] = [
   ["kind-facet-map.ts", srcDir],
   ["plugin-map.ts", srcDir],
   ["SKILL.md", skillDir],
+  ["step-0-reconcile.md", skillDir],
+  ["step-3-round-1.md", skillDir],
 ];
 
 describe("customize skill install stays synced with packages/plugin", () => {
@@ -44,4 +46,30 @@ describe("customize skill install stays synced with packages/plugin", () => {
       ).toBe(source);
     },
   );
+});
+
+describe("SKILL.md stays small enough to survive post-compaction re-injection", () => {
+  it("is at most 18000 bytes (about 4.5k tokens, under the 5,000-token cap)", () => {
+    const bytes = Buffer.byteLength(
+      readFileSync(join(skillDir, "SKILL.md"), "utf8"),
+      "utf8",
+    );
+    expect(bytes).toBeLessThanOrEqual(18000);
+  });
+
+  it("links only to sibling .md files that exist in the skill directory", () => {
+    const body = readFileSync(join(skillDir, "SKILL.md"), "utf8");
+    const targets = [...body.matchAll(/\]\(([^)#/\s]+\.md)\)/g)].map(
+      (m) => m[1] as string,
+    );
+    expect(targets).toEqual(
+      expect.arrayContaining(["step-0-reconcile.md", "step-3-round-1.md"]),
+    );
+    for (const target of targets) {
+      expect(
+        existsSync(join(skillDir, target)),
+        `SKILL.md links to ${target}, which does not exist in the skill dir`,
+      ).toBe(true);
+    }
+  });
 });

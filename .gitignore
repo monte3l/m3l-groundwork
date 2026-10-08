@@ -12,6 +12,7 @@ packages/cli/LICENSE
 
 # Test / coverage artifacts
 coverage/
+.vitest/
 
 # Editor / OS
 .DS_Store

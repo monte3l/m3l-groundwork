@@ -131,6 +131,12 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
+  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+    writeFileSync(
+      join(sourceDir, "skills", "customize", stepName),
+      `# ${stepName}\n`,
+    );
+  }
 }
 
 /**
@@ -371,7 +377,7 @@ describe('a failed "wx" write that created the file leaves nothing behind (item 
         real.writeFileSync(...args),
     );
     const result = installCustomizeSkill(targetDir, sourceDir);
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(dest, "utf8")).toBe("export const x = 1;\n");
 
     real.rmSync(sourceDir, { recursive: true, force: true });
@@ -394,10 +400,10 @@ describe('a failed "wx" write that created the file leaves nothing behind (item 
     }
 
     expect(thrown).toBeInstanceOf(Error);
-    // The four data files written before SKILL.md, plus the partially
-    // created SKILL.md itself: 5 total.
+    // Every non-SKILL.md payload file written before SKILL.md, plus the partially
+    // created SKILL.md itself: the whole payload.
     expect((thrown as Error).message).toContain(
-      "removed the 5 file(s) written by this run",
+      `removed the ${String(CUSTOMIZE_SKILL_FILE_NAMES.length)} file(s) written by this run`,
     );
     expect(existsSync(dest)).toBe(false);
     for (const name of [
@@ -467,7 +473,7 @@ describe('a failed "wx" write that created the file leaves nothing behind (item 
 
     expect(thrown).toBeInstanceOf(Error);
     expect((thrown as Error).message).toContain(
-      "removed the 5 file(s) written by this run",
+      `removed the ${String(CUSTOMIZE_SKILL_FILE_NAMES.length)} file(s) written by this run`,
     );
     expect(existsSync(dest)).toBe(false);
 
@@ -595,7 +601,7 @@ describe('.claude path does not pre-rmSync before "wx" (item 3)', () => {
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
 
     expect(result.location).toBe("groundwork");
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(raceDest, "utf8")).toBe("export const y = 2;\n");
 
     real.rmSync(sourceDir, { recursive: true, force: true });
@@ -799,7 +805,7 @@ describe("fresh-mode --force over an existing install removes the old SKILL.md f
     // First run: a plain, successful install via the real passthrough -- a
     // genuinely WORKING install, every payload file already correct.
     const first = installCustomizeSkill(targetDir, sourceDir);
-    expect(first.filesWritten).toHaveLength(5);
+    expect(first.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(existsSync(join(destDir, "SKILL.md"))).toBe(true);
 
     // Make kind-facet-map.ts (1st file) genuinely differ before the re-run:
@@ -919,7 +925,7 @@ describe("installCustomizeSkill classifies before writing: a byte-identical re-r
     writeSourceFixture(sourceDir);
 
     const first = installCustomizeSkill(targetDir, sourceDir);
-    expect(first.filesWritten).toHaveLength(5);
+    expect(first.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
 
     const destDir = join(targetDir, ".claude", "skills", "customize");
     const skillMdPath = join(destDir, "SKILL.md");
@@ -1110,7 +1116,7 @@ describe("a pre-flight lstat failure refuses a replacing-policy install, and not
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
 
     expect(result.location).toBe("claude");
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(domainMapDest, "utf8")).toBe("export const y = 2;\n");
     expect(calls).toBeGreaterThanOrEqual(2);
 
@@ -1462,7 +1468,7 @@ describe("item A: rollback positions, moved from plugin-install.test.ts (preflig
         real.writeFileSync(...args),
     );
     const result = installCustomizeSkill(targetDir, sourceDir);
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(join(destDir, "SKILL.md"), "utf8")).toContain(
       "name: customize",
     );
@@ -1511,7 +1517,9 @@ describe("item A: rollback positions, moved from plugin-install.test.ts (preflig
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
     expect(message).toContain("could not install the /customize skill");
-    expect(message).toContain("removed the 4 file(s) written by this run");
+    expect(message).toContain(
+      `removed the ${String(CUSTOMIZE_SKILL_FILE_NAMES.length - 1)} file(s) written by this run`,
+    );
     expect((thrown as Error).cause).toBeDefined();
 
     for (const name of [
@@ -1532,7 +1540,7 @@ describe("item A: rollback positions, moved from plugin-install.test.ts (preflig
         real.writeFileSync(...args),
     );
     const result = installCustomizeSkill(targetDir, sourceDir);
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(join(destDir, "project-owned.txt"), "utf8")).toBe(
       "mine\n",
     );
@@ -1604,7 +1612,7 @@ describe("item A: rollback positions, moved from plugin-install.test.ts (preflig
     );
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
     expect(result.location).toBe("groundwork");
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(join(destDir, "project-owned.txt"), "utf8")).toBe(
       "mine\n",
     );
@@ -1651,7 +1659,9 @@ describe("item A: rollback positions, moved from plugin-install.test.ts (preflig
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
     expect(message).toContain("could not install the /customize skill");
-    expect(message).toContain("removed the 4 file(s) written by this run");
+    expect(message).toContain(
+      `removed the ${String(CUSTOMIZE_SKILL_FILE_NAMES.length - 1)} file(s) written by this run`,
+    );
     expect((thrown as Error).cause).toBeDefined();
 
     for (const name of [
@@ -1673,7 +1683,7 @@ describe("item A: rollback positions, moved from plugin-install.test.ts (preflig
     );
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
     expect(result.location).toBe("groundwork");
-    expect(result.filesWritten).toHaveLength(5);
+    expect(result.filesWritten).toHaveLength(CUSTOMIZE_SKILL_FILE_NAMES.length);
     expect(readFileSync(join(destDir, "project-owned.txt"), "utf8")).toBe(
       "mine\n",
     );
@@ -1843,7 +1853,9 @@ describe("copyCustomizeSkillFiles wraps a remove-then-wx write failure, moved fr
     const message = (thrown as Error).message;
     expect(message).toContain("could not install the /customize skill");
     expect(message).toContain(destPath);
-    expect(message).toContain("removed the 4 file(s) written by this run");
+    expect(message).toContain(
+      `removed the ${String(CUSTOMIZE_SKILL_FILE_NAMES.length - 1)} file(s) written by this run`,
+    );
     expect((thrown as Error).cause).toBeInstanceOf(Error);
     // The raw fs error's own message is distinct from the wrapper's -- this
     // is what a missing catch (letting the raw error propagate unwrapped)

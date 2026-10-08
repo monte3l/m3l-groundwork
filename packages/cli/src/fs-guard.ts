@@ -32,7 +32,7 @@ const RERUN_TAIL = "re-run the CLI";
  * endsWithRerunAdvice(message); // true
  * ```
  */
-export const FIX_AND_RERUN_ADVICE = `fix the cause and ${RERUN_TAIL}`;
+export const FIX_AND_RERUN_ADVICE: string = `fix the cause and ${RERUN_TAIL}`;
 
 /**
  * Whether `message` already ENDS with "re-run the CLI" advice, in any
@@ -241,4 +241,4 @@ export function assertNotDirectory(path: string, advice: string): void {
  * assertNotSymlink("/work/app/package.json", FRESH_SYMLINK_ADVICE);
  * ```
  */
-export const FRESH_SYMLINK_ADVICE = `remove it, then ${FRESH_RETRY}`;
+export const FRESH_SYMLINK_ADVICE: string = `remove it, then ${FRESH_RETRY}`;

@@ -353,3 +353,62 @@ describe("running as the entry point through a symlinked path", () => {
     expect(JSON.parse(out) as { id: string }).toMatchObject({ id: "a" });
   });
 });
+
+describe.each([
+  ["shipped pack copy", hooksDir],
+  ["root copy", join(here, "..", "..", "..", ".claude", "hooks")],
+])("formatSubagentRow agentType fallback (%s)", (_label, dir) => {
+  type Row = { id: string; content: string } | null;
+  let format: (task: unknown, env?: { now?: number }) => Row;
+
+  beforeAll(async () => {
+    const mod = (await import(
+      pathToFileURL(join(dir, "subagent-statusline.mjs")).href
+    )) as { formatSubagentRow: typeof format };
+    format = mod.formatSubagentRow;
+  });
+
+  const plain = (row: Row): string => (row?.content ?? "").replace(ANSI, "");
+
+  it("uses agentType as the label when name is missing", () => {
+    const row = format({ id: "a", agentType: "code-reviewer" });
+    expect(row?.id).toBe("a");
+    expect(plain(row)).toBe("code-reviewer");
+  });
+
+  it("uses agentType as the label when name is empty", () => {
+    expect(plain(format({ id: "a", name: "", agentType: "tester" }))).toBe(
+      "tester",
+    );
+  });
+
+  it("keeps name as the label when both are present", () => {
+    const text = plain(
+      format({ id: "a", name: "reviewer", agentType: "other" }),
+    );
+    expect(text).toContain("reviewer");
+    expect(text).not.toContain("other");
+  });
+
+  it("still renders the remaining segments after an agentType label", () => {
+    const withName = format(
+      { id: "a", name: "x", tokenCount: 1000, contextWindowSize: 10000 },
+      { now: 0 },
+    );
+    const withType = format(
+      { id: "a", agentType: "x", tokenCount: 1000, contextWindowSize: 10000 },
+      { now: 0 },
+    );
+    expect(withType).toEqual(withName);
+    expect(plain(withType)).toContain(" · ");
+  });
+
+  it.each([
+    ["no name and no agentType", { id: "a" }],
+    ["empty name and empty agentType", { id: "a", name: "", agentType: "" }],
+    ["non-string agentType", { id: "a", agentType: 7 }],
+    ["missing id", { agentType: "tester" }],
+  ])("returns null for %s", (_n, task) => {
+    expect(format(task)).toBeNull();
+  });
+});

@@ -5,17 +5,19 @@
  *
  * The command receives one JSON object on stdin per refresh tick: the base
  * hook fields, a `columns` field (usable row width), and a `tasks` array.
- * Each task may carry `id`, `name`, `type`, `status`, `description`, `label`,
- * `startTime`, `model`, `effort`, `contextWindowSize`, `tokenCount`,
- * `tokenSamples`, `cwd` -- `model`/`contextWindowSize` require Claude Code
- * v2.1.205+ and `effort` v2.1.214+. On an older version those fields are
- * simply absent and the row omits them.
+ * Each task may carry `id`, `name`, `type`, `agentType`, `status`,
+ * `description`, `label`, `startTime`, `model`, `effort`, `contextWindowSize`,
+ * `tokenCount`, `tokenSamples`, `cwd` -- `model`/`contextWindowSize` require
+ * Claude Code v2.1.205+, `effort` v2.1.214+ and `agentType` v2.1.293+. On an
+ * older version those fields are simply absent and the row omits them.
  *
  * Output is one JSON line per row to override: `{"id": "<task id>", "content":
  * "<row body>"}`. A task is left with Claude Code's own default rendering
  * (name · description · token count) by omitting it from the output entirely
- * -- this happens whenever `id` or `name` is missing/unusable, rather than
- * guessing at a row.
+ * -- this happens whenever `id` is missing/unusable, or both `name` and
+ * `agentType` are, rather than guessing at a row. `name` is the row's label
+ * when present; `agentType` (the same value hooks receive as `agent_type`)
+ * stands in for a task that has no name.
  *
  * The elapsed-time color thresholds (15/30 minutes) mark a subagent worth a
  * glance and one that has probably stalled.
@@ -46,9 +48,9 @@ export const ELAPSED_WARN_THRESHOLD_SEC = 15 * 60;
 export const ELAPSED_HIGH_THRESHOLD_SEC = 30 * 60;
 
 /**
- * @param {unknown} value a task's `startTime` field. The documented
- *   `subagentStatusLine` payload shape does not pin down whether this is an
- *   epoch-millisecond number or an ISO 8601 string, so both are accepted.
+ * @param {unknown} value a task's `startTime` field. The statusline docs
+ *   document it as a number of milliseconds since the Unix epoch; an ISO 8601
+ *   string is still accepted leniently.
  * @returns {number | null} epoch milliseconds, or null when unparseable.
  */
 export function parseStartTime(value) {
@@ -124,12 +126,25 @@ export function formatEffort(effort) {
  */
 export function formatSubagentRow(task, env) {
   if (typeof task !== "object" || task === null) return null;
-  const { id, name, effort, startTime, tokenCount, contextWindowSize } =
-    /** @type {Record<string, unknown>} */ (task);
+  const {
+    id,
+    name,
+    agentType,
+    effort,
+    startTime,
+    tokenCount,
+    contextWindowSize,
+  } = /** @type {Record<string, unknown>} */ (task);
   if (typeof id !== "string" || id.length === 0) return null;
-  if (typeof name !== "string" || name.length === 0) return null;
+  const label =
+    typeof name === "string" && name.length > 0
+      ? name
+      : typeof agentType === "string" && agentType.length > 0
+        ? agentType
+        : null;
+  if (label === null) return null;
 
-  const segments = [name];
+  const segments = [label];
 
   const effortText = formatEffort(effort);
   if (effortText !== null) segments.push(`${MAGENTA}${effortText}${RESET}`);
