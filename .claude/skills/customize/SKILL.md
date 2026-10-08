@@ -470,12 +470,19 @@ packs Step 0.4(c) confirmed, revised by this step's own `recommendPacks`
 comparison if it changed anything); `hasCustomSkills` is `false` for a fresh
 bootstrap (nothing has authored a skill yet) and, for adopt mode, whatever
 Step 0's survey found beyond the baseline's own known skill names and any
-already-installed pack's skills (e.g. the `github` pack's three). Call
+already-installed pack's skills (e.g. the `github` pack's three);
+`dependencies` is the key names under `dependencies` and `devDependencies`
+in the project's root `package.json` (the same read in both modes; a fresh
+bootstrap carries only the baseline's own devDependencies, so no SDK plugin
+is pre-selected there, and a monorepo whose SDK dependency sits only in a
+workspace package is not pre-selected either -- the user can still pick it). Call
 `recommendPlugins(answers, context)` from `plugin-map.ts`
 (alongside this file, same copy mechanism as `pack-map.ts`) with the
-now-confirmed `InterviewAnswers`, and ask **one** `AskUserQuestion`
-(multi-select) offering all seven, pre-selected per each entry's
-`recommended` boolean with its `because` shown as the evidence -- same
+now-confirmed `InterviewAnswers`, and offer all ten in **one**
+`AskUserQuestion` call holding three multi-select questions (a question
+takes at most four options, so split the list in its fixed order: entries
+1-4, 5-7, 8-10), each option pre-selected per its entry's `recommended`
+boolean with its `because` shown as the evidence -- same
 "visible reasoning" principle as every other inference in this skill.
 
 Write every confirmed `true` entry into `.claude/settings.json`'s
@@ -488,7 +495,7 @@ already sets explicitly (an existing `false` is a decision the user made,
 not an oversight to correct), and never touch `.claude/settings.local.json`
 or the user's own `~/.claude/settings.json` scope. `claude-plugins-official`
 is a built-in marketplace, so no `extraKnownMarketplaces` entry is needed
-for any of the seven.
+for any of the ten.
 
 **Committing this entry does not install the plugin for anyone.** A
 project-scope `enabledPlugins: true` with no local install produces no
@@ -499,7 +506,8 @@ follow-up command in Step 6's report: `claude plugin install <id> --scope
 project` (or `/plugin install <id>` inside a running session) -- the user,
 and every collaborator who pulls this change, still has to run it once. Do
 the same for each recommendation's `prerequisites` (the
-`typescript-language-server` binary, Python 3.8+) -- print them as
+`typescript-language-server` binary, or the Python version a plugin names) --
+print them as
 follow-ups, never attempt to install them.
 
 Nothing else is touched. A project file the user didn't approve a change to
@@ -575,5 +583,6 @@ Also list **which plugins were enabled** (each newly-`true`
 `enabledPlugins` entry, with the exact `claude plugin install <id> --scope
 project` follow-up command it still needs) and which were offered but
 declined, plus any prerequisite named against an enabled plugin
-(`typescript-language-server` on `PATH`, Python 3.8+) as a follow-up the
+(e.g. `typescript-language-server` on `PATH`, or the Python version a
+plugin's `prerequisites` names) as a follow-up the
 user still has to satisfy.

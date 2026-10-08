@@ -9,6 +9,29 @@
  * `pack-map.ts` applies to `templates/packs/` bundles. A stored, unit-tested
  * module rather than a judgment made afresh each run, so the same interview
  * answers and context always produce the same recommendation.
+ *
+ * Evaluated and deliberately not offered, recorded so they are not proposed
+ * again:
+ *
+ * - `plugin-dev` -- only for projects that author Claude Code plugins;
+ *   m3l-groundwork itself enables it, a bootstrapped TypeScript project has
+ *   no plugin to build, and `skill-creator` covers skill authoring.
+ * - `code-review` -- duplicates the built-in `/code-review` and the optional
+ *   `github` pack's PR-review Action.
+ * - `code-simplifier` -- duplicates the built-in `/simplify`; its
+ *   unrestricted-tools agent is blocked by the baseline's hub-and-spoke
+ *   write guard on `src/`/`tests/` anyway.
+ * - `feature-dev` -- duplicates plan mode, `starting-work` and the TDD loop;
+ *   its `code-reviewer` competes with the baseline's.
+ * - `pr-review-toolkit` -- overlaps the baseline's `code-reviewer` and
+ *   `silent-failure-hunter` and the optional `quality` pack's
+ *   `type-design-analyzer`.
+ * - `hookify` -- runs `python3` on every tool call, and keeps its rules in
+ *   gitignored `.local.md` files that bypass the graded, committed hooks and
+ *   the hook cap.
+ * - `remember` -- third-party under a source-available license that forbids
+ *   modification and redistribution; it sends transcripts to `claude -p`,
+ *   writes `.remember/`, and can push memory to a remote.
  */
 import type { InterviewAnswers } from "./kind-facet-map.js";
 
@@ -29,12 +52,18 @@ export interface PluginRecommendation {
 
 /**
  * What `/customize` knows beyond the interview answers by the time it
- * recommends plugins: which packs the user chose, and whether the project
- * authors its own skills. Both are optional; an absent field reads as "no".
+ * recommends plugins: which packs the user chose, whether the project
+ * authors its own skills, and which packages it depends on. All are
+ * optional; an absent field reads as "no" (or "none").
  */
 export interface PluginRecommendationContext {
   readonly chosenPacks?: readonly string[];
   readonly hasCustomSkills?: boolean;
+  /**
+   * Package names from the project's `package.json` `dependencies` and
+   * `devDependencies` combined. Absent reads as none.
+   */
+  readonly dependencies?: readonly string[];
 }
 
 function pluginId(name: string): string {
@@ -164,9 +193,79 @@ function recommendSecurityGuidance(
 }
 
 /**
+ * `claude-security` is the on-demand counterpart to `security-guidance`: it
+ * runs only when invoked, so unlike that plugin's per-turn Stop-hook LLM
+ * review it costs nothing while idle, and is pre-selected for every project.
+ */
+function recommendClaudeSecurity(): PluginRecommendation {
+  return {
+    id: pluginId("claude-security"),
+    recommended: true,
+    because:
+      "it runs on demand -- only when invoked -- so it costs nothing while " +
+      "idle, unlike security-guidance's Stop-hook LLM review on every " +
+      "turn. When run it scans the repo or a diff, challenges each finding " +
+      "before reporting it, and can draft patches. Its post-push scan tip " +
+      "can be turned off with CLAUDE_SECURITY_SCAN_TIP=off.",
+    prerequisites: ["Python 3.9+ on PATH"],
+  };
+}
+
+function dependsOn(
+  context: PluginRecommendationContext | undefined,
+  packageName: string,
+): boolean {
+  return context?.dependencies?.includes(packageName) ?? false;
+}
+
+/**
+ * `agent-sdk-dev` scaffolds and verifies Claude Agent SDK applications, so it
+ * is pre-selected only when the project depends on
+ * `@anthropic-ai/claude-agent-sdk`.
+ */
+function recommendAgentSdkDev(
+  context: PluginRecommendationContext | undefined,
+): PluginRecommendation {
+  const recommended = dependsOn(context, "@anthropic-ai/claude-agent-sdk");
+  return {
+    id: pluginId("agent-sdk-dev"),
+    recommended,
+    because: recommended
+      ? "the project depends on @anthropic-ai/claude-agent-sdk, and this " +
+        "plugin scaffolds new SDK apps (/new-sdk-app) and verifies existing " +
+        "ones against the SDK's current guidance."
+      : "only useful to a project that builds on the Claude Agent SDK; " +
+        "@anthropic-ai/claude-agent-sdk is not among this project's " +
+        "dependencies.",
+  };
+}
+
+/**
+ * `mcp-server-dev` carries skills for building MCP servers and MCP apps and
+ * for MCPB packaging, so it is pre-selected only when the project depends on
+ * `@modelcontextprotocol/sdk`.
+ */
+function recommendMcpServerDev(
+  context: PluginRecommendationContext | undefined,
+): PluginRecommendation {
+  const recommended = dependsOn(context, "@modelcontextprotocol/sdk");
+  return {
+    id: pluginId("mcp-server-dev"),
+    recommended,
+    because: recommended
+      ? "the project depends on @modelcontextprotocol/sdk, and this plugin " +
+        "brings skills for building MCP servers and MCP apps and for " +
+        "packaging them as MCPB bundles."
+      : "only useful to a project that builds on the MCP SDK; " +
+        "@modelcontextprotocol/sdk is not among this project's " +
+        "dependencies.",
+  };
+}
+
+/**
  * `skill-creator` scaffolds, evaluates and iterates on skills. The baseline's
- * own skills are maintained by this repo, not by the project, so it only
- * pays for itself in a project that writes skills of its own.
+ * own skills are maintained upstream by m3l-groundwork, not by the project,
+ * so it only pays for itself in a project that writes skills of its own.
  */
 function recommendSkillCreator(
   context: PluginRecommendationContext | undefined,
@@ -213,12 +312,31 @@ function recommendClaudeCodeSetup(): PluginRecommendation {
 
 /**
  * Every built-in marketplace plugin's recommendation for the given interview
- * answers and context, always the same seven in the same order: `context7`,
- * `typescript-lsp` and `claude-md-management` unconditionally; `github` when
- * the `github` pack was chosen; `security-guidance` for a `service` or a
- * `thorough` CI depth; `skill-creator` when the project has its own skills;
- * `claude-code-setup` never. A pure function -- identical inputs always
- * produce an equal result.
+ * answers and context, always the same ten in the same order. Pre-selected
+ * unconditionally: `context7`, `typescript-lsp`, `claude-md-management` and
+ * `claude-security`. Conditionally: `github` when the `github` pack was
+ * chosen; `security-guidance` for a `service` or a `thorough` CI depth;
+ * `skill-creator` when the project has its own skills; `agent-sdk-dev` and
+ * `mcp-server-dev` when the project depends on the Claude Agent SDK or the
+ * MCP SDK respectively. Never: `claude-code-setup`. A pure function --
+ * identical inputs always produce an equal result.
+ *
+ * @example
+ * ```ts
+ * import { recommendPlugins } from "./plugin-map.js";
+ *
+ * const recommendations = recommendPlugins(
+ *   {
+ *     kind: "service",
+ *     runtime: "node",
+ *     testsMandatory: true,
+ *     ciDepth: "standard",
+ *     keepAgents: ["code-reviewer"],
+ *   },
+ *   { chosenPacks: ["github"], dependencies: ["@modelcontextprotocol/sdk"] },
+ * );
+ * const preselected = recommendations.filter((r) => r.recommended);
+ * ```
  */
 export function recommendPlugins(
   answers: InterviewAnswers,
@@ -230,7 +348,10 @@ export function recommendPlugins(
     recommendClaudeMdManagement(),
     recommendGithub(context),
     recommendSecurityGuidance(answers),
+    recommendClaudeSecurity(),
     recommendSkillCreator(context),
     recommendClaudeCodeSetup(),
+    recommendAgentSdkDev(context),
+    recommendMcpServerDev(context),
   ];
 }
