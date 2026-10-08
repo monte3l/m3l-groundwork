@@ -7,18 +7,20 @@
 // (pack-map.ts) table for templates/packs/* bundles -- same "inference
 // happens once, visibly, with its reasoning attached" principle. Given a set
 // of interview answers and an optional recommendation context (which packs
-// were chosen, whether the project already carries custom skills), it must
-// deterministically return exactly seven recommendations, in a fixed order,
-// each carrying a non-empty "because" string and an id suffixed with
-// "@claude-plugins-official". Three entries (context7, typescript-lsp,
-// claude-md-management) are recommended unconditionally; one
-// (claude-code-setup) is never recommended; the remaining three
-// (github, security-guidance, skill-creator) vary by context/answers. Without
-// this test, a change to plugin-map.ts could silently drop a plugin from the
-// fixed list, flip a conditional recommendation's branch, return a
-// recommendation with no justification shown to the user, or make the
-// mapping non-deterministic across identical inputs -- none of which any
-// other test in this repo would catch.
+// were chosen, whether the project already carries custom skills, and the
+// project's package.json dependency names, i.e. its `dependencies` field), it
+// must deterministically return exactly ten recommendations, in a fixed
+// order, each carrying a non-empty "because" string and an id suffixed with
+// "@claude-plugins-official". Four entries (context7, typescript-lsp,
+// claude-md-management, claude-security) are recommended unconditionally; one
+// (claude-code-setup) is never recommended; the remaining five (github,
+// security-guidance, skill-creator, agent-sdk-dev, mcp-server-dev) vary by
+// context/answers -- the last two by the project's package.json
+// dependencies. Without this test, a change to plugin-map.ts could silently
+// drop a plugin from the fixed list, flip a conditional recommendation's
+// branch, return a recommendation with no justification shown to the user, or
+// make the mapping non-deterministic across identical inputs -- none of which
+// any other test in this repo would catch.
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { recommendPlugins } from "../src/plugin-map.js";
 import type {
@@ -41,8 +43,11 @@ const FIXED_ORDER = [
   "claude-md-management",
   "github",
   "security-guidance",
+  "claude-security",
   "skill-creator",
   "claude-code-setup",
+  "agent-sdk-dev",
+  "mcp-server-dev",
 ] as const;
 
 function find(
@@ -57,9 +62,13 @@ describe("recommendPlugins", () => {
     const context: PluginRecommendationContext = {
       chosenPacks: ["github"],
       hasCustomSkills: true,
+      dependencies: ["@anthropic-ai/claude-agent-sdk", "zod"],
     };
     const first = recommendPlugins(BASE_ANSWERS, context);
-    const second = recommendPlugins({ ...BASE_ANSWERS }, { ...context });
+    const second = recommendPlugins(
+      { ...BASE_ANSWERS },
+      { ...context, dependencies: [...(context.dependencies ?? [])] },
+    );
     expect(second).toEqual(first);
   });
 
@@ -69,11 +78,11 @@ describe("recommendPlugins", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly seven recommendations", () => {
-    expect(recommendPlugins(BASE_ANSWERS)).toHaveLength(7);
+  it("returns exactly ten recommendations", () => {
+    expect(recommendPlugins(BASE_ANSWERS)).toHaveLength(10);
   });
 
-  it("returns the seven fixed plugin ids in a fixed order", () => {
+  it("returns the ten fixed plugin ids in a fixed order", () => {
     const recommendations = recommendPlugins(BASE_ANSWERS, {
       chosenPacks: ["github"],
       hasCustomSkills: true,
@@ -272,6 +281,98 @@ describe("recommendPlugins", () => {
       );
       expect(rec?.prerequisites?.length).toBeGreaterThan(0);
       expect(rec?.prerequisites?.some((p) => /python/i.test(p))).toBe(true);
+    });
+  });
+
+  describe("claude-security", () => {
+    it("is recommended unconditionally, regardless of answers or context", () => {
+      const withoutContext = find(
+        recommendPlugins(BASE_ANSWERS),
+        "claude-security",
+      );
+      const withContext = find(
+        recommendPlugins(
+          { ...BASE_ANSWERS, kind: "frontend", ciDepth: "minimal" },
+          { chosenPacks: [], hasCustomSkills: false, dependencies: [] },
+        ),
+        "claude-security",
+      );
+      expect(withoutContext?.recommended).toBe(true);
+      expect(withContext?.recommended).toBe(true);
+    });
+
+    it("names the Python 3.9 prerequisite", () => {
+      const rec = find(recommendPlugins(BASE_ANSWERS), "claude-security");
+      expect(rec?.prerequisites?.some((p) => p.includes("Python 3.9"))).toBe(
+        true,
+      );
+    });
+
+    it("explains that it runs on demand", () => {
+      const rec = find(recommendPlugins(BASE_ANSWERS), "claude-security");
+      expect(rec?.because.length).toBeGreaterThan(0);
+      expect(rec?.because).toMatch(/on demand/i);
+    });
+  });
+
+  describe.each([
+    [
+      "agent-sdk-dev",
+      "@anthropic-ai/claude-agent-sdk",
+      "@modelcontextprotocol/sdk",
+    ],
+    [
+      "mcp-server-dev",
+      "@modelcontextprotocol/sdk",
+      "@anthropic-ai/claude-agent-sdk",
+    ],
+  ] as const)("%s", (prefix, ownDep, otherDep) => {
+    it("is not recommended when context is omitted", () => {
+      const rec = find(recommendPlugins(BASE_ANSWERS), prefix);
+      expect(rec?.recommended).toBe(false);
+      expect(rec?.because.length).toBeGreaterThan(0);
+    });
+
+    it("is not recommended when dependencies is absent or empty", () => {
+      const absent = find(recommendPlugins(BASE_ANSWERS, {}), prefix);
+      const empty = find(
+        recommendPlugins(BASE_ANSWERS, { dependencies: [] }),
+        prefix,
+      );
+      expect(absent?.recommended).toBe(false);
+      expect(empty?.recommended).toBe(false);
+    });
+
+    it("is not recommended when only unrelated packages are present", () => {
+      const rec = find(
+        recommendPlugins(BASE_ANSWERS, { dependencies: ["zod", "vitest"] }),
+        prefix,
+      );
+      expect(rec?.recommended).toBe(false);
+    });
+
+    it("is not recommended when only the other SDK is present", () => {
+      const rec = find(
+        recommendPlugins(BASE_ANSWERS, { dependencies: [otherDep] }),
+        prefix,
+      );
+      expect(rec?.recommended).toBe(false);
+    });
+
+    it("is recommended when its SDK is present, alone or among others", () => {
+      const alone = find(
+        recommendPlugins(BASE_ANSWERS, { dependencies: [ownDep] }),
+        prefix,
+      );
+      const among = find(
+        recommendPlugins(BASE_ANSWERS, {
+          dependencies: ["zod", ownDep, "vitest"],
+        }),
+        prefix,
+      );
+      expect(alone?.recommended).toBe(true);
+      expect(among?.recommended).toBe(true);
+      expect(alone?.because.length).toBeGreaterThan(0);
     });
   });
 

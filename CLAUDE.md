@@ -298,7 +298,8 @@ steps) before considering any task here done.
   (`plugin-map.ts`) recommends which locally-installed, built-in
   `claude-plugins-official` marketplace plugin(s) to enable -- both pure
   functions of the interview answers (plus, for `plugin-map.ts`, which
-  packs were chosen and whether the project authors its own skills), each
+  packs were chosen, whether the project authors its own skills, and which
+  packages it depends on), each
   with its own unit-tested table so a recommendation's evidence is never
   invented fresh at `/customize` run time.
 - **The harness grader has two implementations that must not drift.**
