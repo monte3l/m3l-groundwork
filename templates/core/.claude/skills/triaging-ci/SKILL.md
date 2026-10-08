@@ -4,8 +4,8 @@ description: >-
   Diagnose a CI failure via gh CLI: resolve the failing run, fetch logs, map the
   failure to its pipeline step, report root cause plus the exact local repro
   command, and present 3-5 fix options. Use for /triaging-ci, "why did CI fail",
-  "CI is failing", "debug the CI run", or a specific run ID/URL. GitHub stance:
-  gh CLI.
+  "CI is failing", "the build is red", "find the root cause of a failing
+  build", "debug the CI run", or a specific run ID/URL. GitHub stance: gh CLI.
 ---
 
 Diagnose why a GitHub Actions CI run failed by fetching its logs via `gh` and

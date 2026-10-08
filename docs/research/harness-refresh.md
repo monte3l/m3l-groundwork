@@ -14,7 +14,12 @@ from the Claude Code CHANGELOG 2.1.288 to 2.1.294 (installed: 2.1.294). The
 headline is **Claude Haiku 5.5** (`claude-haiku-5-5`, released 2026-10-07, now
 the default `haiku` on the Anthropic API from Claude Code 2.1.293); Haiku 4.5 is
 Legacy, with no deprecation notice yet. Remediated on
-`fix/guidance-refresh-2026-10-08` (R1 to R5, H1 to H4, S1 below).
+`fix/guidance-refresh-2026-10-08` (R1 to R5, H1 to H4, S1 below). The paid eval
+baseline was re-recorded at `--runs 3` ($6.07): every case scores 1. The first
+re-record had `triaging-ci-fires-2` at 0.67 ("The build is red on main. Find the
+root cause." matched none of the description's trigger phrases), so the
+`triaging-ci` description gained "the build is red" and "find the root cause of
+a failing build"; it then scored 1 over 5 runs, with no cross-pack regression.
 
 **2026-10-03 sweep** — third sweep, five parallel Explore spokes (one per
 facet) over the allowlisted Anthropic sources, with every repo-impact finding
