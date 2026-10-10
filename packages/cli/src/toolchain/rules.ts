@@ -118,8 +118,8 @@ const lower = (value: unknown): string | undefined =>
 
 /**
  * Options TypeScript 6.0 deprecated. `removedIn` is the major that drops them
- * (`outFile` and `moduleResolution: classic` already went in 6.0).
- * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html
+ * (`outFile` and `moduleResolution: classic` already went in 6.0). See the
+ * TypeScript 6.0 release notes.
  */
 export const LEGACY_OPTIONS: readonly LegacyOption[] = [
   {
@@ -479,7 +479,7 @@ const gateWiring: ToolchainRule = {
         const script = first === "run" ? second : first;
         if (script !== undefined && !PNPM_BUILTINS.has(script)) {
           checked += 1;
-          if (scripts[script] === undefined) {
+          if (!Object.hasOwn(scripts, script)) {
             failures.push({
               subject: `${stepsFile ?? ""} step "${step.id}"`,
               message: `runs \`pnpm ${script}\`, but package.json has no "${script}" script`,
