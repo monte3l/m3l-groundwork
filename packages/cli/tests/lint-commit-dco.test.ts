@@ -234,6 +234,36 @@ const ruleCases: RuleCase[] = [
     exit: 1,
     stderrIncludes: "Signed-off-by",
   },
+  {
+    label: "colon-less rule value: empty Signed-off-by value on merge",
+    rule: '[2, "always", "Signed-off-by"]',
+    message: "Merge branch 'x'\n\nSigned-off-by:\n",
+    exit: 1,
+    stderrIncludes: "Signed-off-by",
+  },
+  {
+    label: "colon-less rule value: signed merge",
+    rule: '[2, "always", "Signed-off-by"]',
+    message: `Merge branch 'x'\n\nSigned-off-by: ${A}\n`,
+    exit: 0,
+  },
+  ...["amend! feat: x", "chore(release): 1.2.3", "1.2.3"].flatMap(
+    (subject): RuleCase[] => [
+      {
+        label: `severity 2 enforces on ignored subject "${subject}": unsigned`,
+        rule: '[2, "always", "Signed-off-by:"]',
+        message: `${subject}\n`,
+        exit: 1,
+        stderrIncludes: "Signed-off-by",
+      },
+      {
+        label: `severity 2 enforces on ignored subject "${subject}": signed`,
+        rule: '[2, "always", "Signed-off-by:"]',
+        message: `${subject}\n\nSigned-off-by: ${A}\n`,
+        exit: 0,
+      },
+    ],
+  ),
 ];
 
 function runWithConfig(
@@ -263,14 +293,28 @@ describe.each(targets)("lint-commit trailer-exists semantics ($name)", (t) => {
   });
 });
 
-describe("lint-commit root config: trailer block semantics", () => {
-  it("a Signed-off-by line followed by prose does not satisfy DCO on an ignored message", () => {
-    const r = run(
-      targets[0] ?? { cwd: "", script: "" },
-      `Merge branch 'x'\n\nSigned-off-by: ${A}\n\nmore prose after\n`,
-      "inline",
-    );
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("Signed-off-by");
+describe.each(targets)("lint-commit without git on PATH ($name)", (t) => {
+  it.each([
+    ["ignored unsigned message", "Merge branch 'x'\n"],
+    ["unsigned normal message", "feat: add y\n"],
+  ])("%s under severity 2 fails cleanly", (_label, message) => {
+    const cfgDir = mkdtempSync(join(tmpdir(), "lint-commit-nogit-"));
+    try {
+      writeFileSync(
+        join(cfgDir, "commitlint.config.js"),
+        'module.exports = { rules: { "trailer-exists": [2, "always", "Signed-off-by:"] } };\n',
+      );
+      const r = spawnSync(process.execPath, [t.script, message], {
+        cwd: cfgDir,
+        encoding: "utf8",
+        env: { PATH: "/nonexistent", NO_COLOR: "1" },
+      });
+      expect(r.status).toBe(1);
+      expect(r.stderr).not.toMatch(/TypeError|\n\s+at /);
+      expect(r.stderr).toContain("\u2717");
+      expect(r.stderr).toMatch(/trailer|git/i);
+    } finally {
+      rmSync(cfgDir, { recursive: true, force: true });
+    }
   });
 });
