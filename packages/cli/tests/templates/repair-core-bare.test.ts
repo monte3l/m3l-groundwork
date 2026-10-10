@@ -39,10 +39,10 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { chmodIneffective } from "./chmod-ineffective.js";
+import { chmodIneffective } from "../chmod-ineffective.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRootDir = join(here, "..", "..", "..");
+const repoRootDir = join(here, "..", "..", "..", "..");
 const hookPath = join(
   repoRootDir,
   "templates",

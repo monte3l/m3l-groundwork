@@ -205,7 +205,7 @@ function resolveSkillsDirs({ skillsDir, skillsDirs }) {
  * Writes a throwaway plugin that wraps a project's `.claude/skills` plus one
  * eval case per corpus entry, so the emitted baseline's skills can be
  * evaluated as a plugin under test. Hooks and agents are deliberately not
- * wrapped: hooks are behaviourally covered by core-hooks.test.ts (which runs
+ * wrapped: hooks are behaviourally covered by packages/cli/tests/templates/core-hooks.test.ts (which runs
  * them for real), and a triggering corpus has nothing to say about agents.
  * `skillsDirs` merges several skill directories into one wrapper (used by the
  * `packs` suite to combine `templates/core`'s skills with every

@@ -30,7 +30,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(here, "..", "..", "..");
+const repoRoot = join(here, "..", "..", "..", "..");
 const hookSource = join(
   repoRoot,
   "templates",
