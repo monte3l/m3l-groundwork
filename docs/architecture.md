@@ -147,11 +147,149 @@ restricted, zero-dependency markdown-to-HTML renderer
 with the same generated `design/tokens.css` plus the vendored component CSS
 and one repo-specific addition, `design/local/site.css`, for the page-shell
 layout no single vendored component covers. `bin/build-docs.mjs --check`
-fails the build on a broken internal link or anchor, a stray italic
-emphasis span, or a generated `_headers` file (`bin/lib/site-headers.mjs`)
-that would exceed Cloudflare's own limits -- see
-[`CLAUDE.md`](../CLAUDE.md#architecture-notes) for the full renderer
+builds to a throwaway directory and fails, without writing the site, on any
+of the following:
+
+- an internal link whose target path does not exist in the repository, or
+  escapes it
+- a broken same-page anchor, or a cross-page anchor with no matching heading,
+  including an anchor into a non-page repo file such as
+  `CLAUDE.md#some-heading` (an anchor into a non-markdown file cannot be
+  verified, so it fails too)
+- a link scheme other than `http:`, `https:` or `mailto:`
+- an italic `_x_` or `*x*` emphasis span in any page source (use bold)
+- markdown outside the renderer's supported subset, which it throws on
+  rather than guessing at
+- a generated `_headers` file (`bin/lib/site-headers.mjs`) that exceeds
+  Cloudflare's limits of 100 rule blocks or 2,000 characters on any line
+
+See [`CLAUDE.md`](../CLAUDE.md#architecture-notes) for the full renderer
 contract.
+
+## Inventory schema
+
+Adopt mode writes `.groundwork/inventory.json`, the machine-readable handoff
+`/customize`'s Step 0 reads. The current `schemaVersion` is **6**
+(`INVENTORY_SCHEMA_VERSION` in `packages/cli/src/inventory.ts`). The survey is
+an index, not an interpretation: it records facts the CLI can establish
+offline and never a verdict. Anything it could not parse goes into
+`survey.undetermined`. `/customize` tolerates an older inventory: below 3 there
+is no harness grade, below 4 no toolchain grade, below 5 no `stagedBaseline`,
+and below 6 no `survey.harness.pluginLayout`. The file is written atomically,
+so its presence means the run completed.
+
+### Top level
+
+| Field                  | Type   | Meaning                                                                            |
+| ---------------------- | ------ | ---------------------------------------------------------------------------------- |
+| `schemaVersion`        | number | The schema version, currently 6.                                                   |
+| `cliVersion`           | string | The CLI's own `package.json` version, or `"unknown"` when it cannot be read.       |
+| `generatedAt`          | string | ISO 8601 timestamp of when the inventory was built.                                |
+| `modeSignal`           | string | The fact that selected the mode, such as `found package.json` or `--adopt forced`. |
+| `templateRoot`         | string | Absolute path of the template tree, in the platform's native form.                 |
+| `targetDir`            | string | Absolute path of the adopted project, in the platform's native form.               |
+| `survey`               | object | The project survey, described below. Its paths are native, not normalized.         |
+| `conflicts`            | array  | Baseline-versus-project file collisions, one entry per baseline file.              |
+| `packs`                | array  | One survey per pack, described below.                                              |
+| `harnessGrade`         | object | Wiring integrity and rubric quality of the existing harness.                       |
+| `harnessConformance`   | object | How far the harness has drifted from the baseline's.                               |
+| `toolchainGrade`       | object | Wiring integrity and rubric quality of the TypeScript toolchain.                   |
+| `toolchainConformance` | object | How far the toolchain files have drifted from the baseline's.                      |
+| `stagedBaseline`       | object | The absent baseline files, staged as inert copies.                                 |
+| `stagedPacks`          | array  | Every pack, staged as inert copies.                                                |
+
+Every `relPath` in `conflicts` and `packs[].fileConflicts`, and every path in
+`stagedBaseline` and `stagedPacks`, uses `/` on every platform.
+
+### Conflicts, grades and staging
+
+| Field                                        | Type     | Meaning                                                                                                            |
+| -------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `conflicts[].relPath`                        | string   | The baseline file's path relative to the project root.                                                             |
+| `conflicts[].status`                         | string   | `absent`, `identical` or `divergent`.                                                                              |
+| `conflicts[].keyDiffs`                       | string[] | For `package.json` and `tsconfig*.json` only, the top-level keys that differ.                                      |
+| `harnessGrade`, `toolchainGrade`             | object   | `findings`, `structural` and `rubric` tallies, and `rubricScore` (1 minus failed over checked).                    |
+| `harnessConformance`, `toolchainConformance` | object   | `identical`, `divergent` and `absent` counts plus `divergentFiles` and `absentFiles`. Information, never a defect. |
+| `stagedBaseline.dir`                         | string   | Project-relative staging directory, `.groundwork/baseline`.                                                        |
+| `stagedBaseline.suffix`                      | string   | The suffix every staged file carries, `.staged`.                                                                   |
+| `stagedBaseline.files[]`                     | array    | Each file's `path` (install path), `staged` (name inside `dir`) and `sha256` of the staged bytes.                  |
+| `stagedPacks[].name`, `dir`, `suffix`        | string   | A pack's manifest name, its staging directory `.groundwork/packs/<name>`, and `.staged`.                           |
+| `stagedPacks[].manifest`, `files[]`          | object   | The staged `pack.json` and the pack's `files/` tree, each as `path`, `staged` and `sha256`.                        |
+
+### Survey
+
+| Field                 | Type     | Meaning                                                                                     |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `survey.shape`        | object   | Codebase-shape facts, listed below.                                                         |
+| `survey.toolchain`    | object   | Toolchain enforcement in effect, listed below.                                              |
+| `survey.harness`      | object   | The existing Claude Code harness, listed below.                                             |
+| `survey.docs.files[]` | array    | Indexed human-facing docs: `path`, `sizeBytes` and the level 1-3 `headings`, never content. |
+| `survey.undetermined` | string[] | Things the survey tried and could not parse or classify.                                    |
+
+| Field                      | Type                | Meaning                                                                                         |
+| -------------------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
+| `shape.packageManager`     | string              | `npm`, `pnpm`, `yarn`, `bun` or `unknown`, from the lockfile.                                   |
+| `shape.monorepoTool`       | string              | `pnpm-workspaces`, `turbo`, `nx`, `lerna`, `npm-workspaces` or `none`.                          |
+| `shape.workspaceGlobs`     | string[]            | Workspace package globs the monorepo tool declares.                                             |
+| `shape.moduleType`         | string              | `module`, `commonjs` or `unspecified`.                                                          |
+| `shape.typescriptVersion`  | string or undefined | The `typescript` version range, verbatim.                                                       |
+| `shape.nodeVersionPin`     | object or undefined | The first Node pin found: `source` and verbatim `value`.                                        |
+| `shape.sourceLayout`       | string              | `src`, `lib`, `root` or `unknown`.                                                              |
+| `shape.testPlacement`      | string              | `tests-dir`, `colocated` or `unknown`.                                                          |
+| `shape.kindEvidence`       | object              | `hasExportsMap`, `hasBinField`, `hasMainField` and `frameworkDeps`.                             |
+| `toolchain.tsconfig`       | object              | `files` (the extends chain, child first), `effectiveFlags` and `parsed`.                        |
+| `toolchain.eslint`         | object              | `configFile`, `flat` and `referencedPlugins`, scraped from source text.                         |
+| `toolchain.testRunner`     | object              | `tool` (`vitest`, `jest`, `mocha`, `node-test` or `unknown`) and `configFile`.                  |
+| `toolchain.formatter`      | object              | `tool` (`prettier`, `biome` or `unknown`) and `configFile`.                                     |
+| `toolchain.gitHooks`       | object              | `manager` (`lefthook`, `husky`, `simple-git-hooks` or `none`), `configFile` and `needsReading`. |
+| `toolchain.workflows`      | object              | CI workflow `files` and `needsReading`.                                                         |
+| `toolchain.scripts`        | object              | `package.json` scripts, name to command, verbatim.                                              |
+| `harness.present`          | boolean             | Whether a `.claude/` directory exists.                                                          |
+| `harness.settingsFile`     | string or undefined | `settings.json` when present.                                                                   |
+| `harness.agents[]`         | array               | Each agent's `name` and frontmatter `model`.                                                    |
+| `harness.skills[]`         | array               | Each skill's `name` and `description`.                                                          |
+| `harness.hooks`            | string[]            | Hook script file names under `.claude/hooks/`.                                                  |
+| `harness.rules[]`          | array               | Each rule's `name` and `paths` scope text.                                                      |
+| `harness.commands`         | string[]            | Command file names under `.claude/commands/`.                                                   |
+| `harness.hasSettingsLocal` | boolean             | Whether `.claude/settings.local.json` exists.                                                   |
+| `harness.hasClaudeMd`      | boolean             | Whether a root `CLAUDE.md` exists.                                                              |
+| `harness.claudeMdHeadings` | string[]            | `CLAUDE.md`'s level 1-3 headings in order.                                                      |
+| `harness.pluginLayout`     | object or null      | `null` unless `.claude-plugin/plugin.json` is a regular file; then `manifest` and `components`. |
+
+Fields typed "or undefined" are omitted from the JSON when unset, since
+`JSON.stringify` drops them.
+
+### Packs
+
+Each `packs[]` entry is one pack's survey. Adopt mode records the wiring and
+never applies it.
+
+| Field                | Type                | Meaning                                                                                                            |
+| -------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `name`               | string              | The pack's name, matching its directory.                                                                           |
+| `modes`              | string[]            | The CLI modes the pack supports, one or both of `fresh` and `adopt`.                                               |
+| `budget`             | object              | The cap delta: `agents`, `skills`, `hooks`, `workflows` and `scripts`.                                             |
+| `fileConflicts[]`    | array               | Collisions of the pack's `files/` tree with the target, shaped like `conflicts`.                                   |
+| `wiring`             | object              | The pack's declared wiring, verbatim: `settings`, optional `settingsTopLevel`, `packageScripts` and `verifySteps`. |
+| `wiringObservations` | string[]            | Index-level facts about how the wiring would land, never a verdict.                                                |
+| `adoptNotes`         | string or undefined | The pack's notes for `/customize`.                                                                                 |
+
+## pack.json
+
+Each `templates/packs/<name>/pack.json` is validated by `loadPack` before any
+pack is installed or staged. A pack that fails validation is neither.
+
+| Field           | Type     | Rule                                                                                                                                                                                                                                                       |
+| --------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion` | number   | Must be 1.                                                                                                                                                                                                                                                 |
+| `name`          | string   | A bare lowercase identifier matching `^[a-z][a-z0-9-]*$`, and equal to the pack's directory name.                                                                                                                                                          |
+| `description`   | string   | What the pack ships. Declared by the manifest type, not validated beyond that.                                                                                                                                                                             |
+| `modes`         | string[] | Non-empty, each `fresh` or `adopt`.                                                                                                                                                                                                                        |
+| `budget`        | object   | Non-negative integers for `agents`, `skills`, `hooks`, `workflows` and `scripts`.                                                                                                                                                                          |
+| `requires`      | object   | Optional. `paths` lists files the baseline must already provide.                                                                                                                                                                                           |
+| `wiring`        | object   | Required. `settings` and `packageScripts` must be objects, `verifySteps` an array of `id`, `name`, `group` (`format`, `lint`, `typecheck`, `build` or `test`) and a non-empty `cmd`. `settingsTopLevel` is optional. Prototype-sensitive keys are refused. |
+| `adoptNotes`    | string   | Optional guidance for `/customize` in adopt mode.                                                                                                                                                                                                          |
+| `setupSteps`    | string[] | Optional. Non-empty single-line shell commands a fresh install needs before its first `pnpm verify`.                                                                                                                                                       |
 
 ## Trust boundaries and threat model
 
