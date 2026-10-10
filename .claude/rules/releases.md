@@ -48,6 +48,14 @@ npm provenance itself. A plugin-only change needs no release step at all: it
 is live for marketplace users (`/plugin marketplace update`) the moment it
 lands on `main`; `plugin.json`'s version just trails the CLI's for display.
 
+**Packs have no release of their own.** `templates/packs/<name>/` ships
+inside the CLI tarball, so a user-visible change to one pack is a CLI change
+and takes a `patch` changeset like any other. Start its summary with `pack(<name>):`
+(`pack(worktrees): ...`) so the CLI changelog can be read per pack. It is a
+naming convention only: no `version` field in `pack.json` (`packs.ts` would
+accept an unknown key, but nothing reads it), and no per-pack
+`CHANGELOG.md`.
+
 **Prerelease mode is on** (`.changeset/pre.json`, tag `rc`): the CLI shipped
 one `0.x` line (`0.1.0-next.0`/`.1`, on the `next` dist-tag) before the public
 API was defined, then switched tags (`pnpm changeset pre exit` immediately
