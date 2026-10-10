@@ -127,3 +127,12 @@ Promise<void>` whose arrow body returns a value fails typecheck (TS2322);
   which one the call matches, failing a method spy with a `never`-constraint
   error though the runtime call is correct. Let TypeScript infer it from the
   `return` statement instead.
+- **Tests whose subject is a file under `templates/` live in
+  `packages/cli/tests/templates/`**, not beside the tests of `packages/cli/src`
+  modules: hooks, `bin/lib` helpers and skills of `templates/core` and
+  `templates/packs/*`. Run just that group with
+  `pnpm vitest run packages/cli/tests/templates`. A test one level deeper
+  walks one more `".."` to the repo root, and `vitest.config.ts` excludes
+  the template payload by its anchored paths (`templates/**`,
+  `packages/cli/templates/**`), never `**/templates/**`, which would
+  silently skip this directory.

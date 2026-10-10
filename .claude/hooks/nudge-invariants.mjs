@@ -69,7 +69,7 @@ export { isExcludedHookPath };
  *   variable-free environment (`GIT_DIR`, `GIT_INDEX_FILE`, ...): those
  *   inherited from a git hook or a linked worktree would otherwise redirect
  *   this `git status` call at the REAL repository instead of the fixture,
- *   same hazard `core-hooks.test.ts`'s `envWithoutRepoLocals()` guards
+ *   same hazard `packages/cli/tests/templates/core-hooks.test.ts`'s `envWithoutRepoLocals()` guards
  *   against for its own subprocess-under-test.
  */
 export function statusLine(target, cwd, env = process.env) {

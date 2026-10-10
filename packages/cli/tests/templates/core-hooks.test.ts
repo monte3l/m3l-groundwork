@@ -70,6 +70,7 @@ const hooksDir = join(
   "..",
   "..",
   "..",
+  "..",
   "templates",
   "core",
   ".claude",
@@ -581,7 +582,7 @@ describe("post-edit-verify resolves the worktree root, not CLAUDE_PROJECT_DIR", 
 describe("no shipped script compares process.argv[1] to import.meta.url directly", () => {
   // The behavioural tests above cover a sample; this sweep is what stops the
   // next hook, gate or pack script from reintroducing the fail-open check.
-  const templatesDir = join(here, "..", "..", "..", "templates");
+  const templatesDir = join(here, "..", "..", "..", "..", "templates");
 
   function scripts(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -615,7 +616,7 @@ describe("no shipped script compares process.argv[1] to import.meta.url directly
 
 describe.each([
   ["templates/core copy", hooksDir],
-  ["root copy", join(here, "..", "..", "..", ".claude", "hooks")],
+  ["root copy", join(here, "..", "..", "..", "..", ".claude", "hooks")],
 ])("inject-decision-gate buildContext (%s)", (_label, dir) => {
   let buildContext: (branch: string) => string;
 
@@ -669,7 +670,7 @@ describe.each([
 
 describe.each([
   ["templates/core copy", hooksDir],
-  ["root copy", join(here, "..", "..", "..", ".claude", "hooks")],
+  ["root copy", join(here, "..", "..", "..", "..", ".claude", "hooks")],
 ])("guard-no-commonjs block message (%s)", (_label, dir) => {
   it("names import.meta.dirname and import.meta.filename as replacements", () => {
     const { status, stderr } = run(join(dir, "guard-no-commonjs.mjs"), {

@@ -27,7 +27,10 @@ export default defineConfig({
     exclude: [
       "**/dist/**",
       "**/node_modules/**",
-      "**/templates/**",
+      // Anchored, not `**/templates/**`: that would also swallow
+      // packages/cli/tests/templates/, the template/pack-subject tests.
+      "templates/**",
+      "packages/cli/templates/**",
       // A background agent's worktree (see .prettierignore) is a full
       // second checkout under here, with its own tests/ trees -- without
       // this every test in the repo runs twice, once per copy.

@@ -14,7 +14,8 @@ export default defineConfig({
     exclude: [
       "**/dist/**",
       "**/node_modules/**",
-      "**/templates/**",
+      "templates/**",
+      "packages/cli/templates/**",
       "packages/cli/plugin/**",
       // Same reason as vitest.config.ts.
       "**/.claude/worktrees/**",

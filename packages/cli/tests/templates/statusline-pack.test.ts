@@ -24,6 +24,7 @@ const hooksDir = join(
   "..",
   "..",
   "..",
+  "..",
   "templates",
   "packs",
   "harness-extras",
@@ -356,7 +357,7 @@ describe("running as the entry point through a symlinked path", () => {
 
 describe.each([
   ["shipped pack copy", hooksDir],
-  ["root copy", join(here, "..", "..", "..", ".claude", "hooks")],
+  ["root copy", join(here, "..", "..", "..", "..", ".claude", "hooks")],
 ])("formatSubagentRow agentType fallback (%s)", (_label, dir) => {
   type Row = { id: string; content: string } | null;
   let format: (task: unknown, env?: { now?: number }) => Row;
