@@ -17,7 +17,7 @@ paths:
   and `conflicts.ts` do. Skip it and a published install silently loses
   those files.
 - **No new runtime dependency.** It is a hard constraint, not a style
-  preference. Parse by hand, as `survey/jsonc.ts` does.
+  preference. Parse by hand, as `packages/cli/src/jsonc.ts` does.
 - **The harness and toolchain graders have an emitted twin** in
   `templates/core/bin/lib/*-rules.mjs`. Change a rule in both in the same
   commit, or the parity tests under `tests/harness/` and `tests/toolchain/`

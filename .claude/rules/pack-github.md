@@ -28,7 +28,7 @@ Modes: fresh and adopt. Budget: 3 skills, 2 workflows.
   nothing in the baseline produces. Keep `adoptNotes` saying so.
 - **The `budget` in `pack.json` must equal the real `files/` count.**
   `packages/cli/tests/caps.test.ts` checks it.
-- **Actions are SHA-pinned with a `# vX.Y.Z` comment,** as everywhere else.
+- **Actions are SHA-pinned with a `# v<tag>` comment,** as everywhere else (a major tag such as `# v7`, or the full version where upstream publishes only that, as for `anthropics/claude-code-action`).
 
 | Proof                        | Where                                         |
 | ---------------------------- | --------------------------------------------- |

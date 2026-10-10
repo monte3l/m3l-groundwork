@@ -11,7 +11,9 @@ paths:
 > about changing the template.
 
 - **Brand-neutral.** `templates/**` ships into other people's projects, so
-  no m3l-design styling, no monte3l names, and the `docs.md` rule does not
+  no m3l-design styling, no monte3l names (the one exception: `templates/core`
+  links the project's own repo URL, `monte3l/m3l-groundwork`, in `README.md`
+  and `CLAUDE.md`), and the `docs.md` rule does not
   apply here.
 - **The caps bind the baseline.** At most 5 agents, 8 skills (7 in
   `templates/core/.claude/skills/`, plus `/customize`), 10 hooks, 3 CI
@@ -31,7 +33,7 @@ paths:
 - **Most hook and skill tests live in `packages/cli/tests/templates/`**
   (run them with `pnpm vitest run packages/cli/tests/templates`), but a hook
   that has a root twin is tested from `packages/cli/tests/` itself:
-  `guard-hub-bash-writes`, `post-edit-verify`, `nudge-invariants` and
-  `verify-steps`. Run those too when you change a twinned file.
+  `guard-hub-src-writes` and `guard-hub-bash-writes` (its Bash scan),
+  `post-edit-verify`, `nudge-invariants` and `verify-steps`. Run those too when you change a twinned file.
 - **Dispatch `baseline-impact-reviewer`** alongside `code-reviewer` on any
   diff that touches this tree.

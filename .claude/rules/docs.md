@@ -5,7 +5,6 @@ paths:
   - ".claude/**/*.md"
   - ".github/**/*.md"
   - "design/README.md"
-  - "design/local/**/*.md"
   - "docs/**/*.md"
   - "evals/**/*.md"
   - "packages/**/*.md"

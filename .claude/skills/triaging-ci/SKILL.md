@@ -70,9 +70,9 @@ the first failure, typically the last 50–100 lines before the run aborted.
 
 ### 3 — Map to the pipeline step
 
-`.github/workflows/ci.yml`'s lanes each run `node bin/verify.mjs --step <id>`
-against a step id from `bin/lib/verify-steps.mjs` — that file's `cmd` field
-IS the local reproduction command, so mapping a failing CI step to its local
+`.github/workflows/ci.yml`'s lanes each run `node bin/verify.mjs --group <name>`
+over the step groups in `bin/lib/verify-steps.mjs` — a step's `cmd` field
+IS the local reproduction command (run one step with `--step <id>`), so mapping a failing CI step to its local
 command is always: find the `## <step name>` line the log shows, match it to
 the step's `name` in `bin/lib/verify-steps.mjs`, and reproduce with that
 step's `cmd` array joined as a shell command (or just `node bin/verify.mjs

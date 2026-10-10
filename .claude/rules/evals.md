@@ -33,8 +33,8 @@ when the case is copied.
 
 `packages/plugin/evals/` grades `/customize` itself (`fresh-interview`,
 `adopt-reconcile`); each case's `fixture.sh` runs this repo's own **built**
-CLI to make a genuine fresh/adopted project, so `pnpm eval` runs `pnpm build`
-first.
+CLI to make a genuine fresh/adopted project, so the `plugin` and `toolchain`
+suites run `pnpm build` first (the other suites do not).
 
 `evals/core-harness/triggers.json` is a `{skill, query, should_trigger}`
 corpus that `bin/lib/eval-lib.mjs` turns into a throwaway plugin wrapping
@@ -68,6 +68,7 @@ The interview is graded by an `llm` rubric rather than a
 `tool_used: AskUserQuestion` grader because that tool is not available in
 the eval sandbox (Claude falls back to plain-text questions). Under
 `--ablation with-without` a `tool_used: Skill` grader stops counting toward
-the score, so the suites default to `--ablation none`. **`--check` ratchets
+the score (the Skill grader's behaviour is external CLI behaviour, not something
+this repo controls), so the suites default to `--ablation none`. **`--check` ratchets
 against `evals/baseline.json` and `--update` rewrites it -- record it at
 `--runs 3` or more, because a one-run baseline flakes.**

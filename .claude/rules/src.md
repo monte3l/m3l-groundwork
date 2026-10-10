@@ -9,7 +9,8 @@ paths:
 > Base standards — TypeScript strictness, ESM `.js` imports, named exports,
 > exporting a type next to its value, `readonly`/`const`, `interface` vs
 > `type`, exhaustive `switch`, TSDoc on every export — live in CLAUDE.md and
-> `eslint.config.js`; this file adds what those don't already say.
+> `eslint.config.js`; this file adds what those don't already say. The rules below are authoring
+> conventions; no ESLint rule enforces them.
 
 - **Don't pass `undefined` to an optional property.** Under
   `exactOptionalPropertyTypes`, an optional target field (`default?: number`)

@@ -14,8 +14,9 @@ for any GitHub-hosted project, published or not. A pure file drop: no hooks,
 settings, scripts or verify step. Modes: fresh and adopt. Budget: 2
 workflows.
 
-- **Both workflows are read-only and not required checks by default.** Keep
-  `permissions` minimal and the shipped defaults unchanged.
+- **Both workflows default to read-only and are not required checks by
+  default; scorecard's job additionally grants `security-events` and
+  `id-token` write.** Keep `permissions` minimal and the shipped defaults unchanged.
 - **They ship without an SPDX header on purpose:** a header would carry a
   project-name token that stays literal in an adopt-mode install. The
   license-header gate belongs to the fresh-only `publishing` pack. Do not
