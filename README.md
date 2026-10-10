@@ -79,13 +79,13 @@ They stay two separate phases on purpose, rather than one -- see
 The mode is auto-detected from the target directory; `--fresh` and `--adopt`
 override it.
 
-| Mode      | When                                    | What it does                                                                                                                                                                                                                          |
-| --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fresh** | The target is empty or missing          | Writes the full baseline, runs `git init`, installs any `--pack`, then `pnpm install`.                                                                                                                                                |
-| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and of the packs (`.groundwork/packs/`). It never touches a project file. |
+| Mode      | When                                    | What it does                                                                                                                                                                                                                                                                                                                    |
+| --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fresh** | The target is empty or missing          | Writes the full baseline, installs any `--pack`, installs the `/customize` skill, runs `git init`, then `pnpm install`.                                                                                                                                                                                                         |
+| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and of the packs (`.groundwork/packs/`). It writes only under `.groundwork/`, plus one guarded copy of the `/customize` skill, and never overwrites a project file. |
 
-Adopt mode also drops a guarded, purely additive copy of the `/customize`
-skill, which is where the real work happens: it reads the survey, confirms
+That copy lands at `.claude/skills/customize/`, or at `.groundwork/customize/`
+when something already there blocks it. It is where the real work happens: it reads the survey, confirms
 each change with you, and only then edits your project.
 
 ## Packs
@@ -257,6 +257,68 @@ table, conventions, and known gaps.
   this repo's jargon.
 - [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
+### Exit codes and failure behaviour
+
+Exit `2` is a bad invocation, raised before anything is written. Exit `1` is
+everything else that goes wrong at run time.
+
+| Situation                                                                                    | Exit | What happens / what to do                                                                                                                                                                         |
+| -------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unrecognized flag, missing flag value, repeated value flag, missing or extra target argument | 2    | Prints the error and the usage text.                                                                                                                                                              |
+| `--adopt` with `--fresh`                                                                     | 2    | The two are mutually exclusive.                                                                                                                                                                   |
+| `--name` is not a valid npm package name, or a `--pack` value is not a valid pack name       | 2    | Prints the rule it broke and the usage text.                                                                                                                                                      |
+| Unknown `--pack`                                                                             | 2    | Lists the available packs. A retired name gets a hint: `statusline` was renamed to `harness-extras`.                                                                                              |
+| `--pack` for a pack without fresh mode                                                       | 2    | Says the pack does not support fresh mode and lists its modes.                                                                                                                                    |
+| Adopt mode with `--adopt` and a missing target directory, `--force` or `--pack`              | 2    | Adopt never writes project files and surveys every pack itself; run `/customize` to install a pack.                                                                                               |
+| Windows, fresh mode                                                                          | 1    | Refuses before writing anything: Linux and macOS only. Adopt mode, `--help`, `--version` and `--list-packs` still run.                                                                            |
+| Fresh target is not empty and `--force` is absent                                            | 1    | Refuses; pass `--force` to overwrite, or `--adopt` to survey it.                                                                                                                                  |
+| Fresh mode, `/customize` skill install fails                                                 | 1    | The project is already written and `git init` and `pnpm install` did not run. Re-run with `--fresh --force` plus your original `--name`, `--pack` and `--skip-install`; a plain re-run adopts it. |
+| Fresh mode, `git init` fails                                                                 | 1    | The project is left written. Run `git init` (and `pnpm install` unless `--skip-install`) yourself.                                                                                                |
+| Fresh mode, `pnpm install` fails                                                             | 1    | The project is left written without dependencies. Run `pnpm install` there yourself.                                                                                                              |
+| Adopt mode fails after it starts deleting the previous run's files                           | 1    | The message names which of `inventory.json`, `adoption-report.md` and `adoption-decisions.json` were removed; fix the cause and re-run. A removed `adoption-decisions.json` is not recreated.     |
+| A pack's manifest fails to load                                                              | 1    | A broken install, not a bad invocation.                                                                                                                                                           |
+
+### Mode signals
+
+In adopt mode the signal that chose the mode is printed as
+`adopt mode: <signal>` and recorded in the report's `**Mode:**` line. The
+fresh-mode signals only explain the detection: nothing prints them.
+
+| Signal                                                 | Mode  | When                                                  |
+| ------------------------------------------------------ | ----- | ----------------------------------------------------- |
+| `<dir> does not exist yet`                             | Fresh | The target is missing.                                |
+| `<dir> is empty`                                       | Fresh | The target is an empty directory.                     |
+| `<dir> exists but has no recognizable project markers` | Fresh | None of the adopt signals below match.                |
+| `found package.json`                                   | Adopt | A `package.json` is in the target.                    |
+| `found a .git directory`                               | Adopt | A `.git` directory is in the target.                  |
+| `found a .git file (a worktree or submodule)`          | Adopt | `.git` is a file.                                     |
+| `found <name>`                                         | Adopt | A loose `.ts`, `.tsx` or `.js` file is in the target. |
+| `--adopt forced`                                       | Adopt | `--adopt` was passed.                                 |
+| `--fresh forced`                                       | Fresh | `--fresh` was passed.                                 |
+
+### Report headings
+
+`.groundwork/adoption-report.md` is written in this order. Headings are
+exact strings.
+
+| Heading                                        | Present                                                                                                                                                                                                                       |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `# Adoption report`                            | Always, followed by a `Generated ...` line and the `**Mode:**` line                                                                                                                                                           |
+| `## Codebase shape`                            | Always                                                                                                                                                                                                                        |
+| `## Toolchain enforcement in effect`           | Always                                                                                                                                                                                                                        |
+| `## Toolchain grade`                           | Always; says there is nothing to grade when no toolchain files exist. Has `### Toolchain wiring findings` and `### Toolchain quality findings (advisory)` when there is something to grade                                    |
+| `## Existing Claude Code harness`              | Always; short when there is no `.claude/` directory                                                                                                                                                                           |
+| `## Harness grade`                             | Always; says there is nothing to grade when neither `.claude/` nor `CLAUDE.md` exists. Has `### Wiring findings`, `### Quality findings (advisory)` and `### Baseline harness files this project has changed` when applicable |
+| `## Human-facing docs & guidelines`            | Always                                                                                                                                                                                                                        |
+| `## Baseline caps after a merge (approximate)` | Always                                                                                                                                                                                                                        |
+| `## Available packs`                           | Always, with one `### <pack name>` per pack when any packs exist                                                                                                                                                              |
+| `## What groundwork would change`              | Always                                                                                                                                                                                                                        |
+| `## Could not be determined`                   | Always                                                                                                                                                                                                                        |
+| `## Next step`                                 | Always, followed by a staged-files note (when anything was staged) and a note that `.groundwork/` was not added to `.gitignore`                                                                                               |
+
+The CLI never edits your `.gitignore`: the closing note says so and leaves
+the choice to you.
+
 ## Versioning policy
 
 `@monte3l/groundwork` follows [Semantic Versioning](https://semver.org/).
@@ -265,11 +327,15 @@ for major version zero -- see the changesets in this repo's history for
 examples. From 1.0.0, the public API is:
 
 1. **CLI flags, modes, and exit codes** -- `--help` lists every flag; exit
-   `0` is success, `1` is a runtime failure, `2` is a bad invocation
-   (unrecognized flag, missing value, contradictory mode flags).
+   `0` is success, `1` is a runtime failure, `2` is a bad invocation (see
+   [Exit codes and failure behaviour](#exit-codes-and-failure-behaviour)).
+   The mode is announced on stdout as `adopt mode: <signal>` (adopt only)
+   and in the report as `**Mode:** adopt -- <signal>`; the signals are
+   listed under [Mode signals](#mode-signals).
 2. **`.groundwork/inventory.json`** -- a `schemaVersion` bump that
    `/customize` can't read is a breaking change.
-3. **`.groundwork/adoption-report.md`'s section headings.**
+3. **`.groundwork/adoption-report.md`'s section headings**, listed under
+   [Report headings](#report-headings).
 4. **`.groundwork/packs/` and `.groundwork/baseline/` staging layouts**, and
    pack names. Baseline files are staged as inert copies with a `.staged`
    suffix appended to each name (so no project tool discovers them), listed
