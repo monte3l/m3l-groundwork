@@ -5,9 +5,9 @@
  * Collects toolchain-enforcement facts: the tsconfig `extends` chain and its
  * effective strict-family flags, which eslint/test/formatter/git-hook tool
  * is in play and its config file, workflow files, and the full `scripts`
- * block. YAML-shaped config (git hooks, workflows) is indexed and excerpted
- * here, never parsed -- see `needsReading` on each -- because this package
- * carries no YAML dependency.
+ * block. YAML-shaped config (git hooks, workflows) is indexed by name and
+ * flagged `needsReading` here, never parsed or excerpted, because this
+ * package carries no YAML dependency.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";

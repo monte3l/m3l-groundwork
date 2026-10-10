@@ -104,7 +104,8 @@ have an `exports` map and no `bin` field", not just a silent default. When
 show the manifest and components as the evidence. With no `package.json`
 evidence and no plugin manifest, do not pre-select a kind: ask it cold. The
 user confirms or corrects each one. This is why the CLI's survey deliberately
-never names a `ProjectKind` itself (see its own `types.ts`): the inference
+never names a `ProjectKind` itself (the type lives in this plugin's
+`packages/plugin/src/kind-facet-map.ts`, not the CLI): the inference
 happens once, here, visibly, with its reasoning attached — not buried in an
 offline heuristic no one reviews.
 
