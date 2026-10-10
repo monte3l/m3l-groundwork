@@ -6,8 +6,8 @@
 # filter to the one they care about. A PR that touches several areas gets
 # several labels. The path scopes of the matching rules in `.claude/rules/`
 # are the source for these globs; nothing checks that they agree, so update
-# both when a scope moves. The labels themselves are created by hand
-# (`docs/github-blueprint.md`), because the workflow cannot create them.
+# both when a scope moves. A new label here needs no setup: the workflow
+# creates it on first use.
 
 "area:cli":
   - changed-files:

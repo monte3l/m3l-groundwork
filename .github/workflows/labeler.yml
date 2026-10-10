@@ -8,9 +8,9 @@ name: Label PRs by area
 # paths the PR changes, so the PR list reads by artifact. Labels only: it
 # never blocks anything, and it is not a required check.
 #
-# The labels must already exist: creating one needs `issues: write`, which
-# this job deliberately does not hold. `docs/github-blueprint.md` has the
-# `gh label create` commands, run once by a human.
+# The action creates a missing label itself the first time it applies it, and
+# `pull-requests: write` is enough for that (checked on this workflow's first
+# run), so there is no label setup step and `issues: write` is not needed.
 #
 # `pull_request`, never `pull_request_target`: PR creation is
 # collaborators-only here, so no fork PR exists, and the checked-out code is

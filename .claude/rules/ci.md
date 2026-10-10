@@ -48,9 +48,8 @@ paths:
   shipped artifact) with GitHub's own `actions/labeler`, on `pull_request`,
   never `pull_request_target`. It is not a required check, and it skips
   Dependabot (keyed on `pull_request.user.login`, not `github.actor`), whose
-  token is read-only. **The labels must already exist**: creating one needs
-  `issues: write`, which the job does not hold, so a human creates the 13
-  with the `gh label create` loop in `docs/github-blueprint.md`. There is
+  token is read-only. A new label needs no setup: the action creates it on
+  first use, and `pull-requests: write` is enough for that. There is
   deliberately no `CODEOWNERS` (see `SECURITY.md`).
 - **Two rules keep `gate-lane-parity` (the toolchain grader) working against
   this repo: never name a step id in a workflow** (name a group), **and
