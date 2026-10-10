@@ -19,10 +19,22 @@ pnpm install
 pnpm verify
 ```
 
-`pnpm verify` runs the same checks CI runs — format, lint, typecheck, build,
-and test with coverage — in one command, so you can catch a failure locally
-before pushing. See `CLAUDE.md` for the full command reference and this
+`pnpm verify` runs the same checks CI runs, in one command, so you can catch
+a failure locally before pushing. In order: format check, lint, the Claude
+Code harness grader, the TypeScript toolchain grader, knip (unused code and
+dependencies), typecheck, build, tests with coverage, a package-exports check,
+and a Node version pin check. See `CLAUDE.md` for the full command reference and this
 project's conventions.
+
+## Notable files
+
+- `.github/dependabot.yml` — weekly Dependabot updates for the GitHub Actions
+  pinned in `.github/workflows/` (npm updates are left off by default).
+- `pnpm-workspace.yaml` — pnpm's install-script approval list (`allowBuilds`),
+  which pnpm 10+ reads from here rather than from `package.json`.
+- `bin/strip-claude-trailers.mjs` — run by the `commit-msg` hook in
+  `lefthook.yml` before commit linting; strips harness-injected `Claude-*`
+  trailers and leaves `Co-Authored-By:` alone.
 
 ## Tailor it to your project
 

@@ -5,8 +5,10 @@ name: Scorecard
 # signed releases, and similar checks) and can publish a badge from the
 # result. It runs weekly, on every push to the release branch, and on
 # manual dispatch -- not on every PR, since supply-chain posture doesn't
-# change per-commit the way tests do. Read-only: this workflow only
-# inspects the repo and uploads a report, it never writes to it.
+# change per-commit the way tests do. It never writes to the repository's
+# contents, but the analysis job holds security-events: write (to upload
+# SARIF) and id-token: write (to publish results); the workflow-level
+# default is read-all.
 on:
   push:
     branches: [main]

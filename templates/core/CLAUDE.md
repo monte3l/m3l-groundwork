@@ -38,7 +38,8 @@ locally.
 ## Git Workflow
 
 **Conventional Commits (required)**, enforced by the `commit-msg` hook
-(`bin/lint-commit.mjs`). Add a `Co-Authored-By:` trailer when Claude
+(`bin/lint-commit.mjs`, run after `bin/strip-claude-trailers.mjs` removes
+harness-injected `Claude-*` trailers). Add a `Co-Authored-By:` trailer when Claude
 authored or substantially assisted a commit — see `.claude/skills/writing-commits/`.
 
 Branch off `main` as `feat/<slug>` / `fix/<slug>`, never work directly on
@@ -52,8 +53,9 @@ Never `git push --force` a shared branch.
 ## Architecture & Decisions
 
 `src/index.ts` is the current public entry point (see the `exports` map in
-`package.json`). Everything under `src/internal/`, if you create it, is
-private and must never be re-exported.
+`package.json`). By convention, anything under `src/internal/` (if you create
+it) is private and is not re-exported from the entry point; no lint rule
+enforces this, so review for it.
 
 ## Agent Operating Model
 
@@ -70,6 +72,19 @@ contract:
    when the diff has error-handling paths) run in parallel over the diff.
    Must-fix findings route back to `code-implementer`, and the loop repeats
    until clean.
+
+Also shipped: `.claude/agents/Explore.md`, a fast read-only search agent for
+locating files and symbols.
+
+Skills, each in `.claude/skills/<name>/`:
+
+- `starting-work` — pre-work gate: picks the branch and whether a PR is needed.
+- `writing-commits` — drafts a Conventional Commit from the staged diff.
+- `creating-prs` — verifies gates, pushes, opens the PR and picks a merge path.
+- `triaging-ci` — diagnoses a failed CI run and proposes fixes.
+- `finishing-work` — post-merge cleanup: branches, refs, work log.
+- `typescript-guidance` / `harness-guidance` — live research and refresh
+  sweeps (see Freshness).
 
 **The guard also screens `Bash`, but only conservatively.** The same hook
 runs on every `Bash` call and blocks a command that visibly writes into
@@ -144,10 +159,10 @@ the correct semver impact; new/changed exports have TSDoc and tests. If you
 touched the harness itself (hooks, agents, skills, rules, `settings.json`),
 `pnpm verify`'s `harness` step (`bin/check-harness.mjs`) must stay green: it
 fails on broken wiring and only warns on quality.
-If you touched the TypeScript toolchain (`tsconfig*.json`, `eslint.config.js`,
-`vitest.config.ts`, `bin/lib/verify-steps.mjs`, the toolchain pins in
-`package.json`), the `toolchain` step (`bin/check-toolchain.mjs`) must stay
-green the same way: it fails on wiring `tsc` and ESLint do not catch (a build
+The `toolchain` step (`bin/check-toolchain.mjs`) runs on every
+`pnpm verify`, and must stay green when you touch the TypeScript toolchain
+(`tsconfig*.json`, `eslint.config.js`, `vitest.config.ts`,
+`bin/lib/verify-steps.mjs`, the toolchain pins in `package.json`) the same way: it fails on wiring `tsc` and ESLint do not catch (a build
 project that emits nowhere, a verify step naming a script that does not exist)
 and only warns on quality (a missing strict flag, an option TypeScript has
 deprecated). Never silence it by deleting the check or lowering a threshold --

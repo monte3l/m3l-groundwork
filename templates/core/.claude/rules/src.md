@@ -6,10 +6,13 @@ paths:
 # Source rules (`src/**`)
 
 > This file is the terse checklist that auto-loads when you edit source.
-> Base standards — TypeScript strictness, ESM `.js` imports, named exports,
-> exporting a type next to its value, `readonly`/`const`, `interface` vs
-> `type`, exhaustive `switch`, TSDoc on every export — live in CLAUDE.md and
-> `eslint.config.js`; this file adds what those don't already say.
+> Enforced by tooling: `strict` and ESM `.js` imports (`tsconfig.base.json`,
+> `module: nodenext`), named exports only (`import-x/no-default-export`),
+> exhaustive `switch` (`switch-exhaustiveness-check`), `const` over `let`/`var`
+> (`prefer-const`, `no-var`), and TSDoc syntax (`tsdoc/syntax`, a warning).
+> Conventions only, no rule checks them: exporting a type next to its value,
+> `readonly`, `interface` vs `type`, and TSDoc on every export. This file
+> adds what those don't already say.
 
 - **Don't pass `undefined` to an optional property.** Under
   `exactOptionalPropertyTypes`, an optional target field (`default?: number`)
