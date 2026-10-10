@@ -37,7 +37,24 @@ const lib = (await import(
   hashInlineScript: (scriptSource: string) => string;
   externalImageHosts: (htmlPages: string[]) => string[];
   buildHeadersFile: (options: BuildHeadersOptions) => string;
+  assertHeadersLimits: (text: string) => undefined;
 };
+
+/** Counts rule blocks: non-empty lines that do not start with whitespace. */
+function countRuleBlocks(text: string): number {
+  return text.split("\n").filter((line) => line.length > 0 && !/^\s/.test(line))
+    .length;
+}
+
+/** Builds `n` rule blocks, each with `headersPer` indented header lines. */
+function blocks(n: number, headersPer: number): string {
+  return Array.from({ length: n }, (_unused, i) =>
+    [
+      `/p${String(i)}/*`,
+      ...Array.from({ length: headersPer }, (_u, h) => `  X-H${String(h)}: v`),
+    ].join("\n"),
+  ).join("\n\n");
+}
 
 /**
  * Builds the exact expected `_headers` file text for a given scriptHash
@@ -387,5 +404,62 @@ describe("buildHeadersFile", () => {
     }
     expect(thrown).toBeInstanceOf(lib.HeadersLimitError);
     expect((thrown as Error).message).toMatch(/line|rule/i);
+  });
+});
+
+describe("assertHeadersLimits", () => {
+  it("returns undefined for an empty string", () => {
+    expect(lib.assertHeadersLimits("")).toBeUndefined();
+  });
+
+  it("passes with exactly 100 rule blocks", () => {
+    expect(lib.assertHeadersLimits(blocks(100, 1) + "\n")).toBeUndefined();
+  });
+
+  it("throws HeadersLimitError naming the count and the 100-rule limit at 101 blocks", () => {
+    let thrown: unknown;
+    try {
+      lib.assertHeadersLimits(blocks(101, 1) + "\n");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(lib.HeadersLimitError);
+    expect((thrown as Error).message).toContain("101");
+    expect((thrown as Error).message).toContain("100");
+  });
+
+  it("does not count indented header lines or blank lines", () => {
+    const text = blocks(100, 5).replaceAll("\n\n", "\n\n\n") + "\n";
+    expect(countRuleBlocks(text)).toBe(100);
+    expect(lib.assertHeadersLimits(text)).toBeUndefined();
+  });
+
+  it("passes a line of exactly 2000 characters", () => {
+    const text = `/*\n  ${"a".repeat(1998)}\n`;
+    expect(text.split("\n")[1]).toHaveLength(2000);
+    expect(lib.assertHeadersLimits(text)).toBeUndefined();
+  });
+
+  it("throws HeadersLimitError with the per-line message for a 2001-character line", () => {
+    const text = `/*\n  ${"a".repeat(1999)}\n`;
+    let thrown: unknown;
+    try {
+      lib.assertHeadersLimits(text);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(lib.HeadersLimitError);
+    expect((thrown as Error).message).toBe(
+      "_headers line 2 is 2001 characters, over Cloudflare's 2000-character limit per line",
+    );
+  });
+
+  it("buildHeadersFile output is valid and counts as exactly 2 rule blocks", () => {
+    const output = lib.buildHeadersFile({
+      scriptHash: "sha256-abc123==",
+      imageHosts: ["badge.socket.dev"],
+    });
+    expect(countRuleBlocks(output)).toBe(2);
+    expect(lib.assertHeadersLimits(output)).toBeUndefined();
   });
 });

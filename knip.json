@@ -34,7 +34,8 @@
         // Same reason, same dynamic-import pattern, from
         // packages/cli/tests/site-headers*.test.ts: without this entry,
         // HeadersLimitError (thrown, not imported, by bin/build-docs.mjs's
-        // production usage) reports as unused.
+        // production usage) and assertHeadersLimits (called inside
+        // buildHeadersFile, exercised directly by the tests) report as unused.
         "bin/lib/site-headers.mjs",
         // Same reason, same dynamic-import pattern, from
         // packages/cli/tests/eval-lib.test.ts: listPackSkillDirs's only
