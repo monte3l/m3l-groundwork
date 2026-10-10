@@ -7,15 +7,25 @@
  * outline -- so `/customize`'s harness sweep starts from what is actually
  * there instead of assuming the m3l-groundwork baseline.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import type { Stats } from "node:fs";
 import { join } from "node:path";
 import { fieldText, parseFrontmatter } from "../harness/frontmatter.js";
-import { guardedExists, guardedRead } from "./internal/read-guard.js";
+import {
+  SurveyReadError,
+  guardedExists,
+  guardedRead,
+  isAbsentError,
+  probeSubject,
+  unreadableNote,
+  unresolvableCode,
+} from "./internal/read-guard.js";
 import type {
   HarnessAgent,
   HarnessRule,
   HarnessSkill,
   HarnessSurvey,
+  PluginLayout,
 } from "./types.js";
 
 /**
@@ -132,6 +142,93 @@ function claudeMdHeadings(path: string, undetermined: string[]): string[] {
   return content === undefined ? [] : extractHeadings(content);
 }
 
+/** The plugin manifest's repository-relative path. */
+const PLUGIN_MANIFEST = ".claude-plugin/plugin.json";
+
+/**
+ * The root plugin components, in the fixed order `pluginLayout.components`
+ * reports them: each one's display name, its path segments, and the entry
+ * type it must be to count.
+ */
+const PLUGIN_COMPONENTS: readonly {
+  readonly name: string;
+  readonly segments: readonly string[];
+  readonly kind: "file" | "dir";
+}[] = [
+  { name: "hooks/hooks.json", segments: ["hooks", "hooks.json"], kind: "file" },
+  { name: "skills/", segments: ["skills"], kind: "dir" },
+  { name: "agents/", segments: ["agents"], kind: "dir" },
+  { name: "commands/", segments: ["commands"], kind: "dir" },
+  { name: ".mcp.json", segments: [".mcp.json"], kind: "file" },
+];
+
+/**
+ * `lstat`s `path` -- the entry itself, never a symlink's target. Absent
+ * (`ENOENT`/`ENOTDIR`) answers `undefined` with nothing recorded; a
+ * permission failure or symlink loop is recorded in `undetermined` the way
+ * `guardedExists` records it, and answers `undefined`. Any other failure
+ * throws a {@link SurveyReadError} naming `path`, with the original as
+ * `cause`.
+ */
+function guardedLstat(path: string, undetermined: string[]): Stats | undefined {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (isAbsentError(error)) return undefined;
+    const code = unresolvableCode(error);
+    if (code === undefined) {
+      throw new SurveyReadError(`could not check whether ${path} exists`, {
+        cause: error,
+      });
+    }
+    undetermined.push(unreadableNote(probeSubject(path, code), code));
+    return undefined;
+  }
+}
+
+/**
+ * A Claude Code plugin repository's root layout, or `null` unless
+ * `.claude-plugin/plugin.json` is a regular file. Every probe is an `lstat`
+ * of the path's final component, so a symlinked manifest or component is
+ * never followed or counted; a symlinked parent directory (`.claude-plugin/`,
+ * `hooks/`) is resolved by the OS and followed. A manifest that exists but is
+ * not a regular file, or that this process may not probe, is recorded in
+ * `undetermined` and answers `null`. A symlinked component is recorded in
+ * `undetermined` and not counted; a component whose probe fails with
+ * `EACCES`/`EPERM`/`ELOOP` is recorded and omitted, the layout staying
+ * non-null; a component of the wrong non-symlink type is silently omitted.
+ */
+function surveyPluginLayout(
+  dir: string,
+  undetermined: string[],
+): PluginLayout | null {
+  const manifestPath = join(dir, PLUGIN_MANIFEST);
+  const manifest = guardedLstat(manifestPath, undetermined);
+  if (manifest === undefined) return null;
+  if (!manifest.isFile()) {
+    const what = manifest.isSymbolicLink()
+      ? "symlink, not followed"
+      : "directory or special file";
+    undetermined.push(
+      `${manifestPath} exists but is not a regular file (${what}) -- plugin layout not surveyed`,
+    );
+    return null;
+  }
+  const components = PLUGIN_COMPONENTS.filter(({ segments, kind }) => {
+    const componentPath = join(dir, ...segments);
+    const stats = guardedLstat(componentPath, undetermined);
+    if (stats === undefined) return false;
+    if (stats.isSymbolicLink()) {
+      undetermined.push(
+        `${componentPath} is a symlink, not followed -- plugin component not counted`,
+      );
+      return false;
+    }
+    return kind === "file" ? stats.isFile() : stats.isDirectory();
+  }).map(({ name }) => name);
+  return { manifest: PLUGIN_MANIFEST, components };
+}
+
 /**
  * Surveys the `.claude/` harness and `CLAUDE.md` at `dir`. Offline,
  * read-only. A file or directory that exists but cannot be read
@@ -139,8 +236,16 @@ function claudeMdHeadings(path: string, undetermined: string[]): string[] {
  * `undetermined` -- an unreadable `CLAUDE.md` still counts as present, with
  * no headings. A `.claude/` this process may not enter is still `present`,
  * with every collection empty and the directory recorded in `undetermined`
- * -- never reported as an empty harness. Any other read failure throws, naming the path, with the
- * original failure as `cause`.
+ * -- never reported as an empty harness. `pluginLayout` records a plugin
+ * repository's root layout (`.claude-plugin/plugin.json` and its root
+ * components), each probed by `lstat` of the path's final component, so a
+ * symlinked manifest or component is never counted (a symlinked parent
+ * directory is followed). A manifest that is not a regular file, or whose
+ * probe this process may not make, is recorded in `undetermined` and leaves
+ * it `null`; a symlinked component, or one whose probe fails with
+ * `EACCES`/`EPERM`/`ELOOP`, is recorded and omitted while the layout stays
+ * non-null. Any other read failure throws, naming the path, with the original
+ * failure as `cause`.
  *
  * @example
  * ```ts
@@ -171,6 +276,7 @@ export function surveyHarness(
       hasSettingsLocal: false,
       hasClaudeMd,
       claudeMdHeadings: claudeMdHeadings(claudeMdPath, undetermined),
+      pluginLayout: surveyPluginLayout(dir, undetermined),
     };
   }
 
@@ -192,5 +298,6 @@ export function surveyHarness(
     ),
     hasClaudeMd,
     claudeMdHeadings: claudeMdHeadings(claudeMdPath, undetermined),
+    pluginLayout: surveyPluginLayout(dir, undetermined),
   };
 }

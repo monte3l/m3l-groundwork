@@ -109,4 +109,61 @@ describe("planFacets", () => {
     );
     expect(nodeModules?.emphasis).not.toBe(browserModules?.emphasis);
   });
+
+  describe("the plugin kind", () => {
+    const facet = (
+      plan: ReturnType<typeof planFacets>,
+      id: (typeof TYPESCRIPT_FIXED_FACETS)[number],
+    ) => plan.typescript.find((f) => f.facetId === id)?.emphasis;
+
+    it.each(["library", "cli", "frontend", "service", "plugin"] as const)(
+      "covers every fixed facet exactly once for the %s kind",
+      (kind) => {
+        const plan = planFacets({ ...BASE_ANSWERS, kind });
+        expect(plan.typescript.map((f) => f.facetId)).toEqual([
+          ...TYPESCRIPT_FIXED_FACETS,
+        ]);
+        expect(plan.harness.map((f) => f.facetId)).toEqual([
+          ...HARNESS_FIXED_FACETS,
+        ]);
+      },
+    );
+
+    it("de-emphasizes packaging: a marketplace manifest, none of the library's npm packaging emphasis", () => {
+      const plugin = planFacets({ ...BASE_ANSWERS, kind: "plugin" });
+      const library = planFacets({ ...BASE_ANSWERS, kind: "library" });
+      const packaging = facet(plugin, "packaging-declaration-emit");
+      expect(packaging).toMatch(/marketplace/i);
+      expect(packaging).not.toMatch(/exports-map|isolatedDeclarations/);
+      expect(packaging).not.toBe(facet(library, "packaging-declaration-emit"));
+    });
+
+    it("keeps lint-typing-rules emphasized separately from the de-emphasized packaging facet", () => {
+      const plugin = planFacets({ ...BASE_ANSWERS, kind: "plugin" });
+      const lint = facet(plugin, "lint-typing-rules");
+      expect(lint).toMatch(/typed-lint/i);
+      expect(lint).not.toBe(facet(plugin, "packaging-declaration-emit"));
+    });
+
+    it("gives compiler-config and testing emphasis distinct from the library kind", () => {
+      const plugin = planFacets({ ...BASE_ANSWERS, kind: "plugin" });
+      const library = planFacets({ ...BASE_ANSWERS, kind: "library" });
+      expect(facet(plugin, "compiler-config-flags")).toBeTruthy();
+      expect(facet(plugin, "compiler-config-flags")).not.toBe(
+        facet(library, "compiler-config-flags"),
+      );
+      expect(facet(plugin, "testing-language-features")).not.toBe(
+        facet(library, "testing-language-features"),
+      );
+    });
+
+    it("adds no extra agent emphasis for the plugin kind", () => {
+      const plugin = planFacets({ ...BASE_ANSWERS, kind: "plugin" });
+      const library = planFacets({ ...BASE_ANSWERS, kind: "library" });
+      const agent = (p: typeof plugin) =>
+        p.harness.find((f) => f.facetId === "agent-subagent-design")?.emphasis;
+      expect(agent(plugin)).toBe(agent(library));
+      expect(agent(plugin)).not.toContain("visual verification");
+    });
+  });
 });

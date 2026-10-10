@@ -208,7 +208,7 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
   });
 
   it("says to change nothing in the same breath as the schemaVersion-higher-than-5 stop", () => {
-    const idx = section.indexOf("higher than 5");
+    const idx = section.indexOf("higher than 6");
     expect(idx).toBeGreaterThan(-1);
     expect(section.slice(idx, idx + 400)).toContain("change nothing");
   });
@@ -239,7 +239,7 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
   });
 
   it("says the schemaVersion-higher-than-5 stop names /plugin update, the re-run command, and the project-local reason /plugin update alone can't fix it", () => {
-    const idx = section.indexOf("higher than 5");
+    const idx = section.indexOf("higher than 6");
     expect(idx).toBeGreaterThan(-1);
     // Widened from 650: the corrected local-copy advice (delete-first,
     // names both local-copy locations) lengthened this paragraph.
@@ -251,7 +251,7 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
 
   it("names stagedBaseline missing, not an object, or files not an array in the single stop list bullet", () => {
     const bulletStart = section.indexOf(
-      "**For a schema 5 inventory, a `stagedBaseline` that is missing",
+      "**For a schema 5 or later inventory, a `stagedBaseline` that is missing",
     );
     const bulletEnd = section.indexOf(
       "What a passing check proves",
@@ -350,13 +350,13 @@ describe("SKILL.md Step 0.1 -- the staged-baseline verify block is scoped to sch
   }
   const section = text.slice(sectionStart, sectionEnd);
 
-  const headerPhrase = "For a schema 5 inventory only";
+  const headerPhrase = "For a schema 5 or later inventory";
   const fullHeaderSubstring =
-    "**For a schema 5 inventory only: verify the staged baseline now";
+    "**For a schema 5 or later inventory: verify the staged baseline now";
   const scopeSentence =
     "A schema 1-4 inventory has no `stagedBaseline`: skip this whole block";
   const stopBulletSubstring =
-    "**For a schema 5 inventory, a `stagedBaseline` that is missing";
+    "**For a schema 5 or later inventory, a `stagedBaseline` that is missing";
 
   function allIndicesOf(haystack: string, needle: string): number[] {
     const indices: number[] = [];
@@ -430,14 +430,16 @@ describe("SKILL.md Step 3 Round 1 -- schema-5 install condition wording", () => 
   });
 
   it("states the schema-5 install condition with the new wording", () => {
-    expect(step3Text).toContain("For a schema 5 inventory, install them");
+    expect(step3Text).toContain(
+      "For a schema 5 or later inventory, install them",
+    );
   });
 });
 
-describe("SKILL.md Step 0.1 -- corrected local-copy advice for a schemaVersion higher than 5", () => {
-  const higherThan5Index = text.indexOf("higher than 5");
+describe("SKILL.md Step 0.1 -- corrected local-copy advice for a schemaVersion higher than 6", () => {
+  const higherThan5Index = text.indexOf("higher than 6");
 
-  it("finds the 'higher than 5' paragraph", () => {
+  it("finds the 'higher than 6' paragraph", () => {
     expect(higherThan5Index).toBeGreaterThan(-1);
   });
 
@@ -605,7 +607,7 @@ describe("SKILL.md Step 0.1 schema table -- row 5 documents stagedPacks", () => 
   it("mentions stagedPacks in the schemaVersion 5 table row", () => {
     const rowIndex = text.indexOf("| 5 |");
     expect(rowIndex).toBeGreaterThan(-1);
-    const rowEnd = text.indexOf("For a schema 5 inventory only", rowIndex);
+    const rowEnd = text.indexOf("| 6 ", rowIndex);
     expect(rowEnd).toBeGreaterThan(rowIndex);
     const row = text.slice(rowIndex, rowEnd);
     expect(row).toContain("stagedPacks");
@@ -614,7 +616,7 @@ describe("SKILL.md Step 0.1 schema table -- row 5 documents stagedPacks", () => 
 
 describe("SKILL.md Step 0.1 -- staged packs verification (schema 5)", () => {
   const section = step01Section();
-  const headerPhrase = "For a schema 5 inventory only";
+  const headerPhrase = "For a schema 5 or later inventory";
 
   it("places the stagedPacks verification after the schema-5-only scope statement", () => {
     const headerIndex = section.indexOf(headerPhrase);
@@ -719,12 +721,13 @@ describe("SKILL.md Step 0.1 -- the single stop list also covers staged packs", (
     expect(window).toContain("npx @monte3l/groundwork@rc .");
   });
 
-  it("scopes the never-fall-back-to-templateRoot rule to a schema 5 inventory, packs included, dropping the old unscoped wording", () => {
+  it("scopes the never-fall-back-to-templateRoot rule to a schema 5 or later inventory, packs included, dropping the old unscoped wording", () => {
     const idx = section.indexOf("Never fall back to");
     expect(idx).toBeGreaterThan(-1);
     const window = section.slice(idx, idx + 200);
-    expect(window).toContain("schema 5");
-    expect(window).toContain("packs included");
+    expect(window).toContain(
+      "for a schema 5 or later inventory, packs included",
+    );
     expect(section).not.toContain("for packs either:");
   });
 });
@@ -848,7 +851,8 @@ describe("SKILL.md Round 1's approved-packs bullet -- schema 1-4 branch reads th
 describe("SKILL.md Step 0.1 schema table -- row 5's 'If absent' cell covers packs too", () => {
   it("mentions the unsuffixed copy packs read for a schema 1-4 inventory, within the rows 1-5 table region", () => {
     const tableStart = text.indexOf("| `schemaVersion` | Adds");
-    const tableEnd = text.indexOf("For a schema 5 inventory only", tableStart);
+    // Bound at row 6 so the region is rows 1-5 only, not row 6's cells.
+    const tableEnd = text.indexOf("| 6 ", tableStart);
     expect(tableStart).toBeGreaterThan(-1);
     expect(tableEnd).toBeGreaterThan(tableStart);
     const region = text.slice(tableStart, tableEnd);
@@ -967,7 +971,7 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
 
   it("names an extra staged file not in stagedBaseline.files, tags it '(no-shell path)', and extends the same clause to a pack's own files and a pack's manifest, in the single stop list", () => {
     const stopListStart = section.indexOf(
-      "**For a schema 5 inventory, a `stagedBaseline` that is missing",
+      "**For a schema 5 or later inventory, a `stagedBaseline` that is missing",
     );
     const stopListEnd = section.indexOf(
       "This is the single stop list for the staged baseline and the staged packs.",

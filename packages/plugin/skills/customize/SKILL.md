@@ -82,7 +82,8 @@ default marked "(Recommended)":
 
 Call one (four questions):
 
-1. **Project kind** — library / CLI / frontend or web app / service.
+1. **Project kind** — library / CLI / frontend or web app / service /
+   Claude Code plugin.
 2. **Runtime target** — Node / browser / both.
 3. **Tests mandatory in the pre-push gate?** — yes (default; matches the
    baseline) / warn only.
@@ -98,7 +99,10 @@ Call two (one question):
 **Adopt mode:** ask the same five questions, but this becomes a
 _confirmation_ round rather than a cold ask. Pre-select each answer from
 Step 0's findings and **show the evidence alongside it** — "library — you
-have an `exports` map and no `bin` field", not just a silent default. The
+have an `exports` map and no `bin` field", not just a silent default. When
+`survey.harness.pluginLayout` is set, pre-select **Claude Code plugin** and
+show the manifest and components as the evidence. With no `package.json`
+evidence and no plugin manifest, do not pre-select a kind: ask it cold. The
 user confirms or corrects each one. This is why the CLI's survey deliberately
 never names a `ProjectKind` itself (see its own `types.ts`): the inference
 happens once, here, visibly, with its reasoning attached — not buried in an
@@ -138,6 +142,11 @@ user chose. Both modes then settle plugin recommendations. Run `pnpm verify`
 (fresh) or the project's own equivalent (adopt) after Round 1's edits, before
 moving to Round 2.
 
+**Naming rule for `CLAUDE.md`, in Rounds 1 and 2.** Any text you add that
+names a `.claude/` file uses its full path (`.claude/rules/tests.md`, never
+`tests.md`): the harness grader's `claudemd-refs` check is a literal substring
+match on that path, and fails every rule file `CLAUDE.md` does not name.
+
 ## Step 4 — Round 2: the guidance pass
 
 Invoke both guidance skills in **refresh mode**, in parallel:
@@ -165,7 +174,7 @@ guard the emitted baseline — broadened to cover common non-baseline
 equivalents like `.eslintrc.*`/`jest.config.*`/`.husky/**`). A config file
 that classifies as `uncovered` is a **reportable coverage gap**, exactly the
 adopt-mode analogue of the structural test that guards `templates/core` —
-name it in Step 6's report rather than silently skipping it.
+name it in Step 7's report rather than silently skipping it.
 
 **Applying findings.** A Round 2 finding carrying an allowlisted source URL
 outranks both the baseline and Round 1, and should be applied. Name in your
@@ -189,7 +198,32 @@ stamped with a `last-verified` date and no real sweep behind it is worse
 than an honest `unset` — the next sweep would trust a lie. Report exactly
 which round the customization stopped at.
 
-## Step 6 — Report
+## Step 6 — Final gate
+
+After Round 2 (or after Round 1 if Step 5 skipped it), grade what you
+changed. Round 1's check ran before Round 2 edited anything.
+
+- **Fresh:** run `pnpm verify` again.
+- **Adopt, the project has `bin/check-harness.mjs`:** run
+  `node bin/check-harness.mjs`.
+- **Adopt, no such file, schema 5 or later:** only when **all four** of the
+  grader's files are in `stagedBaseline.files` (`bin/check-harness.mjs`,
+  `bin/lib/harness-rules.mjs`, `bin/lib/frontmatter.mjs`,
+  `bin/lib/report.mjs`; a file the project already has is a conflict and is
+  not staged) and `git rev-parse --show-toplevel` run in the project equals the
+  project root (the grader grades that git root, so a nested package or a
+  directory that is not a git repository would grade the wrong tree or fail).
+  The files were hash-checked in Step 0. Copy them without the `.staged`
+  suffix to `.groundwork/grade/bin/` (keeping `lib/`), run
+  `node .groundwork/grade/bin/check-harness.mjs` from the project root, then
+  delete `.groundwork/grade/`. Never write the grader into the project's own
+  `bin/`.
+- **Otherwise:** state in Step 7 that the harness was not graded, and why.
+
+Fix any structural failure this run introduced. Report one that was already
+there without fixing it unasked.
+
+## Step 7 — Report
 
 One-line-per-item summary: the five interview answers, what Round 1 changed
 deterministically, what Round 2's two sweeps found and applied (or "skipped

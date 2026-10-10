@@ -6,7 +6,9 @@
  * research priority. Three terms recur throughout this file:
  *
  * - A "kind" is a `ProjectKind`: the project archetype the interview
- *   classifies the project as (library, cli, frontend or service).
+ *   classifies the project as (library, cli, frontend, service or plugin --
+ *   a Claude Code plugin repo shipped through a marketplace manifest, not
+ *   npm).
  * - A "guidance sweep" is the live research pass `/customize` runs over
  *   official TypeScript and Anthropic sources, once per domain (TypeScript
  *   toolchain, Claude Code harness).
@@ -29,7 +31,7 @@
  * research agent digs into deepest.
  */
 
-export type ProjectKind = "library" | "cli" | "frontend" | "service";
+export type ProjectKind = "library" | "cli" | "frontend" | "service" | "plugin";
 export type RuntimeTarget = "node" | "browser" | "both";
 export type CiDepth = "minimal" | "standard" | "thorough";
 
@@ -71,35 +73,63 @@ export interface FacetPlan {
   readonly harness: readonly FacetEmphasis<HarnessFacetId>[];
 }
 
+/**
+ * One kind's TypeScript emphasis. `packaging` and `lint` are separate fields
+ * because a kind can de-emphasize one without the other: a `plugin` ships
+ * through a marketplace manifest, so its packaging facet has little to say,
+ * while its lint facet matters as much as any other kind's.
+ */
 interface KindEmphasis {
   readonly configModules: string;
-  readonly packagingLint: string;
+  readonly packaging: string;
+  readonly lint: string;
   readonly testing: string;
+}
+
+/**
+ * The four original kinds emphasize one shared packaging-and-lint text for
+ * both facets; only `plugin` splits them.
+ */
+function packagingAndLint(
+  text: string,
+): Pick<KindEmphasis, "packaging" | "lint"> {
+  return { packaging: text, lint: text };
 }
 
 const TYPESCRIPT_EMPHASIS_BY_KIND: Record<ProjectKind, KindEmphasis> = {
   library: {
     configModules: "nodenext resolution, declaration emit",
-    packagingLint:
+    ...packagingAndLint(
       "isolatedDeclarations, exports-map correctness, ESM-only vs dual, typed-lint preset for a published API",
+    ),
     testing: "Node-process testing, type-level assertions",
   },
   cli: {
     configModules: "Node runtime target, bin field and shebang packaging",
-    packagingLint: "packaging for an executable, typed-lint preset",
+    ...packagingAndLint("packaging for an executable, typed-lint preset"),
     testing: "process/stdio testing",
   },
   frontend: {
     configModules: "bundler resolution, lib/DOM types for a bundled target",
-    packagingLint:
+    ...packagingAndLint(
       "bundler-driven vs tsc-driven emit, typed-lint preset for JSX/component code",
+    ),
     testing: "browser mode vs jsdom, component testing",
   },
   service: {
     configModules:
       "Node module resolution and runtime target, no declaration emit",
-    packagingLint: "emit for a deployed server, typed-lint preset",
+    ...packagingAndLint("emit for a deployed server, typed-lint preset"),
     testing: "integration-test isolation",
+  },
+  plugin: {
+    configModules:
+      "Node runtime target for hook and mod scripts run from source, no declaration emit",
+    packaging:
+      "marketplace manifest and plugin.json correctness; no npm publish, so packaging is de-emphasized",
+    lint: "typed-lint preset for hook, mod and script code",
+    testing:
+      "hook stdin/stdout contract testing, skill and manifest validation",
   },
 };
 
@@ -158,9 +188,9 @@ export function planFacets(answers: InterviewAnswers): FacetPlan {
     },
     {
       facetId: "packaging-declaration-emit",
-      emphasis: kindEmphasis.packagingLint,
+      emphasis: kindEmphasis.packaging,
     },
-    { facetId: "lint-typing-rules", emphasis: kindEmphasis.packagingLint },
+    { facetId: "lint-typing-rules", emphasis: kindEmphasis.lint },
     { facetId: "testing-language-features", emphasis: kindEmphasis.testing },
   ];
 

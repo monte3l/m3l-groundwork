@@ -10,12 +10,15 @@
  * module rather than a judgment made afresh each run, so the same interview
  * answers and context always produce the same recommendation.
  *
+ * `plugin-dev` is offered only for the `plugin` kind (a repo that authors a
+ * Claude Code plugin) and is then appended last; for every other kind it is
+ * absent rather than listed as not recommended, so the ten-entry list
+ * `/customize` offers in fixed batches keeps its order. m3l-groundwork itself
+ * enables it, since it authors the `/customize` plugin.
+ *
  * Evaluated and deliberately not offered, recorded so they are not proposed
  * again:
  *
- * - `plugin-dev` -- only for projects that author Claude Code plugins;
- *   m3l-groundwork itself enables it, a bootstrapped TypeScript project has
- *   no plugin to build, and `skill-creator` covers skill authoring.
  * - `code-review` -- duplicates the built-in `/code-review` and the optional
  *   `github` pack's PR-review Action.
  * - `code-simplifier` -- duplicates the built-in `/simplify`; its
@@ -311,10 +314,28 @@ function recommendClaudeCodeSetup(): PluginRecommendation {
 }
 
 /**
+ * `plugin-dev` carries the skills and agents for building a Claude Code
+ * plugin itself -- manifests, hooks, commands, skills, MCP wiring -- so it is
+ * pre-selected for the `plugin` kind, the only kind that authors one.
+ */
+function recommendPluginDev(): PluginRecommendation {
+  return {
+    id: pluginId("plugin-dev"),
+    recommended: true,
+    because:
+      "this project authors a Claude Code plugin, and plugin-dev brings " +
+      "guidance and validation for exactly that: the plugin manifest, " +
+      "hooks, commands, skills, agents and MCP server wiring, plus the " +
+      "marketplace entry it ships through.",
+  };
+}
+
+/**
  * Every built-in marketplace plugin's recommendation for the given interview
- * answers and context, always the same ten in the same order. Pre-selected
- * unconditionally: `context7`, `typescript-lsp`, `claude-md-management` and
- * `claude-security`. Conditionally: `github` when the `github` pack was
+ * answers and context: always the same ten in the same order, plus an
+ * eleventh, `plugin-dev`, appended last for the `plugin` kind only.
+ * Pre-selected unconditionally: `context7`, `typescript-lsp`,
+ * `claude-md-management` and `claude-security`. Conditionally: `github` when the `github` pack was
  * chosen; `security-guidance` for a `service` or a `thorough` CI depth;
  * `skill-creator` when the project has its own skills; `agent-sdk-dev` and
  * `mcp-server-dev` when the project depends on the Claude Agent SDK or the
@@ -342,7 +363,7 @@ export function recommendPlugins(
   answers: InterviewAnswers,
   context?: PluginRecommendationContext,
 ): PluginRecommendation[] {
-  return [
+  const fixed = [
     recommendContext7(),
     recommendTypescriptLsp(),
     recommendClaudeMdManagement(),
@@ -354,4 +375,5 @@ export function recommendPlugins(
     recommendAgentSdkDev(context),
     recommendMcpServerDev(context),
   ];
+  return answers.kind === "plugin" ? [...fixed, recommendPluginDev()] : fixed;
 }
