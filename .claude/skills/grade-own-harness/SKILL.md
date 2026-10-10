@@ -7,8 +7,9 @@ description: >-
   Use for /grade-own-harness, after adding, removing, or editing any file
   under this repo's root .claude/, or as part of the Definition of Done
   when CLAUDE.md's own harness changed. There is no package.json script
-  for this (only the emitted baseline gets one) -- this skill is that
-  missing entry point.
+  for this in the emitted baseline (the root `check:harness` script grades
+  `templates/core`) -- this skill is the entry point for grading this repo's
+  own harness.
 ---
 
 # grade-own-harness

@@ -52,7 +52,7 @@ The same generator also emits `packages/cli/src/palette.ts` -- the six
 terminal status/text colors, light and dark, `packages/cli/src/term.ts`
 paints console output with (`paint()`, `supportsColor()`): color only when
 the stream is a TTY, never when `NO_COLOR` is set, always when `FORCE_COLOR`
-is; truecolor SGR when `COLORTERM` is `truecolor`/`24bit`, else the nearest
+is set to anything but `0` (`FORCE_COLOR=0` disables colour); truecolor SGR when `COLORTERM` is `truecolor`/`24bit`, else the nearest
 of the 16 standard ANSI colors by RGB distance; theme follows `COLORFGBG`
 when present, defaults to dark otherwise. Piped/non-TTY output is
 byte-identical to plain text -- every string-matched test keeps passing

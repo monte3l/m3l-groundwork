@@ -13,7 +13,7 @@ toolchain into an empty directory, correct for any TypeScript project.
 it read-only (`src/survey/`), diffs the baseline against what's actually
 there (`conflicts.ts`), and writes only under `.groundwork/` (a report, the inventory, and inert
 staged copies of the baseline additions and packs) plus one guarded copy of
-the `/customize` skill -- it never touches a project file. **Phase B** (`packages/plugin`) is adaptive: a
+the `/customize` skill (at `.claude/skills/customize`, or `.groundwork/customize` when that is blocked) -- it never overwrites a project file. **Phase B** (`packages/plugin`) is adaptive: a
 `/customize` skill that, for a fresh bootstrap, interviews the user and
 tailors the baseline; for an adopted project, first reconciles the CLI's
 survey against the real repo and confirms what to change (its own Step 0).
@@ -26,7 +26,7 @@ cut from `templates/core` purely to hold its hard caps, not because they
 failed the generalization test. The CLI installs a pack directly in fresh
 mode (`--pack <name>`); in adopt mode it only surveys which packs apply and
 stages their payload at `.groundwork/packs/`, and `/customize`'s Step 0
-installs from there after confirmation -- the same fresh/adopt split as
+confirms which packs to install and Step 3 (Round 1) installs the confirmed ones from there -- the same fresh/adopt split as
 everything else Phase A does. See `templates/packs/README.md` for the
 wiring contract (a pack never edits YAML or JavaScript).
 
@@ -188,7 +188,7 @@ Run any task with `pnpm <script>`.
 | `pnpm test` / `test:coverage`         | Vitest unit tests, with or without the coverage gate                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `pnpm test:e2e`                       | Every `*.e2e.test.ts` (`vitest.e2e.config.ts`) -- slow and network-touching (real `pnpm install`s, a packed tarball), run **serially** (`fileParallelism: false`, because `pack.e2e.test.ts` rebuilds `dist/` mid-run). None are part of `pnpm test`; see "Testing" below.                                                                                                                                                                                    |
 | `pnpm knip`                           | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                                                                                                                                                 |
-| `pnpm check:exports`                  | publint + attw against `packages/cli`'s packed tarball -- the one published package                                                                                                                                                                                                                                                                                                                                                                           |
+| `pnpm check:exports`                  | publint against `packages/cli`'s packed tarball (attw is skipped: the CLI exposes no importable export beyond `./package.json`) -- the one published package                                                                                                                                                                                                                                                                                                  |
 | `pnpm check:plugin-version`           | `plugin.json`'s version matches the CLI's, `packages/plugin/package.json` stays private, and `marketplace.json`'s entry names it correctly and carries no npm source or version pin of its own                                                                                                                                                                                                                                                                |
 | `pnpm check:plugin-manifest`          | Runs Anthropic's `claude plugin validate --strict` against the marketplace manifest and `packages/plugin`; skips cleanly with a warning when the `claude` CLI isn't installed                                                                                                                                                                                                                                                                                 |
 | `pnpm changeset` / `version:packages` | Add a changeset; version the packages (what the release workflow runs -- see "Releases")                                                                                                                                                                                                                                                                                                                                                                      |
@@ -238,7 +238,7 @@ steps) before considering any task here done.
   If a change to `packages/cli` needs a new dependency, stop and
   reconsider -- this is a hard constraint, not a style preference. It's why
   `src/survey/` parses JSONC by hand (`jsonc.ts`) and never parses YAML at
-  all -- `lefthook.yml`/workflow files are indexed and excerpted, flagged
+  all -- `lefthook.yml`/workflow files are indexed by name, not excerpted, flagged
   `needsReading: true`, and left for `/customize`'s Step 0 to actually read.
 - **Adopt mode's contract is "the survey is an index, not an
   interpretation."** Every `survey-*.ts` collector records facts it can
@@ -289,7 +289,7 @@ steps) before considering any task here done.
   adds an `undetermined` note, so the report never calls it "no plugin"; a
   symlinked component is likewise left out with a note. The symlink check is
   `lstat` on the final path component only. A root `hooks/` without the
-  manifest is never recorded, since it could be React hooks. The harness grader still reads only `.claude/` and `CLAUDE.md`,
+  manifest is never recorded, since it could be React hooks. The harness grader reads `.claude/`, `CLAUDE.md`, the root `.mcp.json` and the root file listing, never a plugin's own components,
   so the report says plugin components are outside its scope rather than
   printing "0 of 0 checks pass". `/customize` has a fifth `plugin` kind
   (pre-selected from `pluginLayout`, which also recommends `plugin-dev`) and a
@@ -386,8 +386,8 @@ steps) before considering any task here done.
   (`packages/cli/src/caps.ts`'s `countBaselineCaps`/`CAP_LIMITS`), not
   every installed pack on top of it:** ≤5 agents, ≤8 skills (7 in
   `templates/core/.claude/skills/` - `/customize` via the installed plugin
-  = 8), ≤10 hooks, ≤3 CI workflows, ≤12 root `package.json` scripts, 0
-  gates that exist only to check documentation about the repo itself.
+  = 8), ≤10 hooks, ≤3 CI workflows, ≤12 root `package.json` scripts (the five things `caps.ts` counts); by
+  convention, 0 gates that exist only to check documentation about the repo itself.
   Adding a new agent/skill/hook/workflow/script to `templates/core` means
   removing or merging an existing one first -- `caps.ts` is the one place
   the cap numbers and the counting logic live, so `report.ts` (the
@@ -406,7 +406,8 @@ steps) before considering any task here done.
   (`templates/core/bin/lib/verify-steps.mjs`, which adds `CORE_STEPS` and the
   pack-contributed steps this repo's own list has no use for). Add a new
   gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
-  bespoke script invocation in either YAML file.
+  bespoke script invocation in either YAML file. (The `e2e` lane calls
+  `pnpm test:e2e` directly; `gate-lane-parity` only checks verify groups.)
 - **Continuous integration (`.github/`) and the Claude Code Action
   workflow.** `ci.yml` runs five verify lanes plus `e2e`/`e2e-macos`/`node-current`
   behind a `verify` aggregator (the check `main`'s ruleset gates on --
@@ -465,7 +466,7 @@ tight window). Issues stay open to everyone; a contribution starts as an
 issue, and a collaborator opens the PR (see CONTRIBUTING.md's "Small tasks
 for newcomers"). This also simplifies the fork-PR secrets question:
 `gitleaks.yml`'s license secret no longer needs to handle a fork-originated PR
-run at all, since one can't exist.
+run at all, since one is not expected (the workflow has no fork guard of its own).
 Conventional Commits, enforced by the `commit-msg` hook
 (`bin/lint-commit.mjs`) -- same convention `templates/core` emits into every
 bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
@@ -501,7 +502,8 @@ Signing is machine-local: `commit.gpgsign` is in `~/.gitconfig` but
 `user.signingkey` is tracked nowhere in this repo, so on a fresh box
 `git commit` fails outright (`gpg failed to sign the data`) until the key is
 configured. Fix the key -- never `commit.gpgsign=false`, which produces
-commits the ruleset rejects only at merge time. `guard-branch-isolation.mjs`
+commits the ruleset rejects only at merge time. No guard blocks it
+(`bin/soak.sh` sets it false through `GIT_CONFIG` env, the one sanctioned exception). `guard-branch-isolation.mjs`
 **is** installed on this repo's own root (see "Agent Operating Model" below)
 and blocks a `packages/*/src/`/`packages/*/tests/` write while `HEAD` is
 `main` -- but nothing in this repo's own hooks blocks committing any other
@@ -514,7 +516,7 @@ in sync would be exactly the "checks documentation about the repo itself"
 kind that `templates/core`'s caps pin at zero. Read the live state with
 `gh api repos/monte3l/m3l-groundwork/rules/branches/main`. Maintenance that
 needs a force-push means `PUT`ting the ruleset to `enforcement=disabled` and
-back (a logged toggle), not adding a bypass actor.
+back (a toggle GitHub is meant to log), not adding a bypass actor.
 
 ## Agent Operating Model
 
@@ -562,7 +564,7 @@ of, or removal of an ancestor of a guarded directory (the project root,
 packages/cli/`, `rm -rf packages/cli`, `rm -rf .`), and
 `python`/`node`/`ruby`/`perl`/`php`/`deno`/`bun` inline code, heredocs or
 out-of-project script files that write, delete or move a guarded path
-(issue #96). It can only produce false negatives, never prove a negative: an
+(issue #96). It is a conservative screen with known misses, never a proof that a call writes nothing: an
 interpreter running a script that lives inside the project, an `eval` of a
 computed string, a build step or generator that writes `src/`, a formatter or
 fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/
@@ -573,7 +575,7 @@ way the lexical check does not recognise (a container other than `packages`, `ap
 a linked worktree's own root), and `tar`/`curl -o`/`git checkout|restore` all
 pass. So hub-and-spoke stays a convention backed by a guard that raises the
 bar, not
-a proof; the review spokes and the `main` ruleset remain the real backstop.
+a proof; the `main` ruleset is the real backstop, and dispatching the review spokes is a hub convention, not enforced.
 The maintainer's override is to run the command yourself with the `!`
 prefix at the Claude Code prompt (not a tool call, so no hook sees it) or to
 edit the hook's registration in `.claude/settings.json`; no flag or
@@ -653,13 +655,14 @@ pack. Each names its own trigger paths in its frontmatter.
 **Forbidden patterns, hook-enforced:** `any` implied by CommonJS constructs,
 a missing `.js` extension on a relative import, a hand-edit to `dist/` or
 `coverage/` (`guard-protected-paths.mjs`), a `packages/*/src/`/`tests/`
-write while on `main`, a real secret written to disk
-(`guard-secret-writes.mjs`), an unsigned `git push` when `commit.gpgsign`
+write while on `main`, a secret written to disk (dotenv files, PEM private keys, a fixed list of token shapes and key names;
+`guard-secret-writes.mjs`), an unsigned `git push` when `commit.gpgsign`
 is on (`guard-git-push-signed.mjs`), and stacking `run_in_background: true`
 with a shell-level detach construct in the same Bash call
-(`guard-double-background.mjs`). **Conscious-care only, no automated
-guard:** no `any` in a public API, never swallow an error silently, no
-top-level side effects, never `git push --force`.
+(`guard-double-background.mjs`). **Not hook-enforced:** lint
+(`no-explicit-any`) catches an explicit `any`; no `any` in a public API, never
+swallow an error silently, no top-level side effects and never
+`git push --force` are conscious-care rules (the ruleset only blocks a force-push to `main`).
 
 ## Releases
 
@@ -667,9 +670,11 @@ Only `@monte3l/groundwork` (the CLI, `packages/cli`) ships to npm.
 `@monte3l/groundwork-plugin` (`/customize`, `packages/plugin`) is `private`
 and distributes only through the Claude Code marketplace
 (`.claude-plugin/marketplace.json`'s relative-path `source`), never npm.
-A PR with a user-visible CLI change adds a changeset (`pnpm changeset`); a
+A PR with a user-visible CLI change should add a changeset (`pnpm changeset`);
+the PR-template checkbox is the only check, nothing in CI enforces it. A
 push to `main` runs `release.yml`, which opens a version PR or publishes.
-Prerelease `rc` mode is on -- only `patch` changesets land until GA.
+Prerelease `rc` mode is on -- only `patch` changesets are intended to land until
+GA, by convention (no config or workflow rejects other bump types).
 
 A few invariants matter even when this file isn't open: **renaming or
 moving `release.yml` breaks npm's trusted publisher**; publishes are
@@ -710,10 +715,10 @@ against its emitted JavaScript twin (the toolchain grader's own property
 tests check it never throws and degrades to `{checked:0}` rather than
 guessing, not a twin diff). See
 [`docs/security-review.md`](docs/security-review.md) and `SECURITY.md`'s
-"Dynamic analysis" for the full write-up, and `.claude/rules/tests.md` for
-where a property test belongs alongside its example-based sibling.
+"Dynamic analysis" for the full write-up.
 
-The `*.e2e.test.ts` files are the only tests that spawn real child processes.
+The `*.e2e.test.ts` files are the ones that bootstrap projects and pack tarballs;
+some unit tests (e.g. `packages/cli/tests/templates/core-hooks.test.ts`) also spawn real child processes.
 `bootstrap.e2e.test.ts` (the built CLI, then `pnpm install`/`pnpm verify`
 inside the emitted project) is the acceptance test, and each `packs-*.e2e.test.ts`
 does the same with a pack installed. They're excluded from `pnpm test`'s
@@ -730,7 +735,9 @@ done.
 ## Definition of Done
 
 `pnpm verify` passes here; `pnpm test:e2e` passes if the change touched
-`packages/cli/src/`, `templates/core/`, or the `/customize` skill; the
+`packages/cli/src/`, `templates/core/`, or the `/customize` skill (CI runs it on
+every PR and `verify` gates on it, but no local pre-push hook does, so run it
+before pushing); the
 baseline's caps (above) still hold if a `.claude/` file was added or
 removed from `templates/core`. Anything that changes what the CLI's tarball
 ships or how it locates its data is proved by `pack.e2e.test.ts`, not by
@@ -738,7 +745,7 @@ running the CLI from the checkout, where every path resolves regardless. If
 you touched this repo's _own_ `.claude/` (agents, hooks, skills, rules,
 `settings.json` at root, not `templates/core/`), grade it the same way the
 baseline's `bin/check-harness.mjs` grades `templates/core` -- there is no
-`package.json` script for this (only the emitted baseline gets one), so use
+`package.json` script for this (the root `check:harness` grades `templates/core`, and the emitted baseline has no harness script at all), so use
 the `grade-own-harness` skill (`/grade-own-harness`), which points the same
 rule module at the repo root instead. Structural failures gate, rubric
 findings only warn -- same rule as the baseline.
@@ -752,7 +759,8 @@ and the handful of dotfiles listed there never carry an inline header).
 `node bin/check-license-headers.mjs --fix` inserts it. A file under neither
 umbrella fails the `license-headers` verify step outright -- add a glob to
 `REUSE.toml` in the same commit rather than widening the header-extension
-set for one file.
+set for one file (`HEADER_EXTENSIONS` in `bin/check-license-headers.mjs` is
+hard-coded and no test pins it).
 
 ## Known gaps (deliberately out of scope so far)
 
@@ -761,7 +769,7 @@ set for one file.
   `pack.json` files). `harness-extras`: Claude Code session ergonomics
   (compaction-handoff hooks, `guard-readonly-bash`, statusLine and
   `subagentStatusLine` renderers); the only pack using `wiring.settingsTopLevel`,
-  and in adopt mode it skips just the keys a project already defines. `quality`:
+  and in adopt mode `/customize` (not `merge-json`) skips the `statusLine`/`subagentStatusLine` keys and its three statusline scripts when either key is already set. `quality`:
   `type-design-analyzer` agent and the `check-file-budget` ratchet. `github`:
   `claude-action` in mention-mode, an automated PR-review workflow and three
   `gh` skills; both workflows need an auth secret the pack cannot create.
@@ -790,12 +798,14 @@ set for one file.
   v3 is days old with open reliability issues, it needs pnpm 11+, it changes
   how Node is provisioned in the publishing jobs, and the org's actions
   allowlist must add `pnpm/setup` first. `pnpm/action-setup` itself has no
-  such input. Re-check against issue #47 when `pnpm/setup` ships a v3.x
-  with no open hang or network-failure bug and the allowlist is settled.
+  such input. Issue #47 is closed, so track the re-check in a new issue; do it when
+  `pnpm/setup` ships a v3.x with no open hang or network-failure bug and the
+  allowlist is settled.
 - **`.claude/` harness support for working _in this repo_ (as opposed to what
   it emits) is now installed** -- see "Agent Operating Model" above for what
   and why. It arrived by running this repo's own published CLI against
-  itself (`npx @monte3l/groundwork@next .`, adopt mode) and its own
+  itself (`npx @monte3l/groundwork@next .` at the time, adopt mode; an adopter now
+  uses `@rc`, see `.claude/rules/releases.md`) and its own
   `/customize` skill, the same path any adopter follows -- self-hosting as
   the first real end-to-end proof of both, not a hand-rolled install. Grade
   it with the same rule module `templates/core`'s `bin/check-harness.mjs`
@@ -822,12 +832,13 @@ set for one file.
   `CLAUDE_PROJECT_DIR`, which Claude Code pins to the session's original
   root and does not move into a worktree -- see the hook's own
   header comment. `finishing-work` and `starting-work` know about a linked
-  worktree too (checking `git worktree list --porcelain` before deleting a
-  branch, and handing off to the optional `worktrees` pack's own skill for
-  the branch step when it's installed), but nothing here yet **enforces**
-  worktree-only development or automates per-worktree dependency
-  installation -- that is the `worktrees` pack, tracked as separate,
-  not-yet-landed work.
+  worktree too: `finishing-work` checks `git worktree list --porcelain` before
+  deleting a branch, and only `starting-work` hands the branch step to the
+  optional `worktrees` pack's own skill when it's installed. This repo's own
+  harness does not **enforce** worktree-only development or automate
+  per-worktree dependency installation: the `worktrees` pack ships that
+  (`guard-worktree-only.mjs`, `ensure-worktree-deps.mjs`), and this repo has
+  not installed it.
 - **Adopt mode's `inventory.json` still records `templateRoot` as an absolute
   path, but baseline additions no longer depend on it** (schema 5): they are
   staged at `.groundwork/baseline/` and hash-checked, and `/customize` never

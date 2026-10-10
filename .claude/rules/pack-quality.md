@@ -17,7 +17,9 @@ and adopt. Budget: 1 agent. Requires `bin/lib/report.mjs` from the baseline.
   adopted project will not have. Keep `requires.paths` and `adoptNotes`
   honest if the import changes.
 - **Its `ROOTS` default assumes a flat `src/` and `tests/` layout,** and the
-  ceilings in `file-budget-baseline.json` are the baseline's defaults. An
+  ceilings are the `SRC_CEILING_BYTES` / `TEST_CEILING_BYTES` constants in
+  `check-file-budget.mjs` (`file-budget-baseline.json` is a sparse debt list,
+  `{}` in the pack). An
   adopted project must re-point them. Never loosen a ceiling to make a
   change pass: the file is a ratchet.
 - **The agent is a read-only review spoke** (`claude-opus-5-5` at `xhigh`

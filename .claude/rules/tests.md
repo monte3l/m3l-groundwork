@@ -99,8 +99,9 @@ throw "a string";
   fail `build` with TS9010. Any exported-type change needs both.
 - **A test that deliberately avoids importing from `src` can strand an
   export and fail `pnpm knip`** — keep both a hand-authored table and an
-  import for projection identity. `knip` is not gated in `pre-push` by
-  default — run it yourself after touching any export.
+  import for projection identity. `knip` runs in `pre-push` via the `lint`
+  group, so it is gated before push — run it yourself after touching any
+  export to fail sooner.
 - **eslint runs in-loop** (prettier → eslint → typecheck → vitest) —
   resolve findings as you write, don't defer to a later `pnpm lint` pass.
 - **Thread `now` as an injectable parameter on a time-dependent guard**

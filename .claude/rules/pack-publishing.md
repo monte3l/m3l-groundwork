@@ -20,7 +20,8 @@ gates (`check-dts-deps.mjs`, `check-license-headers.mjs`) plus a
   Do not add `adopt` to `modes`.
 - **It drifts from `.github/workflows/release.yml` by construction.** When
   the root release flow changes (see `releases.md`), decide explicitly
-  whether the pack's copy follows, and say so in the PR.
+  whether the pack's copy follows, and say so in the PR (convention only; no
+  gate diffs them).
 - **It cannot wire `@changesets/cli`,** because a pack never edits
   dependencies. `adoptNotes` and `setupSteps` carry the one-time
   `pnpm add -D @changesets/cli`. Keep them true.
