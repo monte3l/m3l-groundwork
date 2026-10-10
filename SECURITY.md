@@ -209,7 +209,9 @@ docs site. The repository is intended to meet the Gold criteria, excluding
 the handful that inherently require more than one active contributor
 (`bus_factor`, `contributors_unassociated`, `two_person_review` -- see
 [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor), stated honestly as unmet rather
-than worked around) -- governance, roles and access continuity
+than worked around; `version_tags_signed`, a SUGGESTED rather than required
+criterion, is also Unmet in `.bestpractices.json` because changesets creates
+unsigned tags) -- governance, roles and access continuity
 ([`GOVERNANCE.md`](GOVERNANCE.md)), a roadmap ([`ROADMAP.md`](ROADMAP.md)),
 a documented architecture, this security policy, a per-file
 copyright/license statement (`REUSE.toml` plus inline SPDX headers -- see
