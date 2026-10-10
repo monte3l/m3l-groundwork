@@ -5,7 +5,7 @@ system for everything Enrico Lionello (`enri3l`) builds personally and
 everything published under the `monte3l` GitHub org.
 
 - **Source:** [claude.ai/artifact/AyFoi7PNmQJXLyKUyBxHyk](https://claude.ai/artifact/AyFoi7PNmQJXLyKUyBxHyk)
-- **Version copied:** `1790429550-bb17` (v1, signed off 2026-09-26)
+- **Version copied:** `1791621112-523a` (v1, signed off 2026-09-26)
 - **Date vendored into this repo:** 2026-09-26
 
 ## Governance: copy-based, not a live dependency

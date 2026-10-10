@@ -6,8 +6,8 @@ name: Gitleaks
 # What this does: scans for secrets (API keys, tokens, private keys) using
 # gitleaks/gitleaks-action. On a push to `main` it scans only the pushed
 # commits; on a pull request it scans the PR's commits; the weekly schedule
-# and manual dispatch scan the full history. Not a required check yet --
-# see CLAUDE.md's "Continuous integration".
+# and manual dispatch scan the full history. A required check: the org
+# blueprint's `main` ruleset lists `Gitleaks`, so keep the job name below.
 #
 # gitleaks-action v3 needs a free GITLEAKS_LICENSE for an organization-owned
 # repository (gitleaks/gitleaks-action's README) -- this repo is

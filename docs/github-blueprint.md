@@ -186,10 +186,10 @@ covers.
 | 13  | Add Gitleaks to the required checks                                    | Fetch the ruleset, append the check, send it back, see below                                                                                                                                                                                                                                                         |
 | 14  | Stop self-approval of npm publishes                                    | `gh api -X PUT repos/monte3l/REPO/environments/npm-publish --input npm-publish-env.json`, with the file below                                                                                                                                                                                                        |
 
-`bin/apply-repo-baseline.sh` in `monte3l/.github` covers rows 9 to 12. Rows 13
-and 14 are not in it: the blueprint's `main` ruleset matches this repository's
-live one, which does not require Gitleaks yet, and reviewer ids are specific
-to each repository.
+`bin/apply-repo-baseline.sh` in `monte3l/.github` covers rows 9 to 13: the
+blueprint's `main` ruleset already requires Gitleaks, so row 13 only matters
+for a repository whose ruleset predates that. Row 14 is not in it, because
+reviewer ids are specific to each repository.
 
 Row 12, `tag-ruleset.json`. Tag creation stays allowed, so the release flow
 can still tag. Updating or deleting a tag is blocked, and nobody can bypass
