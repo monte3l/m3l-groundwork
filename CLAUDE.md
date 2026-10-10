@@ -483,7 +483,7 @@ repository ruleset named `main` enforces the rest. It targets
 `~DEFAULT_BRANCH` with an empty `bypass_actors` list -- nobody, the org owner
 included, can push to `main` directly, force-push it, or delete it while the
 ruleset is active. Every change lands through a pull request whose `verify`
-(the aggregator), `Dependency Review` and `CodeQL` checks are green, whose
+(the aggregator), `Dependency Review`, `CodeQL` and `Gitleaks` checks are green, whose
 review threads are resolved, and whose commits are all signed. Each required
 check is pinned to its producing app (`integration_id`), so a same-named
 status from anywhere else can't satisfy it.

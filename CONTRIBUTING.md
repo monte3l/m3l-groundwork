@@ -117,9 +117,8 @@ can push directly to `main` (see [`CLAUDE.md`](CLAUDE.md#git-workflow)).
 > newcomers" below) -- GitHub will refuse to create the PR otherwise.
 
 Branch off `main`, keep the PR focused, and make sure CI's `verify`
-aggregator, Dependency Review, and CodeQL are all green before asking for a
-merge -- `gitleaks.yml` and `Scorecard` also run, but aren't required
-checks yet.
+aggregator, Dependency Review, CodeQL, and Gitleaks are all green before
+asking for a merge -- `Scorecard` also runs, but isn't a required check.
 
 ## Code review
 
@@ -198,7 +197,8 @@ version just tracks the CLI's, for display.
 
 The full design -- why staging is a separate gate from npm's own 2FA step,
 the one-time setup it depends on, and the GitHub App used for the version
-PR -- is in [`CLAUDE.md`](CLAUDE.md#releases).
+PR -- is in [`.claude/rules/releases.md`](.claude/rules/releases.md);
+[`CLAUDE.md`](CLAUDE.md#releases) summarises it.
 
 ## Project docs
 

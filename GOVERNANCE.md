@@ -52,12 +52,12 @@ install. Both exist so that publishing a release always needs a live,
 non-automatable human action -- see [`CLAUDE.md`](CLAUDE.md#releases) for
 the full mechanics.
 
-| Role                 | Held by                                                                                                           | Responsibilities                                                                                                                                                                   |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Maintainer**       | [Enrico Lionello](https://github.com/enri3l), GitHub org owner                                                    | Reviews and merges PRs, triages issues, makes release and design decisions, holds the `npm-publish` environment's required-reviewer approval and the `npm stage approve` 2FA step. |
-| **Security contact** | The maintainer                                                                                                    | Receives and triages reports via [private vulnerability reporting](SECURITY.md#reporting-a-vulnerability); follows the [response process](SECURITY.md#response-process).           |
-| **Release approver** | The maintainer                                                                                                    | Approves the `npm-publish` deployment gate and runs `npm stage approve` after a staged publish (see [`CLAUDE.md`](CLAUDE.md#releases)) -- neither step is automatable by design.   |
-| **Contributor**      | Anyone opening an issue (pull requests are collaborators-only, see [`CONTRIBUTING.md`](CONTRIBUTING.md#workflow)) | Follows [`CONTRIBUTING.md`](CONTRIBUTING.md); has no merge or release authority.                                                                                                   |
+| Role                 | Held by                                                                                                           | Responsibilities                                                                                                                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Maintainer**       | [Enrico Lionello](https://github.com/enri3l), GitHub org owner                                                    | Reviews and merges PRs, triages issues, makes release and design decisions, is a required reviewer on the `npm-publish` environment and holds the `npm stage approve` 2FA step.                                |
+| **Security contact** | The maintainer                                                                                                    | Receives and triages reports via [private vulnerability reporting](SECURITY.md#reporting-a-vulnerability); follows the [response process](SECURITY.md#response-process).                                       |
+| **Release approver** | A required reviewer on `npm-publish` other than whoever triggered the run (the maintainer or giulmonte)           | Approves the `npm-publish` deployment gate (`prevent_self_review` is on) and runs `npm stage approve` after a staged publish (see [`CLAUDE.md`](CLAUDE.md#releases)) -- neither step is automatable by design. |
+| **Contributor**      | Anyone opening an issue (pull requests are collaborators-only, see [`CONTRIBUTING.md`](CONTRIBUTING.md#workflow)) | Follows [`CONTRIBUTING.md`](CONTRIBUTING.md); has no merge or release authority.                                                                                                                               |
 
 Adding a second maintainer means, at minimum: a GitHub org owner invite, npm
 package-maintainer access on `@monte3l/groundwork`, and a reviewer seat on
@@ -73,8 +73,9 @@ triage issues, merge PRs, and cut a release within about a week. What that
 depends on, concretely:
 
 - **GitHub org ownership** -- controls the `main` branch ruleset, repo
-  secrets (`APP_CLIENT_ID`, `APP_PRIVATE_KEY`, `JANITOR_APP_CLIENT_ID`,
-  `JANITOR_APP_PRIVATE_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`), the `npm-publish`
+  secrets (repo: `APP_CLIENT_ID`, `APP_PRIVATE_KEY`; `env-janitor`
+  environment: `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY`; org:
+  `CLAUDE_CODE_OAUTH_TOKEN`, `GITLEAKS_LICENSE`), the `npm-publish`
   environment's reviewer list, and the two GitHub App installations
   (the release workflow's `version` job, and the environment-cleanup
   workflow -- see `docs/environment-janitor.md`). A second org owner
@@ -112,8 +113,8 @@ rather than requiring a second active maintainer.
 
 Today's bus factor is **1** -- this is a single-maintainer project, stated
 plainly rather than inflated. A second person already holds real GitHub
-access (see "Roles" above), but has never reviewed, merged, or released
-anything, and holds no npm access at all -- access alone doesn't make an
+access (see "Roles" above), but has never authored, reviewed, or merged a
+PR (only approved `npm-publish` deployments), and holds no npm access at all -- access alone doesn't make an
 active co-maintainer. Growing past 1 is on the [roadmap](ROADMAP.md).
 
 ## Gold-level criteria this project does not meet
@@ -135,6 +136,10 @@ matter how the project is otherwise run. Each is recorded as **Unmet** in
   author," and an automated tool review isn't a substitute for that (see
   [`CONTRIBUTING.md`](CONTRIBUTING.md#code-review) for the review this
   project does run).
+
+`version_tags_signed` (SUGGESTED, not a MUST) is also recorded as **Unmet**:
+changesets creates the release tags and they are unsigned, though the
+commits they point at are GPG-signed.
 
 Every other Gold-level criterion is met or is not applicable to this
 project -- see `.bestpractices.json` for the full, itemized self-assessment.
