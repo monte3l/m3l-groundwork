@@ -66,8 +66,8 @@ paths:
   it. `release.yml` follows the same two rules and adds a third: **it never
   writes the text `verify.mjs`**. The grader reads a workflow as text, so a
   bare or dynamic invocation there switches `gate-lane-parity` off for
-  `ci.yml` too -- measured, not assumed: the structural check count drops 42
-  to 37 and no finding is raised. Its `pack` job runs `pnpm verify` instead,
+  `ci.yml` too -- measured, not assumed: the structural check count drops 48
+  to 43 and no finding is raised. Its `pack` job runs `pnpm verify` instead,
   which the scraper cannot see and which is a full run of every group
   anyway.
 - Every action in every workflow (including `scorecard.yml`) is pinned by
@@ -78,7 +78,8 @@ paths:
   supply-chain risk a floating `@v7` doesn't. `scorecard.yml` runs
   `ossf/scorecard-action` weekly (plus on push to `main` and
   `workflow_dispatch`) and publishes results for the README badge; it is
-  read-only and not a required check. The README's Socket badge
+  never writes repo contents (only the SARIF upload and OIDC) and is not a
+  required check. The README's Socket badge
   (`badge.socket.dev`) is a deliberate complement, not a duplicate: it
   scores the _published package's_ behavior (install scripts, obfuscation,
   requested permissions), where Scorecard scores the _repo's_ practices.
@@ -89,9 +90,8 @@ paths:
   a package that has zero runtime dependencies to begin with -- one
   vulnerability-scanning badge is enough. `gitleaks.yml` runs
   `gitleaks/gitleaks-action` (secret scanning) on the same
-  push/PR/weekly/dispatch shape as `scorecard.yml`, and is not a required
-  check today (see CLAUDE.md's "Known gaps" -- adding it to `main`'s
-  ruleset needs at least one successful run on `main` first). Its
+  push/PR/weekly/dispatch shape as `scorecard.yml`, and is a required check on
+  `main`'s ruleset (alongside `verify`, `Dependency Review` and `CodeQL`). Its
   `GITLEAKS_VERSION` is pinned above the action's own stale built-in
   default and Dependabot doesn't track it, so bump it by hand periodically;
   `GITLEAKS_LICENSE` (a free org license, required because this repo is
@@ -145,7 +145,8 @@ comment:*)` in `--allowedTools`, and a `Verify Claude posted` step failing
   actor's `author_association` to be `OWNER`, `MEMBER` or `COLLABORATOR`.
 - **One-time setup, done by hand:** install the [Claude GitHub
   App](https://github.com/apps/claude), then `claude setup-token` locally
-  and `gh secret set CLAUDE_CODE_OAUTH_TOKEN` -- this repo uses a Claude
+  and `gh secret set CLAUDE_CODE_OAUTH_TOKEN --org monte3l --repos m3l-groundwork`
+  (an org secret, not a repo secret) -- this repo uses a Claude
   subscription's OAuth token, not a stored API key or Workload Identity
   Federation. `templates/packs/github` ships both the mention-mode workflow
   and a generalized `claude-pr-review.yml` twin (plus three `gh`-CLI skills)

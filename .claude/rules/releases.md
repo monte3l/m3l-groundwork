@@ -100,16 +100,16 @@ than switched off.
 
 **The version PR authenticates as a GitHub App, not the default
 `GITHUB_TOKEN`.** `main`'s branch ruleset (see CLAUDE.md's "Git Workflow")
-requires `verify`, `Dependency Review` and `CodeQL` on every PR, with an
+requires `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` on every PR, with an
 empty bypass list -- including this one. A PR opened with the default
 `GITHUB_TOKEN` never triggers `pull_request`-event workflows (GitHub's own
-anti-recursion rule), so those three checks would never post and the PR could
+anti-recursion rule), so those four checks would never post and the PR could
 never merge. `release.yml`'s `version` job instead mints a one-hour
 installation token from a GitHub App installed on just this repo
 (`actions/create-github-app-token@v3`, reading the `APP_CLIENT_ID` /
 `APP_PRIVATE_KEY` repo secrets) and passes it as `changesets/action/version`'s
 `github-token`. That makes the PR behave like any human-opened one: the same
-three checks run and satisfy the ruleset through its normal path, and the
+four checks run and satisfy the ruleset through its normal path, and the
 `version` job's own `permissions:` stays `contents: read` -- the App token
 does the actual writing, scoped to exactly `contents: write` +
 `pull-requests: write` on the App itself. This is what both GitHub's own docs
@@ -128,8 +128,9 @@ describes).
   `npm stage approve <id>` (2FA, on the CLI or npmjs.com -- **never
   automatable**, by npm's own design) before a version is actually
   installable. `npm stage list --package @monte3l/groundwork` finds the id;
-  the `publish` job's last step tries this too, best-effort, but that job
-  never holds a login session so it may print nothing. The alternative --
+  the `publish` job's last step only runs `npm stage list ... || true`, best-effort
+  (it never approves anything, and that job holds no login session so it may
+  print nothing). The alternative --
   checking "allow npm publish" -- was considered and rejected: this package
   is a solo-maintainer pre-1.0 CLI, not the "high-impact, widely-used"
   case npm is targeting, but the version PR is already a real, reviewed gate

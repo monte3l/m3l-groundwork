@@ -11,10 +11,10 @@ The public API has been frozen since the first `1.0.0-rc`
 (see the README's ["Versioning policy"](README.md#versioning-policy)): only
 `patch` [changesets](docs/glossary.md#changeset) land for the rest of the
 [`rc`](docs/glossary.md#rc) series, and any further API change waits for a
-`1.1` release after GA (see [`CLAUDE.md`](CLAUDE.md#releases)'s "Releases"
-section, which this paraphrases). Leaving the `rc` prerelease series for a
+`1.1` release after GA (see [`.claude/rules/releases.md`](.claude/rules/releases.md), which
+[`CLAUDE.md`](CLAUDE.md#releases) summarises). Leaving the `rc` prerelease series for a
 stable `1.0.0` is the immediate goal, once the promotion checklist in
-[`CLAUDE.md`](CLAUDE.md#releases) is met.
+[`.claude/rules/releases.md`](.claude/rules/releases.md) is met.
 
 ## Next 12 months
 

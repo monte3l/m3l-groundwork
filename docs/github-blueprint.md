@@ -7,12 +7,12 @@ repo, not a description of the CLI. [`CLAUDE.md`](../CLAUDE.md) and the
 distills the parts that live on GitHub's side.
 
 > [!NOTE]
-> Everything here was read from the live repository and organization on
-> 2026-09-29, and from GitHub's own documentation. The JSON files and the
-> `jq` step in the checklist were checked against the live ruleset without
-> writing anything. None of the commands that change settings have been run.
-> Read each one against the linked GitHub docs page before running it, and
-> run them yourself: they change organization and repository settings.
+> Every item in the settings checklist was applied by hand and confirmed on
+> 2026-10-04 (see "Known gaps" in [`CLAUDE.md`](../CLAUDE.md)). Live values
+> are not copied into this page: each "today" cell names the read-only
+> `gh api` command that returns it. Read each change command against the
+> linked GitHub docs page before running it on a new repository: they
+> change organization and repository settings.
 
 ## Why a template repository is not enough
 
@@ -57,19 +57,19 @@ The lookup rules that shape L2, from GitHub's docs on
 
 ## Reference instance: `monte3l/m3l-groundwork`
 
-The values below are what this repository has today. Treat them as the
-target for a new repository unless a row says otherwise.
+The values below are the target for a new repository. Where a value is
+live state that can change, the cell gives the read-only command instead.
 
 ### `main` ruleset (L3)
 
-| Setting                    | Value                                                                                            |
-| -------------------------- | ------------------------------------------------------------------------------------------------ |
-| Target                     | `~DEFAULT_BRANCH`, enforcement `active`                                                          |
-| Bypass actors              | None, so nobody can push, force-push or delete `main`                                            |
-| Rules                      | `deletion`, `non_fast_forward`, `required_signatures`                                            |
-| Pull request               | 0 approvals, thread resolution required, stale reviews dismissed on push, merge or squash only   |
-| Required status checks     | `verify`, `Dependency Review` and `CodeQL`, each pinned to its producing app by `integration_id` |
-| Up-to-date branch required | No (`strict_required_status_checks_policy: false`)                                               |
+| Setting                    | Value                                                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Target                     | `~DEFAULT_BRANCH`, enforcement `active`                                                                      |
+| Bypass actors              | None, so nobody can push, force-push or delete `main`                                                        |
+| Rules                      | `deletion`, `non_fast_forward`, `required_signatures`                                                        |
+| Pull request               | 0 approvals, thread resolution required, stale reviews dismissed on push, merge or squash only               |
+| Required status checks     | `verify`, `Dependency Review`, `CodeQL` and `Gitleaks`, each pinned to its producing app by `integration_id` |
+| Up-to-date branch required | No (`strict_required_status_checks_policy: false`)                                                           |
 
 Why these choices: approvals are 0 because one maintainer cannot approve
 their own PR. Rebase-merge is excluded because GitHub cannot sign the
@@ -86,38 +86,43 @@ id instead.
 
 ### Environments (L3)
 
-| Environment       | Protection                                                              | Holds                                              |
-| ----------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
-| `npm-publish`     | Two required reviewers, `main` only, `prevent_self_review: false` today | No secrets (npm trusted publishing uses OIDC)      |
-| `docs-cloudflare` | `main` only                                                             | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`    |
-| `env-janitor`     | `main` only                                                             | `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY` |
+| Environment       | Protection                                                                                                       | Holds                                              |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `npm-publish`     | Two required reviewers, `main` only, read it with `gh api repos/monte3l/m3l-groundwork/environments/npm-publish` | No secrets (npm trusted publishing uses OIDC)      |
+| `docs-cloudflare` | `main` only                                                                                                      | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`    |
+| `env-janitor`     | `main` only                                                                                                      | `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY` |
 
 ### Actions and security (L3, L4)
 
-| Area                                                                                                      | Today                                                | Target                                          |
-| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------- |
-| Workflow token default                                                                                    | Read-only                                            | Read-only                                       |
-| Workflows approving PRs                                                                                   | Allowed                                              | Off                                             |
-| Fork PR approval                                                                                          | First-time contributors                              | All external contributors                       |
-| Allowed actions                                                                                           | All, SHA pinning not required                        | Selected, SHA pinning required                  |
-| Secret scanning, push protection, Dependabot alerts and security updates, private vulnerability reporting | On                                                   | On                                              |
-| Code scanning                                                                                             | CodeQL default setup, so no `codeql.yml` in the repo | Same                                            |
-| Immutable releases                                                                                        | Off                                                  | On, once the release flow allows it (see below) |
-| Tag protection                                                                                            | None                                                 | Tag ruleset                                     |
+| Area                                                                                                      | Read it with                                                                                                | Target                                          |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Workflow token default, workflows approving PRs                                                           | `gh api repos/monte3l/m3l-groundwork/actions/permissions/workflow`                                          | Read-only token, PR approval off                |
+| Fork PR approval                                                                                          | `gh api repos/monte3l/m3l-groundwork/actions/permissions/fork-pr-contributor-approval`                      | All external contributors                       |
+| Allowed actions, SHA pinning                                                                              | `gh api repos/monte3l/m3l-groundwork/actions/permissions`                                                   | Selected, SHA pinning required                  |
+| Secret scanning, push protection, Dependabot alerts and security updates, private vulnerability reporting | `gh api repos/monte3l/m3l-groundwork --jq .security_and_analysis`                                           | On                                              |
+| Code scanning                                                                                             | CodeQL default setup, so no `codeql.yml`; `gh api repos/monte3l/m3l-groundwork/code-scanning/default-setup` | Same                                            |
+| Immutable releases                                                                                        | `gh api repos/monte3l/m3l-groundwork/immutable-releases`                                                    | On, once the release flow allows it (see below) |
+| Tag protection                                                                                            | `gh api repos/monte3l/m3l-groundwork/rulesets` (the `tags` ruleset)                                         | Tag ruleset                                     |
 
 ### Files that ship in the repository (L1)
 
 Every action in every workflow is pinned by commit SHA with a version
 comment, every job has a `timeout-minutes`, and top-level `permissions` are
-reset and granted per job. `dependabot.yml` covers `github-actions` and the
-two pinned-tool directories (`release-tools`, `deploy-tools`). Community
-files at the root: `README`, `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`,
-`GOVERNANCE`, `ROADMAP`, `LICENSE`. Issue forms and the PR template live
-under `.github/`.
+either `{}` or read-only (`contents: read` in `ci`, `dependency-review` and
+`labeler`; `read-all` in `scorecard`), then widened per job. `dependabot.yml`
+covers `github-actions` and three pinned-tool npm directories
+(`.github/release-tools`,
+`templates/packs/publishing/files/.github/release-tools` and
+`.github/deploy-tools`). Community files at the root: `README`,
+`CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, `GOVERNANCE`, `ROADMAP`,
+`LICENSE`, plus `.editorconfig` and `.gitattributes` (check with `ls -a`;
+GitHub's community profile does not list them). Issue forms and the PR
+template live under `.github/`. Read GitHub's own view with
+`gh api repos/monte3l/m3l-groundwork/community/profile`.
 
 Not present, by choice or not yet: `CODEOWNERS` (deliberate, see
-`SECURITY.md`), `SUPPORT.md`, `FUNDING.yml`, `.gitattributes`,
-`.editorconfig`, and a `.github/release.yml` release-notes config.
+`SECURITY.md`), `SUPPORT.md`, `FUNDING.yml`, and a `.github/release.yml`
+release-notes config.
 
 ## Applying the blueprint to a new repository
 
@@ -137,8 +142,9 @@ Not present, by choice or not yet: `CODEOWNERS` (deliberate, see
 
 ## Settings checklist
 
-These are the changes still pending on this repository and organization,
-plus the ones a new repository needs. **An organization owner runs them.**
+These are the changes a new repository needs. They were applied by hand to
+this repository and organization and confirmed on 2026-10-04.
+**An organization owner runs them.**
 Replace `REPO` with the repository name.
 
 > [!WARNING]
@@ -151,16 +157,16 @@ Replace `REPO` with the repository name.
 
 ### Organization (L4)
 
-| #   | Change                                             | Command                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| --- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Default repository permission below admin          | `gh api -X PATCH orgs/monte3l -f default_repository_permission=read`                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 2   | Workflows may not approve PRs; read-only token     | `gh api -X PUT orgs/monte3l/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=false`                                                                                                                                                                                                                                                                                                                                |
-| 3   | Approve fork-PR runs for all external contributors | `gh api -X PUT orgs/monte3l/actions/permissions/fork-pr-contributor-approval -f approval_policy=all_external_contributors`                                                                                                                                                                                                                                                                                                                                              |
-| 4   | Require SHA pinning, allow selected actions only   | `gh api -X PUT orgs/monte3l/actions/permissions -f enabled_repositories=all -f allowed_actions=selected -F sha_pinning_required=true`                                                                                                                                                                                                                                                                                                                                   |
-| 5   | Allowlist for row 4                                | `gh api -X PUT orgs/monte3l/actions/permissions/selected-actions -F github_owned_allowed=true -F verified_allowed=false -f 'patterns_allowed[]=anthropics/claude-code-action@*' -f 'patterns_allowed[]=ossf/scorecard-action@*' -f 'patterns_allowed[]=gitleaks/gitleaks-action@*' -f 'patterns_allowed[]=changesets/action@*' -f 'patterns_allowed[]=changesets/action/*' -f 'patterns_allowed[]=pnpm/action-setup@*'`                                                 |
-| 6   | Limit the two shared secrets to this repository    | `gh secret set CLAUDE_CODE_OAUTH_TOKEN --org monte3l --repos REPO`, and the same for `GITLEAKS_LICENSE` (each prompts for the value)                                                                                                                                                                                                                                                                                                                                    |
-| 7   | Scope the Claude and Cloudflare GitHub Apps        | Organization settings, GitHub Apps, Configure, Only select repositories. The Cloudflare app does not appear in the organization's installations, so check the owner account too.                                                                                                                                                                                                                                                                                        |
-| 8   | Security defaults for new repositories             | Create a code security configuration and set it as the default for new public repositories, see [choosing a security configuration](https://docs.github.com/en/code-security/securing-your-organization/introduction-to-securing-your-organization-at-scale/choosing-a-security-configuration-for-your-repositories). Enable Dependabot alerts and security updates, secret scanning, push protection, private vulnerability reporting and code scanning default setup. |
+| #   | Change                                                 | Command                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Default repository permission below admin              | `gh api -X PATCH orgs/monte3l -f default_repository_permission=read`                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 2   | Workflows may not approve PRs; read-only token         | `gh api -X PUT orgs/monte3l/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=false`                                                                                                                                                                                                                                                                                                                                |
+| 3   | Approve fork-PR runs for all external contributors     | `gh api -X PUT orgs/monte3l/actions/permissions/fork-pr-contributor-approval -f approval_policy=all_external_contributors`                                                                                                                                                                                                                                                                                                                                              |
+| 4   | Require SHA pinning, allow selected actions only       | `gh api -X PUT orgs/monte3l/actions/permissions -f enabled_repositories=all -f allowed_actions=selected -F sha_pinning_required=true`                                                                                                                                                                                                                                                                                                                                   |
+| 5   | Allowlist for row 4                                    | `gh api -X PUT orgs/monte3l/actions/permissions/selected-actions -F github_owned_allowed=true -F verified_allowed=false -f 'patterns_allowed[]=anthropics/claude-code-action@*' -f 'patterns_allowed[]=ossf/scorecard-action@*' -f 'patterns_allowed[]=gitleaks/gitleaks-action@*' -f 'patterns_allowed[]=changesets/action@*' -f 'patterns_allowed[]=changesets/action/*' -f 'patterns_allowed[]=pnpm/action-setup@*'`                                                 |
+| 6   | Limit the two shared org secrets to named repositories | `gh secret set CLAUDE_CODE_OAUTH_TOKEN --org monte3l --repos REPO`, and the same for `GITLEAKS_LICENSE` (each prompts for the value). `GITLEAKS_LICENSE` is also used by `monte3l/.github`, so `--repos` must list every consuming repository (today `monte3l/.github` and `monte3l/m3l-groundwork`; `CLAUDE_CODE_OAUTH_TOKEN` goes to `m3l-groundwork`). Read with `gh api orgs/monte3l/actions/secrets`.                                                              |
+| 7   | Scope the Claude and Cloudflare GitHub Apps            | Organization settings, GitHub Apps, Configure, Only select repositories. The Cloudflare app does not appear in the organization's installations, so check the owner account too.                                                                                                                                                                                                                                                                                        |
+| 8   | Security defaults for new repositories                 | Create a code security configuration and set it as the default for new public repositories, see [choosing a security configuration](https://docs.github.com/en/code-security/securing-your-organization/introduction-to-securing-your-organization-at-scale/choosing-a-security-configuration-for-your-repositories). Enable Dependabot alerts and security updates, secret scanning, push protection, private vulnerability reporting and code scanning default setup. |
 
 Row 4 is the largest change. Rows 4 and 5 must go together, and row 5 must
 list every third-party action a workflow uses. A pattern matches the exact
@@ -177,14 +183,14 @@ covers.
 
 ### Repository (L3)
 
-| #   | Change                                                                 | Command                                                                                                                                                                                                                                                                                                              |
-| --- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 9   | Same three Actions changes as rows 2 to 4, at repository scope         | Repeat rows 2, 3 and 4 with `repos/monte3l/REPO/actions/...` in place of `orgs/monte3l/actions/...`                                                                                                                                                                                                                  |
-| 10  | Turn off rebase-merge in the repository settings, matching the ruleset | `gh api -X PATCH repos/monte3l/REPO -F allow_rebase_merge=false`                                                                                                                                                                                                                                                     |
-| 11  | Labels the automation applies                                          | `gh label create dependencies --color 0366d6 --repo monte3l/REPO`. Dependabot applies it to every update PR. A repository bootstrapped from `templates/core` also needs `security` (`--color ee0701`): the baseline's scheduled audit opens its failure issue with that label. This repository has no such workflow. |
-| 12  | Tag ruleset                                                            | `gh api -X POST repos/monte3l/REPO/rulesets --input tag-ruleset.json`, with the file below                                                                                                                                                                                                                           |
-| 13  | Add Gitleaks to the required checks                                    | Fetch the ruleset, append the check, send it back, see below                                                                                                                                                                                                                                                         |
-| 14  | Stop self-approval of npm publishes                                    | `gh api -X PUT repos/monte3l/REPO/environments/npm-publish --input npm-publish-env.json`, with the file below                                                                                                                                                                                                        |
+| #   | Change                                                                 | Command                                                                                                                                                                                                                                                                                                                                                                   |
+| --- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 9   | Same three Actions changes as rows 2 to 4, at repository scope         | Repeat rows 2, 3 and 4 with `repos/monte3l/REPO/actions/...` in place of `orgs/monte3l/actions/...`                                                                                                                                                                                                                                                                       |
+| 10  | Turn off rebase-merge in the repository settings, matching the ruleset | `gh api -X PATCH repos/monte3l/REPO -F allow_rebase_merge=false`                                                                                                                                                                                                                                                                                                          |
+| 11  | Labels the automation applies                                          | `gh label create dependencies --color 0366d6 --repo monte3l/REPO`. Dependabot applies it to every update PR. A repository bootstrapped from `templates/core` also needs `security` (`--color ee0701`): the baseline's scheduled audit opens its failure issue with that label. This repository's `security-audit.yml` does the same, so the `security` label exists here. |
+| 12  | Tag ruleset                                                            | `gh api -X POST repos/monte3l/REPO/rulesets --input tag-ruleset.json`, with the file below                                                                                                                                                                                                                                                                                |
+| 13  | Add Gitleaks to the required checks                                    | Fetch the ruleset, append the check, send it back, see below                                                                                                                                                                                                                                                                                                              |
+| 14  | Stop self-approval of npm publishes                                    | `gh api -X PUT repos/monte3l/REPO/environments/npm-publish --input npm-publish-env.json`, with the file below                                                                                                                                                                                                                                                             |
 
 `bin/apply-repo-baseline.sh` in `monte3l/.github` covers rows 9 to 13: the
 blueprint's `main` ruleset already requires Gitleaks, so row 13 only matters
@@ -246,8 +252,7 @@ With `prevent_self_review` on, whoever triggers a publish cannot approve it,
 so the other reviewer must. That is the point, and it means a publish waits
 whenever the second reviewer is away.
 
-After the settings are applied, update the "Known gaps" table in
-`CLAUDE.md`, which currently lists the first seven as pending.
+For the applied state, see "Known gaps" in [`CLAUDE.md`](../CLAUDE.md).
 
 ## Sources
 
