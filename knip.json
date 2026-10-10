@@ -43,7 +43,12 @@
         // go through packsHarnessParams (eval-lib.mjs's own shared param
         // builder) instead, its only remaining static consumer is inside
         // eval-lib.mjs itself, so it reports as unused without this entry.
-        "bin/lib/eval-lib.mjs"
+        "bin/lib/eval-lib.mjs",
+        // Same reason, same dynamic-import pattern, from
+        // packages/cli/tests/ci-docs-only.test.ts: isDocsOnly's only static
+        // consumer is docsOnlyFor, inside ci-scope.mjs itself, so it reports
+        // as unused without this entry.
+        "bin/lib/ci-scope.mjs"
       ],
       "project": ["bin/**/*.mjs", ".claude/hooks/**/*.mjs"]
     },

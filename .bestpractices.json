@@ -196,7 +196,7 @@
   "interfaces_current_status": "Met",
   "interfaces_current_justification": "typescript-eslint's typed rules and manual review keep the codebase off deprecated APIs.",
   "automated_integration_testing_status": "Met",
-  "automated_integration_testing_justification": "CI runs the full suite (including e2e) on every push/PR and reports pass/fail per job.",
+  "automated_integration_testing_justification": "CI runs the full suite (including e2e) on every push and on every PR that changes more than documentation, and reports pass/fail per job.",
   "regression_tests_added50_status": "Met",
   "regression_tests_added50_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/CONTRIBUTING.md#scope-of-a-pr now makes this a formal MUST; the CLI input-validation fix is a recent example of a bug fix landing with its regression test.",
   "test_statement_coverage80_status": "Met",

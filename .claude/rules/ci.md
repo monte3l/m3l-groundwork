@@ -26,6 +26,31 @@ paths:
   (see CLAUDE.md's "Git Workflow"). The aggregator demands an explicit
   `success` from every lane, since testing only for `failure` reports green
   over a cancelled or skipped one.
+- **A documentation-only pull request skips the work of `e2e`, `e2e-macos`
+  and `node-current`, and nothing else.** Docs-only means every changed path
+  is under `docs/` or is a root-level `*.md`. Each of the three jobs runs
+  `bin/ci-docs-only.mjs` as a `scope` step straight after checkout, with
+  `continue-on-error: true`, and gates everything after it (pnpm and Node
+  setup, install, build, test) on `steps.scope.outputs.docs_only != 'true'`.
+  **Skip inside the job, never with a job-level `if:` or a `paths:`
+  filter**: a skipped job is not `success`, so `verify` would go red, and a
+  path-filtered required check never reports. **Skip the setup too, not just
+  the work**: `actions/setup-node`'s post step saves a pnpm cache, and with
+  nothing installed that save throws on a cache miss and fails the job. The
+  decision (`bin/lib/ci-scope.mjs`) fails toward running everything: not a
+  pull request, no valid base commit, a git error, an empty diff or the step
+  itself failing (empty output is not `'true'`) all mean everything runs, so
+  a push to `main` always runs in full. It logs why to stderr. It diffs with `--no-renames` so moving code into `docs/` cannot hide
+  the deletion. Pass event values through `env:`, never inline in `run:`.
+  Widening what counts as docs-only is a decision about what proves the
+  emitted baseline, so it needs the same care as a new gate.
+- **`labeler.yml` labels PRs by area** (`.github/labeler.yml`, one label per
+  shipped artifact) with GitHub's own `actions/labeler`, on `pull_request`,
+  never `pull_request_target`. It is not a required check, and it skips
+  Dependabot (keyed on `pull_request.user.login`, not `github.actor`), whose
+  token is read-only. A new label needs no setup: the action creates it on
+  first use, and `pull-requests: write` is enough for that. There is
+  deliberately no `CODEOWNERS` (see `SECURITY.md`).
 - **Two rules keep `gate-lane-parity` (the toolchain grader) working against
   this repo: never name a step id in a workflow** (name a group), **and
   never matrix the lanes** -- `--group ${{ matrix.group }}` reads as

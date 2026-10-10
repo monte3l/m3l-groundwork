@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+# Area labels for `.github/workflows/labeler.yml` (`actions/labeler`). One
+# label per shipped artifact, so a PR list reads by area and a reviewer can
+# filter to the one they care about. A PR that touches several areas gets
+# several labels. The path scopes of the matching rules in `.claude/rules/`
+# are the source for these globs; nothing checks that they agree, so update
+# both when a scope moves. A new label here needs no setup: the workflow
+# creates it on first use.
+
+"area:cli":
+  - changed-files:
+      - any-glob-to-any-file: ["packages/cli/**"]
+
+"area:plugin":
+  - changed-files:
+      - any-glob-to-any-file: ["packages/plugin/**", ".claude-plugin/**"]
+
+"area:baseline":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/core/**"]
+
+"pack:github":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/github/**"]
+
+"pack:harness-extras":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/harness-extras/**"]
+
+"pack:publishing":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/publishing/**"]
+
+"pack:quality":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/quality/**"]
+
+"pack:supply-chain":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/supply-chain/**"]
+
+"pack:worktrees":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/worktrees/**"]
+
+"area:harness":
+  - changed-files:
+      - any-glob-to-any-file: [".claude/**"]
+
+"area:ci":
+  - changed-files:
+      - any-glob-to-any-file: [".github/**", "lefthook.yml", "bin/**"]
+
+"area:docs":
+  - changed-files:
+      - any-glob-to-any-file: ["docs/**", "*.md"]
+
+"area:design":
+  - changed-files:
+      - any-glob-to-any-file: ["design/**"]
