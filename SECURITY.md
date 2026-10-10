@@ -119,7 +119,8 @@ The build is reproducible: two independent, clean builds of the same source
 produce byte-identical tarballs (`pack.e2e.test.ts`'s reproducible-build
 case checks this -- it's excluded from the fast default `pnpm test` run like
 every other `*.e2e.test.ts` file, but CI's `e2e` job runs it on every push
-and PR via `pnpm test:e2e`, and `release.yml`'s `pack` job re-runs it before
+and on every PR that changes more than documentation, via `pnpm test:e2e`,
+and `release.yml`'s `pack` job re-runs it before
 every release, not only at release time). To confirm a published release
 yourself:
 

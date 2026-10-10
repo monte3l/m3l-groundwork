@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+name: Label PRs by area
+
+# What this does: on every pull request into `main`, applies the area labels
+# `.github/labeler.yml` defines (`area:cli`, `pack:worktrees`, ...) from the
+# paths the PR changes, so the PR list reads by artifact. Labels only: it
+# never blocks anything, and it is not a required check.
+#
+# The labels must already exist: creating one needs `issues: write`, which
+# this job deliberately does not hold. `docs/github-blueprint.md` has the
+# `gh label create` commands, run once by a human.
+#
+# `pull_request`, never `pull_request_target`: PR creation is
+# collaborators-only here, so no fork PR exists, and the checked-out code is
+# never run -- the action only reads the changed-file list through the API.
+# That keeps it clear of the "dangerous workflow" class Scorecard flags.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: Label
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Dependabot's pull_request runs get a read-only GITHUB_TOKEN, so the job
+    # could only fail there; its PRs already carry the `dependencies` label.
+    # Keyed on who opened the PR, not `github.actor`, which is whoever
+    # triggered this run (a human re-running it, say).
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0

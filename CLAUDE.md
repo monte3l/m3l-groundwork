@@ -99,7 +99,10 @@ packages/plugin/        Phase B: the /customize skill
 
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
                          verify lanes + e2e + e2e-macos + node-current + the `verify`
-                         aggregator), release.yml (see "Releases"), docs.yml
+                         aggregator; the e2e trio skips its work on a
+                         documentation-only PR, see .claude/rules/ci.md),
+                         labeler.yml (area labels from .github/labeler.yml),
+                         release.yml (see "Releases"), docs.yml
                          (builds the docs site and deploys it to Cloudflare
                          Workers Static Assets -- see .claude/rules/docs-site.md
                          and docs/cloudflare-docs.md), environments.yml (weekly
@@ -118,8 +121,9 @@ packages/plugin/        Phase B: the /customize skill
                          policy), ISSUE_TEMPLATE/, pull_request_template.md
 
 bin/                    This repo's own gate scripts: verify.mjs, check-*.mjs,
-                         build-docs.mjs, eval.mjs, soak.sh. The step list
-                         they all read from is bin/lib/verify-steps.mjs.
+                         build-docs.mjs, eval.mjs, ci-docs-only.mjs, soak.sh.
+                         The step list they all read from is
+                         bin/lib/verify-steps.mjs.
 
 evals/                  `pnpm eval` suites. `.eval-results/` is gitignored
                          output.
