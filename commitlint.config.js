@@ -12,9 +12,10 @@
  * plus `--signoff`). See CONTRIBUTING.md, "Developer Certificate of
  * Origin". `bin/lint-commit.mjs` also requires it on the merge, revert and
  * `fixup!`/`squash!` messages commitlint itself ignores, so a local merge or
- * revert needs `git merge --signoff` / `git revert --signoff`. This only covers commits that pass through the hook -- a squash
- * merge or the release bot's own commit isn't linted here, which is why the
- * PR template also carries a sign-off checkbox.
+ * revert needs `git merge --signoff` / `git revert --signoff`. This only
+ * covers commits that pass through the hook -- a squash merge or the release
+ * bot's own commit isn't linted here, which is why the PR template also
+ * carries a sign-off checkbox.
  *
  * @type {import("@commitlint/types").UserConfig}
  */

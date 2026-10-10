@@ -77,8 +77,9 @@ without `-s`, not just an ordinary commit -- but it isn't re-checked on a
 squash merge or the release bot's own commits (neither passes through the
 local hook), which is why
 [`pull_request_template.md`](.github/pull_request_template.md)'s checklist
-also asks for it. A local `git merge` or `git revert` needs `--signoff` (or
-`-s`) for the hook to accept it.
+also asks for it. A local `git merge`, `git revert`, or
+`git commit --fixup`/`--squash` needs `--signoff` (or `-s`) for the hook to
+accept it.
 
 ## Coding standards
 

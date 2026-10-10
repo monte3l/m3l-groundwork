@@ -207,9 +207,7 @@ function collectKindEvidence(
   // Own fields only: an inherited member (e.g. under prototype pollution) is
   // not evidence about this package.json.
   const hasOwnField = (field: string): boolean =>
-    packageJson !== undefined &&
-    Object.hasOwn(packageJson, field) &&
-    packageJson[field] !== undefined;
+    packageJson !== undefined && Object.hasOwn(packageJson, field);
 
   return {
     hasExportsMap: hasOwnField("exports"),

@@ -178,3 +178,99 @@ describe("lint-commit root/twin", () => {
     },
   );
 });
+
+/** Mirrors commitlint's own trailer-exists semantics on ignored and normal messages. */
+interface RuleCase {
+  label: string;
+  rule: string;
+  message: string;
+  exit: 0 | 1;
+  stderrIncludes?: string;
+}
+
+const A = "A <a@b>";
+const ruleCases: RuleCase[] = [
+  {
+    label: "severity 1 warns only: unsigned conventional message",
+    rule: '[1, "always", "Signed-off-by:"]',
+    message: "fix: x\n",
+    exit: 0,
+  },
+  {
+    label: "severity 1 warns only: unsigned merge message",
+    rule: '[1, "always", "Signed-off-by:"]',
+    message: "Merge branch 'x'\n",
+    exit: 0,
+  },
+  {
+    label: "severity 0 is off: unsigned merge message",
+    rule: '[0, "always", "Signed-off-by:"]',
+    message: "Merge branch 'x'\n",
+    exit: 0,
+  },
+  {
+    label: "never is off: unsigned merge message",
+    rule: '[2, "never", "Signed-off-by:"]',
+    message: "Merge branch 'x'\n",
+    exit: 0,
+  },
+  {
+    label: "configured Reviewed-by present on merge message",
+    rule: '[2, "always", "Reviewed-by:"]',
+    message: `Merge branch 'x'\n\nReviewed-by: ${A}\n`,
+    exit: 0,
+  },
+  {
+    label: "configured Reviewed-by missing on merge message",
+    rule: '[2, "always", "Reviewed-by:"]',
+    message: `Merge branch 'x'\n\nSigned-off-by: ${A}\n`,
+    exit: 1,
+    stderrIncludes: "Reviewed-by",
+  },
+  {
+    label: "Signed-off-by line followed by prose is not a trailer block",
+    rule: '[2, "always", "Signed-off-by:"]',
+    message: `Merge branch 'x'\n\nSigned-off-by: ${A}\n\nmore prose after\n`,
+    exit: 1,
+    stderrIncludes: "Signed-off-by",
+  },
+];
+
+function runWithConfig(
+  script: string,
+  rule: string,
+  message: string,
+): { status: number | null; stderr: string } {
+  const cfgDir = mkdtempSync(join(tmpdir(), "lint-commit-sem-"));
+  try {
+    writeFileSync(
+      join(cfgDir, "commitlint.config.js"),
+      `module.exports = { rules: { "trailer-exists": ${rule} } };\n`,
+    );
+    return run({ cwd: cfgDir, script }, message, "inline");
+  } finally {
+    rmSync(cfgDir, { recursive: true, force: true });
+  }
+}
+
+describe.each(targets)("lint-commit trailer-exists semantics ($name)", (t) => {
+  it.each(ruleCases)("$label", (c) => {
+    const r = runWithConfig(t.script, c.rule, c.message);
+    expect(r.status).toBe(c.exit);
+    if (c.stderrIncludes !== undefined) {
+      expect(r.stderr).toContain(c.stderrIncludes);
+    }
+  });
+});
+
+describe("lint-commit root config: trailer block semantics", () => {
+  it("a Signed-off-by line followed by prose does not satisfy DCO on an ignored message", () => {
+    const r = run(
+      targets[0] ?? { cwd: "", script: "" },
+      `Merge branch 'x'\n\nSigned-off-by: ${A}\n\nmore prose after\n`,
+      "inline",
+    );
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("Signed-off-by");
+  });
+});

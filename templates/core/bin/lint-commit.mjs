@@ -10,12 +10,13 @@
  * Usage: `lint-commit.mjs --edit <path-to-commit-msg-file>` (lefthook's
  * `commit-msg` hook contract) or `lint-commit.mjs <message>` directly.
  *
- * When the config enables `trailer-exists`, the trailer is also required on
- * messages commitlint's default ignores skip (merge, revert, `fixup!`,
- * `squash!`): a local merge or revert needs `git merge --signoff` /
- * `git revert --signoff` too.
+ * When the config enables `trailer-exists` as an error (severity 2), the
+ * trailer, with a non-empty value, is also required on messages commitlint's
+ * default ignores skip (merge, revert, `fixup!`, `squash!`): a local merge or
+ * revert needs `git merge --signoff` / `git revert --signoff` too.
  */
 import process from "node:process";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import load from "@commitlint/load";
 import lint from "@commitlint/lint";
@@ -32,33 +33,43 @@ function validateForbiddenTrailers(text) {
 }
 
 /**
- * The trailer `trailer-exists` requires, or `undefined` when the loaded
- * config does not enable it. A rule entry is `[severity, applicable, value]`
- * or a (possibly async) function resolving to one.
+ * The loaded config's `trailer-exists` entry when it is an enforced
+ * requirement (severity 2, not `never`), else `undefined`. Severity 1 is a
+ * commitlint warning and never blocks a commit.
  */
-async function requiredTrailer(rules) {
-  let entry = rules?.["trailer-exists"];
-  if (typeof entry === "function") entry = await entry();
+function enforcedTrailerRule(rules) {
+  const entry = rules?.["trailer-exists"];
   if (!Array.isArray(entry)) return undefined;
-  const [severity, applicable, value] = entry;
-  if (typeof severity !== "number" || severity <= 0) return undefined;
-  if (applicable === "never") return undefined;
-  return typeof value === "string" && value.trim() !== ""
-    ? value.trim()
-    : "Signed-off-by:";
+  const [severity, applicable] = entry;
+  return severity === 2 && applicable !== "never" ? entry : undefined;
 }
 
-function hasTrailer(text, trailer) {
-  const escaped = trailer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^${escaped}[ \\t]*\\S`, "m").test(text);
+/**
+ * Whether the message's trailer block (as `git interpret-trailers --parse`
+ * reads it, the same parse commitlint's `trailer-exists` uses) holds a
+ * `prefix` trailer with a non-empty value. commitlint only checks the
+ * prefix, so an empty `Signed-off-by:` would otherwise pass. A failed `git`
+ * call counts as missing (fail closed).
+ */
+function hasNonEmptyTrailer(text, prefix) {
+  const parsed = spawnSync("git", ["interpret-trailers", "--parse"], {
+    input: text,
+    encoding: "utf8",
+  });
+  if (parsed.error !== undefined || parsed.status !== 0) return false;
+  return parsed.stdout
+    .split(/\r?\n/)
+    .some(
+      (line) =>
+        line.startsWith(prefix) && line.slice(prefix.length).trim() !== "",
+    );
 }
 
 const config = await load({}, { file: "commitlint.config.js" });
-const result = await lint(
-  message,
-  config.rules,
-  config.parserPreset ? { parserOpts: config.parserPreset.parserOpts } : {},
-);
+const parserOptions = config.parserPreset
+  ? { parserOpts: config.parserPreset.parserOpts }
+  : {};
+const result = await lint(message, config.rules, parserOptions);
 
 if (!validateForbiddenTrailers(message)) {
   console.error(
@@ -74,12 +85,32 @@ if (!result.valid) {
   process.exit(1);
 }
 
-const trailer = await requiredTrailer(config.rules);
-if (trailer !== undefined && !hasTrailer(message, trailer)) {
-  console.error(
-    `✗ commit message must have a non-empty \`${trailer}\` trailer (use \`git commit -s\`, \`git merge --signoff\` or \`git revert --signoff\`)`,
+// commitlint's default ignores skip merge/revert/fixup!/squash! messages
+// entirely, trailer-exists included. Re-run just that rule with the ignores
+// off so an enforced trailer is required on every message. Only reached when
+// the first lint passed, so a failure is never reported twice.
+const trailerRule = enforcedTrailerRule(config.rules);
+if (trailerRule !== undefined) {
+  const trailerResult = await lint(
+    message,
+    { "trailer-exists": trailerRule },
+    { defaultIgnores: false, ...parserOptions },
   );
-  process.exit(1);
+  if (!trailerResult.valid) {
+    for (const problem of trailerResult.errors) {
+      console.error(
+        `✗ ${problem.message} (merge, revert and fixup! messages too: use \`-s\`/\`--signoff\`)`,
+      );
+    }
+    process.exit(1);
+  }
+  const trailerValue = String(trailerRule[2] ?? "");
+  if (!hasNonEmptyTrailer(message, trailerValue)) {
+    console.error(
+      `✗ message must have a non-empty \`${trailerValue}\` trailer`,
+    );
+    process.exit(1);
+  }
 }
 
 console.log("✓ commit message is a valid Conventional Commit");
