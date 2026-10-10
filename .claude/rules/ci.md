@@ -114,6 +114,8 @@ paths:
   The runner needs several GiB of free memory: the baseline's `knip` step
   fails with `RangeError: Array buffer allocation failed` in `oxc-parser` on
   a 4 GB machine, which GitHub's runners are well above.
+  Each matrix leg uploads `results.tsv` and `logs/` from `$RUNNER_TEMP/soak` as
+  the artifact `soak-<os>`, kept 14 days (`if-no-files-found: warn`).
 - **`claude.yml` runs Anthropic's official `anthropics/claude-code-action`**
   (SHA-pinned, same convention as every other action here), running but
   failing cleanly on an auth error until the one-time setup below is done.
