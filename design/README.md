@@ -5,8 +5,10 @@ system for everything Enrico Lionello (`enri3l`) builds personally and
 everything published under the `monte3l` GitHub org.
 
 - **Source:** [claude.ai/artifact/AyFoi7PNmQJXLyKUyBxHyk](https://claude.ai/artifact/AyFoi7PNmQJXLyKUyBxHyk)
-- **Version copied:** `1790429550-bb17` (v1, signed off 2026-09-26)
+- **Version copied:** `1791621112-523a` (v1, signed off 2026-09-26)
 - **Date vendored into this repo:** 2026-09-26
+- **Last re-synced:** 2026-10-10, from `1790429550-bb17`. The content did not
+  change, only the artifact's version id.
 
 ## Governance: copy-based, not a live dependency
 
@@ -21,8 +23,10 @@ baseline into bootstrapped projects rather than having them depend on it.
 
 ## `source/` is vendored, verbatim -- never hand-edit it
 
-Everything under `design/source/` is copied byte-for-byte from the
-artifact above. If m3l-design ships a new version, re-sync it file by
+Everything under `design/source/` is copied from the artifact above with its
+content unchanged. This repo's Prettier config reformats the copy, so
+compare against upstream after formatting (JSON: compare with `jq -S .`),
+not byte for byte. If m3l-design ships a new version, re-sync it file by
 file (never a wholesale overwrite that would also clobber `design/README.md`
 itself), and record the new version id and date at the top of this file.
 
