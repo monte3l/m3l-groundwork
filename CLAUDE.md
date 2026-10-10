@@ -281,6 +281,22 @@ steps) before considering any task here done.
   a fresh bootstrap. The per-file `sha256` proves the staging is complete
   and matches the inventory, not that it is untampered.
   `adopt.e2e.test.ts` is the test of that guarantee; don't weaken it.
+- **A Claude Code plugin repo is a first-class adopt target** (inventory
+  schema 6). `survey.harness.pluginLayout` is `null` unless
+  `.claude-plugin/plugin.json` is a regular file; then it lists which of
+  `hooks/hooks.json`, `skills/`, `agents/`, `commands/` and `.mcp.json` exist.
+  A manifest that exists but is a symlink or directory leaves it `null` and
+  adds an `undetermined` note, so the report never calls it "no plugin"; a
+  symlinked component is likewise left out with a note. The symlink check is
+  `lstat` on the final path component only. A root `hooks/` without the
+  manifest is never recorded, since it could be React hooks. The harness grader still reads only `.claude/` and `CLAUDE.md`,
+  so the report says plugin components are outside its scope rather than
+  printing "0 of 0 checks pass". `/customize` has a fifth `plugin` kind
+  (pre-selected from `pluginLayout`, which also recommends `plugin-dev`) and a
+  final gate (its Step 6) that grades the harness after Round 2, from the
+  staged grader files when the project has no `bin/check-harness.mjs`. Any
+  `CLAUDE.md` text that names a `.claude/` file must use the full
+  `.claude/...` path, because `claudemd-refs` matches that literal.
 - **`/customize`'s two guidance skills (`typescript-guidance`,
   `harness-guidance`, both in `templates/core/.claude/skills/`) each have
   full authority over their entire domain**, not just the facets an

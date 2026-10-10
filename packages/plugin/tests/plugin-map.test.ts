@@ -157,6 +157,21 @@ describe("recommendPlugins", () => {
     });
   });
 
+  describe("unconditional plugins for the plugin kind", () => {
+    it.each([
+      "context7",
+      "typescript-lsp",
+      "claude-md-management",
+      "claude-security",
+    ])("still recommends %s", (prefix) => {
+      const rec = find(
+        recommendPlugins({ ...BASE_ANSWERS, kind: "plugin" }),
+        prefix,
+      );
+      expect(rec?.recommended).toBe(true);
+    });
+  });
+
   describe("claude-md-management", () => {
     it("is recommended unconditionally, regardless of answers or context", () => {
       const withoutContext = find(
@@ -282,6 +297,61 @@ describe("recommendPlugins", () => {
       expect(rec?.prerequisites?.length).toBeGreaterThan(0);
       expect(rec?.prerequisites?.some((p) => /python/i.test(p))).toBe(true);
     });
+  });
+
+  describe("security-guidance for the plugin kind", () => {
+    it("is not recommended for a plugin kind at non-thorough CI depth", () => {
+      for (const ciDepth of ["minimal", "standard"] as const) {
+        const rec = find(
+          recommendPlugins({ ...BASE_ANSWERS, kind: "plugin", ciDepth }),
+          "security-guidance",
+        );
+        expect(rec?.recommended).toBe(false);
+      }
+    });
+
+    it("is recommended for a plugin kind at thorough CI depth", () => {
+      const rec = find(
+        recommendPlugins({
+          ...BASE_ANSWERS,
+          kind: "plugin",
+          ciDepth: "thorough",
+        }),
+        "security-guidance",
+      );
+      expect(rec?.recommended).toBe(true);
+    });
+  });
+
+  describe("plugin-dev", () => {
+    it("is recommended for the plugin kind, with a marketplace-qualified id and evidence naming a Claude Code plugin", () => {
+      const rec = find(
+        recommendPlugins({ ...BASE_ANSWERS, kind: "plugin" }),
+        "plugin-dev",
+      );
+      expect(rec?.id).toBe("plugin-dev@claude-plugins-official");
+      expect(rec?.recommended).toBe(true);
+      expect(rec?.because).toMatch(/Claude Code plugin/i);
+    });
+
+    it.each(["library", "cli", "frontend", "service"] as const)(
+      "is not recommended for the %s kind, whatever the context",
+      (kind) => {
+        const bare = find(
+          recommendPlugins({ ...BASE_ANSWERS, kind }),
+          "plugin-dev",
+        );
+        const withContext = find(
+          recommendPlugins(
+            { ...BASE_ANSWERS, kind, ciDepth: "thorough" },
+            { chosenPacks: ["github"], hasCustomSkills: true },
+          ),
+          "plugin-dev",
+        );
+        expect(bare?.recommended ?? false).toBe(false);
+        expect(withContext?.recommended ?? false).toBe(false);
+      },
+    );
   });
 
   describe("claude-security", () => {
@@ -412,6 +482,10 @@ describe("recommendPlugins", () => {
         [
           { ...BASE_ANSWERS, kind: "frontend", ciDepth: "minimal" },
           { chosenPacks: [], hasCustomSkills: false },
+        ],
+        [
+          { ...BASE_ANSWERS, kind: "plugin", ciDepth: "thorough" },
+          { chosenPacks: ["github"], hasCustomSkills: true },
         ],
       ];
       for (const [answers, context] of combinations) {

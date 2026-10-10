@@ -30,6 +30,7 @@ describe("surveyHarness", () => {
       hasSettingsLocal: false,
       hasClaudeMd: false,
       claudeMdHeadings: [],
+      pluginLayout: null,
     });
   });
 

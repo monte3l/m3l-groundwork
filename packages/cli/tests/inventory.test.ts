@@ -105,6 +105,7 @@ const EMPTY_SURVEY: ProjectSurvey = {
     hasSettingsLocal: false,
     hasClaudeMd: false,
     claudeMdHeadings: [],
+    pluginLayout: null,
   },
   docs: { files: [] },
   undetermined: [],
@@ -174,11 +175,11 @@ describe("buildInventory / writeInventory", () => {
     rmSync(groundworkDir, { recursive: true, force: true });
   });
 
-  it("bumps the schema version to 5 for stagedBaseline", () => {
+  it("bumps the schema version to 6 for HarnessSurvey.pluginLayout", () => {
     // Hardcoded rather than compared against the imported constant: this
     // pins the version bump itself, which a self-referencing comparison
     // against INVENTORY_SCHEMA_VERSION could never discriminate.
-    expect(INVENTORY_SCHEMA_VERSION).toBe(5);
+    expect(INVENTORY_SCHEMA_VERSION).toBe(6);
   });
 
   it("builds an inventory carrying the schema version, mode signal, and survey", () => {
@@ -624,8 +625,8 @@ describe("Inventory.stagedPacks", () => {
     rmSync(groundworkDir, { recursive: true, force: true });
   });
 
-  it("stays schemaVersion 5 -- stagedPacks is additive within the same schema, not a further bump", () => {
-    expect(INVENTORY_SCHEMA_VERSION).toBe(5);
+  it("stays schemaVersion 6 -- stagedPacks (added in 5) is additive within the same schema, not a further bump", () => {
+    expect(INVENTORY_SCHEMA_VERSION).toBe(6);
   });
 
   it("carries stagedPacks through buildInventory verbatim, one entry per pack", () => {

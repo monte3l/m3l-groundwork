@@ -33,8 +33,8 @@ Contents:
      `npx @monte3l/groundwork@rc .` and then run `/customize` again."
 
    **Check `inventory.schemaVersion` before reading anything else.** This
-   skill understands schema versions **1 through 5** (the highest it knows is
-   5). If `schemaVersion` is **higher than 5**, the CLI that wrote it is newer
+   skill understands schema versions **1 through 6** (the highest it knows is
+   6). If `schemaVersion` is **higher than 6**, the CLI that wrote it is newer
    than this plugin: **stop and change nothing**, do not interpret the
    inventory (a newer schema may have renamed or repurposed fields, and a
    confident misreading is worse than none), and tell the user to update the
@@ -57,8 +57,9 @@ Contents:
    | 3               | `harnessGrade`, `harnessConformance`                                                                                                                                                                                                                                                                                      | skip the harness-grade starting point                                                                                            |
    | 4               | `toolchainGrade`, `toolchainConformance`                                                                                                                                                                                                                                                                                  | skip the toolchain-grade starting point                                                                                          |
    | 5               | `stagedBaseline` (`{ dir, suffix, files }`): the baseline additions staged at `.groundwork/baseline/`, each as `{ path, staged, sha256 }`; `stagedPacks` (per pack: `{ name, dir, suffix, manifest, files }`): every pack staged at `.groundwork/packs/<name>/`, its manifest and each file as `{ path, staged, sha256 }` | schema 1-4 only: read baseline additions from `inventory.templateRoot`; packs use the unsuffixed copy under `.groundwork/packs/` |
+   | 6               | `survey.harness.pluginLayout`: `null`, or `{ manifest, components }` when the project root holds `.claude-plugin/plugin.json` (`components` lists which of `hooks/hooks.json`, `skills/`, `agents/`, `commands/`, `.mcp.json` exist)                                                                                      | no plugin-layout evidence; ask the project kind cold rather than pre-selecting one                                               |
 
-   **For a schema 5 inventory only: verify the staged baseline now, before
+   **For a schema 5 or later inventory: verify the staged baseline now, before
    anything is offered to the user.** A schema 1-4 inventory has no
    `stagedBaseline`: skip this whole block (every bullet below, including
    its stop list) and use the `inventory.templateRoot` fallback in Round 1.
@@ -159,7 +160,7 @@ Contents:
    - An empty `files` list is legitimate (nothing was missing from the
      project) and creates no `.groundwork/baseline/` directory; that alone is
      not a failure.
-   - **For a schema 5 inventory, a `stagedBaseline` that is missing, not an
+   - **For a schema 5 or later inventory, a `stagedBaseline` that is missing, not an
      object, or whose `files` is not an array also stops the run** (a
      `files: {}` is not an empty list); so does a `stagedPacks` that is
      missing or not an array, or a pack entry that is not an object or whose
@@ -171,7 +172,7 @@ Contents:
      `stagedBaseline.files`, a pack's `files` or a pack's manifest
      means stop -- all of Round 1, including conflicts and packs -- and
      change nothing.** This is the single stop list for the staged baseline and the staged packs.
-     Tell the user: "The staged baseline in `.groundwork/baseline/` or a staged pack in `.groundwork/packs/` is incomplete or does not match `.groundwork/inventory.json` (<the first entry that failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run `/customize` again." **Never fall back to `inventory.templateRoot` for a schema 5 inventory, packs included:** that fallback exists for a schema 1-4 inventory only, and only for the baseline additions (a schema 1-4 inventory's packs are read from their unsuffixed copy, see Step 0.4(c) and Round 1).
+     Tell the user: "The staged baseline in `.groundwork/baseline/` or a staged pack in `.groundwork/packs/` is incomplete or does not match `.groundwork/inventory.json` (<the first entry that failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run `/customize` again." **Never fall back to `inventory.templateRoot` for a schema 5 or later inventory, packs included:** that fallback exists for a schema 1-4 inventory only, and only for the baseline additions (a schema 1-4 inventory's packs are read from their unsuffixed copy, see Step 0.4(c) and Round 1).
    - What a passing check proves: the staging is complete and matches the
      inventory. It does **not** prove the files are untampered -- anyone who
      can edit the staged files can edit the inventory's hashes too.
@@ -188,7 +189,10 @@ Contents:
    docs/ADR files the survey indexed. Dispatch this as parallel read-only
    `Explore` agents, one per discovery area (shape/toolchain, harness, docs),
    so you aggregate their findings rather than reading everything yourself.
-   The harness agent also starts from `inventory.harnessGrade` (the report's
+   The harness agent also reads `survey.harness.pluginLayout` (schema 6): a
+   project with a `.claude-plugin/plugin.json` ships hooks, skills and agents
+   at the repository root, which the harness grade below does not cover, so
+   read those too. It starts from `inventory.harnessGrade` (the report's
    `## Harness grade` section): a deterministic, offline check of the
    existing `.claude/` wiring. Its **wiring findings** (a hook registration
    naming a missing file, a skill or agent with unreadable frontmatter, a

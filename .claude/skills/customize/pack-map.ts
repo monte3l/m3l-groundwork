@@ -82,8 +82,9 @@ function recommendGithub(): PackRecommendation {
  * Scorecard are not part of it -- they are the separate `supply-chain` pack,
  * since they apply to any repo, published or not. A `library` or `cli`
  * typically publishes an npm package; a
- * `frontend` or `service` is typically deployed instead, so it is not
- * pre-selected there -- but it stays on offer. It is fresh-mode only and
+ * `frontend` or `service` is typically deployed instead, and a `plugin`
+ * ships through a marketplace manifest, so it is not pre-selected for those
+ * three -- but it stays on offer. It is fresh-mode only and
  * needs one-time npm and GitHub setup the pack cannot perform itself.
  */
 function recommendPublishing(answers: InterviewAnswers): PackRecommendation {
@@ -100,7 +101,8 @@ function recommendPublishing(answers: InterviewAnswers): PackRecommendation {
         "supply-chain pack. It is fresh-mode only and needs one-time npm and GitHub setup (the " +
         "trusted publisher, the release credentials) the pack cannot do " +
         "itself."
-      : "a frontend or service is typically deployed rather than published " +
+      : "a frontend or service is typically deployed, and a Claude Code " +
+        "plugin ships through a marketplace manifest, rather than published " +
         "to a package registry, so a changesets/npm release pipeline is not " +
         "recommended by default -- it is still available if this project " +
         "does publish an npm package.",

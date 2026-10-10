@@ -58,7 +58,13 @@ describe("recommendPacks", () => {
   });
 
   it("recommends worktrees as opt-in (not recommended by default) with non-empty evidence, for every project kind -- it changes the day-to-day workflow rather than being a zero-cost addition", () => {
-    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
       const worktrees = recommendPacks({ ...BASE_ANSWERS, kind }).find(
         (r) => r.name === "worktrees",
       );
@@ -69,7 +75,13 @@ describe("recommendPacks", () => {
   });
 
   it("recommends harness-extras with evidence naming the compaction-handoff hooks, the read-only Bash guard and the folded-in statusline segment, and no longer mentions the type-design agent or file-budget gate now that they live in the separate quality pack, for every project kind", () => {
-    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
       const recommendations = recommendPacks({ ...BASE_ANSWERS, kind });
       const harnessExtras = recommendations.find(
         (r) => r.name === "harness-extras",
@@ -93,7 +105,13 @@ describe("recommendPacks", () => {
   });
 
   it("recommends github with non-empty evidence, for every project kind", () => {
-    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
       const github = recommendPacks({ ...BASE_ANSWERS, kind }).find(
         (r) => r.name === "github",
       );
@@ -103,7 +121,13 @@ describe("recommendPacks", () => {
   });
 
   it("recommends github with evidence naming the automated PR-review workflow and its two triage/audit skills, for every project kind", () => {
-    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
       const github = recommendPacks({ ...BASE_ANSWERS, kind }).find(
         (r) => r.name === "github",
       );
@@ -119,8 +143,14 @@ describe("recommendPacks", () => {
     }
   });
 
-  it("recommends publishing only for kinds that ship an npm package (library, cli), not for frontend or service", () => {
-    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+  it("recommends publishing only for kinds that ship an npm package (library, cli), not for frontend, service or plugin", () => {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
       const publishing = recommendPacks({ ...BASE_ANSWERS, kind }).find(
         (r) => r.name === "publishing",
       );
@@ -147,8 +177,8 @@ describe("recommendPacks", () => {
     expect(publishing?.because).not.toMatch(/gitleaks|secret|scorecard/i);
   });
 
-  it("explains why publishing is not recommended for frontend/service kinds", () => {
-    for (const kind of ["frontend", "service"] as const) {
+  it("explains why publishing is not recommended for frontend/service/plugin kinds", () => {
+    for (const kind of ["frontend", "service", "plugin"] as const) {
       const publishing = recommendPacks({ ...BASE_ANSWERS, kind }).find(
         (r) => r.name === "publishing",
       );
@@ -165,7 +195,13 @@ describe("recommendPacks", () => {
   });
 
   it("recommends supply-chain unconditionally, for every project kind, with evidence naming secret scanning and OpenSSF Scorecard", () => {
-    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
       const supplyChain = recommendPacks({ ...BASE_ANSWERS, kind }).find(
         (r) => r.name === "supply-chain",
       );
@@ -180,7 +216,13 @@ describe("recommendPacks", () => {
   });
 
   it("recommends quality unconditionally, for every project kind, with evidence naming the per-file size ratchet and the type-design review agent", () => {
-    for (const kind of ["library", "cli", "frontend", "service"] as const) {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
       const quality = recommendPacks({ ...BASE_ANSWERS, kind }).find(
         (r) => r.name === "quality",
       );

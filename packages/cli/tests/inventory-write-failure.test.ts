@@ -104,6 +104,7 @@ const EMPTY_SURVEY: ProjectSurvey = {
     hasSettingsLocal: false,
     hasClaudeMd: false,
     claudeMdHeadings: [],
+    pluginLayout: null,
   },
   docs: { files: [] },
   undetermined: [],

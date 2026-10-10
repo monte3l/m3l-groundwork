@@ -190,6 +190,40 @@ export interface HarnessSurvey {
   hasClaudeMd: boolean;
   /** `CLAUDE.md`'s level 1-3 headings in document order -- empty when there is no `CLAUDE.md`. */
   claudeMdHeadings: string[];
+  /**
+   * A Claude Code plugin repository's root layout: `null` unless
+   * `.claude-plugin/plugin.json` is a regular file. Each probe is an `lstat`
+   * of the path's final component: a symlinked manifest or a directory is
+   * `null`, but a symlinked parent directory (`.claude-plugin/`, `hooks/`) is
+   * followed. A manifest that is not a regular file, or whose probe this
+   * process may not make, is recorded in `undetermined` and leaves this
+   * `null`. `components` lists, in this fixed order, which of
+   * `hooks/hooks.json`, `skills/`, `agents/`, `commands/` and `.mcp.json`
+   * exist at the root with the expected type; a symlinked component, or one
+   * whose probe fails with `EACCES`/`EPERM`/`ELOOP`, is recorded in
+   * `undetermined` and omitted while the layout stays non-null. An index,
+   * never a verdict: these sit outside `.claude/`, so the harness grader does
+   * not read them.
+   */
+  pluginLayout: PluginLayout | null;
+}
+
+/**
+ * The root plugin layout {@link HarnessSurvey.pluginLayout} records.
+ *
+ * @example
+ * ```ts
+ * const layout: PluginLayout = {
+ *   manifest: ".claude-plugin/plugin.json",
+ *   components: ["hooks/hooks.json", "skills/"],
+ * };
+ * ```
+ */
+export interface PluginLayout {
+  /** The manifest's repository-relative path -- always the same literal. */
+  manifest: ".claude-plugin/plugin.json";
+  /** The root plugin components that exist, in the collector's fixed order. */
+  components: readonly string[];
 }
 
 /** One indexed human-facing doc: where it is and its outline, never its content. */

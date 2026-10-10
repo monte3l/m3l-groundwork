@@ -135,7 +135,7 @@ describe("adopt mode end-to-end", () => {
         readFileSync(inventoryPath, "utf8"),
       ) as Inventory;
 
-      expect(inventory.schemaVersion).toBe(5);
+      expect(inventory.schemaVersion).toBe(6);
       expect(inventory.survey.toolchain.testRunner.tool).toBe("jest");
       expect(
         inventory.survey.harness.agents.some(

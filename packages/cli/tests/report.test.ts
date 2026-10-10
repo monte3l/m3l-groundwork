@@ -58,6 +58,7 @@ function baseSurvey(overrides: Partial<ProjectSurvey> = {}): ProjectSurvey {
       hasSettingsLocal: false,
       hasClaudeMd: true,
       claudeMdHeadings: ["Title"],
+      pluginLayout: null,
     },
     docs: {
       files: [
@@ -253,6 +254,7 @@ describe("renderReport", () => {
         hasSettingsLocal: false,
         hasClaudeMd: false,
         claudeMdHeadings: [],
+        pluginLayout: null,
       },
     });
     const report = renderReport(baseInventory(templateRoot, { survey }));
@@ -427,6 +429,7 @@ describe("renderReport", () => {
         hasSettingsLocal: false,
         hasClaudeMd: false,
         claudeMdHeadings: [],
+        pluginLayout: null,
       },
     });
     const report = renderReport(baseInventory(templateRoot, { survey }));
@@ -455,6 +458,7 @@ describe("renderReport", () => {
         hasSettingsLocal: false,
         hasClaudeMd: false,
         claudeMdHeadings: [],
+        pluginLayout: null,
       },
     });
     const report = renderReport(baseInventory(templateRoot, { survey }));
@@ -658,7 +662,7 @@ describe("renderReport", () => {
     expect(report).toContain("## Available packs");
     expect(report).toContain("No packs found under `templates/packs/`.");
     // No packs -- the caps table stays at its original column count.
-    expect(report).not.toContain("+ all packs");
+    expect(report).not.toContain("+ adopt packs");
   });
 
   it("lists a pack's budget, wiring observations, and adopt notes", () => {
@@ -674,12 +678,12 @@ describe("renderReport", () => {
     expect(report).toContain("Adopt notes: some note about a gate dependency");
   });
 
-  it("adds a + all packs column to the caps table when any pack is listed", () => {
+  it("adds a + adopt packs column to the caps table when any pack is listed", () => {
     const report = renderReport(
       baseInventory(templateRoot, { packs: [basePackSurvey()] }),
     );
-    expect(report).toContain("+ all packs");
-    expect(report).toContain('"+ all packs" sums every pack listed below');
+    expect(report).toContain("+ adopt packs");
+    expect(report).toContain('"+ adopt packs"');
   });
 
   it("includes both the CLI version and the inventory schema version in the header", () => {
@@ -814,5 +818,455 @@ describe("renderReport", () => {
     expect(report).toContain(
       "| bin/file-budget-baseline.json | (whole file) |",
     );
+  });
+
+  describe("plugin repositories and halves with nothing gradable", () => {
+    const EMPTY = { checked: 0, failed: 0 };
+    const PLUGIN_LAYOUT = {
+      manifest: ".claude-plugin/plugin.json",
+      components: ["hooks/hooks.json", "skills/"],
+    } as const;
+
+    function harnessOnlySettingsLocal(
+      pluginLayout: Inventory["survey"]["harness"]["pluginLayout"],
+    ): ProjectSurvey {
+      return baseSurvey({
+        harness: {
+          present: true,
+          settingsFile: undefined,
+          agents: [],
+          skills: [],
+          hooks: [],
+          rules: [],
+          commands: [],
+          hasSettingsLocal: true,
+          hasClaudeMd: false,
+          claudeMdHeadings: [],
+          pluginLayout,
+        },
+      });
+    }
+
+    const ZERO_HARNESS_GRADE: HarnessGrade = {
+      findings: [],
+      structural: EMPTY,
+      rubric: {
+        settings: EMPTY,
+        hooks: EMPTY,
+        skills: EMPTY,
+        agents: EMPTY,
+        rules: EMPTY,
+        "claude-md": EMPTY,
+      },
+      rubricScore: 1,
+    };
+
+    function harnessSection(report: string): string {
+      return (
+        report.split("## Harness grade")[1]?.split("## Human-facing")[0] ?? ""
+      );
+    }
+
+    function toolchainSection(report: string): string {
+      return (
+        report
+          .split("## Toolchain grade")[1]
+          ?.split("## Existing Claude Code")[0] ?? ""
+      );
+    }
+
+    it("harness grade with zero checks in both halves says so, with no percentage", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          survey: harnessOnlySettingsLocal(null),
+          harnessGrade: ZERO_HARNESS_GRADE,
+        }),
+      );
+      const section = harnessSection(report);
+
+      expect(section).toContain(
+        "**Wiring (structural):** no checks applied (nothing found, or nothing the grader could read).",
+      );
+      expect(section).toContain("**Quality (rubric):** no checks applied.");
+      expect(section).not.toContain("100%");
+      expect(section).not.toContain("0 of 0 checks pass");
+      expect(section).not.toContain("over 0 checks");
+    });
+
+    it("harness grade: structural 0 with a gradable rubric keeps the rubric text and says no wiring checks applied", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          harnessGrade: {
+            ...ZERO_HARNESS_GRADE,
+            rubric: {
+              ...ZERO_HARNESS_GRADE.rubric,
+              hooks: { checked: 4, failed: 1 },
+            },
+            rubricScore: 0.75,
+          },
+        }),
+      );
+      const section = harnessSection(report);
+
+      expect(section).toContain(
+        "**Wiring (structural):** no checks applied (nothing found, or nothing the grader could read).",
+      );
+      expect(section).toContain("**Quality (rubric):** 75% over 4 checks");
+      expect(section).not.toContain("0 of 0 checks pass");
+    });
+
+    it("harness grade: rubric 0 with gradable wiring keeps the wiring text and says no rubric checks applied", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          harnessGrade: {
+            ...ZERO_HARNESS_GRADE,
+            structural: { checked: 12, failed: 1 },
+          },
+        }),
+      );
+      const section = harnessSection(report);
+
+      expect(section).toContain(
+        "**Wiring (structural):** 11 of 12 checks pass.",
+      );
+      expect(section).toContain("**Quality (rubric):** no checks applied.");
+      expect(section).not.toContain("100%");
+      expect(section).not.toContain("over 0 checks");
+    });
+
+    it("toolchain grade: structural 0 with a gradable rubric says no wiring checks applied and keeps the rubric text", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          toolchainGrade: {
+            ...CLEAN_TOOLCHAIN_GRADE,
+            structural: EMPTY,
+            rubric: {
+              ...CLEAN_TOOLCHAIN_GRADE.rubric,
+              tsconfig: { checked: 12, failed: 3 },
+            },
+            rubricScore: 0.75,
+          },
+        }),
+      );
+      const section = toolchainSection(report);
+
+      expect(section).toContain(
+        "**Wiring (structural):** no checks applied (nothing found, or nothing the grader could read).",
+      );
+      expect(section).toContain("**Quality (rubric):** 75% over 12 checks");
+      expect(section).not.toContain("0 of 0 checks pass");
+      expect(section).not.toContain("nothing to grade.");
+    });
+
+    it("toolchain grade: rubric 0 with gradable wiring keeps the wiring text and says no rubric checks applied", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          toolchainGrade: {
+            ...CLEAN_TOOLCHAIN_GRADE,
+            structural: { checked: 9, failed: 1 },
+            rubric: {
+              tsconfig: EMPTY,
+              modules: EMPTY,
+              eslint: EMPTY,
+              testing: EMPTY,
+              gates: EMPTY,
+              deps: EMPTY,
+            },
+            rubricScore: 1,
+          },
+        }),
+      );
+      const section = toolchainSection(report);
+
+      expect(section).toContain("**Wiring (structural):** 8 of 9 checks pass.");
+      expect(section).toContain("**Quality (rubric):** no checks applied.");
+      expect(section).not.toContain("100%");
+      expect(section).not.toContain("nothing to grade.");
+    });
+
+    it("lists the plugin layout and its components under the existing harness", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          survey: harnessOnlySettingsLocal(PLUGIN_LAYOUT),
+        }),
+      );
+      expect(report).toContain(
+        "- Plugin layout: .claude-plugin/plugin.json; components: hooks/hooks.json, skills/",
+      );
+    });
+
+    it('says "components: none" for a manifest with no components', () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          survey: harnessOnlySettingsLocal({
+            manifest: ".claude-plugin/plugin.json",
+            components: [],
+          }),
+        }),
+      );
+      expect(report).toContain(
+        "- Plugin layout: .claude-plugin/plugin.json; components: none",
+      );
+    });
+
+    describe("when .claude/ and CLAUDE.md are both absent", () => {
+      const noHarnessSurvey = (
+        pluginLayout: Inventory["survey"]["harness"]["pluginLayout"],
+      ): ProjectSurvey =>
+        baseSurvey({
+          harness: {
+            present: false,
+            settingsFile: undefined,
+            agents: [],
+            skills: [],
+            hooks: [],
+            rules: [],
+            commands: [],
+            hasSettingsLocal: false,
+            hasClaudeMd: false,
+            claudeMdHeadings: [],
+            pluginLayout,
+          },
+        });
+
+      it("still lists the plugin layout after the no-harness wording", () => {
+        const report = renderReport(
+          baseInventory(templateRoot, {
+            survey: noHarnessSurvey(PLUGIN_LAYOUT),
+          }),
+        );
+        const section =
+          report
+            .split("## Existing Claude Code harness")[1]
+            ?.split("\n## ")[0] ?? "";
+        expect(section).toContain("No `.claude/` directory found");
+        expect(section).toContain(
+          "- Plugin layout: .claude-plugin/plugin.json; components: hooks/hooks.json, skills/",
+        );
+        expect(section.indexOf("- Plugin layout")).toBeGreaterThan(
+          section.indexOf("No `.claude/` directory found"),
+        );
+      });
+
+      it("keeps the nothing-to-grade wording and still states the plugin scope line once", () => {
+        const scope =
+          "Plugin components at the repository root are outside the harness grader's scope (it reads .claude/ and CLAUDE.md).";
+        const section = harnessSection(
+          renderReport(
+            baseInventory(templateRoot, {
+              survey: noHarnessSurvey(PLUGIN_LAYOUT),
+            }),
+          ),
+        );
+        expect(section).toContain("nothing to grade");
+        expect(section.split(scope)).toHaveLength(2);
+      });
+
+      it("adds neither plugin line when pluginLayout is null", () => {
+        const report = renderReport(
+          baseInventory(templateRoot, { survey: noHarnessSurvey(null) }),
+        );
+        expect(report).not.toContain("Plugin layout");
+        expect(report).not.toContain("outside the harness grader's scope");
+      });
+    });
+
+    it("omits the plugin layout line when pluginLayout is null", () => {
+      const report = renderReport(baseInventory(templateRoot));
+      expect(report).not.toContain("Plugin layout");
+    });
+
+    it("states in the harness grade section that root plugin components are outside the grader's scope, only for a plugin", () => {
+      const scope =
+        "Plugin components at the repository root are outside the harness grader's scope (it reads .claude/ and CLAUDE.md).";
+      const plugin = renderReport(
+        baseInventory(templateRoot, {
+          survey: harnessOnlySettingsLocal(PLUGIN_LAYOUT),
+        }),
+      );
+      expect(harnessSection(plugin)).toContain(scope);
+
+      const plain = renderReport(baseInventory(templateRoot));
+      expect(plain).not.toContain("outside the harness grader's scope");
+    });
+
+    it.each([
+      ["a plugin manifest is present", PLUGIN_LAYOUT, [], "true"],
+      ["no plugin manifest is present", null, [], "false"],
+      [
+        "no manifest and an unrelated undetermined entry",
+        null,
+        ["could not parse lefthook.yml"],
+        "false",
+      ],
+      [
+        "no manifest and a .claude-plugin probe could not be determined",
+        null,
+        ["/p/.claude-plugin/plugin.json exists but is not a regular file"],
+        "unknown (see Could not be determined)",
+      ],
+      [
+        "a manifest is present even though a .claude-plugin note exists",
+        PLUGIN_LAYOUT,
+        ["/p/.claude-plugin/other noted"],
+        "true",
+      ],
+    ] as const)(
+      "ends the kind evidence line with the claude plugin manifest flag when %s",
+      (_label, pluginLayout, undetermined, flag) => {
+        const report = renderReport(
+          baseInventory(templateRoot, {
+            survey: baseSurvey({
+              undetermined: [...undetermined],
+              harness: {
+                ...baseSurvey().harness,
+                pluginLayout,
+              },
+            }),
+          }),
+        );
+        const line = report
+          .split("\n")
+          .find((l) => l.startsWith("- Kind evidence:"));
+        expect(line).toBe(
+          `- Kind evidence: exports map=true, bin=false, main=false, framework deps=none, claude plugin manifest=${flag}`,
+        );
+      },
+    );
+  });
+
+  describe("the '+ adopt packs' caps column", () => {
+    // The fixture's 7 skill dirs plus the /customize skill that
+    // countBaselineCaps adds put the Skills baseline AT the cap (8). Drop
+    // one dir so the baseline is 7: an adopt pack of +1 lands exactly on the
+    // cap, +2 tips it over, and a fresh-only pack's +5 would be over it.
+    beforeEach(() => {
+      rmSync(join(templateRoot, ".claude", "skills", "harness-guidance"), {
+        recursive: true,
+      });
+    });
+
+    function skillsRow(report: string): string[] {
+      const row = report
+        .split("\n")
+        .find((line) => line.startsWith("| Skills |"));
+      expect(row).toBeDefined();
+      return (row ?? "")
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter((cell) => cell !== "");
+    }
+
+    const noSkillsSurvey = (): ProjectSurvey =>
+      baseSurvey({
+        // No existing agents/hooks either: the baseline already sits at those
+        // caps, so any existing one would flag a row unrelated to Skills.
+        harness: {
+          ...baseSurvey().harness,
+          skills: [],
+          agents: [],
+          hooks: [],
+        },
+      });
+
+    const skillsPack = (
+      name: string,
+      skills: number,
+      modes: ("fresh" | "adopt")[],
+    ): Inventory["packs"][number] =>
+      basePackSurvey({
+        name,
+        modes,
+        budget: { agents: 0, skills, hooks: 0, workflows: 0, scripts: 0 },
+      });
+
+    it("labels the column '+ adopt packs' and never '+ all packs'", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, { packs: [basePackSurvey()] }),
+      );
+      expect(report).toContain("+ adopt packs");
+      expect(report).not.toContain("+ all packs");
+    });
+
+    it("words the footnote as fresh-only packs being excluded, and still points at Available packs for every pack's numbers", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, { packs: [basePackSurvey()] }),
+      );
+      expect(report).toContain("fresh-only");
+      expect(report).toContain("adopt mode cannot install");
+      expect(report).toContain("## Available packs");
+      expect(report).not.toContain("sums every pack listed below");
+    });
+
+    it("excludes a fresh-only pack from the column sum and the post-merge total", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          survey: noSkillsSurvey(),
+          packs: [
+            skillsPack("adoptable", 1, ["fresh", "adopt"]),
+            skillsPack("publishing", 5, ["fresh"]),
+          ],
+        }),
+      );
+      // baseline skills (7) + existing (0) + adopt pack (1) = 8, the cap.
+      expect(skillsRow(report)).toEqual([
+        "Skills",
+        "7",
+        "0",
+        "+1",
+        "8",
+        String(CAP_LIMITS.skills),
+      ]);
+    });
+
+    it("does not flag over cap because of a fresh-only pack", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          survey: noSkillsSurvey(),
+          packs: [skillsPack("publishing", 5, ["fresh"])],
+        }),
+      );
+      const row = skillsRow(report);
+      expect(row).toEqual([
+        "Skills",
+        "7",
+        "0",
+        "+0",
+        "7",
+        String(CAP_LIMITS.skills),
+      ]);
+      expect(report).not.toContain("over cap");
+    });
+
+    it("still flags over cap when the adopt-capable packs alone tip it", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          survey: noSkillsSurvey(),
+          packs: [
+            skillsPack("adoptable", 2, ["adopt"]),
+            skillsPack("publishing", 5, ["fresh"]),
+          ],
+        }),
+      );
+      expect(skillsRow(report)).toEqual([
+        "Skills",
+        "7",
+        "0",
+        "+2",
+        "9 ⚠ over cap",
+        String(CAP_LIMITS.skills),
+      ]);
+    });
+
+    it("keeps listing a fresh-only pack under Available packs", () => {
+      const report = renderReport(
+        baseInventory(templateRoot, {
+          packs: [skillsPack("publishing", 5, ["fresh"])],
+        }),
+      );
+      expect(report.split("\n## Available packs\n")[1]).toContain(
+        "### publishing",
+      );
+    });
   });
 });

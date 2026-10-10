@@ -9,8 +9,8 @@
  * harness against official Anthropic sources. Each sweep covers a fixed set of
  * "facets" (research topics within its domain, such as `compiler-config-flags`
  * or `hooks-lifecycle`); the interview's project "kind" (a `ProjectKind`: the
- * archetype -- library, cli, frontend or service -- the project is classified
- * as) only changes which facets get the most emphasis, never which files a
+ * archetype -- library, cli, frontend, service or plugin -- the project is
+ * classified as) only changes which facets get the most emphasis, never which files a
  * sweep owns. This module answers the file-ownership question.
  *
  * Used two ways: against the emitted baseline, to confirm neither sweep has a

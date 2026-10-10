@@ -10,10 +10,12 @@
  */
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
+import type { CheckTally } from "./harness/types.js";
 import type { Inventory, PackSurvey, StagedBaseline } from "./inventory.js";
 import { STAGED_PACKS_DIR, STAGED_PACK_MANIFEST } from "./pack-stage.js";
 import type { StagedPack } from "./pack-stage.js";
 import { STAGED_SUFFIX } from "./staging.js";
+import type { PluginLayout } from "./survey/types.js";
 
 /**
  * Estimates the post-merge total against each cap: the baseline's own count
@@ -43,7 +45,13 @@ function estimatePostMergeCaps(inventory: Inventory): {
   };
 }
 
-/** Sums every listed pack's declared `budget` -- the "if every pack were installed" delta, not just the ones a user will choose. */
+/**
+ * Sums the declared `budget` of every listed pack adopt mode can install
+ * (`modes` includes `"adopt"`) -- the "if every adoptable pack were
+ * installed" delta, not just the ones a user will choose. A fresh-only pack
+ * (e.g. `publishing`) is left out: adopt mode cannot install it, so counting
+ * it would flag a cap no adopt run can reach.
+ */
 function sumPackBudgets(packs: PackSurvey[]): CapCounts {
   const total: CapCounts = {
     agents: 0,
@@ -53,6 +61,7 @@ function sumPackBudgets(packs: PackSurvey[]): CapCounts {
     scripts: 0,
   };
   for (const pack of packs) {
+    if (!pack.modes.includes("adopt")) continue;
     total.agents += pack.budget.agents;
     total.skills += pack.budget.skills;
     total.hooks += pack.budget.hooks;
@@ -74,9 +83,24 @@ function renderShapeSection(inventory: Inventory): string {
     `- Node pin: ${s.nodeVersionPin ? `${s.nodeVersionPin.value} (${s.nodeVersionPin.source})` : "none found"}`,
     `- Source layout: ${s.sourceLayout}`,
     `- Test placement: ${s.testPlacement}`,
-    `- Kind evidence: exports map=${s.kindEvidence.hasExportsMap}, bin=${s.kindEvidence.hasBinField}, main=${s.kindEvidence.hasMainField}, framework deps=${s.kindEvidence.frameworkDeps.join(", ") || "none"}`,
+    `- Kind evidence: exports map=${s.kindEvidence.hasExportsMap}, bin=${s.kindEvidence.hasBinField}, main=${s.kindEvidence.hasMainField}, framework deps=${s.kindEvidence.frameworkDeps.join(", ") || "none"}, claude plugin manifest=${pluginManifestEvidence(inventory)}`,
   ];
   return lines.join("\n");
+}
+
+/**
+ * The kind-evidence `claude plugin manifest` value: `true` when a plugin
+ * layout was recorded, `unknown` when none was but some `undetermined` note
+ * names a `.claude-plugin` path (a probe that could not be made), else
+ * `false`.
+ */
+function pluginManifestEvidence(inventory: Inventory): string {
+  if (inventory.survey.harness.pluginLayout != null) return "true";
+  return inventory.survey.undetermined.some((entry) =>
+    entry.includes(".claude-plugin"),
+  )
+    ? "unknown (see Could not be determined)"
+    : "false";
 }
 
 function renderToolchainSection(inventory: Inventory): string {
@@ -96,6 +120,48 @@ function renderToolchainSection(inventory: Inventory): string {
   return lines.join("\n");
 }
 
+/** The "- Plugin layout: ..." line for a plugin repository, or nothing. */
+function pluginLayoutLines(layout: PluginLayout | null): string[] {
+  if (layout == null) return [];
+  const components =
+    layout.components.length > 0 ? layout.components.join(", ") : "none";
+  return [`- Plugin layout: ${layout.manifest}; components: ${components}`];
+}
+
+/** The harness grade's scope note for a plugin repository, or nothing. */
+function pluginScopeLines(layout: PluginLayout | null): string[] {
+  if (layout == null) return [];
+  return [
+    "Plugin components at the repository root are outside the harness grader's scope (it reads .claude/ and CLAUDE.md).",
+  ];
+}
+
+/** Total checks across every rubric category of a grade. */
+function rubricTotal(rubric: Readonly<Record<string, CheckTally>>): number {
+  return Object.values(rubric).reduce((sum, tally) => sum + tally.checked, 0);
+}
+
+/**
+ * The wiring and quality lines of a grade section, each half rendered on its
+ * own: a half with no checks applied says so instead of printing a vacuous
+ * "0 of 0" or a 100% over nothing.
+ */
+function gradeHalvesLines(
+  structural: CheckTally,
+  rubricChecked: number,
+  rubricScore: number,
+): string[] {
+  const wiring =
+    structural.checked === 0
+      ? "- **Wiring (structural):** no checks applied (nothing found, or nothing the grader could read)."
+      : `- **Wiring (structural):** ${structural.checked - structural.failed} of ${structural.checked} checks pass.`;
+  const quality =
+    rubricChecked === 0
+      ? "- **Quality (rubric):** no checks applied."
+      : `- **Quality (rubric):** ${Math.round(rubricScore * 100)}% over ${rubricChecked} checks -- advisory, never a blocker.`;
+  return [wiring, quality];
+}
+
 function renderHarnessSection(inventory: Inventory): string {
   const h = inventory.survey.harness;
   if (!h.present) {
@@ -103,6 +169,7 @@ function renderHarnessSection(inventory: Inventory): string {
       "## Existing Claude Code harness",
       "",
       "No `.claude/` directory found -- the baseline harness would be entirely new.",
+      ...pluginLayoutLines(h.pluginLayout),
     ].join("\n");
   }
   const lines = [
@@ -114,6 +181,7 @@ function renderHarnessSection(inventory: Inventory): string {
     `- Rules: ${h.rules.length > 0 ? h.rules.map((r) => r.name).join(", ") : "none"}`,
     `- Commands: ${h.commands.length > 0 ? h.commands.join(", ") : "none"}`,
     `- settings.local.json present: ${h.hasSettingsLocal}`,
+    ...pluginLayoutLines(h.pluginLayout),
   ];
   return lines.join("\n");
 }
@@ -141,10 +209,7 @@ function renderToolchainGradeSection(inventory: Inventory): string {
     inventory;
   const lines = ["## Toolchain grade", ""];
 
-  const rubricChecked = Object.values(grade.rubric).reduce(
-    (sum, tally) => sum + tally.checked,
-    0,
-  );
+  const rubricChecked = rubricTotal(grade.rubric);
   if (grade.structural.checked === 0 && rubricChecked === 0) {
     lines.push(
       "No TypeScript toolchain files (tsconfig, ESLint or vitest config, verify steps) found -- nothing to grade.",
@@ -153,8 +218,7 @@ function renderToolchainGradeSection(inventory: Inventory): string {
   }
 
   lines.push(
-    `- **Wiring (structural):** ${grade.structural.checked - grade.structural.failed} of ${grade.structural.checked} checks pass.`,
-    `- **Quality (rubric):** ${Math.round(grade.rubricScore * 100)}% over ${rubricChecked} checks -- advisory, never a blocker.`,
+    ...gradeHalvesLines(grade.structural, rubricChecked, grade.rubricScore),
     `- **Drift from the baseline toolchain:** ${conformance.identical} identical, ${conformance.divergent} divergent, ${conformance.absent} absent. ` +
       "Informational only -- `/customize` rewrites the baseline on purpose, so divergence is not a defect.",
   );
@@ -196,19 +260,19 @@ function renderHarnessGradeSection(inventory: Inventory): string {
     lines.push(
       "No `.claude/` directory or `CLAUDE.md` found -- nothing to grade.",
     );
+    const scope = pluginScopeLines(harness.pluginLayout);
+    if (scope.length > 0) lines.push("", ...scope);
     return lines.join("\n");
   }
 
-  const rubricChecked = Object.values(grade.rubric).reduce(
-    (sum, tally) => sum + tally.checked,
-    0,
-  );
+  const rubricChecked = rubricTotal(grade.rubric);
   lines.push(
-    `- **Wiring (structural):** ${grade.structural.checked - grade.structural.failed} of ${grade.structural.checked} checks pass.`,
-    `- **Quality (rubric):** ${Math.round(grade.rubricScore * 100)}% over ${rubricChecked} checks -- advisory, never a blocker.`,
+    ...gradeHalvesLines(grade.structural, rubricChecked, grade.rubricScore),
     `- **Drift from the baseline harness:** ${conformance.identical} identical, ${conformance.divergent} divergent, ${conformance.absent} absent. ` +
       "Informational only -- `/customize` rewrites the baseline on purpose, so divergence is not a defect.",
   );
+  const scope = pluginScopeLines(harness.pluginLayout);
+  if (scope.length > 0) lines.push("", ...scope);
 
   const structural = grade.findings.filter((f) => f.level === "structural");
   const rubric = grade.findings.filter((f) => f.level === "rubric");
@@ -254,7 +318,7 @@ function renderCapsSection(inventory: Inventory): string {
     count > cap ? " ⚠ over cap" : "";
 
   const header = hasPacks
-    ? "| Artifact | Baseline | Existing project | + all packs | Post-merge (approx.) | Cap |"
+    ? "| Artifact | Baseline | Existing project | + adopt packs | Post-merge (approx.) | Cap |"
     : "| Artifact | Baseline | Existing project | Post-merge (approx.) | Cap |";
   const divider = hasPacks
     ? "| --- | --- | --- | --- | --- | --- |"
@@ -266,7 +330,7 @@ function renderCapsSection(inventory: Inventory): string {
     existingCount: number,
     cap: number,
   ): string => {
-    // The shown total (and its over-cap flag) includes the "+ all packs"
+    // The shown total (and its over-cap flag) includes the "+ adopt packs"
     // column, so a pack that tips a cap over is flagged, not just listed.
     const total = postMerge[key] + (hasPacks ? packBudget[key] : 0);
     const cells = [label, String(baseline[key]), String(existingCount)];
@@ -316,8 +380,10 @@ function renderCapsSection(inventory: Inventory): string {
   if (hasPacks) {
     lines.push(
       "",
-      '"+ all packs" sums every pack listed below, not just the ones you choose ' +
-        'to install -- see "## Available packs" for per-pack numbers.',
+      '"+ adopt packs" sums every adopt-capable pack listed below, not just the ' +
+        "ones you choose to install; fresh-only packs (e.g. `publishing`) are " +
+        "excluded because adopt mode cannot install them -- see " +
+        '"## Available packs" for every pack\'s numbers.',
     );
   }
   return lines.join("\n");

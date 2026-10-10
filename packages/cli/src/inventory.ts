@@ -22,7 +22,10 @@
  * (`pack-stage.ts`), its manifest included. No published release has
  * written schema 5 yet; an inventory without `stagedPacks` came only from an
  * unreleased development build, which staged packs unsuffixed at the same
- * location.
+ * location. `schemaVersion` below 6 predates `survey.harness.pluginLayout`
+ * (`null`, or the `.claude-plugin/plugin.json` manifest plus which root
+ * plugin components exist) -- `/customize` then has no plugin-layout
+ * evidence and asks the project kind without pre-selecting one.
  */
 import {
   existsSync,
@@ -49,7 +52,7 @@ import { summarizeToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainGrade } from "./toolchain/types.js";
 
-export const INVENTORY_SCHEMA_VERSION = 5;
+export const INVENTORY_SCHEMA_VERSION = 6;
 
 /**
  * Where adopt mode staged the baseline files the project lacks entirely
