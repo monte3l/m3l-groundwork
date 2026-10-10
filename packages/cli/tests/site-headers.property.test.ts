@@ -34,6 +34,7 @@ const lib = (await import(
   hashInlineScript: (scriptSource: string) => string;
   externalImageHosts: (htmlPages: string[]) => string[];
   buildHeadersFile: (options: BuildHeadersOptions) => string;
+  assertHeadersLimits: (text: string) => undefined;
 };
 
 describe("hashInlineScript: differential check against node:crypto", () => {
@@ -202,6 +203,34 @@ describe("buildHeadersFile: fixed two-rule-block shape", () => {
             imageHosts,
           }),
         ).not.toThrow();
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
+
+describe("assertHeadersLimits: rule-block count boundary", () => {
+  const textWith = (n: number): string =>
+    Array.from(
+      { length: n },
+      (_unused, i) => `/p${String(i)}/*\n  X-Test: v\n`,
+    ).join("\n");
+
+  it("passes for 0..100 rule blocks", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 100 }), (n) => {
+        expect(lib.assertHeadersLimits(textWith(n))).toBeUndefined();
+      }),
+      { numRuns: 101 },
+    );
+  });
+
+  it("throws HeadersLimitError for 101..200 rule blocks", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 101, max: 200 }), (n) => {
+        expect(() => lib.assertHeadersLimits(textWith(n))).toThrow(
+          lib.HeadersLimitError,
+        );
       }),
       { numRuns: 100 },
     );

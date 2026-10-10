@@ -8,10 +8,12 @@
  * `img-src` must allow (`externalImageHosts`), and the file text itself
  * (`buildHeadersFile`) -- a fixed two-rule-block shape (`/*` security
  * headers, then an immutable cache rule for the vendored fonts). Cloudflare
- * caps a `_headers` line at 2000 characters and a file at 100 rules; the
- * fixed shape can never reach the rule cap, but a long `img-src` list can
- * reach the line cap, so that one is checked and fails loudly with a
- * `HeadersLimitError` rather than shipping a file Cloudflare truncates.
+ * caps a `_headers` line at 2000 characters and a file at 100 rules.
+ * `assertHeadersLimits` checks both on the finished text and fails loudly
+ * with a `HeadersLimitError` rather than shipping a file Cloudflare
+ * truncates. A long `img-src` list can reach the line cap; the fixed shape
+ * always yields 2 rule blocks, so the rule cap is checked as a guard against
+ * a future change to that shape rather than something today's output can hit.
  */
 import { createHash } from "node:crypto";
 
@@ -25,6 +27,9 @@ export class HeadersLimitError extends Error {
 
 // Cloudflare's documented per-line limit for a `_headers` file.
 const MAX_LINE_LENGTH = 2000;
+
+// Cloudflare's documented per-file rule limit for a `_headers` file.
+const MAX_RULE_BLOCKS = 100;
 
 const IMG_SRC_RE = /<img\b[^>]*?\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const ABSOLUTE_HTTP_RE = /^https?:\/\//i;
@@ -134,7 +139,10 @@ export function externalImageHosts(htmlPages) {
  *   prefix, as `hashInlineScript` returns it); `imageHosts` are bare
  *   hostnames, emitted as `https://<host>` in the given order
  * @returns {string} the complete file text
- * @throws {HeadersLimitError} if any line exceeds Cloudflare's 2000-character limit
+ * @throws {HeadersLimitError} if the text exceeds a Cloudflare limit, as
+ *   checked by `assertHeadersLimits` (2000 characters per line, 100 rule
+ *   blocks); the fixed shape always yields 2 rule blocks, so in practice
+ *   only a long `img-src` line can trigger it
  *
  * @example
  * ```js
@@ -170,13 +178,43 @@ export function buildHeadersFile({ scriptHash, imageHosts }) {
     "/assets/source/fonts/*",
     "  Cache-Control: public, max-age=31536000, immutable",
   ];
-  for (const [index, line] of lines.entries()) {
+  const text = lines.join("\n") + "\n";
+  assertHeadersLimits(text);
+  return text;
+}
+
+/**
+ * Checks a `_headers` file's text against Cloudflare's documented limits:
+ * no line over 2000 characters, and no more than 100 rule blocks. A rule
+ * block is a non-empty line that does not start with whitespace (its URL
+ * pattern); indented header lines and blank lines are not counted.
+ *
+ * @param {string} text the complete `_headers` file text
+ * @returns {undefined}
+ * @throws {HeadersLimitError} if any line exceeds 2000 characters, or the
+ *   file has more than 100 rule blocks
+ *
+ * @example
+ * ```js
+ * import { assertHeadersLimits } from "./bin/lib/site-headers.mjs";
+ * assertHeadersLimits("/*\n  X-Content-Type-Options: nosniff\n"); // ok
+ * ```
+ */
+export function assertHeadersLimits(text) {
+  let ruleBlocks = 0;
+  for (const [index, line] of text.split("\n").entries()) {
     if (line.length > MAX_LINE_LENGTH) {
       throw new HeadersLimitError(
         `_headers line ${String(index + 1)} is ${String(line.length)} characters, ` +
           `over Cloudflare's ${String(MAX_LINE_LENGTH)}-character limit per line`,
       );
     }
+    if (line.length > 0 && !/^\s/.test(line)) ruleBlocks += 1;
   }
-  return lines.join("\n") + "\n";
+  if (ruleBlocks > MAX_RULE_BLOCKS) {
+    throw new HeadersLimitError(
+      `_headers has ${String(ruleBlocks)} rule blocks, ` +
+        `over Cloudflare's ${String(MAX_RULE_BLOCKS)}-rule limit per file`,
+    );
+  }
 }
