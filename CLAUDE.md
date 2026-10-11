@@ -891,9 +891,10 @@ hard-coded and no test pins it).
   `changesets/action/*` as well as `changesets/action@*`. Immutable releases
   are deliberately off: `release.yml` uploads assets after the Release exists.
 
-  Two caveats remain. New repositories still default to the "GitHub recommended"
-  configuration, which leaves Dependabot security updates `not_set`. And the
-  `m3l-groundwork` configuration enables secret-scanning validity checks and
-  non-provider patterns, yet the repository itself reports both as `disabled`
-  (`gh api repos/monte3l/m3l-groundwork --jq .security_and_analysis`, checked
-  2026-10-11); the configuration and the effective state disagree.
+  This repository's Advanced Security settings come from the organization's
+  `monte3l-default` code security configuration, enforced on the repository;
+  that configuration is the source of truth. Read it with
+  `gh api repos/monte3l/m3l-groundwork/code-security-configuration` and
+  `gh api orgs/monte3l/code-security/configurations/<id>`. One caveat remains:
+  new repositories still default to the "GitHub recommended" configuration,
+  which leaves Dependabot security updates `not_set`.
