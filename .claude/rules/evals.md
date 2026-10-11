@@ -25,7 +25,8 @@ output to `toolchain-gate.txt`, so the case needs no shell tool in the
 sandbox, and graders check the skill names the findings, edits nothing, and
 holds the floor rather than silencing the gate. `claude plugin eval` gates
 Bash, Write, Edit, WebFetch and `mcp__*` tools off unless the operator passes
-`--allow-tools`, and this case passes none, so it measures use of the gate's
+`--allow-tools`; `bin/eval.mjs` grants this case only `Write` and `Edit` (the
+graders forbid editing) and never `WebFetch`, so it measures use of the gate's
 findings and honesty about that limit (a claim about upstream it could not
 have fetched fails). The judge reads only the final message,
 hence the prompt's request for one self-contained summary. Its `fixture.sh`

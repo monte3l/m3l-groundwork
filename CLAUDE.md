@@ -627,10 +627,9 @@ reference page says the built-in `sec-default` guard (shown as
 `cc-plugin-sec-default`) loads ahead of user-installed mods only on a machine
 with managed settings or for a user signed in with a Team or Enterprise plan.
 
-**The guard keys on `agent_id` as well as `agent_type`.** Claude Code sends
-`agent_type` both inside a subagent and in a main session started with
-`--agent <name>`. A call counts as a writer spoke only with both present, so a hub launched as
-`claude --agent code-implementer` is still the hub and is blocked.
+**The guard keys on `agent_id` as well as `agent_type`.** A call counts as a
+writer spoke only with both present, so a call carrying `agent_type` but no
+`agent_id` is treated as the hub and is blocked.
 
 **Agent teams (experimental) are not covered or verified.** A split-pane
 teammate is a full session with no `agent_id`, so the guard treats it as the

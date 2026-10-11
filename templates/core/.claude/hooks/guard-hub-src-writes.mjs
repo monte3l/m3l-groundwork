@@ -1805,11 +1805,9 @@ function isEntryPoint() {
 }
 
 // The agent_type the pure decision functions should see: the payload's own
-// only when a string `agent_id` that is non-empty after `.trim()` proves the
-// call fires inside a subagent; otherwise (absent, non-string, empty or
-// whitespace-only) undefined, i.e. the hub. `agent_type` alone is not
-// enough -- a `claude --agent code-implementer` main session sends it too
-// (see the header's "The seam").
+// only when a string `agent_id` that is non-empty after `.trim()` is present;
+// otherwise (absent, non-string, empty or whitespace-only) undefined, i.e. the
+// hub. A call counts as a spoke only with both fields.
 function spokeAgentType(input) {
   return typeof input.agent_id === "string" && input.agent_id.trim() !== ""
     ? input.agent_type

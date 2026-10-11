@@ -169,8 +169,8 @@ describes).
   version.
 - **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to `npm stage
 publish`.** Changesets publishes through
-  `pnpm publish` in a pnpm workspace, and a _direct_ `npm publish` would get a
-  403 for the staged-only reason above. The shim translates only changesets' exact
+  `pnpm publish` in a pnpm workspace, and a _direct_ `npm publish` is not
+  allowed by the staged-only trusted publisher (see above). The shim translates only changesets' exact
   invocation and refuses any flag it does not recognise; everything else
   passes through to pnpm.
 - **Changesets, not a hand-written publish script, owns the publish plan, tags
