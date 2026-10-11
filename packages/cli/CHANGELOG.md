@@ -1,5 +1,23 @@
 # @monte3l/groundwork
 
+## 1.0.0-rc.6
+
+### Patch Changes
+
+- [#142](https://github.com/monte3l/m3l-groundwork/pull/142) [`8140d8b`](https://github.com/monte3l/m3l-groundwork/commit/8140d8b58f80e9ee393d0ab4e1ddce39d2e713c0) Thanks [@enri3l](https://github.com/enri3l)! - Adopt mode now recognises a Claude Code plugin repository. The inventory moves to schema 6 and records `survey.harness.pluginLayout` (the `.claude-plugin/plugin.json` manifest and which of `hooks/hooks.json`, `skills/`, `agents/`, `commands/` and `.mcp.json` exist). The adoption report no longer prints "0 of 0 checks pass" or "100% over 0 checks" when nothing was gradable, says plugin components at the repository root are outside the harness grader's scope, and leaves fresh-only packs (`publishing`) out of the post-merge cap estimate. `/customize` gains a `plugin` project kind, recommends `plugin-dev` for it, names `.claude/` files by full path in `CLAUDE.md`, and grades the harness after Round 2.
+
+- [#149](https://github.com/monte3l/m3l-groundwork/pull/149) [`d993e0a`](https://github.com/monte3l/m3l-groundwork/commit/d993e0ae3461d7262cf9f3c3b6761d691b6fe5dc) Thanks [@enri3l](https://github.com/enri3l)! - The package README now describes everything adopt mode writes, the fresh-mode order, exit codes, failure behaviour and where the adoption report's section headings are listed.
+
+- [#159](https://github.com/monte3l/m3l-groundwork/pull/159) [`4f65d96`](https://github.com/monte3l/m3l-groundwork/commit/4f65d96e6ca69763dff65e4c969eb5c333379247) Thanks [@enri3l](https://github.com/enri3l)! - The emitted `bin/lint-commit.mjs` now reports a missing or broken `commitlint.config.js`, an unreadable commit message file and a forbidden `Claude-*` trailer as `✗` lines with exit 1, instead of a stack trace or an unprefixed line.
+
+- [#161](https://github.com/monte3l/m3l-groundwork/pull/161) [`63feb05`](https://github.com/monte3l/m3l-groundwork/commit/63feb055e7e07ec720d935564406ac21f5fca343) Thanks [@enri3l](https://github.com/enri3l)! - The toolchain grade no longer reports a `package.json` script named `__proto__` as missing, and the adopt survey now keeps a script with that name instead of dropping it.
+
+- [#158](https://github.com/monte3l/m3l-groundwork/pull/158) [`d1ff336`](https://github.com/monte3l/m3l-groundwork/commit/d1ff336c2e4ad61d20f5515ff603ab9a34ac5792) Thanks [@enri3l](https://github.com/enri3l)! - The `worktrees` pack notes now say `guard-hub-src-writes.mjs` blocks any non-writer subagent as well as the hub, and describe the core.bare reports as closed bug reports. The pack README describes the `supply-chain` workflows accurately and points the publishing row at the right section.
+
+- [#163](https://github.com/monte3l/m3l-groundwork/pull/163) [`0b8f0cc`](https://github.com/monte3l/m3l-groundwork/commit/0b8f0cc6fa07628696f64648b05fa2272cc3617f) Thanks [@enri3l](https://github.com/enri3l)! - The shipped baseline and pack text no longer state behaviour that was never verified: `allowManagedHooksOnly` is described as upstream documents it (only managed hooks run), the `agent_id` note keeps only the guard's own rule, and the `github` and `publishing` pack workflows, pack notes and shim comments drop unverified claims about auth-error failures, private-membership `author_association` and the pnpm OIDC response. No behaviour changes.
+
+- [#151](https://github.com/monte3l/m3l-groundwork/pull/151) [`e74cc19`](https://github.com/monte3l/m3l-groundwork/commit/e74cc19242aa88fcd7e8497d69180834158768a1) Thanks [@enri3l](https://github.com/enri3l)! - The toolchain grade and the adopt survey no longer treat inherited object members (such as `constructor` or `toString`) as present scripts or `package.json` fields. The emitted `bin/lint-commit.mjs` now also enforces a configured `trailer-exists` rule (severity 2) on every message commitlint's default ignores skip (merge, revert, `fixup!`, `squash!`, `amend!`, semver release subjects); projects that do not enable that rule see no change.
+
 ## 1.0.0-rc.5
 
 ### Patch Changes
