@@ -9,6 +9,9 @@
  *
  * Usage: `lint-commit.mjs --edit <path-to-commit-msg-file>` (lefthook's
  * `commit-msg` hook contract) or `lint-commit.mjs <message>` directly.
+ * An empty message (direct mode with no arguments) is accepted by commitlint
+ * itself, so it passes here unless an enforced `trailer-exists` rule rejects
+ * it; git aborts an empty commit message before the `commit-msg` hook runs.
  *
  * When the config enables `trailer-exists` as an error (severity 2), the
  * trailer, with a non-empty value, is also required on every message
