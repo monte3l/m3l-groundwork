@@ -41,13 +41,6 @@ stable `1.0.0` is the immediate goal, once the promotion checklist in
   code. It's also what stands between this project and the three Gold-level
   OpenSSF Best Practices criteria that need more than one active
   contributor -- see [`GOVERNANCE.md`](GOVERNANCE.md#gold-level-criteria-this-project-does-not-meet).
-- **Submitting the OpenSSF Best Practices Silver self-assessment.**
-  Registering and achieving Passing (project 14937, linked from the README
-  and docs site) is done. Every Silver- and Gold-level criterion this
-  project can meet alone already has a drafted answer in
-  `.bestpractices.json`; what's left is the maintainer action of logging
-  into bestpractices.dev and entering those answers into the project's
-  actual questionnaire, which currently shows most of them unanswered.
 - **`pnpm/setup` in CI.** Its v3 (2026-09-20) now reads Node's version from
   `.node-version` through a `node-version-file` input, so the original
   blocker is gone. What is left is reliability and trust surface: v3 is days
