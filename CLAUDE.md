@@ -619,8 +619,13 @@ managed settings blocked, and project `PreToolUse` hooks run
 only after the last mod calls `next`, so a mod that answers `tool.call`
 without it keeps them from running at all (same page).
 Only managed-settings hooks outrank a mod. Same limit as above: nothing in
-the repo can detect it. Check `/plugin` for installed mods alongside
-`/status` before trusting the guards on a machine you don't control.
+the repo can detect it. Run `/plugin` alongside `/status` before trusting the
+guards on a machine you don't control: upstream says a terminal session shows a
+dim `N mods active` line there naming the mods it loaded, and lists built-in
+mods separately under the Installed tab's **Built-in** heading. Upstream's
+reference page says the built-in `sec-default` guard (shown as
+`cc-plugin-sec-default`) loads ahead of user-installed mods only on a machine
+with managed settings or for a user signed in with a Team or Enterprise plan.
 
 **The guard keys on `agent_id` as well as `agent_type`.** Claude Code sends
 `agent_type` both inside a subagent and in a main session started with
