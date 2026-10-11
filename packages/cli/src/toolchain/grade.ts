@@ -151,13 +151,17 @@ function loadSnapshot(root: string): ToolchainSnapshot {
     packageRead.ok && isRecord(packageRead.value)
       ? packageRead.value
       : undefined;
-  const scripts: Record<string, string> = {};
+  // Object.fromEntries, not `scripts[name] = cmd` on a `{}`: assignment to
+  // `__proto__` hits the prototype setter and silently drops a script of that
+  // name, while fromEntries defines every key as an own data property.
   const rawScripts = packageJson?.["scripts"];
-  if (isRecord(rawScripts)) {
-    for (const [name, cmd] of Object.entries(rawScripts)) {
-      if (typeof cmd === "string") scripts[name] = cmd;
-    }
-  }
+  const scripts: Record<string, string> = isRecord(rawScripts)
+    ? Object.fromEntries(
+        Object.entries(rawScripts).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      )
+    : {};
 
   const tsconfigFiles = new Map<string, OwnTsconfigFile>();
   const tsconfigLinks: ChainLink[] = [];

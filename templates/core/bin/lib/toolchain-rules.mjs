@@ -652,12 +652,17 @@ function loadSnapshot(root) {
     packageRead.ok && isRecord(packageRead.value)
       ? packageRead.value
       : undefined;
-  const scripts = {};
-  if (pkg !== undefined && isRecord(pkg.scripts)) {
-    for (const [name, cmd] of Object.entries(pkg.scripts)) {
-      if (typeof cmd === "string") scripts[name] = cmd;
-    }
-  }
+  // Object.fromEntries, not `scripts[name] = cmd` on a `{}`: assignment to
+  // `__proto__` hits the prototype setter and silently drops a script of that
+  // name, while fromEntries defines every key as an own data property.
+  const scripts =
+    pkg !== undefined && isRecord(pkg.scripts)
+      ? Object.fromEntries(
+          Object.entries(pkg.scripts).filter(
+            ([, cmd]) => typeof cmd === "string",
+          ),
+        )
+      : {};
 
   const tsconfigFiles = new Map();
   const tsconfigLinks = [];

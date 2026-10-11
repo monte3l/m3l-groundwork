@@ -226,11 +226,14 @@ function surveyScripts(
 ): Record<string, string> {
   const scripts = packageJson?.["scripts"];
   if (typeof scripts !== "object" || scripts === null) return {};
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(scripts)) {
-    if (typeof value === "string") result[key] = value;
-  }
-  return result;
+  // Object.fromEntries, not `result[key] = value` on a `{}`: assignment to
+  // `__proto__` hits the prototype setter and silently drops a script of that
+  // name, while fromEntries defines every key as an own data property.
+  return Object.fromEntries(
+    Object.entries(scripts).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
 }
 
 /**
