@@ -91,11 +91,16 @@ contract (a documented behavior, an interface to satisfy):
 - **Review spokes return a bounded digest**, not an open-ended report — the
   full report travels back inline in the response, capped at roughly 8,000
   characters (~2,000 tokens). No review spoke writes a scratchpad file.
-- **Plan mode propagates its read-only restriction to every subagent it
-  dispatches** — not just the ones already read-only by design. A writer
-  spoke dispatched while plan mode is active loses write access too. If a
-  design depends on a subagent writing a file, verify with `git status`/`ls`
-  after the dispatch rather than trusting the return value's success claim.
+- **Do not assume plan mode makes a dispatched subagent read-only.** A
+  live probe on Claude Code 2.1.296 (2026-10-11) dispatched `test-author` and
+  a `general-purpose` agent from a session in plan mode, each told to write
+  one file outside the repo: both writes succeeded. Anthropic's
+  [subagent docs](https://code.claude.com/docs/en/sub-agents.md) say a
+  subagent that sets its own `permissionMode` keeps it, and our writer
+  spokes set `acceptEdits`. The main session itself may still decline to
+  dispatch a writer in plan mode. If a design depends on a subagent writing
+  or not writing a file, verify with `git status`/`ls` after the dispatch
+  rather than trusting the return value's success claim.
 - **A `SubagentStop`/`PreToolUse` hook flagging a dispatch is a prompt to
   verify, not a replacement for verifying.** Treat its stderr reminder as a
   signal to check state yourself.

@@ -32,8 +32,9 @@ this project does not meet" below) rather than an aspirational one.
   `bypass_actors` list is deliberately designed to avoid exactly that.
 - **Larger or breaking changes** (anything that touches the public API
   frozen in the README's ["Versioning policy"](README.md#versioning-policy),
-  a change to `templates/core`'s caps, or a new `templates/packs/` pack) are
-  discussed in an issue before a PR is opened, so the reasoning is public
+  a change to `templates/core`'s caps, or a new `templates/packs/` pack) should
+  be discussed in an issue before a PR is opened, especially when someone
+  other than the maintainer is involved, so the reasoning is public
   and searchable even though only one person is deciding.
 - **Disputes**: with one maintainer there is no standing conflict to
   resolve. A contributor who disagrees with a decision can reopen the
