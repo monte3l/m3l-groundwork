@@ -899,7 +899,7 @@ const gateWiring = {
         const script = first === "run" ? second : first;
         if (script !== undefined && !PNPM_BUILTINS.has(script)) {
           checked += 1;
-          if (scripts[script] === undefined) {
+          if (!Object.hasOwn(scripts, script)) {
             failures.push({
               subject: `${stepsFile} step "${step.id}"`,
               message: `runs \`pnpm ${script}\`, but package.json has no "${script}" script`,

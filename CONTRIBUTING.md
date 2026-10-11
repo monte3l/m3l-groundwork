@@ -77,7 +77,11 @@ without `-s`, not just an ordinary commit -- but it isn't re-checked on a
 squash merge or the release bot's own commits (neither passes through the
 local hook), which is why
 [`pull_request_template.md`](.github/pull_request_template.md)'s checklist
-also asks for it.
+also asks for it. The hook requires the trailer on every message
+commitlint's default ignores skip (merge, revert, fixup!, squash!, amend!,
+semver release subjects), so a local `git merge`, `git revert`, or
+`git commit --fixup`/`--squash` needs `--signoff` (or `-s`) for the hook to
+accept it.
 
 ## Coding standards
 
