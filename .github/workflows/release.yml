@@ -201,8 +201,8 @@ jobs:
       # dependabot.yml), so bumping the pin is the same reviewed-PR flow as
       # any other pin here, just via a lockfile diff instead of a bare
       # version string.
-      - run: npm ci --ignore-scripts --prefix .github/release-tools
-      - run: echo "$GITHUB_WORKSPACE/.github/release-tools/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: npm ci --ignore-scripts --prefix tools/release
+      - run: echo "$GITHUB_WORKSPACE/tools/release/node_modules/.bin" >> "$GITHUB_PATH"
       # changesets publishes through `pnpm publish` in a pnpm workspace. This
       # puts a `pnpm` ahead of the real one that forwards everything except
       # `publish`, which goes to `npm stage publish` (see

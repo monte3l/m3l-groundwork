@@ -7,7 +7,7 @@
   "name": "m3l-groundwork-docs",
   "compatibility_date": "2026-09-27",
   "assets": {
-    // Resolved relative to this file (.github/deploy-tools/), so it points
+    // Resolved relative to this file (tools/deploy/), so it points
     // at the _site/ directory the workflow's build job writes at the repo
     // root before this deploy job downloads its artifact there.
     "directory": "../../_site",
