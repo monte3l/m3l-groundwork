@@ -125,8 +125,8 @@ describes).
   `npm stage publish`, not `npm publish` -- npmjs.com's own recommended,
   stronger setting, and its default for any trusted publisher created after
   2026-09-03 (this one was). A maintainer must separately run
-  `npm stage approve <id>` (2FA, on the CLI or npmjs.com -- **never
-  automatable**, by npm's own design) before a version is actually
+  `npm stage approve <id>` (needs a live 2FA code: `--otp` or a prompt on the CLI, or
+  npmjs.com -- **not automatable**, since no stored code stands in for it) before a version is actually
   installable. `npm stage list --package @monte3l/groundwork` finds the id;
   the `publish` job's last step only runs `npm stage list ... || true`, best-effort
   (it never approves anything, and that job holds no login session so it may

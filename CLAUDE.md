@@ -486,8 +486,8 @@ included, can push to `main` directly, force-push it, or delete it while the
 ruleset is active. Every change lands through a pull request whose `verify`
 (the aggregator), `Dependency Review`, `CodeQL` and `Gitleaks` checks are green, whose
 review threads are resolved, and whose commits are all signed. Each required
-check is pinned to its producing app (`integration_id`), so a same-named
-status from anywhere else can't satisfy it.
+check is matched on both its name and its producing app (`integration_id`), so
+a same-named status from a different app doesn't satisfy it.
 
 Three choices are deliberate, not defaults. **Approvals are 0**: one
 maintainer cannot approve their own PR, so requiring one would only force a
@@ -507,8 +507,9 @@ commits the ruleset rejects only at merge time. No guard blocks it
 **is** installed on this repo's own root (see "Agent Operating Model" below)
 and blocks a `packages/*/src/`/`packages/*/tests/` write while `HEAD` is
 `main` -- but nothing in this repo's own hooks blocks committing any other
-file straight to `main` locally; the ruleset is the remote-side catch and
-only bites at push time, so branch first regardless.
+file straight to `main` locally; the ruleset is the remote-side catch: it rejects a
+direct push to `main` at push time and gates a PR's merge at merge time, so
+branch first regardless.
 
 The ruleset is configured with `gh api`, not committed as JSON: GitHub never
 reads a checked-in export, so it would drift silently, and a gate to keep it
@@ -577,18 +578,21 @@ pass. So hub-and-spoke stays a convention backed by a guard that raises the
 bar, not
 a proof; the `main` ruleset is the real backstop, and dispatching the review spokes is a hub convention, not enforced.
 The maintainer's override is to run the command yourself with the `!`
-prefix at the Claude Code prompt (not a tool call, so no hook sees it) or to
+prefix at the Claude Code prompt (it runs directly, not as a tool call, so
+the `PreToolUse` guard is not in its path; upstream does not document hook
+behaviour for it either way) or to
 edit the hook's registration in `.claude/settings.json`; no flag or
 environment variable turns the guard off.
 
 **A Claude Code Enterprise/managed deployment sits above this and can
 silently disable it.** Anthropic's settings precedence puts managed
 settings (a `managed-settings.json` file, an MDM policy, or a
-claude.ai-console-managed remote policy) above every project file with no
-override, and two managed-only keys -- `allowManagedHooksOnly` and
-`allowManagedPermissionRulesOnly` -- make Claude Code skip this repo's own
-`.claude/settings.json` hooks and permission rules entirely rather than
-merge with them (see
+claude.ai-console-managed remote policy) above every project file, with
+no override except a few security-sensitive keys where a stricter
+lower-level value still wins. Two managed-only keys narrow this repo's own
+`.claude/settings.json` further: `allowManagedHooksOnly` limits hooks to
+the ones the organization deploys, and `allowManagedPermissionRulesOnly`
+makes managed settings the only source of permission rules (see
 [Claude Code's managed-settings docs](https://code.claude.com/docs/en/managed-settings)).
 Nothing in this repo's own files can detect or gate against that -- the
 managed file lives outside any project's working tree, at an OS-level path
@@ -597,7 +601,8 @@ managed file lives outside any project's working tree, at an OS-level path
 `Program Files` on Windows), so `bin/check-harness.mjs` has no on-disk fact
 to check and this is a documented limit, not a gate. Run `/status` before
 trusting hub-and-spoke enforcement on a machine you don't control: its
-"Setting sources" line names every active source, and if
+"Setting sources" line lists each settings file loaded and marks
+the managed one, and if
 `guard-hub-src-writes.mjs`/`guard-branch-isolation.mjs` aren't among what's
 actually running, treat this section as an unenforced checklist rather than
 an enforced gate until confirmed otherwise.
@@ -605,9 +610,9 @@ an enforced gate until confirmed otherwise.
 **An installed Claude Code mod is a second silent override, below managed
 settings.** Claude Code 2.1.287 added mods (plugin-shipped TypeScript
 handlers). Per the
-[hooks guide](https://code.claude.com/docs/en/hooks-guide), a mod that
-handles `tool.check` "can approve a call that your `PreToolUse` hook blocked,
-unless the hook is in managed settings", and project `PreToolUse` hooks run
+[mods events guide](https://code.claude.com/docs/en/plugins/mods/events), a mod
+that handles `tool.check` can approve a call that a `PreToolUse` hook outside
+managed settings blocked, and project `PreToolUse` hooks run
 only after the last mod calls `next`, so a mod that answers `tool.call`
 without it keeps them from running at all (see the
 [mods events reference](https://code.claude.com/docs/en/plugins/mods/events)).
@@ -624,7 +629,8 @@ call counts as a writer spoke only with both present, so a hub launched as
 **Agent teams (experimental) are not covered or verified.** A split-pane
 teammate is a full session with no `agent_id`, so the guard treats it as the
 hub and blocks it (fail-closed). Whether an in-process teammate's tool calls
-carry `agent_type` and `agent_id` is undocumented, so one passing as a writer
+carry `agent_type` is undocumented (the hooks reference documents `agent_id`
+for an in-process teammate, but not `agent_type`), so one passing as a writer
 spoke is unconfirmed. Every spoke's `tools` list omits `Agent`, which keeps the
 roster flat even where `disallowedTools` is not applied to a teammate.
 
@@ -699,7 +705,7 @@ GA, by convention (no config or workflow rejects other bump types).
 A few invariants matter even when this file isn't open: **renaming or
 moving `release.yml` breaks npm's trusted publisher**; publishes are
 **staged, not direct** (`npm stage approve` is a separate, non-automatable
-2FA step -- the git tag and GitHub Release exist before the package is
+step that needs a live 2FA code -- the git tag and GitHub Release exist before the package is
 actually installable); the version PR authenticates as a GitHub App, not
 `GITHUB_TOKEN`, because `main`'s ruleset requires checks a bot-token PR
 can't trigger; and a plugin-only change needs no changeset or release step
@@ -741,15 +747,12 @@ The `*.e2e.test.ts` files are the ones that bootstrap projects and pack tarballs
 some unit tests (e.g. `packages/cli/tests/templates/core-hooks.test.ts`) also spawn real child processes.
 `bootstrap.e2e.test.ts` (the built CLI, then `pnpm install`/`pnpm verify`
 inside the emitted project) is the acceptance test, and each `packs-*.e2e.test.ts`
-does the same with a pack installed. They're excluded from `pnpm test`'s
+does the same with a pack installed (`harness-extras`, the oldest pack, is covered by
+`packs.e2e.test.ts`, with no `packs-harness-extras` file). They're excluded from `pnpm test`'s
 default run (`vitest.config.ts`'s `**/*.e2e.test.ts` exclude) and only run via
 `pnpm test:e2e`. Run it after any change to `packages/cli/src/`,
 `templates/core/`, or `packages/plugin/skills/customize/` -- it has already
-caught real bugs a unit-test mock would have hidden (a wrong
-`@commitlint/load` import shape, an absolute-path double-join in
-`check-exports.mjs`, missing ESLint scope for `.claude/hooks/**`, a
-coverage-exclude pattern that silently zeroed out the only file in a fresh
-scaffold). Don't skip it before calling a change to the emitted baseline
+caught real bugs a unit-test mock would hide. Don't skip it before calling a change to the emitted baseline
 done.
 
 ## Definition of Done
@@ -832,7 +835,7 @@ hard-coded and no test pins it).
   uses (see "Definition of Done" for the command) -- 0 structural findings
   expected.
   What _does_ already exist independently is `.claude/worktrees/**`,
-  created ad hoc whenever a background agent runs with
+  created ad hoc whenever a subagent runs with
   `isolation: "worktree"`: a full second checkout of this repo, uncommitted
   state included. `.gitignore`, `.prettierignore`, `eslint.config.js` and both
   vitest configs exclude it explicitly -- without that, prettier fails on a

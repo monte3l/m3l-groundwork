@@ -27,8 +27,9 @@ on this repository only.
        **Not** the "Secrets" permission -- that category covers only
        repository-level Actions secrets and does not grant access to
        `GET /repos/{owner}/{repo}/environments/{name}/secrets` (confirmed
-       live: this workflow's first real run failed with `403 Resource not
-accessible by integration` under a Secrets-only grant).
+       live: [run 36318745169](https://github.com/monte3l/m3l-groundwork/actions/runs/36318745169)
+       on 2026-09-27 failed with `403 Resource not accessible by
+integration` under a Secrets-only grant).
      - Metadata: Read-only (mandatory minimum for any GitHub App).
    - No webhook needed; disable webhook delivery.
    - Do not grant any organization-level permission.

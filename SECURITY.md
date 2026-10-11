@@ -134,7 +134,9 @@ shasum -a 256 packages/cli/*.tgz
 
 Compare the resulting SHA-256 against the tarball attached to the matching
 [GitHub Release](https://github.com/monte3l/m3l-groundwork/releases) -- the
-same artifact `gh attestation verify` above checks the provenance of. A
+same artifact `gh attestation verify` above checks the provenance of, and
+byte-identical to the tarball npm serves (checked for `1.0.0-rc.5`: same
+SHA-256, same sha512 `dist.integrity`). A
 match means the release you're installing was built from exactly the source
 at that tag, with nothing added or substituted in between.
 
@@ -204,8 +206,8 @@ standing bypass that undermines the design:
 
 One finding is a partial, external gap: this project registered for an
 [OpenSSF Best Practices badge](https://www.bestpractices.dev/projects/14937)
-(project 14937) and has achieved Passing, linked from the README and the
-docs site. The repository is intended to meet the Gold criteria, excluding
+(project 14937) and has achieved Silver (Passing included), linked from the
+README and the docs site. The repository is intended to meet the Gold criteria, excluding
 the handful that inherently require more than one active contributor
 (`bus_factor`, `contributors_unassociated`, `two_person_review` -- see
 [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor), stated honestly as unmet rather
@@ -220,11 +222,10 @@ gate, a reproducible build, dynamic analysis, a dated security review
 ([`docs/security-review.md`](docs/security-review.md)), a security assurance
 case ([`docs/assurance-case.md`](docs/assurance-case.md)), DCO-signed
 commits, strict linting, signed and attested releases, and CLI input
-validation. `.bestpractices.json` already answers every one of those Silver-
-and Gold-level criteria this project can meet on its own; what's still
-open is a maintainer action -- logging into bestpractices.dev and entering
-those drafted answers into the project's actual questionnaire, which a code
-change can't do on its own.
+validation. The project's questionnaire shows the Silver badge achieved
+(project 14937); `.bestpractices.json` holds the drafted answers, and the
+Gold-level criteria still open are the three single-maintainer ones listed in
+[`GOVERNANCE.md`](GOVERNANCE.md#gold-level-criteria-this-project-does-not-meet).
 
 ## Reading the Socket score
 
@@ -232,12 +233,12 @@ Background, not core policy: same as the Scorecard section above -- this
 explains a third-party badge, not this project's vulnerability response.
 
 The README's [Socket](https://socket.dev) badge scores five categories
-(Supply Chain Security, Quality, Maintenance, Vulnerability, License).
+(Supply Chain Risk, Quality, Maintenance, Vulnerability, License).
 Two of those are structurally suppressed for a package this new and this
 small, independent of any actual defect, and should not be chased with a
 design change:
 
-- **Supply Chain Security and Maintenance** scale with download count,
+- **Supply Chain Risk and Maintenance** scale with download count,
   account age, and publish history -- a package with only a small number of
   releases so far can't score as high as an established one on these axes
   yet, the same way OpenSSF Scorecard's `Maintained` check flags any
