@@ -46,9 +46,8 @@ name: Claude PR Review
 # bot-authored and fork PRs explicitly below, rather than relying on
 # anthropics/claude-code-action's own internal bot/permission checks
 # (docs/security.md) -- that way a Dependabot or fork PR never starts a run
-# that would just fail on missing secrets. Runs but fails cleanly on an auth
-# error until the one-time setup described in claude.yml's comments is done
-# by hand.
+# that would just fail on missing secrets. This workflow needs one of the
+# auth methods described in claude.yml's comments, set up by hand once.
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]

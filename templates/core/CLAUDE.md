@@ -105,9 +105,9 @@ silently disable it.** Managed settings (a `managed-settings.json` file, an
 MDM policy, or a claude.ai-console-managed remote policy) take precedence
 over every file this baseline installs, with no project-level override, and
 two managed-only keys -- `allowManagedHooksOnly` and
-`allowManagedPermissionRulesOnly` -- make Claude Code skip this project's
-own `.claude/settings.json` hooks and permission rules entirely rather than
-merge with them (see
+`allowManagedPermissionRulesOnly` -- mean that only managed hooks run
+(`allowManagedHooksOnly`) and only managed permission rules apply
+(`allowManagedPermissionRulesOnly`) (see
 [Claude Code's managed-settings docs](https://code.claude.com/docs/en/managed-settings)).
 Nothing in this project can detect or gate against that from inside the
 repo -- the managed file lives outside any working tree, at an OS-level
@@ -127,11 +127,9 @@ only after the last mod calls `next` (see the
 Only managed-settings hooks outrank a mod, and nothing in the repo can detect
 one. Check `/plugin` for installed mods alongside `/status`.
 
-**The guard keys on `agent_id` as well as `agent_type`.** Claude Code sends
-`agent_type` both inside a subagent and in a main session started with
-`--agent <name>`; only a call inside a subagent also carries `agent_id`. A
-call counts as a writer spoke only with both present, so a hub launched as
-`claude --agent code-implementer` is still the hub and is blocked.
+**The guard keys on `agent_id` as well as `agent_type`.** A call counts as a
+writer spoke only with both present, so a call carrying `agent_type` but no
+`agent_id` is treated as the hub and is blocked.
 
 Full dispatch-sizing and recovery guidance: `.claude/rules/agent-dispatch.md`
 (auto-loads when editing `.claude/skills/**` or `.claude/agents/**`).

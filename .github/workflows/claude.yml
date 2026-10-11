@@ -11,9 +11,9 @@ name: Claude Code
 # Interactive mode only (no `prompt` input) -- Claude commits to a branch and
 # links back to a PR-creation page; it never opens a PR itself, so this
 # never bypasses the "every change lands through a human-opened PR" rule in
-# CLAUDE.md's "Git Workflow". Runs but fails cleanly on an auth error until
-# the one-time setup CLAUDE.md describes (Claude GitHub App install + a
-# CLAUDE_CODE_OAUTH_TOKEN secret) is done by hand.
+# CLAUDE.md's "Git Workflow". It needs the one-time setup CLAUDE.md
+# describes (Claude GitHub App install + a CLAUDE_CODE_OAUTH_TOKEN secret),
+# done by hand.
 #
 # Unlike pull requests (collaborators-only, see "Git Workflow"), issues and
 # comments stay open to anyone, so the `@claude` text match alone isn't

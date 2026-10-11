@@ -111,13 +111,11 @@ paths:
   is fine here, unlike the verify lanes, because the file runs no verify
   group and so never reaches `gate-lane-parity`; keep it that way (no
   `verify.mjs`, `--group` or `--step` anywhere in it, comments included).
-  The runner needs several GiB of free memory for the baseline's `knip`
-  step, which GitHub's runners have.
   Each matrix leg uploads `results.tsv` and `logs/` from `$RUNNER_TEMP/soak` as
   the artifact `soak-<os>`, kept 14 days (`if-no-files-found: warn`).
 - **`claude.yml` runs Anthropic's official `anthropics/claude-code-action`**
-  (SHA-pinned, same convention as every other action here), running but
-  failing cleanly on an auth error until the one-time setup below is done.
+  (SHA-pinned, same convention as every other action here); it needs the
+  one-time setup below.
   It is interactive `@claude`-mention mode: it never opens a PR itself (it
   commits to a branch and links back to a PR-creation page), so it never
   bypasses the human-opened-PR rule above.

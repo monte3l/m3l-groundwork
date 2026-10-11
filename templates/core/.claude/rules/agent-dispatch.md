@@ -109,8 +109,8 @@ contract (a documented behavior, an interface to satisfy):
   `guard-branch-isolation.mjs` let a top-level `src/`/`tests/` write through
   unblocked, check `/status`'s "Setting sources" line for a managed source
   before debugging the hook script itself -- a managed `allowManagedHooksOnly`
-  policy (CLAUDE.md's "Agent Operating Model") disables project hooks
-  outright, with no repo-visible signal that it's active.
+  policy (CLAUDE.md's "Agent Operating Model") means only managed hooks
+  run, with no repo-visible signal that it's active.
 - **A templated dispatch prompt needs a per-target assumption check, not
   just a per-target file-list check.** Verify the template's implicit
   assumptions against each target's own docs/tests before dispatch, not

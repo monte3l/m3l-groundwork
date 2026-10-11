@@ -111,7 +111,7 @@ contract (a documented behavior, an interface to satisfy):
   write through unblocked, check `/status`'s "Setting sources" line for a
   managed source before debugging the hook script itself -- a managed
   `allowManagedHooksOnly` policy (CLAUDE.md's "Agent Operating Model")
-  disables project hooks outright, with no repo-visible signal that it's
+  runs only managed hooks, with no repo-visible signal that it's
   active.
 - **A templated dispatch prompt needs a per-target assumption check, not
   just a per-target file-list check.** Verify the template's implicit

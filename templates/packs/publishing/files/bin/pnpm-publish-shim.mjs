@@ -9,18 +9,10 @@
  *
  * ## Why it exists
  *
- * Two independent reasons this can't be `pnpm publish`, stacked:
- * 1. `changeset publish` in a pnpm-managed project publishes through
- *    `pnpm publish`, and pnpm 12's native publish does its own OIDC
- *    exchange, which npmjs.com rejects (`403 OIDC permission denied`) even
- *    for a correctly configured trusted publisher. The npm CLI's exchange
- *    works.
- * 2. It can't be a direct `npm publish` either: a trusted publisher created
- *    since 2026-09-03 defaults to `npm stage publish` only, npm's own
- *    explicit recommendation (see this pack's adoptNotes). A direct
- *    `npm publish` gets the exact same 403 "OIDC permission denied" as the
- *    pnpm case, for an unrelated reason: the token exchange succeeds, but
- *    the registry refuses the specific action.
+ * `changeset publish` in a pnpm-managed project publishes through
+ * `pnpm publish`. A trusted publisher created since 2026-09-03 defaults to
+ * `npm stage publish` only, npm's own explicit recommendation (see this
+ * pack's adoptNotes), so the publish is rerouted to `npm stage publish`.
  *
  * ## What it translates
  *
@@ -42,8 +34,6 @@
  *
  * `PNPM_SHIM_DIR` names this shim's own directory so it can be dropped from
  * PATH when looking for the real pnpm (otherwise it would find itself).
- * Delete this, and the workflow step that installs it, once pnpm's publish
- * authenticates against npmjs.com.
  */
 import process from "node:process";
 import { spawnSync } from "node:child_process";

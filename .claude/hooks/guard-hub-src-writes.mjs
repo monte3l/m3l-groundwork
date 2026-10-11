@@ -15,13 +15,10 @@
  * guard alone is bypassed by a Bash command that writes the same file
  * (`cat > src/a.ts <<EOF`, `sed -i`, `cp`, a `python -c` one-liner).
  *
- * The seam: the PreToolUse payload carries a top-level `agent_type` field
- * both when the tool call fires inside a subagent AND in a main session
- * started with `claude --agent <name>`, while `agent_id` is sent ONLY when
- * the call fires inside a subagent. A spoke is therefore identified by both
- * fields together: a call naming a writer in `agent_type` but carrying no
- * non-blank string `agent_id` is the hub itself running as `--agent`, not a
- * dispatched spoke, and is treated as the hub.
+ * The seam: this guard requires both the top-level `agent_type` and
+ * `agent_id` payload fields to count a call as a writer spoke: a call naming
+ * a writer in `agent_type` but carrying no non-blank string `agent_id` is
+ * treated as the hub.
  *
  * The decision: block when BOTH conditions hold:
  *   (a) the target path is a guarded source/test path, AND
@@ -1811,11 +1808,9 @@ function isEntryPoint() {
 }
 
 // The agent_type the pure decision functions should see: the payload's own
-// only when a string `agent_id` that is non-empty after `.trim()` proves the
-// call fires inside a subagent; otherwise (absent, non-string, empty or
-// whitespace-only) undefined, i.e. the hub. `agent_type` alone is not
-// enough -- a `claude --agent code-implementer` main session sends it too
-// (see the header's "The seam").
+// only when a string `agent_id` that is non-empty after `.trim()` is present;
+// otherwise (absent, non-string, empty or whitespace-only) undefined, i.e. the
+// hub. A call counts as a spoke only with both fields.
 function spokeAgentType(input) {
   return typeof input.agent_id === "string" && input.agent_id.trim() !== ""
     ? input.agent_type
