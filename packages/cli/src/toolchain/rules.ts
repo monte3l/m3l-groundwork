@@ -117,9 +117,11 @@ const lower = (value: unknown): string | undefined =>
   typeof value === "string" ? value.toLowerCase() : undefined;
 
 /**
- * Options TypeScript 6.0 deprecated. `removedIn` is the major that drops them
- * (`outFile` and `moduleResolution: classic` already went in 6.0). See the
- * TypeScript 6.0 release notes.
+ * Options TypeScript 6.0 deprecated. `removedIn` is the major that drops them.
+ * `outFile` and `moduleResolution: classic` are `removedIn: 6` because the
+ * TypeScript 6.0 release notes call them removed; `tsc` 6.0.3 itself still
+ * accepts both behind `ignoreDeprecations: "6.0"` and warns that they stop
+ * functioning in 7.0.
  */
 export const LEGACY_OPTIONS: readonly LegacyOption[] = [
   {
