@@ -62,7 +62,7 @@ paths:
 - `bin/check-node-version.mjs` is live here now: every lane that runs the
   pinned toolchain takes Node from `node-version-file: .node-version`;
   `node-current` is the one deliberate, documented exception, and the
-  gate's own regex (which only rejects a hardcoded _digit_) already allows
+  gate's own regex (which only rejects a hardcoded **digit**) already allows
   it. `release.yml` follows the same two rules and adds a third: **it never
   writes the text `verify.mjs`**. The grader reads a workflow as text, so a
   bare or dynamic invocation there switches `gate-lane-parity` off for
@@ -81,8 +81,8 @@ paths:
   never writes repo contents (only the SARIF upload and OIDC) and is not a
   required check. The README's Socket badge
   (`badge.socket.dev`) is a deliberate complement, not a duplicate: it
-  scores the _published package's_ behavior (install scripts, obfuscation,
-  requested permissions), where Scorecard scores the _repo's_ practices.
+  scores the **published package's** behavior (install scripts, obfuscation,
+  requested permissions), where Scorecard scores the **repo's** practices.
   Bundlephobia and Snyk were considered and rejected: Bundlephobia measures
   browser-bundle size, which doesn't apply to a bin-only CLI with no
   importable entry point (see `packages/cli/package.json`'s `exports`), and

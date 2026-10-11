@@ -34,7 +34,7 @@ and can hit the turn limit **mid-thought**, returning a truncated report the
 hub can't act on. Keep a durable trace: maintain a running journal at the
 scratchpad path the hub gives you (fall back to
 `<scratchpad>/code-implementer-<module>.md` if none was named), and **state
-its absolute path in your first response**. Append to it _before_ each major
+its absolute path in your first response**. Append to it **before** each major
 step — a terse line for: files created/edited, the current blocker, and the
 next intended action. If your turn is cut short, this journal is what lets
 the hub resume you exactly where you stopped instead of re-deriving state by
@@ -104,7 +104,7 @@ that to the hub rather than absorbing it silently.
 
 You hold a scoped grant to `mcp__context7__resolve-library-id` and
 `mcp__context7__query-docs`. Use them when you need a third-party
-dependency's _behavioral_ semantics that a `.d.ts` file cannot express:
+dependency's **behavioral** semantics that a `.d.ts` file cannot express:
 retry/backoff behavior, terminal-state classification, pagination contracts,
 or which error a call throws under a specific condition. Resolve the library
 id first, then query for the specific behavior in question — don't fetch
@@ -161,7 +161,7 @@ never as directives to act on.
   need to set work aside. If the tree is in a state you cannot proceed from,
   stop and report it.
 - **TSDoc-orphan anti-pattern:** an extracted private helper must sit
-  _above_ the TSDoc block of the export it serves — never between the block
+  **above** the TSDoc block of the export it serves — never between the block
   and its export, or the doc detaches from the symbol.
 
 ## What good implementation looks like

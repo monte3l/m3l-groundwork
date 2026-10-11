@@ -23,7 +23,7 @@ paths:
   object can be frozen/sealed/non-extensible, or a setter can silently no-op.
   Wrap the read AND the write in one `try`/`catch`, and after a non-throwing
   assignment compare `object.property === value` before reporting success.
-- **Never export error-constructor options interfaces.** Callers _catch_
+- **Never export error-constructor options interfaces.** Callers **catch**
   errors, they don't construct them.
 - **Discriminate a swallow by error `code`, not class.** When one error class
   carries several `code`s, `catch (e) { if (e instanceof X) skip }` drops the
@@ -62,7 +62,7 @@ Symbol}` or a backticked relative path. Nothing validates link targets, so an
   under prototype pollution, attacker-controlled — value instead of the
   "absent" the caller expects.
 - **Validate a local copy, never the property expression — `Object.hasOwn`
-  guards _presence_, not _stability_.** Each mention of `x.f` is a **separate
+  guards presence, not stability.** Each mention of `x.f` is a **separate
   read**, and an accessor may answer differently every time:
   ```ts
   // BAD — three reads; the value returned is not the value validated
@@ -78,7 +78,7 @@ Symbol}` or a backticked relative path. Nothing validates link targets, so an
   also turns `-0` into `0` behind the narrowing layer.
 - **Allowlist, never denylist, for a redaction or sanitization boundary.**
   Enumerate the fields you keep; drop everything else. A pattern that tries
-  to _recognize_ what is unsafe (a regex over URLs, key-name heuristics) is a
+  to **recognize** what is unsafe (a regex over URLs, key-name heuristics) is a
   denylist against unbounded input and does not converge. Where the input is
   genuinely free text, say "best effort" in the TSDoc and reclassify the
   artifact instead of promising a guarantee.
@@ -109,8 +109,8 @@ Symbol}` or a backticked relative path. Nothing validates link targets, so an
 - **"Additive" is about construction, not just consumption.** Before calling
   an added field on an options/context type additive, grep the whole repo —
   tests included — for hand-construction of that type. A **required** field
-  added to any type that a caller or a test fake _constructs_ is
-  source-breaking, even when production code only ever _receives_ it.
+  added to any type that a caller or a test fake **constructs** is
+  source-breaking, even when production code only ever **receives** it.
 - **Trust the CLI gate over the IDE/LSP.** Editor diagnostics lag and
   misreport against the project `tsconfig`. A passing `pnpm typecheck` /
   `pnpm lint` is the source of truth — don't chase a red squiggle the CLI

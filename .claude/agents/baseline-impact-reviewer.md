@@ -67,7 +67,7 @@ from memory of it.
    `settingsTopLevel`), `package.json` (`scripts`), and
    `bin/lib/verify-steps.packs.json` -- via the pure merge functions in
    `packages/cli/src/merge-json.ts`. A pack that ships its own `.yml` or
-   `.js`/`.mjs` file meant to be _merged into_ an existing one (rather than
+   `.js`/`.mjs` file meant to be **merged into** an existing one (rather than
    added as a new standalone file under `files/`) violates the contract.
 7. **`modes`/`adoptNotes` honesty.** A pack or gate claiming `"adopt"` in
    `modes` must have no dependency on the baseline's exact file layout --
