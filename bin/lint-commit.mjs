@@ -22,9 +22,12 @@
  * config keys: the first lint uses commitlint's built-in default ignores,
  * and the trailer re-check always runs with them off.
  *
- * Any failure -- a rule violation, a thrown error from commitlint, or a
- * missing `git` (which `trailer-exists` shells out to) -- prints one `✗` line
- * to stderr and exits 1, never a stack trace.
+ * Every failure -- an unreadable or missing `--edit` file, a missing or
+ * unparseable `commitlint.config.js` or one that defines no rules, a
+ * forbidden trailer, a rule violation,
+ * a thrown error from commitlint, or a missing `git` (which `trailer-exists`
+ * shells out to) -- prints `✗`-prefixed line(s) to stderr (one per problem)
+ * and exits 1, never a stack trace.
  */
 import process from "node:process";
 import { spawnSync } from "node:child_process";
@@ -35,8 +38,6 @@ import { paint } from "./lib/term.mjs";
 
 const args = process.argv.slice(2);
 const editIndex = args.indexOf("--edit");
-const message =
-  editIndex === -1 ? args.join(" ") : readFileSync(args[editIndex + 1], "utf8");
 
 const FORBIDDEN_TRAILER = /^Claude-(?!Session:)[A-Za-z-]*:/m;
 
@@ -52,9 +53,64 @@ function fail(text) {
   process.exit(1);
 }
 
+/**
+ * The first non-empty line of an error's message, so one failure prints as
+ * one `✗` line even when commitlint throws a multi-line message.
+ */
 function reason(error) {
-  return error instanceof Error ? error.message : String(error);
+  const text = error instanceof Error ? error.message : String(error);
+  return (
+    text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line !== "") ?? text
+  );
 }
+
+/**
+ * Whether a thrown error is a failure to run `git` (which commitlint's
+ * `trailer-exists` shells out to), as opposed to a config or rule error.
+ * commitlint does not check its spawn result, so a missing `git` surfaces as
+ * an unrelated `TypeError`; probing `git --version` settles it directly.
+ */
+function isGitFailure(error) {
+  const code =
+    typeof error === "object" && error !== null ? error.code : undefined;
+  if (code === "ENOENT") return true;
+  if (/\bgit\b/.test(error instanceof Error ? error.message : String(error))) {
+    return true;
+  }
+  const probe = spawnSync("git", ["--version"], { stdio: "ignore" });
+  return probe.error !== undefined || probe.status !== 0;
+}
+
+/**
+ * The failure text for an error thrown by commitlint's `lint`: the git hint
+ * only when `git` itself could not run, else the plain reason.
+ */
+function lintFailureText(error, gitContext) {
+  return isGitFailure(error)
+    ? `${gitContext}: ${reason(error)}`
+    : `could not lint the commit message: ${reason(error)}`;
+}
+
+/**
+ * The commit message: the `--edit` file's content, else the joined args.
+ * A missing path or an unreadable file is reported through `fail`.
+ */
+function readMessage() {
+  if (editIndex === -1) return args.join(" ");
+  const path = args[editIndex + 1];
+  // fail() exits the process; it never returns.
+  if (path === undefined) fail("--edit needs a path");
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    fail(`could not read the commit message file ${path}: ${reason(error)}`);
+  }
+}
+
+const message = readMessage();
 
 /**
  * The loaded config's `trailer-exists` entry when it is an enforced
@@ -116,7 +172,19 @@ function missingTrailerText(key, qualifier) {
   return `message must have ${name}, including every message commitlint's default ignores skip (${IGNORED_KINDS})${hint}`;
 }
 
-const config = await load({}, { file: "commitlint.config.js" });
+let config;
+try {
+  config = await load({}, { file: "commitlint.config.js" });
+} catch (error) {
+  fail(`could not load commitlint.config.js: ${reason(error)}`);
+}
+// @commitlint/cli rejects an empty rule set the same way: a config whose
+// `extends` resolved to nothing would otherwise pass every message.
+if (Object.keys(config.rules ?? {}).length === 0) {
+  fail(
+    "commitlint.config.js loaded but defines no rules (check its `extends`)",
+  );
+}
 const parserOptions = config.parserPreset
   ? { parserOpts: config.parserPreset.parserOpts }
   : {};
@@ -126,19 +194,17 @@ try {
   result = await lint(message, config.rules, parserOptions);
 } catch (error) {
   fail(
-    `could not lint the commit message (commitlint's trailer-exists runs git interpret-trailers; is git on PATH?): ${reason(error)}`,
+    lintFailureText(
+      error,
+      "could not lint the commit message (commitlint's trailer-exists runs git interpret-trailers; is git on PATH?)",
+    ),
   );
 }
 
 if (!validateForbiddenTrailers(message)) {
-  console.error(
-    paint(
-      process.stderr,
-      "danger",
-      "commit message carries a forbidden Claude-* trailer (only Co-Authored-By: is allowed)",
-    ),
+  fail(
+    "commit message carries a forbidden Claude-* trailer (only Co-Authored-By: is allowed)",
   );
-  process.exit(1);
 }
 
 if (!result.valid) {
@@ -165,7 +231,10 @@ if (trailerRule !== undefined) {
     );
   } catch (error) {
     fail(
-      `could not read commit trailers (git interpret-trailers failed): ${reason(error)}`,
+      lintFailureText(
+        error,
+        "could not read commit trailers (git interpret-trailers failed)",
+      ),
     );
   }
   if (!trailerResult.valid) fail(missingTrailerText(key, ""));
