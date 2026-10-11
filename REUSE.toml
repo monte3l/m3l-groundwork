@@ -54,7 +54,7 @@ SPDX-License-Identifier = "OFL-1.1"
 # recognizes .json, not .jsonc, so it still needs a REUSE annotation the same
 # way **/*.json below covers plain JSON.
 [[annotations]]
-path = [".github/deploy-tools/*.jsonc"]
+path = ["tools/deploy/*.jsonc"]
 SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
 SPDX-License-Identifier = "MIT"
 

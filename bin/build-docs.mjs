@@ -13,7 +13,7 @@
  * deliberately excluded (internal trackers, not reader-facing pages). Also
  * emits a synthetic `404.html` and a Cloudflare Workers static-assets
  * `_headers` file (`bin/lib/site-headers.mjs`), read by
- * `.github/deploy-tools/wrangler.jsonc`'s `not_found_handling` and by
+ * `tools/deploy/wrangler.jsonc`'s `not_found_handling` and by
  * Cloudflare's edge respectively -- see docs/cloudflare-docs.md.
  *
  * `node bin/build-docs.mjs --out <dir>` writes the site there. `--check`
@@ -375,7 +375,7 @@ ${html}
 
 /**
  * The Cloudflare Custom Domain's own `not_found_handling: "404-page"`
- * (`.github/deploy-tools/wrangler.jsonc`) serves this page for any path
+ * (`tools/deploy/wrangler.jsonc`) serves this page for any path
  * that matches no real asset. It isn't one of `PAGES` -- no markdown
  * source, no nav/sidebar `aria-current` entry -- so it's rendered through
  * the same `renderPage` shell with a synthetic single-entry `rendered` map

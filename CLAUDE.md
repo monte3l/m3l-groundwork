@@ -116,10 +116,17 @@ packages/plugin/        Phase B: the /customize skill
                          published package on Linux x64/arm64 and macOS -- see
                          .claude/rules/ci.md),
                          claude.yml, dependabot.yml,
-                         deploy-tools/ (pins the exact wrangler version
-                         docs.yml's deploy job installs, same pattern as
-                         release-tools/), environments.json (the cleanup
-                         policy), ISSUE_TEMPLATE/, pull_request_template.md
+                         environments.json (the cleanup policy),
+                         ISSUE_TEMPLATE/, pull_request_template.md
+
+tools/                  Pinned CI tooling, kept out of `.github/` because
+                         Dependabot cannot open a PR that changes files there
+                         (every attempt fails with a 400 "invalid or
+                         unauthorized changes"). deploy/ pins the exact
+                         wrangler version docs.yml's deploy job installs;
+                         release/ pins the npm version release.yml's publish
+                         job installs. Each is a package.json plus a committed
+                         lockfile.
 
 bin/                    This repo's own gate scripts: verify.mjs, check-*.mjs,
                          build-docs.mjs, eval.mjs, ci-docs-only.mjs, soak.sh.
