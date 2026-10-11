@@ -1,5 +1,15 @@
 # @monte3l/groundwork
 
+## 1.0.0-rc.6
+
+### Patch Changes
+
+- [#142](https://github.com/monte3l/m3l-groundwork/pull/142) [`8140d8b`](https://github.com/monte3l/m3l-groundwork/commit/8140d8b58f80e9ee393d0ab4e1ddce39d2e713c0) Thanks [@enri3l](https://github.com/enri3l)! - Adopt mode now recognises a Claude Code plugin repository. The inventory moves to schema 6 and records `survey.harness.pluginLayout` (the `.claude-plugin/plugin.json` manifest and which of `hooks/hooks.json`, `skills/`, `agents/`, `commands/` and `.mcp.json` exist). The adoption report no longer prints "0 of 0 checks pass" or "100% over 0 checks" when nothing was gradable, says plugin components at the repository root are outside the harness grader's scope, and leaves fresh-only packs (`publishing`) out of the post-merge cap estimate. `/customize` gains a `plugin` project kind, recommends `plugin-dev` for it, names `.claude/` files by full path in `CLAUDE.md`, and grades the harness after Round 2.
+
+- [#149](https://github.com/monte3l/m3l-groundwork/pull/149) [`d993e0a`](https://github.com/monte3l/m3l-groundwork/commit/d993e0ae3461d7262cf9f3c3b6761d691b6fe5dc) Thanks [@enri3l](https://github.com/enri3l)! - The package README now describes everything adopt mode writes, the fresh-mode order, exit codes, failure behaviour and where the adoption report's section headings are listed.
+
+- [#151](https://github.com/monte3l/m3l-groundwork/pull/151) [`e74cc19`](https://github.com/monte3l/m3l-groundwork/commit/e74cc19242aa88fcd7e8497d69180834158768a1) Thanks [@enri3l](https://github.com/enri3l)! - The toolchain grade and the adopt survey no longer treat inherited object members (such as `constructor` or `toString`) as present scripts or `package.json` fields. The emitted `bin/lint-commit.mjs` now also enforces a configured `trailer-exists` rule (severity 2) on every message commitlint's default ignores skip (merge, revert, `fixup!`, `squash!`, `amend!`, semver release subjects); projects that do not enable that rule see no change.
+
 ## 1.0.0-rc.5
 
 ### Patch Changes
