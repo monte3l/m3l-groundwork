@@ -629,8 +629,7 @@ with managed settings or for a user signed in with a Team or Enterprise plan.
 
 **The guard keys on `agent_id` as well as `agent_type`.** Claude Code sends
 `agent_type` both inside a subagent and in a main session started with
-`--agent <name>`; only a call inside a subagent also carries `agent_id`. A
-call counts as a writer spoke only with both present, so a hub launched as
+`--agent <name>`. A call counts as a writer spoke only with both present, so a hub launched as
 `claude --agent code-implementer` is still the hub and is blocked.
 
 **Agent teams (experimental) are not covered or verified.** A split-pane
@@ -714,9 +713,7 @@ moving `release.yml` breaks npm's trusted publisher**; publishes are
 step that needs a live 2FA code -- the git tag and GitHub Release exist before the package is
 actually installable); the version PR authenticates as a GitHub App, not
 `GITHUB_TOKEN`, because `main`'s ruleset requires checks a bot-token PR
-can't trigger; and a plugin-only change needs no changeset, but it reaches
-marketplace users only once `plugin.json`'s `version` changes, which happens
-with the next CLI release.
+can't trigger; and a plugin-only change needs no changeset.
 
 Full detail -- the publish flow, the prerelease/GA plan, the one-time npm
 and GitHub App setup, `bin/pnpm-publish-shim.mjs`'s OIDC workaround, and the

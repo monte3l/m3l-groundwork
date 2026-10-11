@@ -203,14 +203,11 @@ jobs:
       # version string.
       - run: npm ci --ignore-scripts --prefix .github/release-tools
       - run: echo "$GITHUB_WORKSPACE/.github/release-tools/node_modules/.bin" >> "$GITHUB_PATH"
-      # changesets publishes through `pnpm publish` in a pnpm workspace, and
-      # pnpm 12's native publish is rejected by npmjs.com's OIDC exchange
-      # (403 "OIDC permission denied"). This puts a `pnpm` ahead of the real
-      # one that forwards everything except `publish`, which goes to
-      # `npm stage publish` (see bin/pnpm-publish-shim.mjs -- the trusted
-      # publisher only allows staged publishing, npm's own default since
-      # 2026-09-03; a direct `npm publish` gets the same 403 for a different
-      # reason). Remove both once pnpm's own publish authenticates.
+      # changesets publishes through `pnpm publish` in a pnpm workspace. This
+      # puts a `pnpm` ahead of the real one that forwards everything except
+      # `publish`, which goes to `npm stage publish` (see
+      # bin/pnpm-publish-shim.mjs -- the trusted publisher only allows staged
+      # publishing, npm's default since 2026-09-03).
       - name: Route publish through the npm CLI
         run: |
           shim_dir="$RUNNER_TEMP/pnpm-shim"

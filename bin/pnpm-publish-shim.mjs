@@ -9,17 +9,11 @@
  *
  * ## Why it exists
  *
- * Two independent reasons this can't be `pnpm publish`, stacked:
- * 1. `changeset publish` in a pnpm workspace publishes through `pnpm publish`,
- *    and pnpm 12's native publish does its own OIDC exchange, which npmjs.com
- *    rejects (`403 OIDC permission denied`) even for a correctly configured
- *    trusted publisher. The npm CLI's exchange works.
- * 2. It can't be a direct `npm publish` either: `@monte3l/groundwork`'s trusted
- *    publisher only allows `npm stage publish` (npm's own default, and explicit
- *    recommendation, for any trusted publisher created since 2026-09-03 -- see
- *    CLAUDE.md, "Releases"). A direct `npm publish` gets the exact same 403
- *    "OIDC permission denied" as the pnpm case, for an unrelated reason: the
- *    token exchange succeeds, but the registry refuses the specific action.
+ * `changeset publish` in a pnpm workspace publishes through `pnpm publish`.
+ * This shim reroutes that call to `npm stage publish`, because
+ * `@monte3l/groundwork`'s trusted publisher only allows staged publishing
+ * (npm's default for any trusted publisher created since 2026-09-03 -- see
+ * CLAUDE.md, "Releases").
  *
  * ## What it translates
  *

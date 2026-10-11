@@ -15,8 +15,7 @@ automated PR-review workflow, and three `gh`-CLI skills
 Modes: fresh and adopt. Budget: 3 skills, 2 workflows.
 
 - **Both workflows need an auth secret the pack cannot create or verify.**
-  Until one is set they run and fail cleanly with an auth error. Keep that
-  failure mode: never make a missing secret a silent no-op.
+  Never make a missing secret a silent no-op.
 - **`claude.yml` gates on `author_association`** (owner, member or
   collaborator) so an outside commenter cannot start a job that holds
   `contents: write`. Do not loosen it.

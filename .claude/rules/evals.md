@@ -23,10 +23,11 @@ project degraded only in ways `tsc` and ESLint cannot see
 (`evals/core-toolchain/toolchain-repair/`): the fixture captures the gate's
 output to `toolchain-gate.txt`, so the case needs no shell tool in the
 sandbox, and graders check the skill names the findings, edits nothing, and
-holds the floor rather than silencing the gate. The eval sandbox has **no
-web tools**, so the case cannot measure upstream research; it measures use
-of the gate's findings and honesty about that limit (a claim about upstream
-it could not have fetched fails). The judge reads only the final message,
+holds the floor rather than silencing the gate. `claude plugin eval` gates
+Bash, Write, Edit, WebFetch and `mcp__*` tools off unless the operator passes
+`--allow-tools`, and this case passes none, so it measures use of the gate's
+findings and honesty about that limit (a claim about upstream it could not
+have fetched fails). The judge reads only the final message,
 hence the prompt's request for one self-contained summary. Its `fixture.sh`
 is a template -- it uses `__M3L_CLI__`, substituted by `writeToolchainPlugin`
 when the case is copied.
