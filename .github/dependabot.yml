@@ -24,8 +24,8 @@ updates:
     labels:
       - "dependencies"
 
-  # .github/release-tools/ pins the exact npm version the release
-  # workflow's publish job installs (see release.yml's `npm ci --prefix`
+  # .github/release-tools/ pins the exact libnpmpublish and
+  # npm-registry-fetch versions the release workflow's publish job installs (see release.yml's `npm ci --prefix`
   # step) via a committed package-lock.json's integrity hash, not a bare
   # version string in YAML -- so bumping that pin stays a normal reviewed
   # PR instead of a hand-regenerated lockfile. This package runs holding

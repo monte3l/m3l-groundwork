@@ -15,12 +15,18 @@ import {
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { makeTgz } from "./tarball-fixture.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const binDir = join(here, "..", "..", "..", "bin");
 
 interface PublishArgsLib {
-  toNpmStagePublishArgs(args: string[]): string[];
+  parsePublishArgs(args: string[]): {
+    tarball: string;
+    access?: string;
+    tag?: string;
+    otp?: string;
+  };
   pathWithout(
     pathValue: string | undefined,
     dir: string | undefined,
@@ -32,11 +38,11 @@ const lib = (await import(
   pathToFileURL(join(binDir, "lib", "npm-publish-args.mjs")).href
 )) as PublishArgsLib;
 
-describe("toNpmStagePublishArgs", () => {
-  it("translates changesets' exact pnpm invocation", () => {
+describe("parsePublishArgs", () => {
+  it("names changesets' exact pnpm invocation, dropping pnpm-only flags", () => {
     expect(
-      lib.toNpmStagePublishArgs([
-        "../.changeset-pack/pkg-1.0.0.tgz",
+      lib.parsePublishArgs([
+        "pkg.tgz",
         "--json",
         "--access",
         "public",
@@ -44,64 +50,27 @@ describe("toNpmStagePublishArgs", () => {
         "next",
         "--no-git-checks",
       ]),
-    ).toEqual([
-      "stage",
-      "publish",
-      "../.changeset-pack/pkg-1.0.0.tgz",
-      "--access",
-      "public",
-      "--tag",
-      "next",
-      "--provenance",
-    ]);
+    ).toEqual({ tarball: "pkg.tgz", access: "public", tag: "next" });
   });
 
-  it("accepts the tarball in any position and forwards an OTP", () => {
+  it("accepts the tarball in any position and returns an OTP", () => {
     expect(
-      lib.toNpmStagePublishArgs([
-        "--access",
-        "public",
-        "--otp",
-        "123456",
-        "a.tgz",
-      ]),
-    ).toEqual([
-      "stage",
-      "publish",
-      "a.tgz",
-      "--access",
-      "public",
-      "--otp",
-      "123456",
-      "--provenance",
-    ]);
+      lib.parsePublishArgs(["--otp", "123456", "a.tgz", "--access", "public"]),
+    ).toEqual({ tarball: "a.tgz", otp: "123456", access: "public" });
   });
 
-  it("refuses a flag it does not know rather than guessing", () => {
-    expect(() => lib.toNpmStagePublishArgs(["a.tgz", "--dry-run"])).toThrow(
-      /unsupported flag --dry-run/,
-    );
+  it("returns only the tarball when no flag is given", () => {
+    expect(lib.parsePublishArgs(["a.tgz"])).toEqual({ tarball: "a.tgz" });
   });
 
-  it("refuses a value-taking flag with no value", () => {
-    expect(() => lib.toNpmStagePublishArgs(["a.tgz", "--tag"])).toThrow(
-      /--tag needs a value/,
-    );
-    expect(() =>
-      lib.toNpmStagePublishArgs(["a.tgz", "--tag", "--access"]),
-    ).toThrow(/--tag needs a value/);
-  });
-
-  it("refuses to publish a directory: only tarballs", () => {
-    expect(() => lib.toNpmStagePublishArgs(["--access", "public"])).toThrow(
-      /no tarball given/,
-    );
-  });
-
-  it("refuses two positional arguments", () => {
-    expect(() => lib.toNpmStagePublishArgs(["a.tgz", "b.tgz"])).toThrow(
-      /second argument: b\.tgz/,
-    );
+  it.each([
+    [["a.tgz", "--dry-run"], /unsupported flag --dry-run/],
+    [["a.tgz", "--tag"], /--tag needs a value/],
+    [["a.tgz", "--tag", "--access"], /--tag needs a value/],
+    [["--access", "public"], /no tarball given/],
+    [["a.tgz", "b.tgz"], /second argument: b\.tgz/],
+  ] as [string[], RegExp][])("refuses %j", (args, message) => {
+    expect(() => lib.parsePublishArgs(args)).toThrow(message);
   });
 });
 
@@ -133,6 +102,14 @@ describe("pnpm-publish-shim, wired the way the workflow wires it", () => {
     chmodSync(file, 0o755);
   }
 
+  /** An executable that kills itself with SIGKILL. */
+  function fakeKilledTool(dir: string, name: string): void {
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, name);
+    writeFileSync(file, "#!/bin/sh\nkill -9 $$\n");
+    chmodSync(file, 0o755);
+  }
+
   /** The workflow's generated shim: a `pnpm` that names its dir, then runs the .mjs. */
   function installShim(shimDir: string): void {
     mkdirSync(shimDir, { recursive: true });
@@ -144,12 +121,61 @@ describe("pnpm-publish-shim, wired the way the workflow wires it", () => {
     chmodSync(file, 0o755);
   }
 
-  function pnpm(...args: string[]): { status: number | null; stderr: string } {
+  let env: Record<string, string | undefined>;
+
+  function pnpm(...args: string[]): {
+    status: number | null;
+    stdout: string;
+    stderr: string;
+  } {
     const result = spawnSync("pnpm", args, {
-      env: { ...process.env, PATH: path },
+      env: { ...process.env, PATH: path, ...env },
       encoding: "utf8",
     });
-    return { status: result.status, stderr: result.stderr };
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  }
+
+  /**
+   * A RELEASE_TOOLS_DIR with fake libnpmpublish/npm-registry-fetch that log to
+   * the same log file, so the real npm-stage-publish.mjs runs end to end.
+   */
+  function installFakeReleaseTools(publishFails = false): string {
+    const tools = join(root, "tools");
+    const modules = join(tools, "node_modules");
+    mkdirSync(join(modules, "libnpmpublish"), { recursive: true });
+    mkdirSync(join(modules, "npm-registry-fetch"), { recursive: true });
+    writeFileSync(join(tools, "package.json"), "{}");
+    writeFileSync(
+      join(modules, "libnpmpublish", "index.js"),
+      `exports.publish = async (m, t, o) => {
+  if (${String(publishFails)}) throw new Error("registry said no");
+  require("node:fs").appendFileSync(${JSON.stringify(log)}, "publish " + m.name + "@" + m.version + " " + o.defaultTag + " " + o.access + " " + o.stage + "\\n");
+  return { stageId: "stg-9" };
+};\n`,
+    );
+    writeFileSync(
+      join(modules, "npm-registry-fetch", "index.js"),
+      `exports.json = async () => ({ token: "t" });\n`,
+    );
+    return tools;
+  }
+
+  function writeTarball(): string {
+    const file = join(root, "pkg.tgz");
+    writeFileSync(
+      file,
+      makeTgz([
+        [
+          "package/package.json",
+          JSON.stringify({ name: "@scope/pkg", version: "1.0.0" }),
+        ],
+      ]),
+    );
+    return file;
   }
 
   function logged(): string[] {
@@ -158,6 +184,12 @@ describe("pnpm-publish-shim, wired the way the workflow wires it", () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), "pnpm-shim-"));
+    env = {
+      RELEASE_TOOLS_DIR: undefined,
+      NPM_CONFIG_REGISTRY: undefined,
+      NPM_ID_TOKEN: "test-id-token",
+      GITHUB_STEP_SUMMARY: undefined,
+    };
     log = join(root, "calls.log");
     const shimDir = join(root, "shim");
     const realDir = join(root, "real");
@@ -179,28 +211,49 @@ describe("pnpm-publish-shim, wired the way the workflow wires it", () => {
     expect(logged()).toEqual(["pnpm --version", "pnpm info @scope/pkg --json"]);
   });
 
-  it("sends a staged publish to npm, translated, and never to pnpm", () => {
+  it("sends a publish to npm-stage-publish, translated, and never to pnpm or npm", () => {
+    env["RELEASE_TOOLS_DIR"] = installFakeReleaseTools();
     const result = pnpm(
       "publish",
-      "pkg.tgz",
+      writeTarball(),
       "--json",
       "--access",
       "public",
       "--tag",
-      "latest",
+      "next",
       "--no-git-checks",
     );
 
     expect(result.status).toBe(0);
-    expect(logged()).toEqual([
-      "npm stage publish pkg.tgz --access public --tag latest --provenance",
-    ]);
+    expect(result.stdout).toContain("staged with id stg-9");
+    expect(logged()).toEqual(["publish @scope/pkg@1.0.0 next public true"]);
   });
 
-  it("exits with npm's own status so a failed publish fails the job", () => {
-    fakeTool(join(root, "real"), "npm", 3);
+  it("exits 1 and says so when the real pnpm is killed by a signal", () => {
+    fakeKilledTool(join(root, "real"), "pnpm");
 
-    expect(pnpm("publish", "pkg.tgz", "--access", "public").status).toBe(3);
+    const result = pnpm("install");
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("was killed by SIGKILL");
+  });
+
+  it("exits non-zero when the staged publish fails so the job fails", () => {
+    env["RELEASE_TOOLS_DIR"] = installFakeReleaseTools(true);
+
+    const result = pnpm("publish", writeTarball(), "--access", "public");
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("registry said no");
+    expect(logged()).toEqual([]);
+  });
+
+  it("reports the missing release tools instead of falling back to the npm CLI", () => {
+    const result = pnpm("publish", writeTarball(), "--access", "public");
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("RELEASE_TOOLS_DIR is not set");
+    expect(logged()).toEqual([]);
   });
 
   it("stops before calling anything when the invocation is one it does not understand", () => {

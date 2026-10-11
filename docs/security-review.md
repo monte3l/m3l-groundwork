@@ -72,6 +72,18 @@ fails the run rather than passing silently.
 
 ## Open advisories in the pinned npm (release-tools lockfiles)
 
+> [!NOTE]
+> **Resolved for this repository on 2026-10-11, still open for the `publishing`
+> pack.** This repository's release job no longer installs the npm CLI. It
+> stages through `libnpmpublish` (`bin/npm-stage-publish.mjs`), an ordinary
+> dependency whose tree has none of these advisories: `npm audit` reports 0,
+> brace-expansion resolves to 5.0.12, ip-address to 10.7.3 and
+> http-cache-semantics to 4.3.0, and undici and postcss-selector-parser are not
+> in the tree. The 12 alerts in `.github/release-tools/package-lock.json` close
+> with that change. The pack's copy keeps the npm CLI until the new publisher
+> has staged one real release; the text below is the analysis for those 12 and
+> for the history of this repository's 12.
+
 **First written 2026-10-01, updated 2026-10-11.** Dependabot has 24 open alerts
 in the release-tools lockfiles, 12 in `.github/release-tools/package-lock.json`
 and the same 12 in

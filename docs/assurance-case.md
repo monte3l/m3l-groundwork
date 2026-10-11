@@ -87,7 +87,7 @@ dependency -- there isn't one (`packages/cli/package.json`'s
 
 [^pack-publish]:
     `publish` runs no repository code beyond the changesets
-    CLI and a thin `pnpm`→`npm stage publish` shim, and installs with
+    CLI and a thin `pnpm`→`libnpmpublish` staged-publish shim, and installs with
     `--ignore-scripts`.
 
 [^claude-workflows]:
@@ -188,6 +188,12 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
 
 ## Residual risks
 
+- **The release job owns its OIDC-to-npm token exchange.** The publish step
+  runs `bin/npm-stage-publish.mjs`, which calls `libnpmpublish` directly
+  instead of the npm CLI and does the GitHub OIDC exchange itself, ported from
+  npm's `lib/utils/oidc.js`. It fails closed on every error and never prints a
+  token, but it must be re-checked against npm whenever trusted publishing
+  changes upstream. Reason for the swap: `docs/security-review.md`.
 - **A malicious pack or template contributor** is still mitigated only by
   code review, not by sandboxing -- `templates/core`/`templates/packs/`
   content is trusted because it's part of this reviewed repository, and
