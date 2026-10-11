@@ -65,6 +65,5 @@ workerd's postinstall-fetched binaries) against
 `.github/deploy-tools/wrangler.jsonc`, authenticating with a Cloudflare API
 token held in the `docs-cloudflare` GitHub environment (`main`-only, no
 GitHub App: Cloudflare's Git-integration path, Workers Builds, needs its own
-GitHub App installed with repo access, and CLAUDE.md's Known-gaps list
-already flagged that app for tighter scoping -- direct-upload from Actions
-avoids installing it at all).
+GitHub App installed with repo access -- direct-upload from Actions avoids
+installing it at all).

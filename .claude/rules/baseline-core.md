@@ -33,7 +33,9 @@ paths:
 - **Most hook and skill tests live in `packages/cli/tests/templates/`**
   (run them with `pnpm vitest run packages/cli/tests/templates`), but a hook
   that has a root twin is tested from `packages/cli/tests/` itself:
-  `guard-hub-src-writes` and `guard-hub-bash-writes` (its Bash scan),
-  `post-edit-verify`, `nudge-invariants` and `verify-steps`. Run those too when you change a twinned file.
+  `guard-hub-src-writes` (its Bash scan has its own
+  `guard-hub-bash-writes.test.ts`), `post-edit-verify` and `verify-steps`.
+  Run those too when you change a twinned file. `nudge-invariants` is
+  root-only and has no `templates/core` twin; its test sits in the same folder.
 - **Dispatch `baseline-impact-reviewer`** alongside `code-reviewer` on any
   diff that touches this tree.

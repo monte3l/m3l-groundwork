@@ -152,10 +152,10 @@ of the following:
 
 - an internal link whose target path does not exist in the repository, or
   escapes it
-- a broken same-page anchor, or a cross-page anchor with no matching heading,
-  including an anchor into a non-page repo file such as
-  `CLAUDE.md#some-heading` (an anchor into a non-markdown file cannot be
-  verified, so it fails too)
+- a broken same-page anchor, or a cross-page anchor with no matching heading.
+  An anchor into a repo markdown file that is not a page (for example
+  `CLAUDE.md#releases`) is checked against that file's headings; an anchor
+  into a non-markdown file always fails, because it cannot be verified
 - a link scheme other than `http:`, `https:` or `mailto:`
 - an italic `_x_` or `*x*` emphasis span in any page source (use bold)
 - markdown outside the renderer's supported subset, which it throws on
