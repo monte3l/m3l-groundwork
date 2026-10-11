@@ -157,7 +157,7 @@ let npmToken;
 try {
   const exchange = await npmFetch.json(
     new URL(
-      `/-/npm/v1/oidc/token/exchange/package/${manifest.name.replace("/", "%2f")}`,
+      `/-/npm/v1/oidc/token/exchange/package/${manifest.name.replace(/\//g, "%2f")}`,
       registry,
     ),
     { registry, method: "POST", [authKey]: idToken },
