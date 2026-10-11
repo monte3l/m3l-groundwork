@@ -112,7 +112,7 @@ either `{}` or read-only (`contents: read` in `ci`, `dependency-review` and
 `labeler`; `read-all` in `scorecard`), then widened per job. `dependabot.yml`
 covers `github-actions` and three pinned-tool npm directories
 (`tools/release`,
-`templates/packs/publishing/files/.github/release-tools` and
+`templates/packs/publishing/files/tools/release` and
 `tools/deploy`). Community files at the root: `README`,
 `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, `GOVERNANCE`, `ROADMAP`,
 `LICENSE`, plus `.editorconfig` and `.gitattributes` (check with `ls -a`;

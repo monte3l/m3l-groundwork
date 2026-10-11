@@ -75,7 +75,7 @@ fails the run rather than passing silently.
 **First written 2026-10-01, updated 2026-10-11.** Dependabot has 24 open alerts
 in the release-tools lockfiles, 12 in `tools/release/package-lock.json`
 and the same 12 in
-`templates/packs/publishing/files/.github/release-tools/package-lock.json` (the
+`templates/packs/publishing/files/tools/release/package-lock.json` (the
 copy the `publishing` pack ships to users). All 24 are `inBundle` dependencies
 inside the pinned `npm` package (12.2.0 in both lockfiles, read from each
 lockfile's `node_modules/npm` entry; this repository's own lockfile moved from
@@ -151,7 +151,7 @@ a version as patched.
 npm view npm dist-tags --json
 grep -A2 '"node_modules/npm"' \
   tools/release/package-lock.json \
-  templates/packs/publishing/files/.github/release-tools/package-lock.json
+  templates/packs/publishing/files/tools/release/package-lock.json
 
 # 2. What does that release actually bundle? Check EVERY copy, not only the
 #    hoisted one: a nested copy could stay vulnerable beside a patched one.

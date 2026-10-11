@@ -28,7 +28,7 @@ gates (`check-dts-deps.mjs`, `check-license-headers.mjs`) plus a
 - **`check-publish-version.mjs` is deliberately not a verify step.** It runs
   inside `release.yml`'s pack job only, because on a release branch the
   version always equals the one just published.
-- **The shipped `.github/release-tools/` lockfile pins npm.** The security
+- **The shipped `tools/release/` lockfile pins npm.** The security
   note in `adoptNotes` carries a dated advisory analysis: re-check it, and
   update the date, whenever the pin moves.
 - **The workflow file must stay named `release.yml`** in an emitted project:

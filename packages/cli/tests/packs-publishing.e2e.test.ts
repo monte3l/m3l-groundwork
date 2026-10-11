@@ -87,7 +87,7 @@ describe("publishing pack end-to-end", () => {
 
       const filesToCheck = [
         join(".github", "workflows", "release.yml"),
-        join(".github", "release-tools", "package.json"),
+        join("tools", "release", "package.json"),
         join(".changeset", "config.json"),
         "REUSE.toml",
         join("bin", "check-publish-version.mjs"),

@@ -191,13 +191,13 @@ jobs:
       # a self-hosted runner with an older cached 24.x does not. Pinned to an
       # exact version, not a range or `latest`: this job holds the OIDC token,
       # and an unpinned package-manager install is exactly what OpenSSF
-      # Scorecard's Pinned-Dependencies check flags. `.github/release-tools/`
+      # Scorecard's Pinned-Dependencies check flags. `tools/release/`
       # pins the exact tarball via its committed lockfile's integrity hash, and
       # `npm ci` verifies the install against it -- bumping the pin is then
       # a normal reviewed PR (a lockfile diff), not a hand-edited version
       # string.
-      - run: npm ci --ignore-scripts --prefix .github/release-tools
-      - run: echo "$GITHUB_WORKSPACE/.github/release-tools/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: npm ci --ignore-scripts --prefix tools/release
+      - run: echo "$GITHUB_WORKSPACE/tools/release/node_modules/.bin" >> "$GITHUB_PATH"
       # changesets publishes through `pnpm publish` in a pnpm-managed
       # project. This puts a `pnpm` ahead of the real one that forwards
       # everything except `publish`, which goes to `npm stage publish`
