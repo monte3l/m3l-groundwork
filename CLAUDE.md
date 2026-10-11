@@ -608,8 +608,8 @@ actually running, treat this section as an unenforced checklist rather than
 an enforced gate until confirmed otherwise.
 
 **An installed Claude Code mod is a second silent override, below managed
-settings.** Claude Code 2.1.287 added mods (plugin-shipped TypeScript
-handlers). Per the
+settings.** Mods (plugin-shipped TypeScript handlers) are on by default from
+Claude Code 2.1.287 in the terminal (2.1.286 in the desktop app). Per the
 [mods events guide](https://code.claude.com/docs/en/plugins/mods/events), a mod
 that handles `tool.check` can approve a call that a `PreToolUse` hook outside
 managed settings blocked, and project `PreToolUse` hooks run
@@ -706,8 +706,9 @@ moving `release.yml` breaks npm's trusted publisher**; publishes are
 step that needs a live 2FA code -- the git tag and GitHub Release exist before the package is
 actually installable); the version PR authenticates as a GitHub App, not
 `GITHUB_TOKEN`, because `main`'s ruleset requires checks a bot-token PR
-can't trigger; and a plugin-only change needs no changeset or release step
-at all.
+can't trigger; and a plugin-only change needs no changeset, but it reaches
+marketplace users only once `plugin.json`'s `version` changes, which happens
+with the next CLI release.
 
 Full detail -- the publish flow, the prerelease/GA plan, the one-time npm
 and GitHub App setup, `bin/pnpm-publish-shim.mjs`'s OIDC workaround, and the
@@ -887,5 +888,7 @@ hard-coded and no test pins it).
 
   Two caveats remain. New repositories still default to the "GitHub recommended"
   configuration, which leaves Dependabot security updates `not_set`. And the
-  `m3l-groundwork` configuration leaves secret-scanning validity checks and
-  non-provider patterns off, which "GitHub recommended" turns on.
+  `m3l-groundwork` configuration enables secret-scanning validity checks and
+  non-provider patterns, yet the repository itself reports both as `disabled`
+  (`gh api repos/monte3l/m3l-groundwork --jq .security_and_analysis`, checked
+  2026-10-11); the configuration and the effective state disagree.

@@ -44,9 +44,12 @@ moment the package is actually live**; see "staged, not direct" below.
 back out of its own artifact (never rebuilt), runs
 `actions/attest-build-provenance` on it, and attaches it to the GitHub
 Release with `gh release upload` -- a second, independent proof alongside
-npm provenance itself. A plugin-only change needs no release step at all: it
-is live for marketplace users (`/plugin marketplace update`) the moment it
-lands on `main`; `plugin.json`'s version just trails the CLI's for display.
+npm provenance itself. A plugin-only change needs no changeset of its own, but
+`plugin.json` pins a `version`, and Claude Code does not deliver new commits
+under an unchanged version string
+([plugin versions](https://code.claude.com/docs/en/plugins/loading.md)). It
+reaches marketplace users (`/plugin marketplace update`) with the next
+release that bumps that version, which tracks the CLI's.
 
 **Packs have no release of their own.** `templates/packs/<name>/` ships
 inside the CLI tarball, so a user-visible change to one pack is a CLI change
@@ -144,8 +147,8 @@ describes).
 - **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to `npm stage
 publish`.** Two stacked reasons, not one: changesets publishes through
   `pnpm publish` in a pnpm workspace, and pnpm 12's native publish is
-  rejected by npmjs.com's OIDC exchange (403 "OIDC permission denied"; still
-  unfixed through pnpm 12.5.1 when this was written) -- and separately, a
+  rejected by npmjs.com's OIDC exchange (403 "OIDC permission denied"; seen
+  through pnpm 12.5.1 in September 2026; not re-tested since) -- and separately, a
   _direct_ `npm publish` would get the identical 403 for the unrelated
   staged-only reason above. The shim translates only changesets' exact
   invocation and refuses any flag it does not recognise; everything else

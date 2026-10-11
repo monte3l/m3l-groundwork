@@ -111,9 +111,8 @@ paths:
   is fine here, unlike the verify lanes, because the file runs no verify
   group and so never reaches `gate-lane-parity`; keep it that way (no
   `verify.mjs`, `--group` or `--step` anywhere in it, comments included).
-  The runner needs several GiB of free memory: the baseline's `knip` step
-  fails with `RangeError: Array buffer allocation failed` in `oxc-parser` on
-  a 4 GB machine, which GitHub's runners are well above.
+  The runner needs several GiB of free memory for the baseline's `knip`
+  step, which GitHub's runners have.
   Each matrix leg uploads `results.tsv` and `logs/` from `$RUNNER_TEMP/soak` as
   the artifact `soak-<os>`, kept 14 days (`if-no-files-found: warn`).
 - **`claude.yml` runs Anthropic's official `anthropics/claude-code-action`**

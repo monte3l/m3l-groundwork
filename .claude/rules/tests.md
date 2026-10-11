@@ -117,8 +117,8 @@ throw "a string";
   list and cover any new ternary's non-`Error` arm in the same edit.
 - **A suite failing while a spoke fan-out is running may be contention, not
   a regression — re-run it alone first.**
-- Use `pnpm exec vitest`; a bare `npx vitest` can fail to resolve
-  `@vitest/coverage-v8` under pnpm.
+- Use `pnpm exec vitest`, not a bare `npx vitest`, so the project's own
+  pinned binary runs.
 - **Brace void-union handler bodies** — a handler typed `void |
 Promise<void>` whose arrow body returns a value fails typecheck (TS2322);
   the leniency applies only to a return type of _exactly_ `void`. Wrap the
