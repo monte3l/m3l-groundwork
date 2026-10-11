@@ -26,8 +26,11 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 /**
- * Options TypeScript 6.0 deprecated. `removedIn` is the major that drops them
- * (`outFile` and `moduleResolution: classic` already went in 6.0).
+ * Options TypeScript 6.0 deprecated. `removedIn` is the major that drops them.
+ * `outFile` and `moduleResolution: classic` are `removedIn: 6` because the
+ * TypeScript 6.0 release notes call them removed; `tsc` 6.0.3 itself still
+ * accepts both behind `ignoreDeprecations: "6.0"` and warns that they stop
+ * functioning in 7.0.
  * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html
  * @public Not imported anywhere else in this project -- exported only for
  * m3l-groundwork's own upstream parity check (see the file header above).
