@@ -115,7 +115,7 @@ breaks publishing** until it is reconfigured on npmjs.com. The version job's
 PR is opened with a GitHub App installation token, not the default
 `GITHUB_TOKEN` (see "The version PR authenticates as a GitHub App" below),
 so despite an earlier version of this doc, the repo's own
-_Allow GitHub Actions to create and approve pull requests_ toggle
+**Allow GitHub Actions to create and approve pull requests** toggle
 (`can_approve_pull_request_reviews`) is not actually needed for that step --
 see CLAUDE.md's "Known gaps" for turning it off. The trusted publisher's
 **allowed actions is staged-only** (`npm stage publish`, no direct
@@ -169,7 +169,7 @@ describes).
   version.
 - **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to `npm stage
 publish`.** Changesets publishes through
-  `pnpm publish` in a pnpm workspace, and a _direct_ `npm publish` is not
+  `pnpm publish` in a pnpm workspace, and a **direct** `npm publish` is not
   allowed by the staged-only trusted publisher (see above). The shim translates only changesets' exact
   invocation and refuses any flag it does not recognise; everything else
   passes through to pnpm.

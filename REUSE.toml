@@ -75,6 +75,7 @@ path = [
   "REUSE.toml",
   "LICENSES/**",
   ".gitleaks.toml",
+  ".github/CODEOWNERS",
 ]
 SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
 SPDX-License-Identifier = "MIT"

@@ -16,7 +16,7 @@ paths:
   believe it guards anything** — delete the guard clause, invert the flag,
   drop a wrapper, and confirm the test fails.
 - **A surviving mutant is a question, not automatically a defect — and a
-  mutation that never applied is not a survivor at all.** An _equivalent_
+  mutation that never applied is not a survivor at all.** An **equivalent**
   mutant (both branches agree on every reachable input under a
   runtime-enforced invariant) needs a note, not a new test; verify a
   scripted mutation actually changed the file before trusting a "survivor".
@@ -60,7 +60,7 @@ paths:
   fatal once a value import (a data-only enum) resolves to `undefined` at
   module-load time. Default to an `importOriginal`-preserving async factory.
 - **A dynamic-`import()`-only step module can mock with a plain `const
-stepMock = vi.fn()`; once production code adds a _static_ import from that
+stepMock = vi.fn()`; once production code adds a static import from that
   module, move the mock to `vi.hoisted(() => vi.fn())`** — a plain `const`
   initializes after `vi.mock` calls are hoisted.
 - **Mock a port with generic methods by inference, not `extends`** — a
@@ -111,7 +111,7 @@ throw "a string";
   `pnpm test:coverage` text table.** The v8 text reporter omits files that
   are 100% on every metric, so an absent file in the table is not an
   uncovered file.
-- **A fix round adding branches isn't done until the _gated_ run passes** —
+- **A fix round adding branches isn't done until the gated run passes** —
   per-file thresholds run only under `test:coverage`, never a scoped
   `vitest` call. Trace the gap from `coverage-final.json`'s uncovered-line
   list and cover any new ternary's non-`Error` arm in the same edit.
@@ -121,7 +121,7 @@ throw "a string";
   pinned binary runs.
 - **Brace void-union handler bodies** — a handler typed `void |
 Promise<void>` whose arrow body returns a value fails typecheck (TS2322);
-  the leniency applies only to a return type of _exactly_ `void`. Wrap the
+  the leniency applies only to a return type of **exactly** `void`. Wrap the
   body: `() => { arr.push(v); }`.
 - **Never explicitly parameterize `vi.spyOn<T, S>`'s return type** — an
   explicit type argument resolves against the first overload regardless of

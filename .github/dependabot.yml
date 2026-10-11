@@ -16,6 +16,11 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "ci"
+    # Same week-long wait the org's other repositories use for action bumps;
+    # a freshly published action version is the supply-chain window Dependabot's
+    # default cooldown of 0 leaves open.
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
 
