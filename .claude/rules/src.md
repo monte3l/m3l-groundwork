@@ -49,7 +49,9 @@ paths:
   value and have both derive the result through a single shared helper —
   never let each capture its own copy and re-derive independently, which
   drifts silently.
-- **Never put a bare URL in TSDoc.** Reference sibling modules with `{@link
+- **Never put a URL of any kind in TSDoc**, bare or as an `@see`/`@link`
+  target; `tsdoc-no-bare-url.test.ts` flags any `http(s)://` inside a doc
+  block. Reference sibling modules with `{@link
 Symbol}` or a backticked relative path. Nothing validates link targets, so an
   invented host survives review by eye — grep new source for `http` before
   committing.

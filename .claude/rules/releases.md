@@ -77,9 +77,37 @@ land for the rest of the series, and any further API change waits for a
 `1.1` after GA. Leave `rc` mode with `pnpm changeset pre exit` plus a normal
 version PR once the promotion checklist is met, then drop `@rc` from the
 README (and repoint the `next` dist-tag, and any marketplace channel, to the
-stable release -- see the release plan for the full GA checklist).
+stable release -- see the GA promotion checklist below).
 Changesets itself warns against sitting in pre mode on the default branch
 indefinitely.
+
+**GA promotion checklist.** Leave `rc` only when every item is true; each
+one has a command or a file that proves it.
+
+1. **The public API is unchanged since the first `rc`.** No `minor` or
+   `major` changeset has landed (`.changeset/` and `git log` since the first
+   `1.0.0-rc.N` tag), and every surface in the README's "Versioning policy"
+   still matches the code.
+2. **`main` is green and the last `rc` works from the registry.** The
+   `verify` aggregator passes on `main`, and a manual `soak.yml` run against
+   the published `rc` passes on Linux x64, Linux arm64 and macOS.
+3. **The last `rc` is installable.** `npm view @monte3l/groundwork dist-tags`
+   shows it on `rc`, so its `npm stage approve` (a live 2FA code, never run by
+   the workflow) is done.
+4. **No open high-severity finding.** There is no open `security-audit.yml`
+   issue, no open high-severity Dependabot or code-scanning alert, and the
+   open npm bundled-dependency advisories in `docs/security-review.md` are
+   either fixed upstream or still recorded there as accepted.
+5. **The plugin and the CLI agree.** `pnpm check:plugin-version` passes, so
+   marketplace users get the stable plugin with the stable CLI.
+6. **The docs say what the live settings are.** `pnpm verify` passes (the
+   `docs` step included), and the read-only `gh api` commands in
+   `docs/github-blueprint.md` still return the values that file states.
+
+Then run the exit: `pnpm changeset pre exit`, merge the version PR, approve
+the staged publish, and in the same release drop `@rc` from the README and
+repoint the `next` dist-tag and any marketplace channel to the stable version.
+`latest` moves off the `0.0.0` placeholder on that first stable publish.
 
 **One-time setup, done by hand, that this design depends on.** npm cannot
 configure a trusted publisher for a package that does not exist yet, so

@@ -71,17 +71,17 @@ real acceptance test and has caught real bugs unit tests missed (see
 By signing off a commit (`git commit -s`), you certify the
 [Developer Certificate of Origin](https://developercertificate.org/): that
 you wrote the change, or otherwise have the right to submit it under this
-project's license. This is enforced locally by `commitlint.config.js`'s
-`trailer-exists` rule -- including on a local merge or revert commit made
-without `-s`, not just an ordinary commit -- but it isn't re-checked on a
-squash merge or the release bot's own commits (neither passes through the
-local hook), which is why
-[`pull_request_template.md`](.github/pull_request_template.md)'s checklist
-also asks for it. The hook requires the trailer on every message
-commitlint's default ignores skip (merge, revert, fixup!, squash!, amend!,
-semver release subjects), so a local `git merge`, `git revert`, or
-`git commit --fixup`/`--squash` needs `--signoff` (or `-s`) for the hook to
-accept it.
+project's license. This is enforced locally by `commitlint.config.js`'s `trailer-exists` rule,
+run through the `commit-msg` hook (`bin/lint-commit.mjs`). The rule alone skips
+the message kinds commitlint ignores by default (merge, revert, fixup!,
+squash!, amend!, semver release subjects), so the hook re-checks those itself:
+a local `git merge`, `git revert` or `git commit --fixup`/`--squash` needs
+`--signoff` (or `-s`) too. The trailer must also carry a non-empty value, and
+`git` must be on `PATH`, because the check runs `git interpret-trailers`. It
+isn't re-checked on a squash merge or the release bot's own commits (neither
+passes through the local hook), which is why
+[`pull_request_template.md`](.github/pull_request_template.md)'s checklist also
+asks for it.
 
 ## Coding standards
 

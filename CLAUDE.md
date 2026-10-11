@@ -21,9 +21,10 @@ Either way it then runs a live guidance pass over official TypeScript and
 Anthropic sources so the result reflects current upstream recommendations
 rather than what was true when this repo last shipped.
 
-`templates/packs/` adds optional bundles on top of the baseline -- artifacts
-cut from `templates/core` purely to hold its hard caps, not because they
-failed the generalization test. The CLI installs a pack directly in fresh
+`templates/packs/` adds optional bundles on top of the baseline, each for one of
+two reasons: an artifact was cut from `templates/core` purely to hold its hard
+caps (it passed the generalization test), or it applies to only some project
+kinds. The CLI installs a pack directly in fresh
 mode (`--pack <name>`); in adopt mode it only surveys which packs apply and
 stages their payload at `.groundwork/packs/`, and `/customize`'s Step 0
 confirms which packs to install and Step 3 (Round 1) installs the confirmed ones from there -- the same fresh/adopt split as
@@ -473,8 +474,9 @@ bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
 substantially assisted a commit. The release workflow's version PR and commit
 use `chore(release): version packages` so they satisfy the same convention.
 Every commit also needs a DCO `Signed-off-by:` trailer (`git commit -s`),
-enforced by the same hook via `commitlint.config.js`'s `trailer-exists` rule
--- see [`CONTRIBUTING.md`](CONTRIBUTING.md#developer-certificate-of-origin).
+enforced by the same hook via `commitlint.config.js`'s `trailer-exists` rule,
+which `bin/lint-commit.mjs` extends to merge, revert and fixup!/squash! messages
+and to a non-empty value -- see [`CONTRIBUTING.md`](CONTRIBUTING.md#developer-certificate-of-origin).
 This is local-only enforcement: a squash merge and the release bot's own
 commit don't pass through the hook, which is why the PR template also
 carries a sign-off checkbox.
@@ -609,7 +611,8 @@ an enforced gate until confirmed otherwise.
 
 **An installed Claude Code mod is a second silent override, below managed
 settings.** Mods (plugin-shipped TypeScript handlers) are on by default from
-Claude Code 2.1.287 in the terminal (2.1.286 in the desktop app). Per the
+Claude Code 2.1.286 (the upstream mods admin page documents no terminal or
+desktop split). Per the
 [mods events guide](https://code.claude.com/docs/en/plugins/mods/events), a mod
 that handles `tool.check` can approve a call that a `PreToolUse` hook outside
 managed settings blocked, and project `PreToolUse` hooks run
@@ -758,8 +761,9 @@ done.
 
 `pnpm verify` passes here; `pnpm test:e2e` passes if the change touched
 `packages/cli/src/`, `templates/core/`, or the `/customize` skill (CI runs it on
-every PR and `verify` gates on it, but no local pre-push hook does, so run it
-before pushing); the
+every PR except documentation-only ones, where its steps are skipped, and
+`verify` gates on it, but no local pre-push hook does, so run it before
+pushing); the
 baseline's caps (above) still hold if a `.claude/` file was added or
 removed from `templates/core`. Anything that changes what the CLI's tarball
 ships or how it locates its data is proved by `pack.e2e.test.ts`, not by
