@@ -6,7 +6,7 @@ name: Docs
 # What this does: builds this repo's own docs site (bin/build-docs.mjs) and
 # deploys it to Cloudflare Workers Static Assets at
 # https://groundwork.monte3l.com, on a Custom Domain
-# (.github/deploy-tools/wrangler.jsonc). Runs on every push to `main` and on
+# (tools/deploy/wrangler.jsonc). Runs on every push to `main` and on
 # manual dispatch -- not on every PR, since a PR's docs changes are already
 # checked by `pnpm verify`'s `docs` step (bin/build-docs.mjs --check, in the
 # `build` group); this workflow is what actually ships the result.
@@ -108,11 +108,11 @@ jobs:
       # bundling, no `wrangler dev`) needs neither esbuild's nor workerd's
       # postinstall-fetched binaries -- verified locally before adding this
       # step. Same pattern as release.yml's `npm ci --ignore-scripts --prefix
-      # .github/release-tools`.
-      - run: npm ci --ignore-scripts --prefix .github/deploy-tools
+      # tools/release`.
+      - run: npm ci --ignore-scripts --prefix tools/deploy
 
       - name: Deploy to Cloudflare
-        working-directory: .github/deploy-tools
+        working-directory: tools/deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

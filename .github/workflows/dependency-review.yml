@@ -32,7 +32,7 @@ jobs:
         with:
           fail-on-severity: high
           # BlueOak-1.0.0, Artistic-2.0 and CC-BY-3.0 cover npm's own CLI
-          # dependency tree (.github/release-tools/package-lock.json,
+          # dependency tree (tools/release/package-lock.json,
           # "Releases" in CLAUDE.md) -- npm itself is Artistic-2.0, and most
           # of its own deps (glob, minimatch, lru-cache, tar, ...) are
           # BlueOak-1.0.0; spdx-exceptions' data file is CC-BY-3.0. All
@@ -40,7 +40,7 @@ jobs:
           # out to it in a CI job that installs with --ignore-scripts.
           allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0, BlueOak-1.0.0, Artistic-2.0, CC-BY-3.0
           # Per-package, not per-license: `wrangler`'s dependency tree
-          # (.github/deploy-tools/package-lock.json, docs/cloudflare-docs.md)
+          # (tools/deploy/package-lock.json, docs/cloudflare-docs.md)
           # pulls in `sharp`'s prebuilt libvips binaries, which carry
           # LGPL-3.0-or-later (some combined with Apache-2.0/MIT). LGPL isn't
           # added to allow-licenses above -- that would accept it repo-wide --

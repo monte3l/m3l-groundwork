@@ -5,7 +5,7 @@
     "@commitlint/types"
   ],
   // wrangler is installed on the fly by docs.yml's deploy job from
-  // .github/deploy-tools, never a dependency of this workspace; knip 6.38+
+  // tools/deploy, never a dependency of this workspace; knip 6.38+
   // flags the node_modules/.bin/wrangler path in that workflow.
   "ignoreBinaries": ["verify", "build", "wrangler"],
   "workspaces": {

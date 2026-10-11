@@ -196,10 +196,10 @@ jobs:
       # Pinned-Dependencies check (scorecard.yml) flags any unpinned
       # package install the same way it flags an unpinned Action. A bare
       # `npm install` here would only pin the VERSION string; the committed
-      # .github/release-tools/package-lock.json pins every tarball by its
+      # tools/release/package-lock.json pins every tarball by its
       # sha512 integrity hash, and `npm ci` verifies the install against it.
       # Dependabot has an npm entry for this directory (see dependabot.yml).
-      - run: npm ci --ignore-scripts --prefix .github/release-tools
+      - run: npm ci --ignore-scripts --prefix tools/release
       # changesets publishes through `pnpm publish` in a pnpm workspace. This
       # puts a `pnpm` ahead of the real one that forwards everything except
       # `publish`, which goes to a staged publish (see
@@ -216,7 +216,7 @@ jobs:
       - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
         id: publish
         env:
-          RELEASE_TOOLS_DIR: ${{ github.workspace }}/.github/release-tools
+          RELEASE_TOOLS_DIR: ${{ github.workspace }}/tools/release
         with:
           pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
       # OpenSSF Best Practices' `signed_releases` criterion is met by npm

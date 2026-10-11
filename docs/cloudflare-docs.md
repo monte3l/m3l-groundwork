@@ -50,7 +50,7 @@ file is the one-time setup and later-projects runbook.
    ```
 4. **Confirm no existing DNS record** collides with the subdomain:
    `dig groundwork.monte3l.com` should return nothing before the first
-   deploy. A Custom Domain (`.github/deploy-tools/wrangler.jsonc`'s
+   deploy. A Custom Domain (`tools/deploy/wrangler.jsonc`'s
    `routes`) fails to attach if the hostname already carries a CNAME.
 5. **Zone-wide security settings** (Cloudflare dashboard, `monte3l.com`
    zone, all available on the Free plan):
@@ -106,14 +106,14 @@ than this rollout's scope covers.
 
 ## Adding project #2's docs site
 
-`.github/deploy-tools/package.json` carries an `overrides` floor for two packages. `undici: ^7.29.1`, because wrangler 4.141.0's miniflare resolves an undici with open advisories; drop it once miniflare itself requires undici >= 7.29.1. `sharp: ^0.35.5`, because miniflare pins sharp 0.35.4 exactly, which carries GHSA-wq5f-xc86-pv6w (fixed in 0.35.5); drop it once miniflare itself requires sharp >= 0.35.5.
+`tools/deploy/package.json` carries an `overrides` floor for two packages. `undici: ^7.29.1`, because wrangler 4.141.0's miniflare resolves an undici with open advisories; drop it once miniflare itself requires undici >= 7.29.1. `sharp: ^0.35.5`, because miniflare pins sharp 0.35.4 exactly, which carries GHSA-wq5f-xc86-pv6w (fixed in 0.35.5); drop it once miniflare itself requires sharp >= 0.35.5.
 
 This setup is deliberately local to this repo for now (see this repo's
 `CLAUDE.md`, "Known gaps" analog for the docs pipeline). Until it's
 extracted into a shared `monte3l/.github` repo, stand up a new project's
 site by copying the pattern:
 
-1. Copy `.github/deploy-tools/` and `.github/workflows/docs.yml` into the
+1. Copy `tools/deploy/` and `.github/workflows/docs.yml` into the
    new repo, renaming the Worker (`wrangler.jsonc`'s `name`), the Custom
    Domain hostname, and the GitHub environment name if desired.
 2. Repeat the one-time setup above for the new repo: a new API token (or

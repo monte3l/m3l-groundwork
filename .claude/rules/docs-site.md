@@ -4,7 +4,7 @@ paths:
   - "bin/lib/markdown.mjs"
   - "bin/lib/site-headers.mjs"
   - ".github/workflows/docs.yml"
-  - ".github/deploy-tools/**"
+  - "tools/deploy/**"
 ---
 
 # Docs site rules (`build-docs.mjs`, the markdown renderer, `docs.yml`)
@@ -58,11 +58,11 @@ per line). `--out <dir>` (plain, no `--check`) writes the real site;
 `docs.yml`'s `build` job runs it with no `pnpm install` first, since the
 builder is Node-builtins-only.
 
-The `deploy` job then runs `wrangler deploy` from `.github/deploy-tools/` (a
+The `deploy` job then runs `wrangler deploy` from `tools/deploy/` (a
 pinned, lockfile-verified `wrangler`, installed with `--ignore-scripts` --
 verified locally that an assets-only deploy needs neither esbuild's nor
 workerd's postinstall-fetched binaries) against
-`.github/deploy-tools/wrangler.jsonc`, authenticating with a Cloudflare API
+`tools/deploy/wrangler.jsonc`, authenticating with a Cloudflare API
 token held in the `docs-cloudflare` GitHub environment (`main`-only, no
 GitHub App: Cloudflare's Git-integration path, Workers Builds, needs its own
 GitHub App installed with repo access -- direct-upload from Actions avoids

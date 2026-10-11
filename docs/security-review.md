@@ -85,7 +85,7 @@ fails the run rather than passing silently.
 > for the history of this repository's 12.
 
 **First written 2026-10-01, updated 2026-10-11.** Dependabot has 24 open alerts
-in the release-tools lockfiles, 12 in `.github/release-tools/package-lock.json`
+in the release-tools lockfiles, 12 in `tools/release/package-lock.json`
 and the same 12 in
 `templates/packs/publishing/files/.github/release-tools/package-lock.json` (the
 copy the `publishing` pack ships to users). All 24 are `inBundle` dependencies
@@ -162,7 +162,7 @@ a version as patched.
 # 1. What is the newest npm, and is the current pin still the best choice?
 npm view npm dist-tags --json
 grep -A2 '"node_modules/npm"' \
-  .github/release-tools/package-lock.json \
+  tools/release/package-lock.json \
   templates/packs/publishing/files/.github/release-tools/package-lock.json
 
 # 2. What does that release actually bundle? Check EVERY copy, not only the
@@ -180,7 +180,7 @@ gh api --paginate 'repos/monte3l/m3l-groundwork/dependabot/alerts?state=open&per
 ```
 
 If a patched release exists, merge the Dependabot PR for
-`.github/release-tools` (or bump `npm` in its `package.json` and regenerate
+`tools/release` (or bump `npm` in its `package.json` and regenerate
 its lockfile), then make the same bump in the `publishing` pack's copy so
 shipped output stays in step. Dependabot opens one PR per lockfile directory,
 so pair the two by hand; both bump `npm` and only the pack's touches shipped
@@ -209,7 +209,7 @@ flow was not traced.
 ## Advisory in the docs deploy tooling (deploy-tools lockfile)
 
 **Dated 2026-10-08; fixed by an override (see "The fix" below).** Dependabot opened one
-alert in `.github/deploy-tools/package-lock.json`, the lockfile that pins the wrangler
+alert in `tools/deploy/package-lock.json`, the lockfile that pins the wrangler
 the docs workflow's deploy job installs. That job holds a Cloudflare API token
 (see [`cloudflare-docs.md`](cloudflare-docs.md)).
 
@@ -232,7 +232,7 @@ runs. It was published
   through a dynamic `import("sharp")` at the moment a request reaches them.
 - The deploy is `wrangler deploy --config wrangler.jsonc` on an assets-only
   Worker: no Images binding, no `wrangler dev`, and no request handled locally
-  (`.github/workflows/docs.yml`, `.github/deploy-tools/wrangler.jsonc`).
+  (`.github/workflows/docs.yml`, `tools/deploy/wrangler.jsonc`).
 - A dry run of that command (`wrangler deploy --dry-run`) with wrangler 4.141.0
   and the lockfile as it stood then (sharp 0.35.4), run on 2026-10-08 in a scratch directory with no
   credentials and with module-load hooks for both CommonJS and ESM, loaded
@@ -248,7 +248,7 @@ miniflare 5.20261006.0-alpha, the latest releases on 2026-10-08, still resolves
 sharp 0.35.4, because miniflare pins it exactly.
 
 **The fix.** Unlike the npm-bundled packages above, sharp is an ordinary
-dependency, so an `overrides` entry works. `.github/deploy-tools/package.json`
+dependency, so an `overrides` entry works. `tools/deploy/package.json`
 now overrides `sharp` to `^0.35.5` beside the existing `undici` entry, and the
 lockfile resolves sharp 0.35.5 (with its platform packages and libvips 1.3.4)
 while wrangler stays at 4.141.0. Checked on 2026-10-08: every changed

@@ -58,7 +58,7 @@ export default defineConfig(
       // or linted; see .gitignore.
       "_site/**",
       // Wrangler's local cache/state dir -- see .gitignore.
-      ".github/deploy-tools/.wrangler/**",
+      "tools/deploy/.wrangler/**",
     ],
   },
   js.configs.recommended,

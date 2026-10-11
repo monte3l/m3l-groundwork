@@ -111,9 +111,9 @@ comment, every job has a `timeout-minutes`, and top-level `permissions` are
 either `{}` or read-only (`contents: read` in `ci`, `dependency-review` and
 `labeler`; `read-all` in `scorecard`), then widened per job. `dependabot.yml`
 covers `github-actions` and three pinned-tool npm directories
-(`.github/release-tools`,
+(`tools/release`,
 `templates/packs/publishing/files/.github/release-tools` and
-`.github/deploy-tools`). Community files at the root: `README`,
+`tools/deploy`). Community files at the root: `README`,
 `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, `GOVERNANCE`, `ROADMAP`,
 `LICENSE`, plus `.editorconfig` and `.gitattributes` (check with `ls -a`;
 GitHub's community profile does not list them). Issue forms and the PR
