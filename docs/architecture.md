@@ -125,7 +125,7 @@ whatever project adopts it -- uses **m3l-design**, vendored under
 `design/`. `design/source/` is a verbatim copy of that design system's DTCG
 2025.10 tokens, component CSS and brand book (see
 [`design/README.md`](../design/README.md) for provenance); `design/tokens.css`
-and `packages/cli/src/palette.ts` are generated from it by
+is vendored with it, and `packages/cli/src/palette.ts` is generated from it by
 `bin/build-design-tokens.mjs`, checked for drift by `pnpm verify`'s
 `design-tokens` step. The governance model is copy-based, the same
 philosophy as Phase A itself: a design system is copied into a project once

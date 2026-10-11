@@ -131,8 +131,8 @@ evals/                  `pnpm eval` suites. `.eval-results/` is gitignored
 
 design/                 m3l-design, vendored -- see design/README.md and
                          .claude/rules/design-system.md. source/ is a
-                         verbatim copy; tokens.css is generated from it by
-                         bin/build-design-tokens.mjs. local/ is this repo's
+                         verbatim copy of an m3l-design release, tokens.css
+                         is vendored with it. local/ is this repo's
                          own docs-site layout CSS, the one sanctioned
                          divergence from the vendored system (see
                          design/README.md's "design/local/").
@@ -435,10 +435,11 @@ steps) before considering any task here done.
   project's real gate runner) -- see `templates/packs/README.md`.
 - **Design system: `design/` is this repo's own vendored copy of
   m3l-design, this repo only -- `templates/**` stays brand-neutral.**
-  Never hand-edit `design/source/`; after a DTCG change, re-run
-  `node bin/build-design-tokens.mjs` and commit `design/tokens.css` in the
-  same change (`--check` is the `lint`-group verify step). The same
-  generator also emits `packages/cli/src/palette.ts`, the terminal palette
+  Never hand-edit `design/source/`; move to a new release with
+  `bin/sync-design.sh vX.Y.Z .` from an `m3l-design` checkout, then re-run
+  `node bin/build-design-tokens.mjs` and commit `packages/cli/src/palette.ts`
+  in the same change (`--check` is the `lint`-group verify step). That
+  generator emits `packages/cli/src/palette.ts`, the terminal palette
   `packages/cli/src/term.ts` paints console output with. Full detail:
   `.claude/rules/design-system.md` (auto-loads on `design/**`,
   `bin/build-design-tokens.mjs`, `packages/cli/src/{palette,term}.ts`).

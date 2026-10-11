@@ -15,7 +15,7 @@
  *   - A newly created file under `templates/core/**` needs a glob in
  *     `packages/plugin/src/domain-map.ts` (`domain-map.test.ts`) and a
  *     re-check of the baseline's caps (`packages/cli/src/caps.ts`).
- *   - `design/source/**` changed -> regenerate `design/tokens.css`
+ *   - `design/source/**` changed -> regenerate `packages/cli/src/palette.ts`
  *     (`node bin/build-design-tokens.mjs`).
  *   - A newly created file whose extension matches `check-license-headers.mjs`'s
  *     own `HEADER_EXTENSIONS`, with no SPDX header yet -> `node
@@ -218,13 +218,13 @@ export function computeInvariantNotes(rel, abs, projectDir, env = process.env) {
     );
   }
 
-  // Design tokens regen. The generator emits `design/tokens.css` and
-  // `packages/cli/src/palette.ts` -- `term.ts` only *consumes* palette.ts
-  // and is hand-written, so it is deliberately not named here.
+  // Design tokens regen. The generator emits `packages/cli/src/palette.ts`
+  // -- `term.ts` only *consumes* palette.ts and is hand-written, so it is
+  // deliberately not named here. `design/tokens.css` comes from `sync-design.sh`.
   if (/^design\/source\//.test(rel)) {
     notes.push(
       "`design/source/**` changed: re-run `node bin/build-design-tokens.mjs` and commit the " +
-        "regenerated `design/tokens.css` and `packages/cli/src/palette.ts` in the same change.",
+        "regenerated `packages/cli/src/palette.ts` in the same change.",
     );
   }
 

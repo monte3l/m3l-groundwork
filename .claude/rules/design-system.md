@@ -16,10 +16,11 @@ paths:
 
 **`design/` is this repo's own vendored copy of m3l-design, this repo only --
 `templates/**` stays brand-neutral.** `design/source/` is a verbatim copy of
-the m3l-design Claude Design artifact (DTCG 2025.10 tokens, component CSS,
+the m3l-design release (DTCG 2025.10 tokens, component CSS,
 brand book, fonts) -- see `design/README.md` for provenance and the re-sync
-rule (**never hand-edit `source/`**). `design/tokens.css` is generated from
-it by `bin/build-design-tokens.mjs`, whose resolver
+rule (**never hand-edit `source/`**). `design/tokens.css` is vendored with it (`sync-design.sh`), and
+`packages/cli/src/palette.ts` is generated from it by
+`bin/build-design-tokens.mjs`, whose resolver
 (`bin/lib/design-tokens.mjs`) is a small, zero-dependency DTCG resolver: it
 follows `m3l.resolver.json`'s own `resolutionOrder` (primitives -> semantic
 -> theme -> motion -> components) -- checked, not just assumed:

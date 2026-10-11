@@ -726,7 +726,7 @@ describe("computeInvariantNotes", () => {
           envWithoutRepoLocals(),
         );
         expect(notes).toHaveLength(1);
-        expect(notes[0]).toContain("design/tokens.css");
+        expect(notes[0]).toContain("packages/cli/src/palette.ts");
       } finally {
         cleanup(dir);
       }
