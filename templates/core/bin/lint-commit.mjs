@@ -11,7 +11,8 @@
  * `commit-msg` hook contract) or `lint-commit.mjs <message>` directly.
  * An empty message (direct mode with no arguments) is accepted by commitlint
  * itself, so it passes here unless an enforced `trailer-exists` rule rejects
- * it; git aborts an empty commit message before the `commit-msg` hook runs.
+ * it. git runs the `commit-msg` hook before it rejects an empty message, and
+ * `--allow-empty-message` lets one through, so `--edit` mode can see one too.
  *
  * When the config enables `trailer-exists` as an error (severity 2), the
  * trailer, with a non-empty value, is also required on every message
