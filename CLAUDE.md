@@ -614,8 +614,7 @@ handlers). Per the
 that handles `tool.check` can approve a call that a `PreToolUse` hook outside
 managed settings blocked, and project `PreToolUse` hooks run
 only after the last mod calls `next`, so a mod that answers `tool.call`
-without it keeps them from running at all (see the
-[mods events reference](https://code.claude.com/docs/en/plugins/mods/events)).
+without it keeps them from running at all (same page).
 Only managed-settings hooks outrank a mod. Same limit as above: nothing in
 the repo can detect it. Check `/plugin` for installed mods alongside
 `/status` before trusting the guards on a machine you don't control.
@@ -629,9 +628,8 @@ call counts as a writer spoke only with both present, so a hub launched as
 **Agent teams (experimental) are not covered or verified.** A split-pane
 teammate is a full session with no `agent_id`, so the guard treats it as the
 hub and blocks it (fail-closed). Whether an in-process teammate's tool calls
-carry `agent_type` is undocumented (the hooks reference documents `agent_id`
-for an in-process teammate, but not `agent_type`), so one passing as a writer
-spoke is unconfirmed. Every spoke's `tools` list omits `Agent`, which keeps the
+carry `agent_type` and `agent_id` is undocumented, so one passing as a
+writer spoke is unconfirmed. Every spoke's `tools` list omits `Agent`, which keeps the
 roster flat even where `disallowedTools` is not applied to a teammate.
 
 Full dispatch-sizing and recovery guidance:
