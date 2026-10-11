@@ -2,8 +2,9 @@
   "name": "m3l-groundwork-release-tools",
   "version": "0.0.0",
   "private": true,
-  "description": "Pins the exact npm version the release workflow's publish job installs, so the pin is verified by a committed lockfile's integrity hash rather than a bare version string in YAML.",
+  "description": "Pins the exact libnpmpublish (npm's own staged-publish library) the release workflow's publish job installs, so the pin is verified by a committed lockfile's integrity hash rather than a bare version string in YAML.",
   "dependencies": {
-    "npm": "12.2.0"
+    "libnpmpublish": "12.0.1",
+    "npm-registry-fetch": "20.0.1"
   }
 }

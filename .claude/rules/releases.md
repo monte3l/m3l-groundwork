@@ -148,15 +148,14 @@ describes).
 **Things that look wrong but are deliberate.**
 
 - **Staged, not direct.** `@monte3l/groundwork`'s trusted publisher only allows
-  `npm stage publish`, not `npm publish` -- npmjs.com's own recommended,
+  a staged publish, not `npm publish` -- npmjs.com's own recommended,
   stronger setting, and its default for any trusted publisher created after
   2026-09-03 (this one was). A maintainer must separately run
   `npm stage approve <id>` (needs a live 2FA code: `--otp` or a prompt on the CLI, or
   npmjs.com -- **not automatable**, since no stored code stands in for it) before a version is actually
   installable. `npm stage list --package @monte3l/groundwork` finds the id;
-  the `publish` job's last step only runs `npm stage list ... || true`, best-effort
-  (it never approves anything, and that job holds no login session so it may
-  print nothing). The alternative --
+  the `publish` step prints the stage id and writes the approve command to the
+  job summary (it never approves anything). The alternative --
   checking "allow npm publish" -- was considered and rejected: this package
   is a solo-maintainer pre-1.0 CLI, not the "high-impact, widely-used"
   case npm is targeting, but the version PR is already a real, reviewed gate
@@ -167,8 +166,15 @@ describes).
   cost above: the git tag and GitHub Release exist for a few minutes to
   however long approval takes, before `npm install` actually resolves the
   version.
-- **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to `npm stage
-publish`.** Changesets publishes through
+- **`bin/pnpm-publish-shim.mjs` reroutes `pnpm publish` to
+  `bin/npm-stage-publish.mjs`, which stages through `libnpmpublish`, not the npm
+  CLI.** The npm CLI's own bundled dependencies (undici, ip-address,
+  brace-expansion, ...) carried advisories that no override can reach and no npm
+  release fixed (`docs/security-review.md`); `libnpmpublish` is npm's own publish
+  library as an ordinary, auditable dependency. The script does the GitHub OIDC
+  to npm token exchange itself (ported from npm's `lib/utils/oidc.js`, so
+  re-check it when npm changes trusted publishing) and, unlike the CLI, fails
+  loudly instead of falling back to no auth. Changesets publishes through
   `pnpm publish` in a pnpm workspace, and a **direct** `npm publish` is not
   allowed by the staged-only trusted publisher (see above). The shim translates only changesets' exact
   invocation and refuses any flag it does not recognise; everything else
@@ -176,15 +182,14 @@ publish`.** Changesets publishes through
 - **Changesets, not a hand-written publish script, owns the publish plan, tags
   and Releases.** Tarballs are packed in one job and published in another so the
   OIDC token is never present where build or test code runs. The `publish` job
-  installs with `--ignore-scripts` and pins an exact `npm@` version (`npm
-stage publish` needs >= 11.15.0, Node >= 22.14.0 -- already covered by
-  `.node-version`'s 24), not a range or `latest` -- OpenSSF Scorecard's
+  installs with `--ignore-scripts` and pins exact `libnpmpublish` and
+  `npm-registry-fetch` versions in `.github/release-tools/package-lock.json`,
+  not a range or `latest` -- OpenSSF Scorecard's
   Pinned-Dependencies check flags a floating install the same way it flags
   an unpinned Action, and this job holds the OIDC token.
-  The pinned npm currently carries open advisories in its bundled
-  dependencies, tracked in `docs/security-review.md`'s "Open advisories in the
-  pinned npm" section: run its day-of-release re-check before approving a
-  release (`npm stage approve`).
+  This repository's release-tools lockfile is audit-clean. The `publishing`
+  pack still ships the npm CLI pin and its bundled advisories, tracked in
+  `docs/security-review.md`'s "Open advisories in the pinned npm" section.
 - **No package-manager cache in `release.yml`**, and no `cancel-in-progress`: a
   restored cache is an input an attacker can poison in the jobs that publish,
   and a half-published release is worse than a queued one.
