@@ -25,3 +25,7 @@ _site/
 # formatting those files is harmless again.
 templates/core/CLAUDE.md
 templates/core/README.md
+# Vendored from an m3l-design release, byte for byte: design/SHA256SUMS would
+# fail if Prettier reformatted them. Re-sync with bin/sync-design.sh instead.
+design/source/
+design/tokens.css

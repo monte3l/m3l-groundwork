@@ -1,14 +1,18 @@
 /*
-   GENERATED FILE -- do not hand-edit. Run `node bin/build-design-tokens.mjs`
-   to regenerate from design/source/dtcg (the vendored m3l-design tokens).
-   `--check` (used by `pnpm verify`) fails instead of writing on drift.
-   Source of truth: design/source/dtcg (DTCG 2025.10). See design/README.md.
+   SPDX-FileCopyrightText: 2026 Enrico Lionello (enri3l), Giulia Montevecchi (giulmonte), monte3l
+   SPDX-License-Identifier: MIT
+
+   GENERATED FILE -- do not hand-edit. Part of m3l-design, the design system of
+   monte3l (https://github.com/monte3l/m3l-design), made by Enrico Lionello and
+   Giulia Montevecchi. Update it with bin/sync-design.sh from a clone of that
+   repository, never by editing this copy.
+
+   Source of truth: source/dtcg (DTCG 2025.10), next to this file.
 */
 
 @font-face {
   font-family: "Atkinson Hyperlegible Next";
-  src: url("source/fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2")
-    format("woff2");
+  src: url("source/fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2") format("woff2");
   font-weight: 200 800;
   font-style: normal;
   font-display: swap;
@@ -16,15 +20,13 @@
 
 @font-face {
   font-family: "Atkinson Hyperlegible Mono";
-  src: url("source/fonts/atkinson-hyperlegible-mono-latin-wght-normal.woff2")
-    format("woff2");
+  src: url("source/fonts/atkinson-hyperlegible-mono-latin-wght-normal.woff2") format("woff2");
   font-weight: 200 800;
   font-style: normal;
   font-display: swap;
 }
 
-:root,
-[data-theme="light"] {
+:root, [data-theme="light"] {
   --badge-neutral-bg: #f4eef0;
   --badge-neutral-fg: #554d50;
   --button-primary-bg: #692746;
@@ -163,14 +165,10 @@
   --nav-item-bg-active: #feeff4;
   --nav-item-bg-hover: #f4eef0;
   --nav-item-fg-active: #692746;
-  --shadow-1:
-    0 1px 2px 0 rgba(18, 14, 16, 0.06), 0 1px 1px 0 rgba(18, 14, 16, 0.04);
-  --shadow-2:
-    0 2px 4px 0 rgba(18, 14, 16, 0.06), 0 4px 12px 0 rgba(18, 14, 16, 0.08);
-  --shadow-3:
-    0 2px 6px 0 rgba(18, 14, 16, 0.06), 0 8px 24px 0 rgba(18, 14, 16, 0.12);
-  --shadow-4:
-    0 4px 12px 0 rgba(18, 14, 16, 0.08), 0 16px 48px 0 rgba(18, 14, 16, 0.18);
+  --shadow-1: 0 1px 2px 0 rgba(18, 14, 16, 0.06), 0 1px 1px 0 rgba(18, 14, 16, 0.04);
+  --shadow-2: 0 2px 4px 0 rgba(18, 14, 16, 0.06), 0 4px 12px 0 rgba(18, 14, 16, 0.08);
+  --shadow-3: 0 2px 6px 0 rgba(18, 14, 16, 0.06), 0 8px 24px 0 rgba(18, 14, 16, 0.12);
+  --shadow-4: 0 4px 12px 0 rgba(18, 14, 16, 0.08), 0 16px 48px 0 rgba(18, 14, 16, 0.18);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -313,13 +311,10 @@
     --nav-item-bg-active: #280f1a;
     --nav-item-bg-hover: #30292c;
     --nav-item-fg-active: #d1789e;
-    --shadow-1: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-    --shadow-2:
-      0 2px 4px 0 rgba(0, 0, 0, 0.4), 0 4px 12px 0 rgba(0, 0, 0, 0.32);
-    --shadow-3:
-      0 2px 6px 0 rgba(0, 0, 0, 0.44), 0 8px 24px 0 rgba(0, 0, 0, 0.4);
-    --shadow-4:
-      0 4px 12px 0 rgba(0, 0, 0, 0.48), 0 16px 48px 0 rgba(0, 0, 0, 0.56);
+    --shadow-1: 0 1px 2px 0 rgba(0, 0, 0, 0.40);
+    --shadow-2: 0 2px 4px 0 rgba(0, 0, 0, 0.40), 0 4px 12px 0 rgba(0, 0, 0, 0.32);
+    --shadow-3: 0 2px 6px 0 rgba(0, 0, 0, 0.44), 0 8px 24px 0 rgba(0, 0, 0, 0.40);
+    --shadow-4: 0 4px 12px 0 rgba(0, 0, 0, 0.48), 0 16px 48px 0 rgba(0, 0, 0, 0.56);
   }
 }
 
@@ -462,11 +457,10 @@
   --nav-item-bg-active: #280f1a;
   --nav-item-bg-hover: #30292c;
   --nav-item-fg-active: #d1789e;
-  --shadow-1: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 2px 4px 0 rgba(0, 0, 0, 0.4), 0 4px 12px 0 rgba(0, 0, 0, 0.32);
-  --shadow-3: 0 2px 6px 0 rgba(0, 0, 0, 0.44), 0 8px 24px 0 rgba(0, 0, 0, 0.4);
-  --shadow-4:
-    0 4px 12px 0 rgba(0, 0, 0, 0.48), 0 16px 48px 0 rgba(0, 0, 0, 0.56);
+  --shadow-1: 0 1px 2px 0 rgba(0, 0, 0, 0.40);
+  --shadow-2: 0 2px 4px 0 rgba(0, 0, 0, 0.40), 0 4px 12px 0 rgba(0, 0, 0, 0.32);
+  --shadow-3: 0 2px 6px 0 rgba(0, 0, 0, 0.44), 0 8px 24px 0 rgba(0, 0, 0, 0.40);
+  --shadow-4: 0 4px 12px 0 rgba(0, 0, 0, 0.48), 0 16px 48px 0 rgba(0, 0, 0, 0.56);
 }
 
 :root {
@@ -534,8 +528,7 @@
   --inset-field-x: 0.75rem;
   --paragraph-spacing: 1.5em;
   --font-sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
-  --font-mono:
-    "Atkinson Hyperlegible Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --text-align: left;
   --text-emphasis-style: normal;
   --text-emphasis-weight: 700;

@@ -23,8 +23,8 @@ SPDX-License-Identifier = "MIT"
 # design/**/*.json and design/**/*.md are already covered by the generic
 # json/md annotation below with the same values, so only CSS -- this repo's
 # first tracked CSS -- needs its own entry here. design/source/** is
-# vendored, verbatim, from the m3l-design Claude Design artifact (see
-# design/README.md for its provenance: artifact url, version, date copied);
+# vendored, verbatim, from an m3l-design release (see
+# design/README.md for its provenance: repository, tag, date synced);
 # its content is the same person's own design system as this repo (see
 # design/README.md), licensed the same way as the rest of this repo. The two
 # vendored Google Fonts font files are a separate case, annotated below:
@@ -77,4 +77,14 @@ path = [
   ".gitleaks.toml",
 ]
 SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
+SPDX-License-Identifier = "MIT"
+
+# Two files that arrive with an m3l-design release (bin/sync-design.sh) and
+# carry no comment syntax: the release's own MIT license text and the checksum
+# list for the vendored payload. They keep upstream's credit line, as
+# m3l-design's REUSE.toml states it. Last in the file on purpose: when several
+# tables match a path, the last one wins.
+[[annotations]]
+path = ["design/SHA256SUMS", "design/source/LICENSE"]
+SPDX-FileCopyrightText = "2026 Enrico Lionello (enri3l), Giulia Montevecchi (giulmonte), monte3l"
 SPDX-License-Identifier = "MIT"
