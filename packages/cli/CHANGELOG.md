@@ -1,5 +1,11 @@
 # @monte3l/groundwork
 
+## 1.0.0-rc.8
+
+### Patch Changes
+
+- [#176](https://github.com/monte3l/m3l-groundwork/pull/176) [`5ea0732`](https://github.com/monte3l/m3l-groundwork/commit/5ea0732d10062e3f27411b9928251e902e15852f) Thanks [@enri3l](https://github.com/enri3l)! - pack(publishing): the release workflow now prints the staged id to approve in the job log and as a run annotation, through a new "Show the staged ids to approve" step. changesets swallows the publisher's stdout, so the id previously appeared nowhere in the log.
+
 ## 1.0.0-rc.7
 
 ### Patch Changes
