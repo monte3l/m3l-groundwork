@@ -123,6 +123,8 @@ describe("publishing pack end-to-end", () => {
         "npm ci --ignore-scripts --prefix tools/release",
       );
       expect(releaseWorkflow).not.toContain(".github/release-tools");
+      expect(releaseWorkflow).toContain("STAGED_IDS_FILE");
+      expect(releaseWorkflow).toContain("Show the staged ids to approve");
 
       const releaseTools = JSON.parse(
         readFileSync(

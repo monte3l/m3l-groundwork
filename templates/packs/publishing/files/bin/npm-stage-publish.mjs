@@ -31,6 +31,8 @@
  *
  * `RELEASE_TOOLS_DIR` names the directory holding the `npm ci`-installed
  * libnpmpublish and npm-registry-fetch (the release-tools lockfile).
+ * `STAGED_IDS_FILE`, when set, receives one `<name>@<version> <stage id>` line per
+ * staged version, because the caller (changesets) swallows this script's stdout.
  * `NPM_CONFIG_REGISTRY` overrides the registry (as in npm; the tests point it at a
  * local server; default npmjs.org).
  */
@@ -209,6 +211,18 @@ if (process.env.GITHUB_STEP_SUMMARY) {
   } catch (error) {
     console.error(
       `npm-stage-publish: staged ${id} (${stageId}) but could not write the step summary: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+if (process.env.STAGED_IDS_FILE) {
+  // changesets captures this process's stdout, so nothing printed above reaches
+  // the job log. Leave the id in a file the workflow prints in a later step.
+  // Best effort, like the summary: the version is already staged.
+  try {
+    appendFileSync(process.env.STAGED_IDS_FILE, `${id} ${stageId}\n`);
+  } catch (error) {
+    console.error(
+      `npm-stage-publish: staged ${id} (${stageId}) but could not record it in ${process.env.STAGED_IDS_FILE}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

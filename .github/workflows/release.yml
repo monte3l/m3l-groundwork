@@ -217,8 +217,26 @@ jobs:
         id: publish
         env:
           RELEASE_TOOLS_DIR: ${{ github.workspace }}/tools/release
+          STAGED_IDS_FILE: ${{ runner.temp }}/staged-ids.txt
         with:
           pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
+      # changesets swallows the publisher's stdout, so the stage id to approve
+      # would never reach this log. The publisher records it in a file; print
+      # it here, plus an annotation on the run page, whether or not an earlier
+      # step failed. `npm stage approve <id>` (2FA) is still a maintainer step.
+      - name: Show the staged ids to approve
+        if: always()
+        env:
+          STAGED_IDS_FILE: ${{ runner.temp }}/staged-ids.txt
+        run: |
+          if [ -s "$STAGED_IDS_FILE" ]; then
+            while read -r id stage; do
+              echo "staged $id with id $stage -- approve with: npm stage approve $stage"
+              echo "::notice title=Staged $id::npm stage approve $stage"
+            done < "$STAGED_IDS_FILE"
+          else
+            echo "no staged version was recorded by this run"
+          fi
       # OpenSSF Best Practices' `signed_releases` criterion is met by npm
       # provenance alone (a Sigstore-backed, OIDC-issued attestation with no
       # long-lived key -- see SECURITY.md, "Verifying releases"). These three

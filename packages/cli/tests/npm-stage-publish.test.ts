@@ -511,6 +511,72 @@ describe("npm-stage-publish", () => {
     expect(published()[0]?.opts).toMatchObject({ defaultTag: "rc" });
   });
 
+  describe("STAGED_IDS_FILE", () => {
+    function idsFile(): string {
+      return join(root, "staged-ids.txt");
+    }
+
+    it("records exactly one `<name>@<version> <stageId>` line on success", async () => {
+      const result = await run(
+        [tarball],
+        baseEnv({ STAGED_IDS_FILE: idsFile() }),
+      );
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(idsFile(), "utf8")).toBe("@scope/name@1.0.0 stg-1\n");
+      expectNoSecrets(result);
+    });
+
+    it("appends a line per sequential run", async () => {
+      const env = baseEnv({ STAGED_IDS_FILE: idsFile() });
+      await run([tarball], env);
+      writeTarball([
+        [
+          "package/package.json",
+          JSON.stringify({ name: "@scope/other", version: "2.0.0" }),
+        ],
+      ]);
+      await run([tarball], env);
+
+      const content = readFileSync(idsFile(), "utf8");
+      expect(content).toBe(
+        "@scope/name@1.0.0 stg-1\n@scope/other@2.0.0 stg-1\n",
+      );
+      expect(content).not.toContain(ID_TOKEN);
+      expect(content).not.toContain(NPM_TOKEN);
+    });
+
+    it("still exits 0, prints the stage id and warns when the file is unwritable", async () => {
+      const bad = join(root, "no-such-dir", "ids.txt");
+      const result = await run([tarball], baseEnv({ STAGED_IDS_FILE: bad }));
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("(staged with id stg-1)");
+      expect(result.stderr).toMatch(/could not record it in .*ids\.txt/);
+      expectNoSecrets(result);
+    });
+
+    it("writes nothing when STAGED_IDS_FILE is unset", async () => {
+      const result = await run([tarball], baseEnv());
+
+      expect(result.status).toBe(0);
+      expect(existsSync(idsFile())).toBe(false);
+    });
+
+    it.each(["throw", "nostage"])(
+      "writes nothing when staging fails (%s)",
+      async (mode) => {
+        const result = await run(
+          [tarball],
+          baseEnv({ STAGED_IDS_FILE: idsFile(), FAKE_PUBLISH: mode }),
+        );
+
+        expect(result.status).not.toBe(0);
+        expect(existsSync(idsFile())).toBe(false);
+      },
+    );
+  });
+
   it("fails when libnpmpublish returns no stage id", async () => {
     const result = await run([tarball], baseEnv({ FAKE_PUBLISH: "nostage" }));
 
