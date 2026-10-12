@@ -154,8 +154,10 @@ describes).
   `npm stage approve <id>` (needs a live 2FA code: `--otp` or a prompt on the CLI, or
   npmjs.com -- **not automatable**, since no stored code stands in for it) before a version is actually
   installable. `npm stage list --package @monte3l/groundwork` finds the id;
-  the `publish` step prints the stage id and writes the approve command to the
-  job summary (it never approves anything). The alternative --
+  the `publish` step records the stage id in `STAGED_IDS_FILE` (changesets
+  swallows the publisher's stdout) and a later "Show the staged ids to approve"
+  step prints it and annotates the run; it also goes in the job summary. The
+  workflow never approves anything. The alternative --
   checking "allow npm publish" -- was considered and rejected: this package
   is a solo-maintainer pre-1.0 CLI, not the "high-impact, widely-used"
   case npm is targeting, but the version PR is already a real, reviewed gate
