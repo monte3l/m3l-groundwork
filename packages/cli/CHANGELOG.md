@@ -1,5 +1,11 @@
 # @monte3l/groundwork
 
+## 1.0.0-rc.7
+
+### Patch Changes
+
+- [#174](https://github.com/monte3l/m3l-groundwork/pull/174) [`0371711`](https://github.com/monte3l/m3l-groundwork/commit/0371711fcb1a8d71ea9bb8ab6b8a423984438b4f) Thanks [@enri3l](https://github.com/enri3l)! - pack(publishing): the release workflow now stages through `libnpmpublish` instead of the npm CLI, with a small `bin/npm-stage-publish.mjs` doing the GitHub OIDC token exchange, so the shipped `tools/release/` lockfile no longer carries the advisories bundled inside the npm tarball (undici, ip-address, brace-expansion, http-cache-semantics, postcss-selector-parser) that no override could patch. The lockfile moved from `.github/release-tools/` to `tools/release/`, and the pack's install notes drop the dated security note. The staged-only trusted publisher setting is unchanged.
+
 ## 1.0.0-rc.6
 
 ### Patch Changes
