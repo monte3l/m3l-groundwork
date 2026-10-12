@@ -11,7 +11,7 @@ paths:
 
 **What it is.** The release pipeline, adapted from this repo's own
 `release.yml`: changesets version-PR and staged, provenance-attested npm
-publish through trusted publishing, the pnpm-to-`npm stage` shim, and two
+publish through trusted publishing, the pnpm-to-staged-publish shim (libnpmpublish), and two
 gates (`check-dts-deps.mjs`, `check-license-headers.mjs`) plus a
 `REUSE.toml` template. Modes: **fresh only**. Budget: 1 workflow, 2 scripts.
 
@@ -28,9 +28,12 @@ gates (`check-dts-deps.mjs`, `check-license-headers.mjs`) plus a
 - **`check-publish-version.mjs` is deliberately not a verify step.** It runs
   inside `release.yml`'s pack job only, because on a release branch the
   version always equals the one just published.
-- **The shipped `.github/release-tools/` lockfile pins npm.** The security
-  note in `adoptNotes` carries a dated advisory analysis: re-check it, and
-  update the date, whenever the pin moves.
+- **The shipped `tools/release/` lockfile pins `libnpmpublish` and
+  `npm-registry-fetch`**, which `bin/npm-stage-publish.mjs` stages through
+  instead of the npm CLI (whose bundled dependencies no override can patch).
+  Keep it audit-clean: `npm audit --package-lock-only` in that directory.
+  The scripts in `files/bin/` are token-substituted copies of this repo's own
+  `bin/` ones; change both together.
 - **The workflow file must stay named `release.yml`** in an emitted project:
   the trusted publisher is bound to that filename.
 - **The `budget` in `pack.json` must equal the real `files/` count.**

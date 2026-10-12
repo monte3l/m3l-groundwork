@@ -87,7 +87,9 @@ describe("publishing pack end-to-end", () => {
 
       const filesToCheck = [
         join(".github", "workflows", "release.yml"),
-        join(".github", "release-tools", "package.json"),
+        join("tools", "release", "package.json"),
+        join("bin", "npm-stage-publish.mjs"),
+        join("bin", "lib", "read-tarball-manifest.mjs"),
         join(".changeset", "config.json"),
         "REUSE.toml",
         join("bin", "check-publish-version.mjs"),
@@ -117,6 +119,21 @@ describe("publishing pack end-to-end", () => {
         "utf8",
       );
       expect(releaseWorkflow).toContain("node bin/check-publish-version.mjs");
+      expect(releaseWorkflow).toContain(
+        "npm ci --ignore-scripts --prefix tools/release",
+      );
+      expect(releaseWorkflow).not.toContain(".github/release-tools");
+
+      const releaseTools = JSON.parse(
+        readFileSync(
+          join(targetDir, "tools", "release", "package.json"),
+          "utf8",
+        ),
+      ) as { dependencies: Record<string, string> };
+      expect(Object.keys(releaseTools.dependencies)).toEqual(
+        expect.arrayContaining(["libnpmpublish", "npm-registry-fetch"]),
+      );
+      expect(releaseTools.dependencies).not.toHaveProperty("npm");
 
       const pkg = JSON.parse(
         readFileSync(join(targetDir, "package.json"), "utf8"),

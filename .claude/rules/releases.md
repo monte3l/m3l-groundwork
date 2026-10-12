@@ -183,13 +183,13 @@ describes).
   and Releases.** Tarballs are packed in one job and published in another so the
   OIDC token is never present where build or test code runs. The `publish` job
   installs with `--ignore-scripts` and pins exact `libnpmpublish` and
-  `npm-registry-fetch` versions in `.github/release-tools/package-lock.json`,
+  `npm-registry-fetch` versions in `tools/release/package-lock.json`,
   not a range or `latest` -- OpenSSF Scorecard's
   Pinned-Dependencies check flags a floating install the same way it flags
   an unpinned Action, and this job holds the OIDC token.
-  This repository's release-tools lockfile is audit-clean. The `publishing`
-  pack still ships the npm CLI pin and its bundled advisories, tracked in
-  `docs/security-review.md`'s "Open advisories in the pinned npm" section.
+  Both release-tools lockfiles (this repository's and the `publishing`
+  pack's) are audit-clean; `docs/security-review.md`'s "Advisories in the
+  pinned npm" section keeps the history of why the npm CLI was dropped.
 - **No package-manager cache in `release.yml`**, and no `cancel-in-progress`: a
   restored cache is an input an attacker can poison in the jobs that publish,
   and a half-published release is worse than a queued one.

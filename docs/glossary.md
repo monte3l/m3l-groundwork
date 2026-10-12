@@ -36,7 +36,7 @@ A dependency whose code ships inside another package's own tarball, so
 overrides and audit fixes in the consuming project's lockfile cannot change
 it; a lockfile marks one `inBundle`.
 In this repo: the pinned npm's bundled packages, in
-[`docs/security-review.md`](security-review.md#open-advisories-in-the-pinned-npm-release-tools-lockfiles).
+[`docs/security-review.md`](security-review.md#advisories-in-the-pinned-npm-release-tools-lockfiles).
 
 ### Cap
 
