@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: NOASSERTION
 
 /**
- * Translates the one `pnpm publish` invocation changesets makes for a packed
- * tarball into the equivalent `npm stage publish`, for `pnpm-publish-shim.mjs`.
+ * Parses the one `pnpm publish` invocation changesets makes for a packed
+ * tarball, for `pnpm-publish-shim.mjs` and `npm-stage-publish.mjs`.
  *
  * Changesets runs (see its `lib/pnpm.ts`):
  *   pnpm publish <tarball> [--json] --access <a> --tag <t> --no-git-checks [--otp <c>]
@@ -13,25 +13,24 @@
  * is refused rather than guessed at: if changesets ever starts passing a flag
  * this does not understand, publishing must stop, not silently do something else.
  *
- * Staged, not direct: a trusted publisher created since 2026-09-03 defaults to
- * `npm stage publish` only, npm's own default (and explicit recommendation) --
- * a maintainer must separately run `npm stage approve <id>` (2FA, never
- * automatable) before a staged version actually goes live. `npm stage publish`
- * accepts the same `--access`/`--tag`/`--otp`/`--provenance` flags as
- * `npm publish` ("parity with npm publish" per npm's own CLI reference); the
- * command itself is `npm stage publish`, not a flag on `npm publish`.
+ * Staged, not direct: a trusted publisher created since 2026-09-03 only allows a
+ * staged publish -- a maintainer must separately run `npm stage approve <id>`
+ * (2FA, never automatable) before a staged version actually goes live.
  */
 
 const DROPPED = new Set(["--json", "--no-git-checks"]);
 const WITH_VALUE = new Set(["--access", "--tag", "--otp"]);
 
 /**
+ * Splits the arguments after `pnpm publish` into the tarball and the
+ * `[flag, value]` pairs changesets passes, refusing anything else.
+ *
  * @param {string[]} args the arguments following `pnpm publish`
- * @returns {string[]} the argument vector for `npm stage publish`
+ * @returns {{ tarball: string, pairs: [string, string][] }}
  */
-export function toNpmStagePublishArgs(args) {
+function scanPublishArgs(args) {
   let tarball;
-  const flags = [];
+  const pairs = [];
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -42,7 +41,7 @@ export function toNpmStagePublishArgs(args) {
       if (value === undefined || value.startsWith("--")) {
         throw new Error(`${arg} needs a value`);
       }
-      flags.push(arg, value);
+      pairs.push([arg, value]);
       i += 1;
       continue;
     }
@@ -61,12 +60,21 @@ export function toNpmStagePublishArgs(args) {
       "no tarball given: this shim only publishes packed tarballs (changesets' --from-pack-dir mode)",
     );
   }
+  return { tarball, pairs };
+}
 
-  // Provenance is requested explicitly rather than relied on: npm's automatic
-  // attestation for trusted publishing has been reported not to engage without it.
-  // "stage", "publish" are two separate words (the npm-stage subcommand), not
-  // "stage-publish" or a flag -- see npm's own CLI reference for npm-stage.
-  return ["stage", "publish", tarball, ...flags, "--provenance"];
+/**
+ * Parses the one `pnpm publish` invocation changesets makes, as named values
+ * for `npm-stage-publish.mjs` (which calls libnpmpublish instead of the npm CLI).
+ *
+ * @param {string[]} args the arguments following `pnpm publish`
+ * @returns {{ tarball: string, access?: string, tag?: string, otp?: string }}
+ */
+export function parsePublishArgs(args) {
+  const { tarball, pairs } = scanPublishArgs(args);
+  const out = { tarball };
+  for (const [flag, value] of pairs) out[flag.slice(2)] = value;
+  return out;
 }
 
 /**

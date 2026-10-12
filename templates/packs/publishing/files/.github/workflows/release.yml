@@ -29,7 +29,7 @@ name: Release
 # pnpm shim below, with `--ignore-scripts`. `pack` holds nothing beyond
 # `contents: read`.
 #
-# "Staged" publish (vs. a "direct" one) means `npm stage publish` uploads the
+# "Staged" publish (vs. a "direct" one) means a staged publish uploads the
 # tarball and creates the version, but it isn't installable yet until a
 # maintainer separately approves it with 2FA (`npm stage approve`) -- npm's
 # own stronger default over a direct `npm publish`, which would make the
@@ -162,7 +162,7 @@ jobs:
     needs: pack
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Gates the git tag, the GitHub Release, and `npm stage publish` behind a
+    # Gates the git tag, the GitHub Release, and the staged publish behind a
     # required reviewer -- without this, all three already exist by the time
     # a maintainer even sees there's a staged version to approve with
     # `npm stage approve`. The environment (created once, by hand, via
@@ -185,25 +185,22 @@ jobs:
           package-manager-cache: false
       # Only the changesets CLI is needed here, not any package's lifecycle scripts.
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      # `npm stage publish` needs npm >= 11.15.0. The pinned npm (12.2.0)
-      # declares engines Node ^22.22.2 || ^24.15.0 || >=26. .node-version's
-      # `24` meets that on GitHub-hosted runners, whose cached 24.x is recent;
-      # a self-hosted runner with an older cached 24.x does not. Pinned to an
-      # exact version, not a range or `latest`: this job holds the OIDC token,
-      # and an unpinned package-manager install is exactly what OpenSSF
-      # Scorecard's Pinned-Dependencies check flags. `.github/release-tools/`
-      # pins the exact tarball via its committed lockfile's integrity hash, and
-      # `npm ci` verifies the install against it -- bumping the pin is then
-      # a normal reviewed PR (a lockfile diff), not a hand-edited version
-      # string.
-      - run: npm ci --ignore-scripts --prefix .github/release-tools
-      - run: echo "$GITHUB_WORKSPACE/.github/release-tools/node_modules/.bin" >> "$GITHUB_PATH"
+      # Staged publishing goes through libnpmpublish (npm's own publish
+      # library, bin/npm-stage-publish.mjs), not the npm CLI: the CLI bundles
+      # its own dependencies, which no override can patch. Pinned to exact
+      # versions, not a range or `latest`: this job holds the OIDC token, and
+      # an unpinned package install is exactly what OpenSSF Scorecard's
+      # Pinned-Dependencies check flags. `tools/release/` pins every tarball
+      # via its committed lockfile's integrity hash, and `npm ci` verifies the
+      # install against it -- bumping the pin is then a normal reviewed PR (a
+      # lockfile diff), not a hand-edited version string.
+      - run: npm ci --ignore-scripts --prefix tools/release
       # changesets publishes through `pnpm publish` in a pnpm-managed
       # project. This puts a `pnpm` ahead of the real one that forwards
-      # everything except `publish`, which goes to `npm stage publish`
+      # everything except `publish`, which goes to a staged publish
       # instead (see bin/pnpm-publish-shim.mjs -- the trusted publisher only
       # allows staged publishing, npm's own default since 2026-09-03).
-      - name: Route publish through the npm CLI
+      - name: Route publish through the staged publisher
         run: |
           shim_dir="$RUNNER_TEMP/pnpm-shim"
           mkdir -p "$shim_dir"
@@ -213,6 +210,8 @@ jobs:
           echo "$shim_dir" >> "$GITHUB_PATH"
       - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
         id: publish
+        env:
+          RELEASE_TOOLS_DIR: ${{ github.workspace }}/tools/release
         with:
           pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
       # npm provenance alone already meets most supply-chain "signed
@@ -223,12 +222,12 @@ jobs:
       # rebuilt), attested, and attached. `if:` guards all three on
       # `publish` actually having published -- `select-mode` only decides
       # the job should run, not that a version was new.
-      # `continue-on-error: true` on all three: `npm stage publish` has
+      # `continue-on-error: true` on all three: the staged publish has
       # already succeeded by this point, so a failure here (a transient
       # download error, say) must never fail the whole job and leave a
       # staged, tagged, unreleased version behind -- this block is
-      # best-effort supplementary evidence, the same status as the
-      # "List pending stages" step below.
+      # best-effort supplementary evidence. (The stage id to approve is
+      # printed, and added to the job summary, by the publish step itself.)
       - name: Fetch the packed tarball back out of the pack job's artifact
         if: steps.publish.outputs.published == 'true'
         continue-on-error: true
@@ -280,13 +279,3 @@ jobs:
           fi
           gh release upload "$tag" \
             "$tarball" --clobber --repo "${{ github.repository }}"
-      # Staging succeeds unattended; going live needs a maintainer's 2FA
-      # (`npm stage approve <id>`, on the CLI or npmjs.com -- never
-      # automatable, by design). Best-effort convenience only: this job
-      # never logs in with a token (it publishes purely via the OIDC
-      # exchange scoped to the publish call itself), so `npm stage list` may
-      # print nothing useful -- `|| true` means that possibility never fails
-      # the job.
-      - name: List pending stages (best effort)
-        if: always()
-        run: npm stage list --package "$(node -p "require('./package.json').name")" || true

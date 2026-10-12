@@ -70,24 +70,23 @@ property tests, in `pnpm test`'s example-based suite (`emit.test.ts` already
 exercises `emitTemplate` directly), and in the e2e suite -- so a violation
 fails the run rather than passing silently.
 
-## Open advisories in the pinned npm (release-tools lockfiles)
+## Advisories in the pinned npm (release-tools lockfiles)
 
 > [!NOTE]
-> **Resolved for this repository on 2026-10-11, still open for the `publishing`
-> pack.** This repository's release job no longer installs the npm CLI. It
-> stages through `libnpmpublish` (`bin/npm-stage-publish.mjs`), an ordinary
-> dependency whose tree has none of these advisories: `npm audit` reports 0,
-> brace-expansion resolves to 5.0.12, ip-address to 10.7.3 and
-> http-cache-semantics to 4.3.0, and undici and postcss-selector-parser are not
-> in the tree. The 12 alerts in `.github/release-tools/package-lock.json` close
-> with that change. The pack's copy keeps the npm CLI until the new publisher
-> has staged one real release; the text below is the analysis for those 12 and
-> for the history of this repository's 12.
+> **Resolved on 2026-10-11 and 2026-10-12.** Both release-tools lockfiles (this
+> repository's `tools/release/` and the `publishing` pack's shipped copy) no
+> longer install the npm CLI. The release job stages through `libnpmpublish`
+> (`bin/npm-stage-publish.mjs`), an ordinary dependency whose tree has none of
+> these advisories: `npm audit` reports 0, brace-expansion resolves to 5.0.12,
+> ip-address to 10.7.3 and http-cache-semantics to 4.3.0, and undici and
+> postcss-selector-parser are not in the tree. The 24 alerts below closed with
+> those two changes. The text that follows is the analysis that led to the
+> swap, kept as history.
 
 **First written 2026-10-01, updated 2026-10-11.** Dependabot has 24 open alerts
 in the release-tools lockfiles, 12 in `tools/release/package-lock.json`
 and the same 12 in
-`templates/packs/publishing/files/.github/release-tools/package-lock.json` (the
+`templates/packs/publishing/files/tools/release/package-lock.json` (the
 copy the `publishing` pack ships to users). All 24 are `inBundle` dependencies
 inside the pinned `npm` package (12.2.0 in both lockfiles, read from each
 lockfile's `node_modules/npm` entry; this repository's own lockfile moved from
@@ -137,74 +136,22 @@ edit that moves them.
 | pnpm, Yarn or Bun for the publish | npm's trusted-publishing docs name the npm CLI as the supported method; the others either lack OIDC publish or delegate to the npm CLI, and staged publishing is npm-only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | A direct `npm publish`            | Our trusted publisher allows staged publishing only, so this means giving up the staged 2FA gate, which [`releases.md`](../.claude/rules/releases.md) already considered and rejected.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
-**Decision.** The alerts stay open and are documented here as accepted: no
-upstream npm release carries a fix, and `http-cache-semantics` has no patched
-version at all. Nothing is dismissed: the bar is evidence, and the reachability result above is analysis
-of the tarballs, not proof. Dependabot's npm entries cover both lockfile
-directories, so a patched npm arrives as a PR.
+**Decision (superseded).** While no npm release carried a fix, the alerts
+were documented as accepted rather than dismissed. The swap above replaced that
+decision: the bundled copies are gone, not excused. The pin to watch now is
+`libnpmpublish` and `npm-registry-fetch` in each `release-tools` lockfile, which
+Dependabot's npm entries cover, so a new advisory against their tree arrives as
+an ordinary fix PR (and `overrides` work there, since nothing is bundled).
 
-> [!WARNING]
-> **Not zero alerts.** Do not describe this repository as having zero open
-> advisories while these 24 are open. A dismissed or fixed alert does not stop
-> a new advisory against the same bundled packages from opening a new alert.
-
-**Day-of-release re-check.** Run this before approving a release, and bump the
-pin if a patched npm exists. The signal to watch is a new npm release after
-npm/cli#10088 or #10089 merges. Patched means undici >= 6.28.1, ip-address >=
-10.7.1, brace-expansion >= 5.0.12 and postcss-selector-parser >= 7.1.6 all
-bundled. http-cache-semantics has no fixed release: 4.3.0 is outside the
-advisory's range but does not change the behaviour it describes, and upstream
-closed the report as not planned. A bump past 4.2.0 would clear the alert
-without fixing anything, so re-read the advisory's status instead of treating
-a version as patched.
-
-```sh
-# 1. What is the newest npm, and is the current pin still the best choice?
-npm view npm dist-tags --json
-grep -A2 '"node_modules/npm"' \
-  tools/release/package-lock.json \
-  templates/packs/publishing/files/.github/release-tools/package-lock.json
-
-# 2. What does that release actually bundle? Check EVERY copy, not only the
-#    hoisted one: a nested copy could stay vulnerable beside a patched one.
-cd "$(mktemp -d)"  # a scratch directory: pack leaves a tarball and package/ behind
-npm pack npm@<version> && tar xzf npm-<version>.tgz
-for p in undici ip-address brace-expansion postcss-selector-parser http-cache-semantics; do
-  find package/node_modules -path "*/node_modules/$p/package.json" \
-    -exec sh -c 'printf "%s " "$1"; grep -m1 "\"version\"" "$1"' _ {} \;
-done
-
-# 3. What is Dependabot still reporting? (release-tools and deploy-tools)
-gh api --paginate 'repos/monte3l/m3l-groundwork/dependabot/alerts?state=open&per_page=100' \
-  --jq '.[] | select(.dependency.manifest_path | test("release-tools|deploy-tools")) | [.number, .security_advisory.ghsa_id, .dependency.package.name]'
-```
-
-If a patched release exists, merge the Dependabot PR for
-`tools/release` (or bump `npm` in its `package.json` and regenerate
-its lockfile), then make the same bump in the `publishing` pack's copy so
-shipped output stays in step. Dependabot opens one PR per lockfile directory,
-so pair the two by hand; both bump `npm` and only the pack's touches shipped
-output, which needs a patch changeset.
-
-When the bump lands, also remove the dated "Security note, as of 2026-10-08"
-from the `publishing` pack's `adoptNotes` in
-`templates/packs/publishing/pack.json` (with a patch changeset). That note
-ships to every user and is only true while the pinned npm carries these
-advisories, so it goes stale the moment a patched npm is pinned. It covers all
-five bundled packages in this section as of 2026-10-08, so extend it if a new
-advisory opens against another package bundled in npm.
-
-**What is not verified.** The reachability result comes from reading the
-unpacked tarballs and the lockfile, not from running the code; the two rows
-added 2026-10-08 (http-cache-semantics, postcss-selector-parser) are from
-reading the unpacked npm 12.2.0 tarball and the lockfiles. Beyond a grep, it
-was not verified that ip-address is unused outside the socks-proxy-agent chain.
-For brace-expansion, the minimatch callers in the pinned npm are Arborist,
-`@npmcli/map-workspaces`, `glob`, `ignore-walk`, `libnpmdiff` and
-`@tufjs/models` (through tuf-js and sigstore). Only Arborist and tuf-js sit on
-commands the release flow runs, and their patterns come from our own files and
-from signed registry metadata; whether the other callers run at all in this
-flow was not traced.
+**What stays unverified.** The OIDC-to-npm token exchange in
+`bin/npm-stage-publish.mjs` is ported from npm's `lib/utils/oidc.js` and was
+exercised against local fakes only. A real rc release is its acceptance check
+(the job must print a stage id, and the approved version must carry
+provenance), and it must be re-read against npm whenever trusted publishing
+changes upstream. The reachability analysis in the table above was read from
+unpacked tarballs, not from running the code; it no longer matters for the
+shipped workflows but explains why the alerts were not dismissed in the
+meantime.
 
 ## Advisory in the docs deploy tooling (deploy-tools lockfile)
 

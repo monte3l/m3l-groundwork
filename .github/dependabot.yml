@@ -52,7 +52,7 @@ updates:
   # The commit prefix is `fix(deps)`, not `ci`: unlike the root entry, a bump
   # here changes shipped output.
   - package-ecosystem: "npm"
-    directory: "/templates/packs/publishing/files/.github/release-tools"
+    directory: "/templates/packs/publishing/files/tools/release"
     schedule:
       interval: "weekly"
     cooldown:

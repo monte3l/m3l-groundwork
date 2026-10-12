@@ -74,7 +74,7 @@ export const TYPESCRIPT_DOMAIN_GLOBS = [
   "bin/lib/*.json",
   ".github/workflows/*.yml",
   ".github/dependabot.yml",
-  ".github/release-tools/**",
+  "tools/release/**",
   ".changeset/**",
   ".gitleaks.toml",
   "REUSE.toml",
