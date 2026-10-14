@@ -133,4 +133,61 @@ describe("removedStaleFilesError -- names only the files that existed before the
     expect(message).not.toContain("inventory.json");
     expect(message).not.toContain("adoption-report.md");
   });
+
+  it("names customization-report.md, with its own not-recreated caveat, when it was the sole pre-existing file", () => {
+    const projectDir = seedProject(targetDir, "only-customization-existed");
+    const groundworkDir = join(projectDir, ".groundwork");
+    mkdirSync(groundworkDir, { recursive: true });
+    writeFileSync(
+      join(groundworkDir, "customization-report.md"),
+      "stale customization report\n",
+    );
+
+    const cause = new Error("simulated stageBaselineAdditions failure");
+    stageBaselineAdditionsMock.mockImplementationOnce(() => {
+      throw cause;
+    });
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).cause).toBe(cause);
+    const message = (thrown as Error).message;
+    expect(message).toContain("customization-report.md");
+    expect(message).toContain(
+      " -- customization-report.md held the report /customize wrote, which a re-run does not recreate",
+    );
+    expect(message).not.toContain("adoption-decisions.json");
+    expect(message).not.toContain("inventory.json");
+    expect(message).not.toContain("adoption-report.md");
+  });
+
+  it("does not name customization-report.md when only adoption-decisions.json pre-existed", () => {
+    const projectDir = seedProject(targetDir, "decisions-no-customization");
+    const groundworkDir = join(projectDir, ".groundwork");
+    mkdirSync(groundworkDir, { recursive: true });
+    writeFileSync(
+      join(groundworkDir, "adoption-decisions.json"),
+      JSON.stringify({ stale: true }),
+    );
+    stageBaselineAdditionsMock.mockImplementationOnce(() => {
+      throw new Error("simulated stageBaselineAdditions failure");
+    });
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    const message = (thrown as Error).message;
+    expect(message).toContain("adoption-decisions.json");
+    expect(message).not.toContain("customization-report.md");
+  });
 });

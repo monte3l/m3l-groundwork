@@ -235,10 +235,57 @@ describe("renderReport", () => {
     expect(report).toContain("inert copies");
     expect(report).toContain("commit or ignore");
     expect(report).toContain(".gitignore");
-    // A concrete gitignore-line suggestion, not just the word "gitignore".
-    expect(report).toMatch(/`\.groundwork\/baseline\/`.*gitignore/is);
+    // No separate per-directory ignore line: the one `.groundwork/*` line covers it.
+    expect(report).not.toContain("add a `.groundwork/baseline/`");
+    expect(report).toMatch(/`\.groundwork\/\*`/);
     // The license-header / "every tracked file" caveat.
     expect(report).toMatch(/license-header|every tracked file/);
+  });
+
+  it("does not tell the reader to add separate .groundwork/baseline/ or .groundwork/packs/ ignore lines when both are staged", () => {
+    const report = renderReport(
+      baseInventory(templateRoot, {
+        stagedBaseline: {
+          dir: ".groundwork/baseline",
+          suffix: ".staged",
+          files: [stagedFile("eslint.config.js")],
+        },
+        stagedPacks: [stagedPackFixture()],
+      }),
+    );
+    expect(report).not.toContain("add a `.groundwork/baseline/`");
+    expect(report).not.toContain("add a `.groundwork/packs/`");
+    expect(report).not.toMatch(/`\.groundwork\/baseline\/` and a/);
+    expect(report).toContain("`.groundwork/*`");
+  });
+
+  it("closes with one .gitignore recommendation: .groundwork/* plus the two report exceptions, appearing once", () => {
+    for (const report of [
+      renderReport(baseInventory(templateRoot)),
+      renderReport(
+        baseInventory(templateRoot, {
+          stagedBaseline: {
+            dir: ".groundwork/baseline",
+            suffix: ".staged",
+            files: [stagedFile("eslint.config.js")],
+          },
+          stagedPacks: [stagedPackFixture()],
+        }),
+      ),
+    ]) {
+      expect(report).toContain(".groundwork/*\n");
+      expect(report).toContain("!.groundwork/adoption-report.md");
+      expect(report).toContain("!.groundwork/customization-report.md");
+      expect(report.split(".groundwork/*\n")).toHaveLength(2);
+    }
+  });
+
+  it("tells the reader a clone holds the two reports but no inventory, and to re-run the CLI then /customize", () => {
+    const report = renderReport(baseInventory(templateRoot));
+    expect(report).toContain("clone");
+    expect(report).toContain("re-run");
+    expect(report).toContain("/customize");
+    expect(report).not.toContain("notices and asks");
   });
 
   it("reports no harness found when .claude/ is absent", () => {

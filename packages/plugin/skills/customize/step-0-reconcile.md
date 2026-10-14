@@ -13,9 +13,29 @@ Contents:
 ## Step 0 — Reconcile (adopt mode only)
 
 1. Look for `.groundwork/inventory.json`.
-   - **Absent, and no `.groundwork/` directory either → this is a fresh
+   - **Absent, and no `.groundwork/` directory either → usually a fresh
      bootstrap; skip straight to Step 1.** Everything below this step applies
-     only when an inventory exists.
+     only when an inventory exists. **One guard first:** an adopted project
+     may gitignore `.groundwork/`, so a clone can lack the directory. Run
+     `git rev-list -n1 HEAD` in the project. Empty output, or a non-zero exit
+     (no commits, or not a git repository at all, which is what the CLI's fresh
+     mode leaves behind), keeps the fresh path. A commit means the project
+     already has history, so ask once with `AskUserQuestion`: "fresh
+     bootstrap" or "an adopted project whose `.groundwork/` is missing". The
+     second answer stops with the re-run advice below and changes nothing.
+     Never apply fresh-mode tailoring to an established codebase on the
+     strength of a missing directory alone.
+   - **Absent, but `.groundwork/` holds only tracked report files → a clone
+     of an adopted project.** The recommended `.gitignore` (Step 7) tracks
+     `adoption-report.md` and `customization-report.md` and ignores the
+     rest, so a clone has a `.groundwork/` with those reports and no
+     inventory, no `baseline/` and no `packs/`. Confirm with
+     `git ls-files .groundwork` (it lists the files present). This is not an
+     interrupted run. Stop, change nothing, and tell the user: "This clone has
+     the adoption reports but not the inventory, which is deliberately not
+     committed. Re-run `npx @monte3l/groundwork .` and then run `/customize`
+     again. The re-run deletes the tracked `.groundwork/customization-report.md`
+     from your working tree; `git restore` brings it back if you want it."
    - **Absent, but `.groundwork/` exists → a previous CLI adopt run did not
      complete** (the CLI deletes the old inventory before it stages anything
      and writes the new one last, so no inventory beside a `.groundwork/`
@@ -25,12 +45,12 @@ Contents:
      previous adopt run did not finish, or `inventory.json` was removed.
      If this project was never adopted (it was bootstrapped fresh), delete
      `.groundwork/` and run `/customize` again. Otherwise re-run
-     `npx @monte3l/groundwork@rc .` and then run `/customize` again."
+     `npx @monte3l/groundwork .` and then run `/customize` again."
      Change nothing.
    - **Present, but not valid JSON, or its `schemaVersion` is not an integer
      of at least 1 → stop and change nothing.** Tell the user: "`.groundwork/inventory.json`
      is not valid JSON or has no usable `schemaVersion`. Re-run
-     `npx @monte3l/groundwork@rc .` and then run `/customize` again."
+     `npx @monte3l/groundwork .` and then run `/customize` again."
 
    **Check `inventory.schemaVersion` before reading anything else.** This
    skill understands schema versions **1 through 6** (the highest it knows is
@@ -46,7 +66,7 @@ Contents:
    project owns there, nor writes through a symlinked `.claude`), it writes a
    fresh one to `.groundwork/customize/`, which Claude Code does not load. So delete
    that directory first (this discards any local edits the project made to
-   its copy) and then re-run `npx @monte3l/groundwork@rc .`. A
+   its copy) and then re-run `npx @monte3l/groundwork .`. A
    copy in `.groundwork/customize/` is refreshed by re-running the CLI. What
    each version added:
 
@@ -172,7 +192,7 @@ Contents:
      `stagedBaseline.files`, a pack's `files` or a pack's manifest
      means stop -- all of Round 1, including conflicts and packs -- and
      change nothing.** This is the single stop list for the staged baseline and the staged packs.
-     Tell the user: "The staged baseline in `.groundwork/baseline/` or a staged pack in `.groundwork/packs/` is incomplete or does not match `.groundwork/inventory.json` (<the first entry that failed and why>). Re-run `npx @monte3l/groundwork@rc .` and then run `/customize` again." **Never fall back to `inventory.templateRoot` for a schema 5 or later inventory, packs included:** that fallback exists for a schema 1-4 inventory only, and only for the baseline additions (a schema 1-4 inventory's packs are read from their unsuffixed copy, see Step 0.4(c) and Round 1).
+     Tell the user: "The staged baseline in `.groundwork/baseline/` or a staged pack in `.groundwork/packs/` is incomplete or does not match `.groundwork/inventory.json` (<the first entry that failed and why>). Re-run `npx @monte3l/groundwork .` and then run `/customize` again." **Never fall back to `inventory.templateRoot` for a schema 5 or later inventory, packs included:** that fallback exists for a schema 1-4 inventory only, and only for the baseline additions (a schema 1-4 inventory's packs are read from their unsuffixed copy, see Step 0.4(c) and Round 1).
    - What a passing check proves: the staging is complete and matches the
      inventory. It does **not** prove the files are untampered -- anyone who
      can edit the staged files can edit the inventory's hashes too.
@@ -222,9 +242,31 @@ Contents:
 3. **Write the findings back** into `.groundwork/adoption-report.md`,
    replacing the CLI's index-level sections ("a `lefthook.yml` exists")
    with semantic ones ("pre-push runs lint and typecheck; tests do not
-   gate"). If the no-shell bullet in step 1 applied, carry its skip note
-   into the rewritten report: this step replaces the report's sections, so
-   a note written earlier would be dropped.
+   gate"). Do it by heading, never by prepending a new section above the
+   old ones: a report that keeps both contradicts itself once Round 1 runs.
+   Every `##` heading the CLI emits has exactly one fate:
+
+   | Heading                                        | Fate                                                                                                                                    |
+   | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+   | `## Codebase shape`                            | Replace now with what the deep read established (what is unresolved stays listed, what it explained goes)                               |
+   | `## Toolchain enforcement in effect`           | Replace now ("pre-push runs lint and typecheck; tests do not gate")                                                                     |
+   | `## Existing Claude Code harness`              | Replace now with the real wiring, then rewrite again after Round 1 so it states the installed harness                                   |
+   | `## Human-facing docs & guidelines`            | Replace now with what the docs actually say                                                                                             |
+   | `## Could not be determined`                   | Replace now: drop each item the deep read resolved, keep the rest                                                                       |
+   | `## Toolchain grade`                           | Keep verbatim: deterministic CLI facts                                                                                                  |
+   | `## Harness grade`                             | Keep verbatim: deterministic CLI facts                                                                                                  |
+   | `## Available packs`                           | Keep verbatim: deterministic CLI facts                                                                                                  |
+   | `## Baseline caps after a merge (approximate)` | Rewrite after Round 1 with the real post-install counts                                                                                 |
+   | `## What groundwork would change`              | Rewrite after Round 1 as "What groundwork changed": resolutions applied, files added, packs installed, planned installs dropped and why |
+   | `## Next step`                                 | Rewrite in Step 7 to point at `.groundwork/customization-report.md`                                                                     |
+
+   Refresh the report again at the end of Round 1 and Round 2, so no section
+   survives that says "none", "would be added" or "run `/customize`" about
+   something that already happened. If the no-shell bullet in step 1
+   applied, carry its skip note into the rewritten report: this step
+   replaces the report's sections, so a note written earlier would be
+   dropped.
+
 4. **Confirm.** Give a short summary in chat, then ask **one**
    `AskUserQuestion` covering: (a) _did this miss anything about your
    project?_ — the free-text option is the point of this question, not a
@@ -263,3 +305,61 @@ Contents:
    A CLI re-run deletes this file along with the old inventory, because its
    decisions were made against the previous staging; a decisions file found
    beside a fresh inventory therefore belongs to this inventory.
+
+   Write the file as soon as Step 0.4 is answered, then update it after each
+   later step, never only at the end. Its full shape:
+
+   ```json
+   {
+     "schemaVersion": 1,
+     "decidedAt": "2026-01-01T00:00:00Z",
+     "progress": { "lastCompletedStep": "step-0.4" },
+     "step0": {
+       "additions": ["<path>"],
+       "conflicts": [{ "path": "<path>", "resolution": "keep|take|merge" }],
+       "packs": ["<name>"],
+       "missedNotes": "<the user's free text, or empty>"
+     },
+     "interview": {
+       "kind": { "value": "library", "status": "confirmed", "fallback": null }
+     },
+     "agentsKept": ["Explore"],
+     "plugins": { "enabled": ["<id>"], "declined": ["<id>"] },
+     "round1": {
+       "installed": ["<path>"],
+       "dropped": [{ "path": "<path>", "reason": "<why>" }],
+       "mechanicallyRetargeted": ["<path>"]
+     },
+     "round2": {
+       "applied": ["<finding>"],
+       "deferred": [{ "finding": "<finding>", "reason": "<why>" }]
+     }
+   }
+   ```
+
+   - `progress.lastCompletedStep` is `step-0.4`, `step-1`, `step-3`,
+     `step-3-plugins`, `step-4` or `step-6`, set after that step finishes.
+   - `interview` holds one entry per Step 1 question. `status` is
+     `"confirmed"`, `"corrected"` or `"dismissed"`. A question the user
+     dismissed without answering is recorded as `"dismissed"` with the
+     default actually used in `fallback`, never as an answer. Step 7 lists it
+     under "Assumed, not answered".
+   - `agentsKept` and `plugins` are written when Step 1 and Round 1's plugin
+     question are answered.
+   - `round1.dropped` records every planned install Round 1 did not carry out
+     (a guard whose subject does not exist in this project, for instance) with
+     the reason. `round1.mechanicallyRetargeted` is Step 3's "needs a human
+     read" list.
+   - `round2` records each finding applied and each deferred. A finding that
+     changes how a hook behaves (making a guard fail closed, a new deny rule, a
+     widened matcher) is collected into one `AskUserQuestion` (apply or
+     defer), and the answer is recorded here. A deferred one also goes into
+     the tracker's pending remediation, so a later sweep does not re-decide it
+     silently.
+
+   **After a compaction or resume, read this file first and never re-ask a
+   decision whose entry is already recorded.** Resume at the step after
+   `progress.lastCompletedStep`, but always re-run Step 0.1's validity and
+   integrity checks first (they are cheap and idempotent), because the project
+   can change between sessions. Only a `"dismissed"` entry may be asked
+   again.

@@ -933,6 +933,31 @@ describe("main", () => {
       expect(existsSync(decisionsPath)).toBe(false);
     });
 
+    it("deletes a stale .groundwork/customization-report.md before staging, the same as the other previous-run files", () => {
+      const projectDir = join(
+        targetDir,
+        "existing-project-customization-stale",
+      );
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
+      mkdirSync(join(projectDir, ".groundwork"), { recursive: true });
+      const customizationPath = join(
+        projectDir,
+        ".groundwork",
+        "customization-report.md",
+      );
+      writeFileSync(customizationPath, "stale customization report\n");
+
+      main([projectDir]);
+
+      // /customize's report describes a replaced inventory; a re-run must
+      // clear it so it is never mistaken for the new run's.
+      expect(existsSync(customizationPath)).toBe(false);
+    });
+
     // Round-3 item 1: a symlinked .groundwork/baseline is now refused BEFORE
     // the three stale .groundwork/ files are deleted (see
     // main-symlink-refusal-order.test.ts for the full contract) -- so,

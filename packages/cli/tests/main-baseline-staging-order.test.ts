@@ -171,6 +171,8 @@ describe("runAdopt baseline-staging write-scope ordering (round-2 item 3)", () =
     const inventoryPath = join(groundworkDir, "inventory.json");
     const reportPath = join(groundworkDir, "adoption-report.md");
     const decisionsPath = join(groundworkDir, "adoption-decisions.json");
+    const customizationPath = join(groundworkDir, "customization-report.md");
+    writeFileSync(customizationPath, "# stale customization\n");
     const priorInventory = JSON.stringify({
       schemaVersion: 0,
       marker: "pre-existing",
@@ -212,5 +214,8 @@ describe("runAdopt baseline-staging write-scope ordering (round-2 item 3)", () =
     expect(readFileSync(reportPath, "utf8")).toBe(priorReport);
     expect(existsSync(decisionsPath)).toBe(true);
     expect(readFileSync(decisionsPath, "utf8")).toBe(priorDecisions);
+    expect(readFileSync(customizationPath, "utf8")).toBe(
+      "# stale customization\n",
+    );
   });
 });

@@ -154,7 +154,7 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
  *
  * @example
  * ```sh
- * npx @monte3l/groundwork@next ./my-app --bogus
+ * npx @monte3l/groundwork ./my-app --bogus
  * # stderr: unrecognized option: --bogus (followed by the usage text)
  * echo $? # 2 -- a runtime failure exits 1 instead
  * ```
@@ -675,28 +675,51 @@ const STALE_FILE_NAMES = [
   "inventory.json",
   "adoption-report.md",
   "adoption-decisions.json",
+  "customization-report.md",
 ] as const;
 type StaleFileName = (typeof STALE_FILE_NAMES)[number];
+
+const DECISIONS_CAVEAT =
+  "adoption-decisions.json held the decisions /customize recorded";
+const CUSTOMIZATION_CAVEAT =
+  "customization-report.md held the report /customize wrote";
+
+/**
+ * The "a re-run does not recreate it" caveat for whichever of the two
+ * `/customize`-written files were removed: empty when neither was, one
+ * clause when one was, and a single combined clause when both were.
+ */
+function notRecreatedCaveat(removed: readonly StaleFileName[]): string {
+  const decisions = removed.includes("adoption-decisions.json");
+  const customization = removed.includes("customization-report.md");
+  if (decisions && customization) {
+    return ` -- ${DECISIONS_CAVEAT}, and ${CUSTOMIZATION_CAVEAT}; a re-run recreates neither`;
+  }
+  if (decisions) {
+    return ` -- ${DECISIONS_CAVEAT}, which a re-run does not recreate`;
+  }
+  if (customization) {
+    return ` -- ${CUSTOMIZATION_CAVEAT}, which a re-run does not recreate`;
+  }
+  return "";
+}
 
 /**
  * Which previous `.groundwork/` files a failed run actually removed, worded
  * for a message: only those in `removed` are named, and the decisions file
- * carries its "a re-run does not recreate it" caveat only when it is one of
- * them.
+ * and the customization report each carry their "a re-run does not recreate
+ * it" caveat only when they are among them.
  */
 function describeRemoved(removed: readonly StaleFileName[]): string {
   if (removed.length === 0) {
-    return "no previous .groundwork/ inventory, report or decisions file was removed";
+    return "no previous .groundwork/ inventory, adoption report, decisions file or customization report was removed";
   }
   const names =
     removed.length === 1
       ? removed.join("")
       : `${removed.slice(0, -1).join(", ")} and ${removed.slice(-1).join("")}`;
   const verb = removed.length === 1 ? "was" : "were";
-  const decisionsCaveat = removed.includes("adoption-decisions.json")
-    ? " -- adoption-decisions.json held the decisions /customize recorded, which a re-run does not recreate"
-    : "";
-  return `the previous .groundwork/${names} ${verb} removed${decisionsCaveat}`;
+  return `the previous .groundwork/${names} ${verb} removed${notRecreatedCaveat(removed)}`;
 }
 
 /**
@@ -808,7 +831,7 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  * already deleted, so nothing reads the gap as a completed run.
  *
  * Checked before anything under `.groundwork/` is deleted or written, in
- * this order: the three stale-file paths are scope-checked against
+ * this order: the four stale-file paths are scope-checked against
  * {@link assertAdoptWriteScope}; every pack is loaded and validated by
  * `loadPack` and surveyed (`planConflicts`, `observeWiring`); the pack
  * staging plan (`planPackStaging`) and the baseline staging plan
@@ -823,8 +846,9 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  * directory throws with the previous `.groundwork/` untouched.
  *
  * **The point of no return** is the first deletion of a stale
- * `inventory.json`/`adoption-report.md`/`adoption-decisions.json` (in that
- * order), which follows those checks; which of the three existed is
+ * `inventory.json`/`adoption-report.md`/`adoption-decisions.json`/
+ * `customization-report.md` (in that order), which follows those checks;
+ * which of the four existed is
  * recorded just before. After the deletions, packs and the baseline are
  * staged from the plans already computed (their trees are not walked
  * again), the harness and toolchain are graded, the `/customize` skill is
@@ -835,8 +859,9 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  * rename). A failure in any of those steps -- a failed deletion included --
  * is rethrown as an `Error` with the failure as `cause` and its message
  * embedded, naming only the previous files that existed and were actually
- * removed (and, when `adoption-decisions.json` is among them, that it held
- * the decisions `/customize` recorded, which a re-run does not recreate),
+ * removed (and, when `adoption-decisions.json` or `customization-report.md`
+ * is among them, that it held the decisions or the report `/customize`
+ * wrote, which a re-run does not recreate),
  * and saying to fix the cause and re-run the CLI -- once, even when the
  * cause's own message already says so. An `AssertionError` (a broken
  * write-scope or containment invariant, a bug a re-run cannot fix) keeps
@@ -941,11 +966,12 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   let nextStep: string;
   try {
     // The point of no return: the first deletion. A previous run's
-    // inventory/report -- and the decisions /customize recorded against
-    // them -- must not survive a run that fails part-way: /customize would
-    // read them as describing the new staging. All three go before anything
-    // is staged; inventory/report are rewritten only at the end, and the
-    // decisions file only by /customize. Inside the wrapping, so a failed
+    // inventory/report -- and the decisions and customization report
+    // /customize wrote against them -- must not survive a run that fails
+    // part-way: /customize would read them as describing the new staging.
+    // All four go before anything is staged; inventory/report are rewritten
+    // only at the end, and the decisions file and customization report only
+    // by /customize. Inside the wrapping, so a failed
     // deletion reports which files are already gone. Every path is removed,
     // not just the pre-existing ones: existsSync follows symlinks, so a
     // dangling one must still go before the report's "wx" write below.
