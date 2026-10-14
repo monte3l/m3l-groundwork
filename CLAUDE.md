@@ -91,8 +91,8 @@ packages/plugin/        Phase B: the /customize skill
                          Operating Model". worktrees/ is unrelated -- see
                          "Known gaps".
 
-.changeset/             Changesets config, prerelease state (pre.json), and any
-                         pending changesets. See "Releases".
+.changeset/             Changesets config and any pending changesets.
+                         See "Releases".
 
 .claude-plugin/         marketplace.json: lists the plugin as a relative-path
                          source into packages/plugin -- never npm -- for
@@ -711,8 +711,9 @@ and distributes only through the Claude Code marketplace
 A PR with a user-visible CLI change should add a changeset (`pnpm changeset`);
 the PR-template checkbox is the only check, nothing in CI enforces it. A
 push to `main` runs `release.yml`, which opens a version PR or publishes.
-Prerelease `rc` mode is on -- only `patch` changesets are intended to land until
-GA, by convention (no config or workflow rejects other bump types).
+The `rc` prerelease series ended at `1.0.0`; only `patch` changesets are intended to
+land in the 1.0 series, by convention (no config or workflow rejects other bump
+types).
 
 A few invariants matter even when this file isn't open: **renaming or
 moving `release.yml` breaks npm's trusted publisher**; publishes are
@@ -722,7 +723,7 @@ actually installable); the version PR authenticates as a GitHub App, not
 `GITHUB_TOKEN`, because `main`'s ruleset requires checks a bot-token PR
 can't trigger; and a plugin-only change needs no changeset.
 
-Full detail -- the publish flow, the prerelease/GA plan, the one-time npm
+Full detail -- the publish flow, the GA promotion record, the one-time npm
 and GitHub App setup, `bin/pnpm-publish-shim.mjs`'s OIDC workaround, and the
 `npm-publish` environment gate: `.claude/rules/releases.md` (auto-loads on
 `.github/workflows/release.yml`, `.changeset/**`, `.claude-plugin/**`,

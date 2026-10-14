@@ -54,29 +54,23 @@ naming convention only: no `version` field in `pack.json` (`packs.ts` would
 accept an unknown key, but nothing reads it), and no per-pack
 `CHANGELOG.md`.
 
-**Prerelease mode is on** (`.changeset/pre.json`, tag `rc`): the CLI shipped
-one `0.x` line (`0.1.0-next.0`/`.1`, on the `next` dist-tag) before the public
-API was defined, then switched tags (`pnpm changeset pre exit` immediately
-followed by `pnpm changeset pre enter rc`, both in one commit -- splitting
-them across commits lets `changeset version` run in the intervening `exit`
-state and skip the prerelease suffix entirely) alongside a `major` changeset.
-Changesets' prerelease counter does not reset across a tag switch, so the
-first `rc` version continued from the `next` line's counter rather than
-starting at `.0` or `.1` -- read `pnpm changeset status --verbose` before
-relying on a specific number. The CLI's versions are now `1.0.0-rc.N` on the
-`rc` dist-tag, so the README says `npx @monte3l/groundwork@rc`; `@next`
-users must switch explicitly, since a prerelease range never crosses from
-`0.1.0-next.N` to `1.0.0-rc.N` on its own. The public API (see the README's
-"Versioning policy") is frozen as of the first `rc`: only `patch` changesets
-land for the rest of the series, and any further API change waits for a
-`1.1` after GA. Leave `rc` mode with `pnpm changeset pre exit` plus a normal
-version PR once the promotion checklist is met, then drop `@rc` from the
-README (and repoint the `next` dist-tag, and any marketplace channel, to the
-stable release -- see the GA promotion checklist below).
-Changesets itself warns against sitting in pre mode on the default branch
-indefinitely.
+**Prerelease mode is over.** The CLI shipped one `0.x` line
+(`0.1.0-next.N`, on the `next` dist-tag), then `1.0.0-rc.N` on the `rc`
+dist-tag, and left `rc` mode with `pnpm changeset pre exit` in the PR that
+made `1.0.0`; the version PR deleted `.changeset/pre.json`. `1.0.0` is the
+same code as `1.0.0-rc.8`, published on `latest` (which had pointed at the
+`0.0.0` placeholder). The public API (see the README's "Versioning policy")
+has been frozen since the first `rc`: only `patch` changesets land in the
+1.0 series, by convention, and any further API change waits for `1.1`. To
+use prerelease mode again, run `pnpm changeset pre exit` and
+`pnpm changeset pre enter <tag>` in one commit when switching tags:
+splitting them lets `changeset version` run in the intervening `exit` state
+and skip the prerelease suffix. Changesets' prerelease counter does not reset
+across a tag switch, and it warns against sitting in pre mode on the default
+branch indefinitely.
 
-**GA promotion checklist.** Leave `rc` only when every item is true; each
+**GA promotion checklist** (kept as the record of how `1.0.0` was gated, and
+the template for the next major). Every item was true when `rc` was left; each
 one has a command or a file that proves it.
 
 1. **The public API is unchanged since the first `rc`.** No `minor` or
@@ -99,10 +93,11 @@ one has a command or a file that proves it.
    `docs` step included), and the read-only `gh api` commands in
    `docs/github-blueprint.md` still return the values that file states.
 
-Then run the exit: `pnpm changeset pre exit`, merge the version PR, approve
-the staged publish, and in the same release drop `@rc` from the README and
-repoint the `next` dist-tag and any marketplace channel to the stable version.
-`latest` moves off the `0.0.0` placeholder on that first stable publish.
+The exit was: `pnpm changeset pre exit` and a `patch` changeset in one PR,
+the version PR, the `npm-publish` environment approval and `npm stage
+approve`, and, once `latest` pointed at `1.0.0`, a docs PR dropped `@rc` from the README. After the publish
+the `next` dist-tag was repointed to `1.0.0`, `0.0.0` and the `0.1.0-next.*`
+releases were deprecated, and `latest` moved off the `0.0.0` placeholder.
 
 **One-time setup, done by hand, that this design depends on.** npm cannot
 configure a trusted publisher for a package that does not exist yet, so

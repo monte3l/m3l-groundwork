@@ -25,10 +25,9 @@ copy of the `/customize` skill at `.claude/skills/customize/`, or at
 `.groundwork/customize/` when something already there blocks it.
 
 ```bash
-# currently a 1.0.0 release candidate, shipping on the `rc` dist-tag
-npx @monte3l/groundwork@rc my-new-project
-npx @monte3l/groundwork@rc my-new-project --pack harness-extras
-npx @monte3l/groundwork@rc ../existing-project
+npx @monte3l/groundwork my-new-project
+npx @monte3l/groundwork my-new-project --pack harness-extras
+npx @monte3l/groundwork ../existing-project
 ```
 
 Requires Node 24+. No prompts, and no network call beyond the `pnpm install` a

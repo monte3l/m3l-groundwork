@@ -211,8 +211,10 @@ in CI, changes the reachability answer and needs this entry revisited.
 
 ## Next review
 
-Due within 5 years of this review, or at GA (leaving the `rc` prerelease
-series -- see [`ROADMAP.md`](../ROADMAP.md)), whichever comes first. The open
+Done at GA (leaving the `rc` prerelease series, 2026-10-14): `pnpm audit` and
+the `tools/release` and `tools/deploy` lockfile audits report no advisories,
+and there are no open Dependabot or code-scanning alerts. Next due within 5
+years of this review. The open
 advisories above are not on that clock: they are re-checked on the day of each
 release.
 
