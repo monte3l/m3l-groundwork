@@ -182,7 +182,7 @@
   "build_repeatable_status": "Met",
   "build_repeatable_justification": "`pack.e2e.test.ts` asserts the packed tarball emits byte-identical output to the source checkout.",
   "installation_common_status": "Met",
-  "installation_common_justification": "`npx @monte3l/groundwork@rc <dir>` -- the standard way to run an npm-published CLI; README notes npx leaves nothing installed globally.",
+  "installation_common_justification": "`npx @monte3l/groundwork <dir>` -- the standard way to run an npm-published CLI; README notes npx leaves nothing installed globally.",
   "installation_standard_variables_status": "N/A",
   "installation_standard_variables_justification": "Installed and run via npx; there is no DESTDIR-style install-location convention for this kind of package.",
   "installation_development_quick_status": "Met",

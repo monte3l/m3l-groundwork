@@ -38,21 +38,20 @@ Read this project's rendered docs site at
 
 1. Install [Node 24+](https://nodejs.org/) and [pnpm](https://pnpm.io/installation)
    (see ["Requirements"](#requirements) below for exact versions).
-2. Run `npx @monte3l/groundwork@rc my-app` to bootstrap a new project
+2. Run `npx @monte3l/groundwork my-app` to bootstrap a new project
    named `my-app`.
 3. `cd my-app`.
 4. Open the `my-app` folder in Claude Code.
 5. Run `/customize` -- it interviews you and tailors the baseline to your
    project.
 
-> **Why `@rc`?** `@monte3l/groundwork` is currently a `1.0.0` release
-> candidate, shipped on the [`rc` dist-tag](docs/glossary.md#dist-tag) --
-> name it explicitly, as the Quickstart above does. Drop `@rc` once a
-> stable `1.0.0` release exists. If you installed an earlier `0.x` release
-> from the `next` tag, switch explicitly: a prerelease version range never
-> crosses from `0.1.0-next.N` to `1.0.0-rc.N` on its own. See
+> [!NOTE]
+> Earlier releases shipped on other [dist-tags](docs/glossary.md#dist-tag).
+> If you installed a `0.x` release from `next` or a `1.0.0-rc` release from
+> `rc`, switch to the default `latest` tag: a prerelease version range never
+> crosses to `1.0.0` on its own. See
 > ["Versioning policy"](#versioning-policy) below for what counts as the
-> CLI's public API, frozen as of the first RC.
+> CLI's public API, frozen since 1.0.
 
 ## What it is
 

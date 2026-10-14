@@ -95,7 +95,7 @@ See: [developercertificate.org](https://developercertificate.org/).
 An npm label (such as `latest`, `rc`, or `next`) that points at one
 specific published version, so `npx package@tag` resolves to that version
 without naming it explicitly.
-In this repo: the CLI currently ships on the `rc` dist-tag.
+In this repo: the CLI ships on `latest`; its `1.0.0-rc.N` releases were on `rc`.
 
 ### Dynamic analysis
 
@@ -212,7 +212,7 @@ every release; see [`SECURITY.md`](../SECURITY.md#verifying-releases).
 Short for release candidate: a prerelease version believed ready for a
 stable release but not yet declared stable.
 In this repo: the CLI's `1.0.0-rc.N` versions, shipped on the `rc`
-dist-tag until GA.
+dist-tag before `1.0.0`.
 
 ### Red/green
 
