@@ -11,12 +11,11 @@ templates or generation logic, not from a choice the interviewer or
 
 ## Supported versions
 
-| Version                                                  | Supported        |
-| -------------------------------------------------------- | ---------------- |
-| Latest `1.x` release                                     | Yes              |
-| Latest prerelease (`-rc`/`-next`, while no `1.x` exists) | Yes, best effort |
-| `0.0.0` (npm placeholder)                                | No               |
-| Anything else                                            | No               |
+| Version                                                 | Supported |
+| ------------------------------------------------------- | --------- |
+| Latest `1.x` release                                    | Yes       |
+| `1.0.0-rc.N` and `0.x` prereleases, `0.0.0` placeholder | No        |
+| Anything else                                           | No        |
 
 Only the latest release in a supported line gets a fix. This is a
 single-maintainer project; there is no backport policy across major
@@ -125,7 +124,7 @@ every release, not only at release time). To confirm a published release
 yourself:
 
 ```bash
-git checkout <tag>          # e.g. @monte3l/groundwork@1.0.0-rc.N
+git checkout <tag>          # e.g. @monte3l/groundwork@1.0.0
 pnpm install --frozen-lockfile
 pnpm build
 pnpm --filter @monte3l/groundwork pack
