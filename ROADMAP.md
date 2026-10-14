@@ -5,16 +5,16 @@ Kept in one file rather than GitHub Issues/Projects so it survives outside
 any one tool -- see `documentation_roadmap` in the
 [OpenSSF Best Practices badge](https://www.bestpractices.dev/) criteria.
 
-## Now: GA
+## Now: 1.0 is out
 
 The public API has been frozen since the first `1.0.0-rc`
-(see the README's ["Versioning policy"](README.md#versioning-policy)): only
-`patch` [changesets](docs/glossary.md#changeset) land for the rest of the
-[`rc`](docs/glossary.md#rc) series, and any further API change waits for a
-`1.1` release after GA (see [`.claude/rules/releases.md`](.claude/rules/releases.md), which
-[`CLAUDE.md`](CLAUDE.md#releases) summarises). Leaving the `rc` prerelease series for a
-stable `1.0.0` is the immediate goal, once the promotion checklist in
-[`.claude/rules/releases.md`](.claude/rules/releases.md) is met.
+(see the README's ["Versioning policy"](README.md#versioning-policy)), and
+`1.0.0` shipped it unchanged. Only `patch`
+[changesets](docs/glossary.md#changeset) land in the 1.0 series, and any further API
+change waits for a `1.1` release (see
+[`.claude/rules/releases.md`](.claude/rules/releases.md), which
+[`CLAUDE.md`](CLAUDE.md#releases) summarises). The `rc` series and its
+promotion checklist are recorded there.
 
 ## Next 12 months
 
