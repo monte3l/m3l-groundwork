@@ -94,7 +94,17 @@ npm audit signatures
 gh attestation verify <path-to-downloaded-tarball> \
   --repo monte3l/m3l-groundwork \
   --signer-workflow monte3l/m3l-groundwork/.github/workflows/release.yml
+
+# Or verify offline against the Sigstore bundle attached to the same Release
+gh attestation verify <path-to-downloaded-tarball> \
+  --bundle <path-to-downloaded-tarball>.sigstore.json \
+  --repo monte3l/m3l-groundwork
 ```
+
+Each GitHub Release carries the tarball and a `<tarball>.sigstore.json`
+bundle of the same attestation. A release published before the bundle was
+attached has only the tarball; verify it with the first `gh attestation
+verify` command above.
 
 `npm audit signatures` confirms the registry signature and provenance
 attestation both check out. `gh attestation verify` additionally prints the
@@ -191,14 +201,11 @@ standing bypass that undermines the design:
   Pull requests are collaborators-only (see [`CLAUDE.md`](CLAUDE.md#git-workflow)),
   which removes the case a `CODEOWNERS` file is usually for -- routing
   external, unreviewed code to the right reviewer.
-- **Fuzzing** (no OSS-Fuzz integration): Scorecard's `Fuzzing` check looks
-  specifically for OSS-Fuzz/ClusterFuzzLite integration or a handful of
-  recognized fuzzing harnesses, none of which fits a CLI with no
-  long-running network-facing service. This project does apply dynamic
-  analysis -- property-based tests via `fast-check`, run on every push, PR,
-  and pre-release build (see "Dynamic analysis" above and
-  [`docs/security-review.md`](docs/security-review.md)) -- Scorecard's
-  heuristic simply doesn't recognize that shape of tool.
+- **Contributors** (fewer than three contributing organizations):
+  Scorecard counts commit authors' GitHub `Company` field across the last 30
+  commits. A single-maintainer project has one, and the check's own
+  remediation says there is none beyond recruiting contributors from other
+  organizations. See [`ROADMAP.md`](ROADMAP.md) for how that grows.
 - **Maintained** (repository age): purely time-based (Scorecard checks
   whether a repo is older than 90 days); it self-resolves and needs no
   action.
@@ -220,7 +227,8 @@ copyright/license statement (`REUSE.toml` plus inline SPDX headers -- see
 gate, a reproducible build, dynamic analysis, a dated security review
 ([`docs/security-review.md`](docs/security-review.md)), a security assurance
 case ([`docs/assurance-case.md`](docs/assurance-case.md)), DCO-signed
-commits, strict linting, signed and attested releases, and CLI input
+commits, strict linting, attested releases (a Sigstore bundle on each
+GitHub Release, plus npm provenance), and CLI input
 validation. The project's questionnaire shows the Silver badge achieved
 (project 14937); `.bestpractices.json` holds the drafted answers, and the
 Gold-level criteria still open are the three single-maintainer ones listed in
