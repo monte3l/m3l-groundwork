@@ -134,7 +134,7 @@
   "dynamic_analysis_fixed_status": "Met",
   "dynamic_analysis_fixed_justification": "A property-test failure fails `pnpm test`, which gates every PR and the pre-release `pack` job; no finding can ship unfixed.",
   "dco_status": "Met",
-  "dco_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/CONTRIBUTING.md#developer-certificate-of-origin -- every commit needs a Signed-off-by trailer, enforced by the commit-msg hook.",
+  "dco_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/CONTRIBUTING.md#developer-certificate-of-origin -- every commit needs a Signed-off-by trailer, enforced by the commit-msg hook and by the dco job in .github/workflows/ci.yml, which fails a PR when a commit it adds lacks one and is part of the required verify check.",
   "governance_status": "Met",
   "governance_justification": "https://github.com/monte3l/m3l-groundwork/blob/main/GOVERNANCE.md.",
   "code_of_conduct_status": "Met",
