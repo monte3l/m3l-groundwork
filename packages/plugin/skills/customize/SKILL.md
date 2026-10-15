@@ -59,20 +59,26 @@ procedure, and a compacted session keeps only the start of this file.
 
 In outline:
 
-1. Look for `.groundwork/inventory.json`. No `.groundwork/` at all means a
-   fresh bootstrap: skip to Step 1. A `.groundwork/` with no inventory means an
-   interrupted CLI run, and an unreadable inventory is invalid: in both cases
+1. Look for `.groundwork/inventory.json`. No `.groundwork/` at all usually
+   means a fresh bootstrap: skip to Step 1, unless `git rev-list -n1 HEAD`
+   shows the repository has commits (the folder may be gitignored), in which
+   case ask first. A `.groundwork/` holding only tracked report files is a
+   clone of an adopted project: re-run the CLI. Any other `.groundwork/` with
+   no inventory means an interrupted CLI run, and an unreadable inventory is invalid: in both cases
    stop and change nothing, and never treat the project as a fresh bootstrap.
 2. **The deep read.** The CLI's survey is an index, not an interpretation:
    read the real files it flagged `needsReading`, and reconcile its facts
    against the repository.
-3. **Write the findings back** into `.groundwork/adoption-report.md`.
+3. **Write the findings back** into `.groundwork/adoption-report.md`,
+   replacing the CLI's sections by heading (the table in step 0.3 says which
+   are replaced and which are kept), and refresh it after Rounds 1 and 2.
 4. **Confirm** the additions, the conflict resolutions and which packs to
    install, in one `AskUserQuestion` round. Nothing is written to a project
    file before this.
 5. **Record the confirmed decisions** to `.groundwork/adoption-decisions.json`
-   so a compacted or resumed session does not re-ask them. After a compaction,
-   read that file first.
+   so a compacted or resumed session does not re-ask them. Update it after
+   every later step, record a dismissed question as dismissed, and after a
+   compaction read that file first and never re-ask a recorded decision.
 
 ## Step 1 — Interview
 
@@ -108,6 +114,10 @@ never names a `ProjectKind` itself (the type lives in this plugin's
 `packages/plugin/src/kind-facet-map.ts`, not the CLI): the inference
 happens once, here, visibly, with its reasoning attached — not buried in an
 offline heuristic no one reviews.
+
+A question the user dismisses is not an answer. Apply its default, record the
+entry (adopt mode) as `"dismissed"` with that default as the fallback, and report it in
+Step 7 under "Assumed, not answered".
 
 Packs are **not** re-asked here — Step 0.4 already collected that decision
 (adopt mode) or the CLI already installed at bootstrap time via `--pack`
@@ -183,6 +193,12 @@ final summary every place the findings disagreed with what Round 0/1
 shipped — that disagreement list is the feature: it's the evidence the
 baseline had gone stale.
 
+**A finding that changes hook behaviour** (a guard failing closed, a new
+deny rule, a widened matcher) is not applied silently in either direction. In
+adopt mode, collect those into one `AskUserQuestion` (apply or defer),
+record each answer under `round2` in the decisions file, and put a deferred
+one in the tracker's pending remediation.
+
 **The one exception.** Where a finding would undo an **explicit interview
 answer** from Step 1 — the user said tests must not gate `pre-push`,
 guidance says they should — surface the conflict and leave the user's
@@ -242,3 +258,30 @@ declined, plus any prerequisite named against an enabled plugin
 (e.g. `typescript-language-server` on `PATH`, or the Python version a
 plugin's `prerequisites` names) as a follow-up the
 user still has to satisfy.
+
+**Write the report to a file as well (adopt mode only).** Save the same report
+to `.groundwork/customization-report.md`, so a reviewer can read it without
+asking for the chat. Include which conflicts were resolved and which packs
+were installed, anything in `round1.dropped` with its reason, a **Needs a
+human read** list (every file in `round1.mechanicallyRetargeted`, plus any
+retargeted gate reported as not exercised), an **Assumed, not answered** list
+(each `"dismissed"` interview entry and the fallback used), and a skipped
+`guard-readonly-bash` with its reason. Rewrite the adoption report's
+`## Next step` to point at this file. Never write it in fresh mode: a
+`.groundwork/` directory with no inventory reads as an interrupted adopt run.
+
+**Adopt mode only: ask once about `.gitignore`.** The CLI never edits the
+project's `.gitignore`. Recommend tracking the two reports and ignoring the
+rest of `.groundwork/` (the inventory holds absolute machine paths, the
+staged copies are bulky, and the decisions file is only valid beside its own
+inventory):
+
+```gitignore
+.groundwork/*
+!.groundwork/adoption-report.md
+!.groundwork/customization-report.md
+```
+
+Add it only if the user agrees. Say that a teammate's clone then holds the
+two reports but no `.groundwork/inventory.json`, which Step 0.1 recognizes as a
+clone and answers with the re-run advice.

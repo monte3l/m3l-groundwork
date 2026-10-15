@@ -42,7 +42,8 @@ describe("SKILL.md Step 0 -- incomplete-run rule", () => {
   });
 
   it("names the exact re-run command and says to change nothing", () => {
-    expect(text).toContain("npx @monte3l/groundwork@rc .");
+    expect(text).toContain("npx @monte3l/groundwork .");
+    expect(text).not.toContain("@rc");
     expect(text).toContain("Change nothing.");
   });
 });
@@ -200,7 +201,7 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
   it("stops for an inventory.json that is not valid JSON or a schemaVersion that is not an integer >= 1, naming the re-run command and changing nothing", () => {
     expect(section).toContain("not valid JSON");
     expect(section).toContain("integer");
-    expect(section).toContain("npx @monte3l/groundwork@rc .");
+    expect(section).toContain("npx @monte3l/groundwork .");
 
     const idx = section.indexOf("not valid JSON");
     expect(idx).toBeGreaterThan(-1);
@@ -245,7 +246,7 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
     // names both local-copy locations) lengthened this paragraph.
     const window = section.slice(idx, idx + 1100);
     expect(window).toContain("/plugin update");
-    expect(window).toContain("npx @monte3l/groundwork@rc .");
+    expect(window).toContain("npx @monte3l/groundwork .");
     expect(window).toContain("project-local");
   });
 
@@ -718,7 +719,7 @@ describe("SKILL.md Step 0.1 -- the single stop list also covers staged packs", (
     const window = section.slice(Math.max(0, idx - 200), idx + 400);
     expect(window).toContain(".groundwork/baseline/");
     expect(window).toContain(".groundwork/packs/");
-    expect(window).toContain("npx @monte3l/groundwork@rc .");
+    expect(window).toContain("npx @monte3l/groundwork .");
   });
 
   it("scopes the never-fall-back-to-templateRoot rule to a schema 5 or later inventory, packs included, dropping the old unscoped wording", () => {
@@ -1168,4 +1169,117 @@ describe("SKILL.md Step 0.1 -- the `/`-separator list also names the staged-pack
     expect(window).toContain("`stagedPacks[].files[].path`");
     expect(window).toContain("`stagedPacks[].files[].staged`");
   });
+});
+
+const step0Raw = readFileSync(
+  join(here, "..", "skills", "customize", "step-0-reconcile.md"),
+  "utf8",
+);
+const skillText = readFileSync(skillPath, "utf8").replace(/\s+/g, " ");
+const reportSource = readFileSync(
+  join(here, "..", "..", "cli", "src", "report.ts"),
+  "utf8",
+);
+
+describe("Step 0.3 -- every report.ts section heading is in the write-back table", () => {
+  const start = step0Raw.indexOf("3. **Write the findings back**");
+  const end = step0Raw.indexOf("4. **Confirm.**");
+  const table = step0Raw.slice(start, end).replace(/\s+/g, " ");
+  const headings = [
+    ...new Set(
+      [...reportSource.matchAll(/"(## [^#"\n][^"\n]*)"/g)].map((m) => m[1]),
+    ),
+  ];
+
+  it("finds the Step 0.3 slice and a plausible heading set in report.ts", () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(headings).toContain("## Codebase shape");
+    expect(headings).toContain("## Next step");
+  });
+
+  it.each(headings)("lists %s", (heading) => {
+    expect(table).toContain(heading);
+  });
+});
+
+const step0Flat = step0Raw.replace(/\s+/g, " ");
+const step3Flat = readFileSync(
+  join(here, "..", "skills", "customize", "step-3-round-1.md"),
+  "utf8",
+).replace(/\s+/g, " ");
+const step7Section = skillText.slice(skillText.indexOf("## Step 7"));
+const step01Slice = step0Flat.slice(
+  step0Flat.indexOf("1. Look for `.groundwork/inventory.json`."),
+  step0Flat.indexOf("2. **The deep read.**"),
+);
+
+describe("Step 7 -- customization-report.md", () => {
+  it("names the file, scoped to adopt mode only, within 300 chars in Step 7", () => {
+    const idx = step7Section.indexOf("customization-report.md");
+    expect(idx).toBeGreaterThan(-1);
+    const window = step7Section.slice(
+      Math.max(0, idx - 300),
+      idx + "customization-report.md".length + 300,
+    );
+    expect(window).toContain("adopt mode only");
+  });
+
+  it.each([".groundwork/*", "!.groundwork/adoption-report.md"])(
+    "tells the user about the gitignore convention (%s) in Step 7",
+    (phrase) => {
+      expect(step7Section).toContain(phrase);
+    },
+  );
+});
+
+describe("Step 0.4/0.5 -- decisions file shape and resume rule", () => {
+  const decisionsSlice = step0Flat.slice(
+    step0Flat.indexOf("5. **Record the confirmed decisions**"),
+  );
+
+  it("finds the decisions slice", () => {
+    expect(decisionsSlice.length).toBeGreaterThan(0);
+    expect(step0Flat).toContain("5. **Record the confirmed decisions**");
+  });
+
+  it.each([
+    "progress",
+    "lastCompletedStep",
+    "agentsKept",
+    "decidedAt",
+    '"dismissed"',
+    "round1",
+    "dropped",
+    "round2",
+    "deferred",
+    "never re-ask",
+  ])("documents %s", (phrase) => {
+    expect(decisionsSlice).toContain(phrase);
+  });
+});
+
+describe("Step 0.1 -- missing .groundwork guard", () => {
+  it("finds the Step 0.1 slice", () => {
+    expect(step01Slice.length).toBeGreaterThan(0);
+  });
+
+  it("documents the git rev-list -n1 HEAD check", () => {
+    expect(step01Slice).toContain("git rev-list -n1 HEAD");
+  });
+
+  it("distinguishes a clone of an adopted project via git ls-files .groundwork, not an interrupted CLI re-run", () => {
+    expect(step01Slice).toContain("git ls-files .groundwork");
+    expect(step01Slice).toContain("clone of an adopted project");
+    expect(step01Slice).not.toContain("interrupted CLI re-run took");
+  });
+});
+
+describe("Step 3 -- retargeting rule", () => {
+  it.each(["mechanically retargeted", "Needs a human read", "not exercised"])(
+    "contains %s in step-3-round-1.md",
+    (phrase) => {
+      expect(step3Flat).toContain(phrase);
+    },
+  );
 });

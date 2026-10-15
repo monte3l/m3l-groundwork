@@ -509,4 +509,35 @@ describe("runAdopt -- failure wrapping after the point of no return (round-3 ite
     const occurrences = message.match(/re-run the CLI/g) ?? [];
     expect(occurrences).toHaveLength(1);
   });
+
+  it("also removes a stale customization-report.md and names it in the wrapped message when a later step fails", () => {
+    const projectDir = seedProject(targetDir, "fail-customization-named");
+    seedStaleGroundwork(projectDir);
+    const customizationPath = join(
+      projectDir,
+      ".groundwork",
+      "customization-report.md",
+    );
+    writeFileSync(customizationPath, "stale customization report\n");
+
+    const cause = new Error("simulated stageBaselineAdditions failure");
+    stageBaselineAdditionsMock.mockImplementationOnce(() => {
+      throw cause;
+    });
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).cause).toBe(cause);
+    expect((thrown as Error).message).toContain("customization-report.md");
+    expect((thrown as Error).message).toContain(
+      " -- adoption-decisions.json held the decisions /customize recorded, and customization-report.md held the report /customize wrote; a re-run recreates neither",
+    );
+    expect(existsSync(customizationPath)).toBe(false);
+  });
 });

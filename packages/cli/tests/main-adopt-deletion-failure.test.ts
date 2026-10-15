@@ -204,4 +204,56 @@ describe("runAdopt -- deletion-step failures (item 2: deletions run inside the w
     expect(existsSync(reportPath)).toBe(true);
     expect(existsSync(decisionsPath)).toBe(true);
   });
+
+  it("wraps a failure of the FOURTH deletion (customization-report.md), leaving the first three actually removed and the customization report on disk", () => {
+    const projectDir = seedProject(targetDir, "fail-fourth-deletion");
+    const { inventoryPath, reportPath, decisionsPath } =
+      seedStaleGroundwork(projectDir);
+    const customizationPath = join(
+      projectDir,
+      ".groundwork",
+      "customization-report.md",
+    );
+    writeFileSync(customizationPath, "stale customization report\n");
+
+    const rmFailure = new Error(
+      "simulated EISDIR removing customization-report.md",
+    );
+    rmSyncMock.mockImplementation((...args: Parameters<typeof realRmSync>) => {
+      const [path] = args;
+      if (path === customizationPath) {
+        throw rmFailure;
+      }
+      return realRmSync(...args);
+    });
+
+    let thrown: unknown;
+    try {
+      main([projectDir]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(assert.AssertionError);
+    expect((thrown as Error).cause).toBe(rmFailure);
+    const message = (thrown as Error).message;
+    expect(message).toMatch(/re-run/);
+    // The cause text itself names the failing path, so scope the check to
+    // the "removed" clause the CLI adds.
+    const removedClause = /the previous \.groundwork\/(.*?) were removed/.exec(
+      message,
+    )?.[1];
+    expect(removedClause).toBeDefined();
+    expect(removedClause).toContain("inventory.json");
+    expect(removedClause).toContain("adoption-report.md");
+    expect(removedClause).toContain("adoption-decisions.json");
+    // It failed to delete, so it must not be named among the removed files.
+    expect(removedClause).not.toContain("customization-report.md");
+
+    expect(existsSync(inventoryPath)).toBe(false);
+    expect(existsSync(reportPath)).toBe(false);
+    expect(existsSync(decisionsPath)).toBe(false);
+    expect(existsSync(customizationPath)).toBe(true);
+  });
 });

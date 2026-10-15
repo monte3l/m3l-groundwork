@@ -103,13 +103,40 @@ confirmed in Step 0.4:
   and the three statusline scripts (`statusline.mjs`, `statusline-layout.mjs`,
   `subagent-statusline.mjs`) and install the pack's other artifacts (the
   compaction-handoff hooks and `guard-readonly-bash`) normally, stating the
-  skip plainly in Step 7;
+  skip plainly in Step 7. `guard-readonly-bash.mjs` imports
+  `bin/lib/agent-roster.mjs`: when the project keeps no agents and that file is
+  not being installed, skip that one hook too (the pack's `adoptNotes` allow
+  it), record it in `round1.dropped` and say in Step 7 that it was skipped and
+  why;
   `wiring.verifySteps` becomes a step in whatever this project's real gate
   runner is (a `package.json` script plus a line in its `lefthook.yml`/
   `.husky/pre-push`/CI workflow, written by hand to match its actual shape)
   — or, if the project has no such gate runner at all, install the pack's
   other artifacts and state plainly in Step 7 that the gate was not wired,
   rather than inventing a runner the project never asked for.
+
+**Retarget what you installed (adopt mode).** A staged skill, agent, rule or
+hook still speaks the baseline's tooling. For every one you install, rewrite
+each package-manager command to the project's own (`survey.shape.packageManager`;
+a `package.json` script of the same purpose wins over a guessed command) and
+each path to the project's real source and test directories. A project with
+no package manager and no `package.json` gets its real gate in place of the
+command, or the command is removed and Step 7 says the project has none.
+Class every file you touched as one of two:
+
+- **Tailored**: you rewrote the prose to fit the project.
+- **Mechanically retargeted**: only the commands and paths were swapped, so
+  the surrounding prose may still read oddly.
+
+Record the mechanically retargeted files in `round1.mechanicallyRetargeted` and print it in
+Step 7 under **Needs a human read**. Files under a guidance skill's
+`references/` document upstream tools, so they keep their `pnpm` text: name
+that exception in the report instead of editing them. Finally run each
+retargeted gate command (`post-edit-verify`'s formatter, linter and type
+check, for instance) once against the project's real files. When one cannot
+run, because dependencies are not installed for example, report it as **not
+exercised** with the reason, never as working. A planned install you drop for
+any reason goes into `round1.dropped` with that reason.
 
 **Plugins (both modes), after packs are settled above.** Build a
 `PluginRecommendationContext`: `chosenPacks` is whatever the packs decision

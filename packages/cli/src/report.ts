@@ -487,23 +487,19 @@ function renderStagedFilesNote(
   stagedPacks: readonly StagedPack[],
 ): string[] {
   const parts: string[] = [];
-  const dirs: string[] = [];
   if (stagedBaseline.files.length > 0) {
     parts.push(`the baseline files staged under \`${stagedBaseline.dir}/\``);
-    dirs.push(stagedBaseline.dir);
   }
   if (stagedPacks.length > 0) {
     parts.push(
       `the ${stagedPacks.length} pack(s) staged under \`${STAGED_PACKS_DIR}/\` ` +
         `(each pack's \`${STAGED_PACK_MANIFEST}\` included)`,
     );
-    dirs.push(STAGED_PACKS_DIR);
   }
   const subject = parts.join(" and ");
   if (subject === "") {
     return [];
   }
-  const ignoreLines = dirs.map((dir) => `\`${dir}/\``).join(" and a ");
   return [
     `${subject.charAt(0).toUpperCase()}${subject.slice(1)} are inert copies, never ` +
       `installed: each carries a \`${STAGED_SUFFIX}\` suffix so no tool in this ` +
@@ -511,8 +507,8 @@ function renderStagedFilesNote(
       `confirm it. Decide whether to commit or ignore those \`${STAGED_SUFFIX}\` ` +
       "files before your next commit: they are verbatim template copies, so " +
       "a strict license-header check, or any gate that runs over every " +
-      `tracked file, may flag them. To keep them out of git, add a ` +
-      `${ignoreLines} line to \`.gitignore\`.`,
+      "tracked file, may flag them. The `.groundwork/*` line in the " +
+      "`.gitignore` recommendation below keeps them out of git.",
     "",
   ];
 }
@@ -596,10 +592,22 @@ export function renderReport(inventory: Inventory, nextStep?: string): string {
       "is the point where it's caught.",
     "",
     ...renderStagedFilesNote(inventory.stagedBaseline, inventory.stagedPacks),
-    "`.groundwork/` itself was not added to this project's `.gitignore` -- " +
-      "that choice is yours. It's disposable (regenerate it any time by " +
-      "re-running the CLI), so most projects gitignore it; some prefer to " +
-      "commit it as a record of what the adoption found.",
+    "`.groundwork/` itself was not added to this project's `.gitignore`. " +
+      "We recommend tracking this report (and `customization-report.md`, " +
+      "once `/customize` has written it) as a record of the adoption, and " +
+      "ignoring the rest, which is disposable -- regenerate it any time by " +
+      "re-running the CLI:",
+    "",
+    "```gitignore",
+    ".groundwork/*",
+    "!.groundwork/adoption-report.md",
+    "!.groundwork/customization-report.md",
+    "```",
+    "",
+    "`/customize` asks about this at the end of its run. With this rule a " +
+      "clone of the project holds the two reports but no " +
+      "`.groundwork/inventory.json`, so on such a clone re-run the CLI " +
+      "(`npx @monte3l/groundwork .`) and then run `/customize`.",
     "",
   ];
   return sections.join("\n");
