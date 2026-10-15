@@ -193,14 +193,14 @@ standing bypass that undermines the design:
   without a standing bypass, which the `main` ruleset's empty
   `bypass_actors` list is deliberately designed to avoid. See
   [`CLAUDE.md`](CLAUDE.md#git-workflow), "Three choices are deliberate,
-  not defaults." The same reasoning is why there is no `CODEOWNERS` file
-  with `require_code_owner_review` turned on: GitHub doesn't let a PR
-  author approve their own PR, so with the maintainer as the only code
-  owner that rule would block every maintainer PR outright, the same
-  standing-bypass trap the 0-approvals choice above already avoids.
-  Pull requests are collaborators-only (see [`CLAUDE.md`](CLAUDE.md#git-workflow)),
-  which removes the case a `CODEOWNERS` file is usually for -- routing
-  external, unreviewed code to the right reviewer.
+  not defaults." The same reasoning is why `.github/CODEOWNERS` (`*` owned
+  by the two org owners) is advisory and `require_code_owner_review` stays
+  off: GitHub doesn't let a PR author approve their own PR, so enforcing it
+  would either block every maintainer PR outright or make every PR wait on
+  the second owner, the same standing-bypass trap the 0-approvals choice
+  above already avoids. Pull requests are collaborators-only (see
+  [`CLAUDE.md`](CLAUDE.md#git-workflow)), so the file names who owns the
+  repository rather than routing external, unreviewed code.
 - **Contributors** (fewer than three contributing organizations):
   Scorecard counts commit authors' GitHub `Company` field across the last 30
   commits. A single-maintainer project has one, and the check's own
