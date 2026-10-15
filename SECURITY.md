@@ -95,16 +95,30 @@ gh attestation verify <path-to-downloaded-tarball> \
   --repo monte3l/m3l-groundwork \
   --signer-workflow monte3l/m3l-groundwork/.github/workflows/release.yml
 
-# Or verify offline against the Sigstore bundle attached to the same Release
+# Or verify against the Sigstore bundle attached to the same Release
+# (still fetches Sigstore's trust root over the network)
 gh attestation verify <path-to-downloaded-tarball> \
   --bundle <path-to-downloaded-tarball>.sigstore.json \
   --repo monte3l/m3l-groundwork
+
+# Verify the SBOM attestation for the same tarball
+gh attestation verify <path-to-downloaded-tarball> \
+  --repo monte3l/m3l-groundwork \
+  --predicate-type https://cyclonedx.org/bom
 ```
 
 Each GitHub Release carries the tarball and a `<tarball>.sigstore.json`
 bundle of the same attestation. A release published before the bundle was
 attached has only the tarball; verify it with the first `gh attestation
 verify` command above.
+
+Releases published after 1.0.2 also carry a CycloneDX software bill of
+materials, `<tarball>.cdx.json`, attested against the tarball (its own
+attestation is in GitHub's store, not a release asset). The package has no runtime
+dependencies, so the SBOM lists the package itself and nothing else; that is
+accurate, not an omission. It is generated from `pnpm-lock.yaml` with
+`pnpm sbom`, so it carries a generation timestamp and is not byte-for-byte
+reproducible the way the tarball is.
 
 `npm audit signatures` confirms the registry signature and provenance
 attestation both check out. `gh attestation verify` additionally prints the

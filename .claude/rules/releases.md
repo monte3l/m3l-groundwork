@@ -60,6 +60,24 @@ it exchanges the GitHub OIDC token itself and passes the result to
 `libnpmpublish` explicitly. Re-check that if the publisher is ever rewritten
 to use the npm CLI.
 
+**The SBOM (OSPS Baseline OSPS-QA-02.02, level 3) is generated, attested and
+attached in the same best-effort block.** `pnpm --filter @monte3l/groundwork
+sbom` writes `<tarball>.cdx.json` (CycloneDX 1.6, `--prod --lockfile-only`),
+`actions/attest` attests it against the tarball, and the existing `gh release
+upload` attaches it only if that attestation succeeded. Three things are
+easy to get wrong. **Use `--filter`, never `-C <dir>` or a cd into the
+package**: both silently describe the workspace root (`m3l-groundwork@0.0.0`)
+and would attest the wrong package. **The SBOM attestation's bundle is not
+uploaded**, because a second `*.sigstore.json` beside the provenance bundle
+would blur what that name means to Scorecard's Signed-Releases check;
+consumers verify with `--predicate-type https://cyclonedx.org/bom`. **Do not
+add `artifact-metadata: write`** to the `publish` job for it: the provenance
+step already runs without it, and a wider token on the OIDC job needs a
+reason. The step refuses to run when the tarball's version differs from
+`packages/cli/package.json`. Scorecard v5.5.0 has no SBOM check, so this does
+not move the score; its value is Baseline level 3 and consumers. An empty
+`components` list is correct while the CLI has no runtime dependencies.
+
 **Backfilling the bundle onto an older release.** Scorecard averages the last
 five releases, so a release published before the bundle was attached scores
 as unsigned until it rolls off. For a release whose tarball was attested,
