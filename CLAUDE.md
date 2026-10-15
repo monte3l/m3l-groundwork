@@ -450,6 +450,15 @@ steps) before considering any task here done.
   `packages/cli/src/term.ts` paints console output with. Full detail:
   `.claude/rules/design-system.md` (auto-loads on `design/**`,
   `bin/build-design-tokens.mjs`, `packages/cli/src/{palette,term}.ts`).
+- **`packages/cli/README.md` is generated, never hand-edited.** It is what npm
+  shows for `@monte3l/groundwork`, and `bin/build-npm-readme.mjs` builds it from
+  the root `README.md` (relative links rewritten to absolute
+  `github.com/.../blob/main/` URLs by `bin/lib/npm-readme.mjs`), so npm and
+  GitHub cannot describe different things. Edit the root README, then re-run
+  `node bin/build-npm-readme.mjs` and commit both; `--check` is the `npm-readme`
+  `lint`-group verify step. The package's `description`, `homepage` and
+  `keywords` are kept equal to the GitHub repo's description, homepage and
+  topics by hand: change both together.
 - **The docs site** (`.github/workflows/docs.yml`, deployed from `main` to
   `https://groundwork.monte3l.com` on Cloudflare Workers Static Assets) is a
   restricted, zero-dependency GFM-to-HTML renderer that throws rather than

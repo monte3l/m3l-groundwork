@@ -27,6 +27,10 @@ paths:
 - **Adopt mode never writes a project file.** It writes under
   `.groundwork/` plus the guarded `/customize` copy. `adopt.e2e.test.ts` is
   the test of that guarantee: do not weaken it.
+- **`packages/cli/README.md` is generated from the root `README.md`.** Never
+  hand-edit it: change the root README and run `node bin/build-npm-readme.mjs`
+  (the `npm-readme` verify step fails on drift). Keep `package.json`'s
+  `description`, `homepage` and `keywords` equal to the GitHub repo's.
 - **Tests whose subject is a template file** belong in `tests/templates/`,
   not beside the tests of `src/` modules (see `tests.md`).
 

@@ -49,7 +49,12 @@
         // packages/cli/tests/ci-docs-only.test.ts: isDocsOnly's only static
         // consumer is docsOnlyFor, inside ci-scope.mjs itself, so it reports
         // as unused without this entry.
-        "bin/lib/ci-scope.mjs"
+        "bin/lib/ci-scope.mjs",
+        // Same reason, same dynamic-import pattern, from
+        // packages/cli/tests/npm-readme.test.ts: NPM_README_BANNER and
+        // repoWebUrl are asserted on directly by the tests, and are
+        // otherwise consumed only inside npm-readme.mjs itself.
+        "bin/lib/npm-readme.mjs"
       ],
       "project": ["bin/**/*.mjs", ".claude/hooks/**/*.mjs"]
     },

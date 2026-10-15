@@ -1,15 +1,17 @@
 {
   "name": "@monte3l/groundwork",
   "version": "1.0.1",
-  "description": "CLI that writes a TypeScript toolchain and Claude Code setup into an empty directory, or -- against an existing project -- read-only surveys it and reports the differences. No prompts, and no network access beyond the package install.",
+  "description": "CLI that bootstraps a TypeScript project with a strict toolchain and Claude Code setup, or read-only surveys an existing one, plus a /customize plugin that tailors it to current guidance.",
   "keywords": [
-    "typescript",
-    "claude-code",
     "bootstrap",
-    "scaffold",
-    "cli"
+    "claude-code",
+    "claude-code-plugin",
+    "cli",
+    "developer-tools",
+    "scaffolding",
+    "typescript"
   ],
-  "homepage": "https://github.com/monte3l/m3l-groundwork#readme",
+  "homepage": "https://groundwork.monte3l.com",
   "bugs": {
     "url": "https://github.com/monte3l/m3l-groundwork/issues"
   },
