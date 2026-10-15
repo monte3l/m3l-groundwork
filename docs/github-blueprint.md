@@ -120,9 +120,10 @@ GitHub's community profile does not list them). Issue forms and the PR
 template live under `.github/`. Read GitHub's own view with
 `gh api repos/monte3l/m3l-groundwork/community/profile`.
 
-Not present, by choice or not yet: `CODEOWNERS` (deliberate, see
-`SECURITY.md`), `SUPPORT.md`, `FUNDING.yml`, and a `.github/release.yml`
-release-notes config.
+`CODEOWNERS` is present but advisory: `.github/CODEOWNERS` names both org
+owners, and `require_code_owner_review` stays off (see `SECURITY.md`). Not
+present, by choice or not yet: `SUPPORT.md`, `FUNDING.yml`, and a
+`.github/release.yml` release-notes config.
 
 ## Applying the blueprint to a new repository
 
