@@ -83,8 +83,8 @@ CI enforces it too, so skipping the hook does not skip the check. The `dco`
 job (a lane the required `verify` check waits on) fails a pull request when
 any commit it adds lacks a `Signed-off-by: Name <email>` trailer whose email
 is that commit's author or committer email. Merge commits are skipped, and so
-are `dependabot[bot]` and `m3l-groundwork-release[bot]`, matched by exact
-author name. To fix a failure, run `git commit --amend -s --no-edit` for the
+are the commits of `dependabot[bot]` and `m3l-groundwork-release[bot]`, but only
+in a pull request that bot itself opened. To fix a failure, run `git commit --amend -s --no-edit` for the
 last commit, or `git rebase --signoff <base>` for several, and force-push your
 own branch. The job reads the commits a PR adds, not the commit GitHub writes
 when it squash-merges, so

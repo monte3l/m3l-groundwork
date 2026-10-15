@@ -31,8 +31,10 @@ paths:
   the author's or committer's own email (OSPS-LE-01.01 asks for a status check).
   It runs for a documentation-only PR too, and on a push to `main` it passes
   without checking, because `verify` needs an explicit `success` from every
-  lane. `dependabot[bot]` and `m3l-groundwork-release[bot]` are exempt by exact
-  author name: the release bot never signs off, and Dependabot signs off as
+  lane. `dependabot[bot]` and `m3l-groundwork-release[bot]` are exempt, but
+  only when the PR was opened by that bot (`pull_request.user.login`, which a
+  commit author field cannot forge) and the commit's author is the same bot.
+  The release bot never signs off, and Dependabot signs off as
   support@github.com, which is not its author email. Keep `--no-divider` on the
   `git interpret-trailers` call: a Dependabot body holds a `---` line that the
   default reads as the end of the message. Pass the range through `env:`, as

@@ -275,10 +275,13 @@ jobs:
   # is no PR range there, and `verify` needs an explicit `success` from every
   # lane. Merge commits are skipped (this repository merges with merge
   # commits, and GitHub writes those). Two first-party automation identities
-  # are exempt by exact author name: `m3l-groundwork-release[bot]` never
-  # signs off, and Dependabot signs off as support@github.com, which is not
-  # its author email. The range and author arrive through env, never inline
-  # in the script. `--no-divider` matters: a Dependabot body holds a `---`
+  # are exempt, but only when BOTH the pull request was opened by that bot
+  # (`pull_request.user.login`, which GitHub sets and a commit author field
+  # cannot forge) AND the commit's author name is the same bot, so naming a
+  # commit author `dependabot[bot]` inside a human's PR skips nothing.
+  # `m3l-groundwork-release[bot]` never signs off, and Dependabot signs off
+  # as support@github.com, which is not its author email. The range and
+  # author arrive through env, never inline in the script. `--no-divider` matters: a Dependabot body holds a `---`
   # line, which `git interpret-trailers` otherwise reads as the end of the
   # message and so finds no trailers at all.
   dco:
@@ -295,6 +298,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "not a pull request (event: $EVENT_NAME) -- nothing to check"
@@ -309,8 +313,8 @@ jobs:
           for sha in $(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}"); do
             author="$(git log -1 --format=%an "$sha")"
             short="$(git log -1 --format='%h %s' "$sha")"
-            case "$author" in
-              "m3l-groundwork-release[bot]" | "dependabot[bot]")
+            case "${PR_AUTHOR}|${author}" in
+              "m3l-groundwork-release[bot]|m3l-groundwork-release[bot]" | "dependabot[bot]|dependabot[bot]")
                 echo "skip   $short (first-party automation: $author)"
                 continue
                 ;;

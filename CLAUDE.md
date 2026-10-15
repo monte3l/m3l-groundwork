@@ -496,8 +496,8 @@ which `bin/lint-commit.mjs` extends to merge, revert and fixup!/squash! messages
 and to a non-empty value -- see [`CONTRIBUTING.md`](CONTRIBUTING.md#developer-certificate-of-origin).
 The hook is local, so CI repeats the check: `ci.yml`'s `dco` job fails a PR
 when a commit it adds has no `Signed-off-by` trailer matching its author or
-committer email (merge commits skipped; `dependabot[bot]` and
-`m3l-groundwork-release[bot]` exempt by exact author name), and the `verify`
+committer email (merge commits skipped; commits by `dependabot[bot]` and
+`m3l-groundwork-release[bot]` exempt only inside a PR that same bot opened), and the `verify`
 aggregator waits on it, so it is a required check with no ruleset change. It
 reads a PR's own commits, not the commit GitHub writes on a squash merge,
 which is why the PR template also carries a sign-off checkbox.
