@@ -1,5 +1,11 @@
 # @monte3l/groundwork
 
+## 1.0.2
+
+### Patch Changes
+
+- [#192](https://github.com/monte3l/m3l-groundwork/pull/192) [`47d90fc`](https://github.com/monte3l/m3l-groundwork/commit/47d90fc55e54d04d04dca7ae0b878bdfba6e2820) Thanks [@enri3l](https://github.com/enri3l)! - The npm page now shows the full repository README instead of a short summary, and the package description, homepage and keywords match the GitHub repository.
+
 ## 1.0.1
 
 ### Patch Changes
