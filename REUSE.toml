@@ -80,6 +80,37 @@ path = [
 SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
 SPDX-License-Identifier = "MIT"
 
+# Files whose own text mentions the SPDX tag. `reuse lint` reads
+# `SPDX-License-Identifier:` anywhere in a file, so a regex, a template string
+# or a sentence about the header reads as a (malformed) real tag, and the file
+# then counts as unlicensed. `precedence = "override"` makes this annotation
+# win over whatever the file's own text says, which is what is wanted: the
+# license is not in doubt, only what the parser thinks it found. Paths are
+# listed, not globbed, so a new file never picks this up by accident.
+[[annotations]]
+path = [
+  ".bestpractices.json",
+  "CLAUDE.md",
+  "bin/check-license-headers.mjs",
+  "packages/cli/tests/packs.test.ts",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
+SPDX-License-Identifier = "MIT"
+
+# The `publishing` pack's files ship with `SPDX-License-Identifier: NOASSERTION`
+# on purpose: it is a placeholder the owner of a bootstrapped project replaces
+# with their own license, and `NOASSERTION` has no text in LICENSES/, so
+# `reuse lint` reports it as a missing license. This repo's own copy of the
+# payload is MIT, exactly as the `templates/**` annotation near the top
+# records, so override what REUSE sees here. The shipped files keep their
+# placeholder, since this annotation never leaves the repository.
+[[annotations]]
+path = ["templates/packs/publishing/files/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
+SPDX-License-Identifier = "MIT"
+
 # Two files that arrive with an m3l-design release (bin/sync-design.sh) and
 # carry no comment syntax: the release's own MIT license text and the checksum
 # list for the vendored payload. They keep upstream's credit line, as
