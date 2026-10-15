@@ -138,7 +138,11 @@ describe("github pack end-to-end", () => {
       const settings = JSON.parse(
         readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
       ) as Record<string, unknown>;
-      expect(Object.keys(settings)).toEqual(["$schema", "hooks"]);
+      expect(Object.keys(settings)).toEqual([
+        "$schema",
+        "permissions",
+        "hooks",
+      ]);
       expect(
         JSON.parse(
           readFileSync(

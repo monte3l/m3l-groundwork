@@ -40,7 +40,8 @@ than the one facet asked about.
 **Must only run in the main (hub) agent, never inside a subagent** — it ends
 in `EnterPlanMode` (refresh) or an `AskUserQuestion` (research or refresh,
 occasionally), and every mode launches parallel `Explore` research agents,
-none of which a subagent can do (`disallowedTools: Agent` on every spoke).
+none of which a spoke can do (`disallowedTools: Agent` on every spoke; Claude Code
+otherwise allows nesting three layers deep, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`).
 
 **No files are written by this skill itself** in research mode by default;
 refresh mode writes to exactly one file, the tracker, in Step 5; `gaps` mode
@@ -120,6 +121,15 @@ conflict-resolution machinery for an existing value.
    check against, not restate. Missing tracker/facet → first run, `NEW`
    only. Then read the allowlist file; state today's date; derive a run
    directory `<scratchpad>/ts-refresh-<date>/`.
+
+   **A project with no TypeScript toolchain gets no sweep.** When the project
+   has no `typescript` entry in `dependencies` or `devDependencies` and no
+   `tsconfig*.json`, say so, write nothing else, and set the tracker header to
+   `last-verified=n/a typescript-version=n/a reason=no-typescript-toolchain`.
+   `unset` means "not run yet" and invites a first sweep; `n/a` says there is
+   nothing to sweep. A later run re-checks the condition before honouring `n/a`:
+   once a TypeScript toolchain appears, treat the tracker as a first run.
+
 2. **Build the delta.** `WebFetch` the devblog index and
    `github.com/microsoft/TypeScript/releases`; extract entries newer than
    the recorded version. An unreachable source is a coverage gap, not a

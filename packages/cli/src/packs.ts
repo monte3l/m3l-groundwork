@@ -366,6 +366,107 @@ function writeVerifyStepsPacksJson(
   writeFileSync(path, lines.join("\n") + "\n");
 }
 
+const SETTINGS_PRINT_WIDTH = 80;
+const SETTINGS_MAX_DEPTH = 64;
+
+type JsonScalar = string | number | boolean | null;
+
+function isJsonScalar(value: unknown): value is JsonScalar {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
+}
+
+function stringifyScalar(value: JsonScalar): string {
+  const text: unknown = JSON.stringify(value);
+  if (typeof text !== "string") {
+    throw new Error(`settings.json value ${String(value)} is not serializable`);
+  }
+  return text;
+}
+
+/**
+ * Prints `value` at `indent` (in spaces). `prefix` is what precedes the value
+ * on its first line (indent plus any `"key": `) and `suffix` what follows its
+ * last (a trailing comma or nothing) -- both count toward the one-line fit
+ * check for an all-scalar array. Width is measured in UTF-16 code units
+ * (`.length`), not Prettier's display width, so a line holding CJK or other
+ * wide characters can stay collapsed where Prettier would expand it. See
+ * {@link writeSettingsJson} for the shapes this reproduces and the known
+ * divergences.
+ */
+function printSettingsValue(
+  value: unknown,
+  indent: number,
+  prefix: string,
+  suffix: string,
+  depth: number,
+): string {
+  if (depth > SETTINGS_MAX_DEPTH) {
+    throw new Error(
+      `settings.json nests deeper than ${String(SETTINGS_MAX_DEPTH)} levels`,
+    );
+  }
+  if (isJsonScalar(value)) return stringifyScalar(value);
+  const pad = " ".repeat(indent + 2);
+  const close = " ".repeat(indent);
+  if (Array.isArray(value)) {
+    const items: readonly unknown[] = value;
+    if (items.length === 0) return "[]";
+    if (items.every(isJsonScalar)) {
+      const flat = `[${items.map(stringifyScalar).join(", ")}]`;
+      if ((prefix + flat + suffix).length <= SETTINGS_PRINT_WIDTH) return flat;
+    }
+    const lines = items.map((item, index) => {
+      const comma = index < items.length - 1 ? "," : "";
+      return `${pad}${printSettingsValue(item, indent + 2, pad, comma, depth + 1)}${comma}`;
+    });
+    return `[\n${lines.join("\n")}\n${close}]`;
+  }
+  if (typeof value === "object") {
+    // Match JSON.stringify: an own key whose value is undefined is omitted.
+    const entries = Object.entries(value).filter(([, v]) => v !== undefined);
+    if (entries.length === 0) return "{}";
+    const lines = entries.map(([key, v], index) => {
+      const comma = index < entries.length - 1 ? "," : "";
+      const head = `${pad}${stringifyScalar(key)}: `;
+      return `${head}${printSettingsValue(v, indent + 2, head, comma, depth + 1)}${comma}`;
+    });
+    return `{\n${lines.join("\n")}\n${close}}`;
+  }
+  throw new Error(`settings.json holds a non-JSON ${typeof value} value`);
+}
+
+/**
+ * Serializes `.claude/settings.json` so it matches Prettier's JSON output
+ * for the shapes a Claude Code settings file holds -- objects, arrays of
+ * objects, and arrays of strings: 2-space indent, objects one key per line
+ * (`{}` when empty), an array of objects expanded one element per line
+ * (`[]` when empty), and an array of only scalars kept on one line --
+ * `["a", "b"]` -- when that whole line, indent and key and any trailing
+ * comma included, fits in 80 columns, else expanded one per line.
+ * `JSON.stringify(value, null, 2)` always expands arrays, so a short
+ * `permissions.deny` list written through `writeJson` fails
+ * `prettier --check` after every pack install. Key order is preserved.
+ *
+ * This is not a general JSON formatter. It throws on a non-JSON value or
+ * nesting past a fixed depth, and it diverges from Prettier in ways no
+ * settings file reaches today: an array containing arrays or empty objects
+ * is always expanded (Prettier collapses it when it fits); a wide numeric
+ * array prints one number per line (Prettier fills several per line); width
+ * is measured with `.length` code units rather than Prettier's display
+ * width, so CJK or other wide characters can collapse a line Prettier would
+ * expand; and numbers use `JSON.stringify`'s form (`1e+21`, where Prettier
+ * keeps `1e21`).
+ */
+function writeSettingsJson(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${printSettingsValue(value, 0, "", "", 0)}\n`);
+}
+
 export interface PackInstallResult {
   filesWritten: string[];
   budget: CapCounts;
@@ -409,7 +510,7 @@ export function installPack(
     settings,
     manifest.wiring.settingsTopLevel ?? {},
   );
-  writeJson(settingsPath, settings);
+  writeSettingsJson(settingsPath, settings);
 
   if (Object.keys(manifest.wiring.packageScripts).length > 0) {
     const pkgPath = join(targetDir, "package.json");

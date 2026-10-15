@@ -131,6 +131,30 @@ one. Check `/plugin` for installed mods alongside `/status`.
 writer spoke only with both present, so a call carrying `agent_type` but no
 `agent_id` is treated as the hub and is blocked.
 
+**Four guards block when they crash, and a secrets deny rule ships in
+`settings.json`.** `guard-secret-writes`, `guard-hub-src-writes`,
+`guard-branch-isolation` and `guard-protected-paths` carry
+`"onFailure": "block"` (Claude Code 2.1.295 or later). By default a hook that
+crashes or times out lets the call through; with this key it is blocked. It
+applies only to a failure the hook does not handle itself: each guard still
+catches bad input and exits 0 on purpose, so the key covers a load error, a
+missing `node` or the 30-second timeout. Because `guard-hub-src-writes` is also
+registered on `Bash`, a missing `node` or a timed-out scan blocks every `Bash`
+call until it is fixed (run the command yourself with the `!` prefix to get
+past it). The style guards and `guard-git-push-signed` stay fail-open on
+purpose: the push guard has its own command parser and the remote's
+signed-commit rule is the authoritative layer. `permissions.deny` blocks
+`Read(./.env)`, `Read(./.env.*)` and `Read(./secrets/**)`, which also covers
+`cat`, `head` and `tail` on those files in `Bash`. It does not cover `grep -r`
+or a script that opens the file itself, and nothing else in this baseline does.
+
+**A spoke's `permissionMode` can be overridden.** A session in auto,
+`acceptEdits` or `bypassPermissions` mode overrides a spoke's `permissionMode`
+(the field applies only when the session is in `default`, `dontAsk` or
+`plan`), so treat the hooks, not `permissionMode`, as what bounds a spoke.
+Claude Code also lets a subagent spawn subagents three layers deep by default;
+`disallowedTools: Agent` on every spoke is what keeps this roster flat.
+
 Full dispatch-sizing and recovery guidance: `.claude/rules/agent-dispatch.md`
 (auto-loads when editing `.claude/skills/**` or `.claude/agents/**`).
 

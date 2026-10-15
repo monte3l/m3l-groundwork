@@ -130,6 +130,7 @@ describe("harness-extras pack end-to-end", () => {
       };
       expect(Object.keys(settings)).toEqual([
         "$schema",
+        "permissions",
         "hooks",
         "statusLine",
         "subagentStatusLine",

@@ -29,6 +29,16 @@ Plus **the official docs of a tool the project's interview actually
 selected** for bundling, if one was chosen and isn't already covered above
 (a specific bundler's own docs).
 
+Plus **the official docs of any test runner, linter, formatter or type-test
+tool the project itself lists under `devDependencies`** that isn't covered
+above (`ava`, `xo`, Playwright and `expect-type` are the cases that prompted
+this). That tool's own documentation is owner-normative **for that tool
+only**: take its domain from the `homepage` field of its installed
+`package.json` (no network needed), never from a search result, pass it as one
+extra `allowed_domains` entry for that area, and record it in the tracker's
+Sources. A tool with no installed `homepage`, or one hosted on a general
+code-hosting or blogging domain, stays a coverage gap rather than a source.
+
 One of the fixed domains is **path-scoped within a domain
 `typescript-guidance` also uses, for a different path**:
 
