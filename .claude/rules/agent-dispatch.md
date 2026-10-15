@@ -27,6 +27,16 @@ contract (a documented behavior, an interface to satisfy):
    `templates/packs/`) run in parallel over the diff. Must-fix findings
    route back to `code-implementer` and the loop repeats until clean.
 
+**Spokes do not nest, and their `permissionMode` is not a safety property.**
+Claude Code lets a subagent spawn its own, three layers deep by default
+(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`); every spoke here sets
+`disallowedTools: Agent`, which is what keeps the roster flat. A session in
+auto, `acceptEdits` or `bypassPermissions` mode overrides a spoke's
+`permissionMode` (the field applies only under `default`, `dontAsk` or
+`plan`), so `acceptEdits` on the writer spokes is often inert. The PreToolUse
+guards bound a spoke, not `permissionMode`. Source:
+[sub-agents](https://code.claude.com/docs/en/sub-agents).
+
 ## Dispatch sizing
 
 - **Decompose before you dispatch.** Scale the dispatch to task complexity —

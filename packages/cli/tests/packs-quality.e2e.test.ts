@@ -77,7 +77,11 @@ describe("quality pack end-to-end", () => {
       const settings = JSON.parse(
         readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
       ) as Record<string, unknown>;
-      expect(Object.keys(settings)).toEqual(["$schema", "hooks"]);
+      expect(Object.keys(settings)).toEqual([
+        "$schema",
+        "permissions",
+        "hooks",
+      ]);
 
       const steps = JSON.parse(
         readFileSync(

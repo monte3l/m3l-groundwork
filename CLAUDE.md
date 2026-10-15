@@ -646,6 +646,22 @@ carry `agent_type` and `agent_id` is undocumented, so one passing as a
 writer spoke is unconfirmed. Every spoke's `tools` list omits `Agent`, which keeps the
 roster flat even where `disallowedTools` is not applied to a teammate.
 
+**Guards that block on a crash, the secrets deny rule and `permissionMode`.**
+The baseline's four invariant guards (`guard-secret-writes`,
+`guard-hub-src-writes`, `guard-branch-isolation`, `guard-protected-paths`) carry
+`"onFailure": "block"` (Claude Code 2.1.295 or later), so a crash outside the
+guard's own error handling, or a timeout, blocks the call instead of letting it
+through; the style guards and `guard-git-push-signed` stay fail-open (the push
+guard has its own parser, and the `main` ruleset rejects unsigned commits at
+merge). `guard-hub-src-writes` is also on `Bash`, so a missing `node` blocks
+every `Bash` call until fixed. `permissions.deny` carries `Read(./.env)`,
+`Read(./.env.*)` and `Read(./secrets/**)`; it does not cover `grep -r` or a
+script that opens the file. A session in auto, `acceptEdits` or
+`bypassPermissions` mode overrides a spoke's `permissionMode`, so the hooks, not
+that field, bound a spoke. Claude Code lets a subagent spawn subagents three
+layers deep by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`);
+`disallowedTools: Agent` keeps the roster flat.
+
 Full dispatch-sizing and recovery guidance:
 `.claude/rules/agent-dispatch.md` (auto-loads when editing
 `.claude/skills/**` or `.claude/agents/**`). Path-scoped rules auto-load on

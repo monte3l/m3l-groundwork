@@ -28,8 +28,10 @@ faster — and say in the answer that a full `refresh` sweep is available if
 the question turns out to implicate more than the one facet asked about.
 
 **Must only run in the main (hub) agent, never inside a subagent** — it ends
-in `EnterPlanMode` (refresh) or dispatches other agents (either mode), which
-a subagent cannot do (`disallowedTools: Agent`).
+in `EnterPlanMode` (refresh) or dispatches other agents (either mode), which a
+spoke cannot do: every spoke sets `disallowedTools: Agent`, and Claude Code otherwise
+lets a subagent spawn its own, three layers deep by default
+(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`).
 
 **No files are written by this skill itself** in research mode by default;
 refresh mode writes to exactly one file, the tracker, in Step 5.
@@ -96,7 +98,11 @@ concern) — every other facet below is identical regardless of project kind.
    `<scratchpad>/harness-refresh-<date>/`.
 2. **Build the delta.** `WebFetch` the Claude Code CHANGELOG, extract
    entries newer than the recorded version. An unreachable source is a
-   coverage gap, not a blocker. Pass this delta into all five briefs below
+   coverage gap, not a blocker. With an `unset` tracker there is no recorded
+   version to start from, so the delta has no lower bound: read as far back as
+   the fetch returns, and write the oldest version you actually read into the
+   tracker as a coverage note (`changelog read back to <version>`), never
+   implying full coverage of anything older. Pass this delta into all five briefs below
    — it is not a sixth facet.
 3. **Fan out five fixed facets in one message** — fixed, not derived per
    run, so sweeps stay comparable and the tracker stays diffable:

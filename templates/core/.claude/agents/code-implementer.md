@@ -1,7 +1,7 @@
 ---
 name: code-implementer
 description: Writer spoke for the TDD build pipeline. Given a contract and a set of failing tests, writes the minimal src/** implementation to make those tests pass, then refactors while green. Use during the GREEN phase of TDD. It writes implementation only — it never writes tests and never reviews code.
-tools: Read, Write, Edit, Grep, Glob, Bash, mcp__context7__resolve-library-id, mcp__context7__query-docs
+tools: Read, Write, Edit, Grep, Glob, Bash, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 disallowedTools: Agent
 mcpServers: [context7]
 model: claude-opus-5-5
@@ -102,8 +102,11 @@ that to the hub rather than absorbing it silently.
 
 ## Consulting context7 for library behavioral semantics
 
-You hold a scoped grant to `mcp__context7__resolve-library-id` and
-`mcp__context7__query-docs`. Use them when you need a third-party
+You hold a scoped grant to `resolve-library-id` and `query-docs` under both
+names Claude Code can give the server: `mcp__context7__*` when context7 is a
+project or user MCP server, and `mcp__plugin_context7_context7__*` when it
+comes from the `context7` plugin (a plugin's server is namespaced
+`plugin:<plugin>:<server>`). Use them when you need a third-party
 dependency's _behavioral_ semantics that a `.d.ts` file cannot express:
 retry/backoff behavior, terminal-state classification, pagination contracts,
 or which error a call throws under a specific condition. Resolve the library
