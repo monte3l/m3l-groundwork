@@ -1,5 +1,13 @@
 # @monte3l/groundwork
 
+## 1.0.1
+
+### Patch Changes
+
+- [#190](https://github.com/monte3l/m3l-groundwork/pull/190) [`40cca6c`](https://github.com/monte3l/m3l-groundwork/commit/40cca6ca9906258ea43252cb65504f953192888d) Thanks [@enri3l](https://github.com/enri3l)! - baseline: the emitted `settings.json` now blocks the call when one of its four invariant guards crashes or times out (`guard-secret-writes`, `guard-hub-src-writes`, `guard-branch-isolation`, `guard-protected-paths` carry `"onFailure": "block"`, Claude Code 2.1.295 or later) and denies reading `.env`, `.env.*` and `secrets/**`. `code-implementer` is granted both the `mcp__context7__*` and the plugin-namespaced `mcp__plugin_context7_context7__*` tool names. The baseline's `CLAUDE.md` and `agent-dispatch.md` now say that a spoke cannot nest because `disallowedTools: Agent` stops it (Claude Code otherwise allows three layers) and that a session in auto, `acceptEdits` or bypass mode overrides a spoke's `permissionMode`. `typescript-guidance` records a project with no TypeScript toolchain as `last-verified=n/a` instead of `unset`, treats a test runner, linter or type-test tool's own documentation (named in the project's `devDependencies`) as a source for that tool, and `harness-guidance` notes how far back it read the changelog on a first sweep. Installing a pack now writes `.claude/settings.json` the way Prettier prints it (a short array of strings stays on one line), so the emitted project's own format check keeps passing after the baseline gained a `permissions.deny` array.
+
+- [#188](https://github.com/monte3l/m3l-groundwork/pull/188) [`68f3ff7`](https://github.com/monte3l/m3l-groundwork/commit/68f3ff700961787396c9a49310af61416f925e5e) Thanks [@enri3l](https://github.com/enri3l)! - adopt: a re-run now also deletes `.groundwork/customization-report.md`, the report `/customize` writes at the end of an adopt run, and names it in the removed-files message. The adoption report's `.gitignore` advice now recommends tracking the two reports and ignoring the rest of `.groundwork/`. The `/customize` skill copied into the project replaces the report sections it supersedes, keeps `adoption-decisions.json` current and resumable, retargets installed skills and agents to the project's tooling, asks before treating a missing `.groundwork/` on a repository with commits as a fresh bootstrap, and points its re-run advice at the default `latest` tag instead of `@rc`.
+
 ## 1.0.0
 
 ### Major Changes
