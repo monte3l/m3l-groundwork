@@ -9,6 +9,7 @@
 [![CI](https://github.com/monte3l/m3l-groundwork/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/monte3l/m3l-groundwork/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/monte3l/m3l-groundwork/badge)](https://securityscorecards.dev/viewer/?uri=github.com/monte3l/m3l-groundwork)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14937/badge)](https://www.bestpractices.dev/projects/14937)
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/14937/baseline)](https://www.bestpractices.dev/projects/14937)
 [![Socket](https://badge.socket.dev/npm/package/@monte3l/groundwork)](https://socket.dev/npm/package/@monte3l/groundwork/overview)
 [![REUSE status](https://api.reuse.software/badge/github.com/monte3l/m3l-groundwork)](https://api.reuse.software/info/github.com/monte3l/m3l-groundwork)
 
