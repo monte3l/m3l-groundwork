@@ -50,7 +50,8 @@ and every CI lane run, keyed by group (`format`/`lint`/`typecheck`/`build`/
 `test`). If your change touches `packages/cli/src/`, `templates/core/`, or
 `packages/plugin/skills/customize/`, also run `pnpm test:e2e` -- it's the
 real acceptance test and has caught real bugs unit tests missed (see
-[`CLAUDE.md`](CLAUDE.md#testing)).
+[`CLAUDE.md`](CLAUDE.md#testing)). "Test environments and how tests run"
+below lists where each kind of test runs and what triggers it.
 
 - **Conventional Commits**, enforced by the `commit-msg` hook. This is the
   same convention `templates/core` emits into every bootstrapped project.
@@ -65,6 +66,55 @@ real acceptance test and has caught real bugs unit tests missed (see
   release of its own; see ["Releasing"](#releasing) below.
 - **Add a `Co-Authored-By:` trailer** if an AI assistant substantially
   helped write the commit.
+
+## Test environments and how tests run
+
+Tests use [Vitest](https://vitest.dev). There are three kinds, and each runs
+on your machine and in CI.
+
+| Kind           | Files                                                       | What it checks                                                                                                                                                       | Command         |
+| -------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| Unit           | `*.test.ts`                                                 | The CLI's modules, both harness and toolchain graders, the plugin's maps, and the baseline's structural contracts (caps, `domain-map.ts` coverage, dotfile escaping) | `pnpm test`     |
+| Property-based | `*.property.test.ts` ([fast-check](https://fast-check.dev)) | Parsers and boundary functions over generated input, and the harness grader's frontmatter parser against its emitted JavaScript twin. Part of `pnpm test`            | `pnpm test`     |
+| End-to-end     | `*.e2e.test.ts`                                             | The built CLI bootstraps and adopts real projects, runs `pnpm install` and `pnpm verify` inside them, and the packed tarball runs from outside the repository        | `pnpm test:e2e` |
+
+End-to-end tests are slow, run one file at a time, and touch the network (real
+`pnpm install`s), so `pnpm test` leaves them out. Run them when your change
+touches `packages/cli/src/`, `templates/core/` or
+`packages/plugin/skills/customize/`.
+
+### Where they run and what triggers them
+
+| Environment                                                                    | What runs                                                                                                                              | Trigger                                                                      |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Your machine (Linux or macOS), Node from `.node-version` (24)                  | Any command above. `lefthook`'s `pre-push` runs the `format`, `lint`, `typecheck`, `build` and `test` groups, not the end-to-end tests | Manual; `pre-push` on `git push`                                             |
+| GitHub-hosted `ubuntu-latest`, Node from `.node-version`                       | All five `pnpm verify` groups, one job each, the end-to-end tests, and the `dco` check                                                 | Every push to `main` and every pull request against it                       |
+| GitHub-hosted `macos-latest`, Node from `.node-version`                        | The end-to-end tests, with the same command as the Linux job                                                                           | The same                                                                     |
+| GitHub-hosted `ubuntu-latest`, Node's current release line                     | A full `pnpm verify` and the end-to-end tests, to catch a break before that line becomes the next LTS                                  | The same                                                                     |
+| The published package on `ubuntu-24.04`, `ubuntu-24.04-arm` and `macos-latest` | `bin/soak.sh` against the registry artifact, not the checkout. This is the only run on Linux arm64                                     | Manual: the `soak.yml` workflow, started with a dist-tag or an exact version |
+| Windows                                                                        | Nothing. Fresh mode refuses to run there (Linux and macOS only), and no test run covers Windows                                        | None                                                                         |
+
+A documentation-only pull request (every changed path under `docs/` or a
+root-level `*.md`) skips the work of the two end-to-end jobs and the
+Node-current job; they still report success, so the required check does not
+wait on them.
+
+### Reading the results
+
+- **`pnpm test`** fails the run on any failing test. `pnpm test:coverage`, which
+  is what `pnpm verify` runs, adds a gate on `packages/*/src`: at least 90%
+  statements and lines and 80% branches and functions, **per file**. A file under
+  the bar fails the run even when the total looks fine. The terminal prints the
+  table and `coverage/` holds the HTML report.
+- **`pnpm test:e2e`** failing usually means a project the CLI emitted, or the
+  packed tarball, stopped working. Read the first failing test's output: it
+  names the project directory and the command that failed. Each test may take up
+  to five minutes.
+- **In CI**, each job is its own check. `verify` is the one the `main` ruleset
+  requires, and it fails when any lane did not succeed, so a red `verify` means
+  one of the jobs above is red. To reproduce a lane locally, run
+  `node bin/verify.mjs --group <format|lint|typecheck|build|test>`; for the
+  end-to-end jobs, `pnpm build` and then `pnpm test:e2e`.
 
 ## Developer Certificate of Origin
 
