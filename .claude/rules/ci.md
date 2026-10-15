@@ -26,6 +26,19 @@ paths:
   (see CLAUDE.md's "Git Workflow"). The aggregator demands an explicit
   `success` from every lane, since testing only for `failure` reports green
   over a cancelled or skipped one.
+- **`dco` is a lane `verify` waits on, and it never skips.** It checks that
+  every non-merge commit a PR adds carries `Signed-off-by: Name <email>` with
+  the author's or committer's own email (OSPS-LE-01.01 asks for a status check).
+  It runs for a documentation-only PR too, and on a push to `main` it passes
+  without checking, because `verify` needs an explicit `success` from every
+  lane. `dependabot[bot]` and `m3l-groundwork-release[bot]` are exempt, but
+  only when the PR was opened by that bot (`pull_request.user.login`, which a
+  commit author field cannot forge) and the commit's author is the same bot.
+  The release bot never signs off, and Dependabot signs off as
+  support@github.com, which is not its author email. Keep `--no-divider` on the
+  `git interpret-trailers` call: a Dependabot body holds a `---` line that the
+  default reads as the end of the message. Pass the range through `env:`, as
+  the step does, never inline in the script.
 - **A documentation-only pull request skips the work of `e2e`, `e2e-macos`
   and `node-current`, and nothing else.** Docs-only means every changed path
   is under `docs/` or is a root-level `*.md`. Each of the three jobs runs

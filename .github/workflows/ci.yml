@@ -266,12 +266,87 @@ jobs:
       - if: steps.scope.outputs.docs_only == 'true'
         run: echo "documentation-only change, Node current verify skipped"
 
+  # The DCO, enforced by the server and not only by the local commit-msg
+  # hook (OSPS Baseline OSPS-LE-01.01 asks for a status check). Every commit
+  # a pull request adds must carry a `Signed-off-by: Name <email>` trailer
+  # whose email is the commit's author or committer email, so it is the
+  # contributor's own assertion. It runs for every PR, a documentation-only
+  # one included, and on a push to `main` it passes without checking: there
+  # is no PR range there, and `verify` needs an explicit `success` from every
+  # lane. Merge commits are skipped (this repository merges with merge
+  # commits, and GitHub writes those). Two first-party automation identities
+  # are exempt, but only when BOTH the pull request was opened by that bot
+  # (`pull_request.user.login`, which GitHub sets and a commit author field
+  # cannot forge) AND the commit's author name is the same bot, so naming a
+  # commit author `dependabot[bot]` inside a human's PR skips nothing.
+  # `m3l-groundwork-release[bot]` never signs off, and Dependabot signs off
+  # as support@github.com, which is not its author email. The range and
+  # author arrive through env, never inline in the script. `--no-divider` matters: a Dependabot body holds a `---`
+  # line, which `git interpret-trailers` otherwise reads as the end of the
+  # message and so finds no trailers at all.
+  dco:
+    name: DCO sign-off
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check every commit in the pull request is signed off
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "not a pull request (event: $EVENT_NAME) -- nothing to check"
+            exit 0
+          fi
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ]; then
+            echo "pull request event without a base or head commit -- failing closed" >&2
+            exit 1
+          fi
+          checked=0
+          bad=0
+          for sha in $(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}"); do
+            author="$(git log -1 --format=%an "$sha")"
+            short="$(git log -1 --format='%h %s' "$sha")"
+            case "${PR_AUTHOR}|${author}" in
+              "m3l-groundwork-release[bot]|m3l-groundwork-release[bot]" | "dependabot[bot]|dependabot[bot]")
+                echo "skip   $short (first-party automation: $author)"
+                continue
+                ;;
+            esac
+            checked=$((checked + 1))
+            author_email="$(git log -1 --format=%ae "$sha" | tr '[:upper:]' '[:lower:]')"
+            committer_email="$(git log -1 --format=%ce "$sha" | tr '[:upper:]' '[:lower:]')"
+            ok=0
+            while IFS= read -r line; do
+              # `Signed-off-by: Name <email>`, exactly one angle-bracketed address.
+              email="$(printf '%s\n' "$line" | sed -nE 's/^Signed-off-by: .+ <([^<>[:space:]]+@[^<>[:space:]]+)>$/\1/p' | tr '[:upper:]' '[:lower:]')"
+              if [ -n "$email" ] && { [ "$email" = "$author_email" ] || [ "$email" = "$committer_email" ]; }; then
+                ok=1
+              fi
+            done < <(git log -1 --format=%B "$sha" | git interpret-trailers --parse --no-divider)
+            if [ "$ok" -eq 1 ]; then
+              echo "ok     $short"
+            else
+              echo "::error title=Missing DCO sign-off::$short has no Signed-off-by trailer matching its author or committer email (git commit -s, or git commit --amend -s --no-edit)"
+              bad=$((bad + 1))
+            fi
+          done
+          echo "checked $checked commit(s), $bad without a valid sign-off"
+          [ "$bad" -eq 0 ]
+
   # The single required check: one status to protect the branch with, whose
   # `needs` list is the only place lanes are enumerated.
   verify:
     name: verify
     runs-on: ubuntu-latest
-    needs: [format, lint, typecheck, build, test, e2e, e2e-macos, node-current]
+    needs:
+      [format, lint, typecheck, build, test, e2e, e2e-macos, node-current, dco]
     if: always()
     timeout-minutes: 5
     steps:
