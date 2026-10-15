@@ -71,6 +71,12 @@ export const VERIFY_STEPS = [
     cmd: ["node", "bin/build-design-tokens.mjs", "--check"],
   },
   {
+    id: "npm-readme",
+    group: "lint",
+    name: "Check npm README matches root README",
+    cmd: ["node", "bin/build-npm-readme.mjs", "--check"],
+  },
+  {
     id: "typecheck",
     group: "typecheck",
     name: "Typecheck",
