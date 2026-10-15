@@ -246,13 +246,15 @@ jobs:
           fi
       # OpenSSF Best Practices' `signed_releases` criterion is met by npm
       # provenance alone (a Sigstore-backed, OIDC-issued attestation with no
-      # long-lived key -- see SECURITY.md, "Verifying releases"). These three
+      # long-lived key -- see SECURITY.md, "Verifying releases"). These
       # steps add a second, independent proof on the GitHub Release itself:
       # the exact tarball `pack` already built and tested, fetched back out
-      # of its own artifact (never rebuilt), attested, and attached. `if:`
-      # guards all three on `publish` actually having published -- `select-
-      # mode` only decides the job should run, not that a version was new.
-      # `continue-on-error: true` on all three: the staged publish has
+      # of its own artifact (never rebuilt), attested, and attached, plus a
+      # CycloneDX SBOM for it (OSPS Baseline OSPS-QA-02.02) generated and
+      # attested the same way. `if:` guards every one on `publish` actually
+      # having published -- `select-mode` only decides the job should run,
+      # not that a version was new.
+      # `continue-on-error: true` on all of them: the staged publish has
       # already succeeded by this point, so a failure here (a transient
       # download error, say) must never fail the whole job and leave a
       # staged, tagged, unreleased version behind -- this block is
@@ -275,11 +277,60 @@ jobs:
           # actions/attest-build-provenance's own glob support (not the
           # shell's), so `**` resolves correctly regardless of `globstar`.
           subject-path: .release-artifacts/**/*.tgz
+      - name: Generate a CycloneDX SBOM for the published tarball
+        id: sbom
+        if: steps.publish.outputs.published == 'true'
+        continue-on-error: true
+        run: |
+          # `pnpm --filter <name> sbom`, never `-C <dir>` or a cd into the
+          # package: both silently describe the workspace root
+          # (m3l-groundwork@0.0.0) instead of the published package. The
+          # `pnpm` on PATH is bin/pnpm-publish-shim.mjs, which only
+          # intercepts `publish`; `sbom` goes straight through. --lockfile-only
+          # reads pnpm-lock.yaml and nothing else (no install, no network);
+          # --prod is the shipped dependency set, which is empty, so the SBOM
+          # holds the root component alone -- accurate, not a defect.
+          tarball="$(find .release-artifacts -name '*.tgz' -print -quit)"
+          if [ -z "$tarball" ]; then
+            echo "no packed tarball found under .release-artifacts/ -- skipping the SBOM" >&2
+            exit 0
+          fi
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          case "$(basename "$tarball")" in
+            *"-${version}.tgz") ;;
+            *)
+              echo "tarball $(basename "$tarball") does not match package version ${version} -- refusing to generate an SBOM for the wrong release" >&2
+              exit 1
+              ;;
+          esac
+          # Named <tarball>.cdx.json, the OSSF SBOM Everywhere convention.
+          pnpm --filter @monte3l/groundwork sbom \
+            --sbom-format cyclonedx --sbom-spec-version 1.6 \
+            --prod --lockfile-only \
+            --sbom-authors "Enrico Lionello" --sbom-supplier "monte3l" \
+            --out "${tarball}.cdx.json"
+          echo "path=${tarball}.cdx.json" >> "$GITHUB_OUTPUT"
+      - name: Attest the SBOM against the published tarball
+        id: attest-sbom
+        if: steps.publish.outputs.published == 'true' && steps.sbom.outputs.path != ''
+        continue-on-error: true
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: .release-artifacts/**/*.tgz
+          sbom-path: ${{ steps.sbom.outputs.path }}
       - name: Attach the attested tarball to the GitHub Release
         if: steps.publish.outputs.published == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          # Set only when the SBOM was generated AND attested, so an
+          # unattested SBOM is never published. The SBOM attestation's own
+          # bundle is deliberately not uploaded: it would sit beside the
+          # provenance `.sigstore.json` and blur what that name means to
+          # Scorecard's Signed-Releases check. Verify the SBOM with
+          # `gh attestation verify <tgz> -R <repo> --predicate-type
+          # https://cyclonedx.org/bom`.
+          SBOM_PATH: ${{ steps.attest-sbom.outcome == 'success' && steps.sbom.outputs.path || '' }}
           # The Sigstore bundle the attest step wrote. OpenSSF Scorecard's
           # Signed-Releases check only looks at release assets (`*.sigstore.json`
           # scores 8), never at GitHub's attestation store, so the bundle is
@@ -303,6 +354,11 @@ jobs:
             assets+=("${tarball}.sigstore.json")
           else
             echo "no attestation bundle from the attest step -- uploading the tarball alone" >&2
+          fi
+          if [ -n "${SBOM_PATH:-}" ] && [ -f "$SBOM_PATH" ]; then
+            assets+=("$SBOM_PATH")
+          else
+            echo "no attested SBOM to attach" >&2
           fi
           gh release upload "@monte3l/groundwork@${version}" \
             "${assets[@]}" --clobber --repo "${{ github.repository }}"
