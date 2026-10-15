@@ -77,11 +77,19 @@ the message kinds commitlint ignores by default (merge, revert, fixup!,
 squash!, amend!, semver release subjects), so the hook re-checks those itself:
 a local `git merge`, `git revert` or `git commit --fixup`/`--squash` needs
 `--signoff` (or `-s`) too. The trailer must also carry a non-empty value, and
-`git` must be on `PATH`, because the check runs `git interpret-trailers`. It
-isn't re-checked on a squash merge or the release bot's own commits (neither
-passes through the local hook), which is why
-[`pull_request_template.md`](.github/pull_request_template.md)'s checklist also
-asks for it.
+`git` must be on `PATH`, because the check runs `git interpret-trailers`.
+
+CI enforces it too, so skipping the hook does not skip the check. The `dco`
+job (a lane the required `verify` check waits on) fails a pull request when
+any commit it adds lacks a `Signed-off-by: Name <email>` trailer whose email
+is that commit's author or committer email. Merge commits are skipped, and so
+are `dependabot[bot]` and `m3l-groundwork-release[bot]`, matched by exact
+author name. To fix a failure, run `git commit --amend -s --no-edit` for the
+last commit, or `git rebase --signoff <base>` for several, and force-push your
+own branch. The job reads the commits a PR adds, not the commit GitHub writes
+when it squash-merges, so
+[`pull_request_template.md`](.github/pull_request_template.md)'s checklist still
+asks for it as well.
 
 ## Coding standards
 

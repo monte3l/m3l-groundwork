@@ -494,9 +494,13 @@ Every commit also needs a DCO `Signed-off-by:` trailer (`git commit -s`),
 enforced by the same hook via `commitlint.config.js`'s `trailer-exists` rule,
 which `bin/lint-commit.mjs` extends to merge, revert and fixup!/squash! messages
 and to a non-empty value -- see [`CONTRIBUTING.md`](CONTRIBUTING.md#developer-certificate-of-origin).
-This is local-only enforcement: a squash merge and the release bot's own
-commit don't pass through the hook, which is why the PR template also
-carries a sign-off checkbox.
+The hook is local, so CI repeats the check: `ci.yml`'s `dco` job fails a PR
+when a commit it adds has no `Signed-off-by` trailer matching its author or
+committer email (merge commits skipped; `dependabot[bot]` and
+`m3l-groundwork-release[bot]` exempt by exact author name), and the `verify`
+aggregator waits on it, so it is a required check with no ruleset change. It
+reads a PR's own commits, not the commit GitHub writes on a squash merge,
+which is why the PR template also carries a sign-off checkbox.
 
 CI runs on every push and PR to `main` (see `.claude/rules/ci.md`), and a
 repository ruleset named `main` enforces the rest. It targets
