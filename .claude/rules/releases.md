@@ -74,7 +74,14 @@ consumers verify with `--predicate-type https://cyclonedx.org/bom`. **Do not
 add `artifact-metadata: write`** to the `publish` job for it: the provenance
 step already runs without it, and a wider token on the OIDC job needs a
 reason. The step refuses to run when the tarball's version differs from
-`packages/cli/package.json`. Scorecard v5.5.0 has no SBOM check, so this does
+`packages/cli/package.json`. It also records the tarball's SHA-256 on the root
+component (`pnpm sbom` does not hash the artifact), because CISA's "2026
+Minimum Elements for a Software Bill of Materials (SBOM)" (v2.1, 2026-07-29)
+lists a component hash algorithm and value among its 17 data fields. Checked
+field by field against that list, the one field not carried inside the file is
+SBOM Author Signature: the Sigstore attestation signs the SBOM from outside,
+which is a detached signature, not an embedded one. Say that, not "fully
+conformant", if the claim is ever made. Scorecard v5.5.0 has no SBOM check, so this does
 not move the score; its value is Baseline level 3 and consumers. An empty
 `components` list is correct while the CLI has no runtime dependencies.
 

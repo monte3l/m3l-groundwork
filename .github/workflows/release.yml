@@ -309,6 +309,22 @@ jobs:
             --prod --lockfile-only \
             --sbom-authors "Enrico Lionello" --sbom-supplier "monte3l" \
             --out "${tarball}.cdx.json"
+          # pnpm sbom does not hash the artifact, and CISA's 2026 minimum
+          # elements ask for a component hash (algorithm and value) of the
+          # executable artifact. Record the tarball's SHA-256 on the root
+          # component here, before the attest step signs the file.
+          node -e '
+            const fs = require("node:fs");
+            const crypto = require("node:crypto");
+            const [sbomPath, tarballPath] = process.argv.slice(1);
+            const bom = JSON.parse(fs.readFileSync(sbomPath, "utf8"));
+            const digest = crypto
+              .createHash("sha256")
+              .update(fs.readFileSync(tarballPath))
+              .digest("hex");
+            bom.metadata.component.hashes = [{ alg: "SHA-256", content: digest }];
+            fs.writeFileSync(sbomPath, JSON.stringify(bom, null, 2) + "\n");
+          ' "${tarball}.cdx.json" "$tarball"
           echo "path=${tarball}.cdx.json" >> "$GITHUB_OUTPUT"
       - name: Attest the SBOM against the published tarball
         id: attest-sbom
