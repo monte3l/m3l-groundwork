@@ -43,8 +43,45 @@ moment the package is actually live**; see "staged, not direct" below.
 `publish` also fetches the exact tarball `pack` already built and tested
 back out of its own artifact (never rebuilt), runs
 `actions/attest-build-provenance` on it, and attaches it to the GitHub
-Release with `gh release upload` -- a second, independent proof alongside
+Release with `gh release upload`, together with the attestation's Sigstore
+bundle as `<tarball>.sigstore.json` -- a second, independent proof alongside
 npm provenance itself. A plugin-only change needs no changeset of its own.
+
+**Two release signals exist only for OpenSSF Scorecard's parsers.**
+Signed-Releases scores release **assets** named `*.sigstore.json` (8) or
+`*.intoto.jsonl` (10) and never reads GitHub's attestation store, so the
+bundle is uploaded as an asset. Name it `.sigstore.json`: it is a Sigstore
+bundle, and `.intoto.jsonl` would claim a format it is not. Packaging only
+recognises an npm publish job that has `actions/setup-node` with
+`registry-url: https://registry.npmjs.org` **and** a step running
+`npm ... publish`, so the `publish` job sets that `registry-url`. It is safe
+because `bin/npm-stage-publish.mjs` never reads `.npmrc` or `NODE_AUTH_TOKEN`:
+it exchanges the GitHub OIDC token itself and passes the result to
+`libnpmpublish` explicitly. Re-check that if the publisher is ever rewritten
+to use the npm CLI.
+
+**Backfilling the bundle onto an older release.** Scorecard averages the last
+five releases, so a release published before the bundle was attached scores
+as unsigned until it rolls off. For a release whose tarball was attested,
+the maintainer can attach the bundle by hand. Read the tarball's own digest
+from the release asset, never from a local rebuild:
+
+```bash
+gh release download "@monte3l/groundwork@<version>" --repo monte3l/m3l-groundwork \
+  --pattern '*.tgz' --dir /tmp/rel
+gh attestation download /tmp/rel/monte3l-groundwork-<version>.tgz \
+  --repo monte3l/m3l-groundwork
+# writes sha256:<digest>.jsonl in the current directory; keep one bundle line
+head -n1 sha256:*.jsonl > /tmp/rel/monte3l-groundwork-<version>.tgz.sigstore.json
+gh attestation verify /tmp/rel/monte3l-groundwork-<version>.tgz \
+  --bundle /tmp/rel/monte3l-groundwork-<version>.tgz.sigstore.json \
+  --repo monte3l/m3l-groundwork
+gh release upload "@monte3l/groundwork@<version>" \
+  /tmp/rel/monte3l-groundwork-<version>.tgz.sigstore.json --repo monte3l/m3l-groundwork
+```
+
+Only upload after `gh attestation verify` passes. A release with no
+attestation is left alone and rolls off as new releases ship.
 
 **Packs have no release of their own.** `templates/packs/<name>/` ships
 inside the CLI tarball, so a user-visible change to one pack is a CLI change

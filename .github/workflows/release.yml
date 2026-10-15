@@ -186,6 +186,13 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
+          # OpenSSF Scorecard's Packaging check only recognises an npm publish
+          # job by this exact registry-url next to a step that runs `npm ...
+          # publish` (here, the shim's `npm-stage-publish.mjs`). Auth is not
+          # affected: bin/npm-stage-publish.mjs never reads .npmrc or
+          # NODE_AUTH_TOKEN, it exchanges the GitHub OIDC token itself and
+          # hands the result to libnpmpublish as an explicit option.
+          registry-url: https://registry.npmjs.org
       # Only the changesets CLI is needed here, not any package's lifecycle scripts.
       - run: pnpm install --frozen-lockfile --ignore-scripts
       # Staged publishing goes through libnpmpublish (npm's own publish
@@ -260,6 +267,7 @@ jobs:
           path: .release-artifacts
           merge-multiple: true
       - name: Attest build provenance for the published tarball
+        id: attest
         if: steps.publish.outputs.published == 'true'
         continue-on-error: true
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -272,6 +280,12 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          # The Sigstore bundle the attest step wrote. OpenSSF Scorecard's
+          # Signed-Releases check only looks at release assets (`*.sigstore.json`
+          # scores 8), never at GitHub's attestation store, so the bundle is
+          # uploaded beside the tarball. Verify it with `gh attestation verify
+          # <tgz> --bundle <tgz>.sigstore.json -R <repo>`.
+          ATTEST_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: |
           # `changeset pack` writes into <outDir>/packages/*.tgz, not
           # <outDir>/*.tgz -- found by path, not a bare shell glob the
@@ -283,5 +297,12 @@ jobs:
             exit 0
           fi
           version="$(node -p "require('./packages/cli/package.json').version")"
+          assets=("$tarball")
+          if [ -n "${ATTEST_BUNDLE:-}" ] && [ -f "$ATTEST_BUNDLE" ]; then
+            cp "$ATTEST_BUNDLE" "${tarball}.sigstore.json"
+            assets+=("${tarball}.sigstore.json")
+          else
+            echo "no attestation bundle from the attest step -- uploading the tarball alone" >&2
+          fi
           gh release upload "@monte3l/groundwork@${version}" \
-            "$tarball" --clobber --repo "${{ github.repository }}"
+            "${assets[@]}" --clobber --repo "${{ github.repository }}"
