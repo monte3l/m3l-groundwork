@@ -67,6 +67,26 @@ the `npm-publish` GitHub environment. The first and third are done:
 required reviewer on `npm-publish` alongside the maintainer. npm
 package-maintainer access is not -- see "Bus factor" below.
 
+## Related repositories
+
+This project is one repository, [`monte3l/m3l-groundwork`](https://github.com/monte3l/m3l-groundwork).
+The `@monte3l/groundwork` npm package, its GitHub Release and the
+`/customize` plugin are all built from this repository alone. Three other
+repositories in the `monte3l` organization are related to it. This is the
+list of them, with what each is for and whether anything from it reaches a
+release.
+
+| Repository                                                                        | What it is                                                                                                                       | In this project's releases?                                                                                                                                                                               | Status                         |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| [`monte3l/m3l-design`](https://github.com/monte3l/m3l-design)                     | The organization's design system: tokens, components, contrast tables                                                            | Yes, as a copy. It is vendored verbatim under [`design/`](design/README.md), and the CLI's terminal colors in `packages/cli/src/palette.ts` are generated from the vendored tokens. There is no live link | `v1.0.0` released and vendored |
+| [`monte3l/.github`](https://github.com/monte3l/.github)                           | The organization's defaults: community health files, issue and PR templates, workflow templates, a repository settings blueprint | No. Nothing from it is built into a release. Its repository baseline script only checks this repository's settings                                                                                        | No releases                    |
+| [`monte3l/m3l-prompt-optimizer`](https://github.com/monte3l/m3l-prompt-optimizer) | A separate Claude Code plugin that refines the prompts a user types                                                              | No. This repository neither depends on it nor ships it                                                                                                                                                    | Separate project               |
+
+The vendored copy of `m3l-design` is the only code from another `monte3l`
+repository that ends up in a release. Its `design/source/` is never
+hand-edited here: it moves to a new release only through
+`bin/sync-design.sh`, as [`design/README.md`](design/README.md) describes.
+
 ## Access continuity
 
 If the maintainer becomes unavailable, the project must still be able to
