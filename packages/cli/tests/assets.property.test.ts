@@ -14,16 +14,26 @@ import {
   restoreDotfilePath,
 } from "../src/assets.js";
 
-const DOTFILE_NAMES = [".gitignore", ".npmrc", ".npmignore"] as const;
-const ESCAPED_FORMS = ["_gitignore", "_npmrc", "_npmignore"] as const;
+// Hand-written [real, escaped] pairs: the escape rule is pinned here by hand,
+// never recomputed from the implementation under test.
+const NAME_PAIRS = [
+  [".gitignore", "_gitignore"],
+  [".npmrc", "_npmrc"],
+  [".npmignore", "_npmignore"],
+  ["package-lock.json", "_package-lock.json"],
+] as const;
+const DOTFILE_NAMES = NAME_PAIRS.map(([real]) => real);
+const ESCAPED_FORMS: readonly string[] = NAME_PAIRS.map(
+  ([, escaped]) => escaped,
+);
 
 describe("escapeDotfileName / restoreDotfileName round trip", () => {
   // NOTE: this is deliberately NOT a universal round trip. escapeDotfileName
-  // only transforms the three real dotfile names; restoreDotfileName cannot
+  // only transforms the four real names; restoreDotfileName cannot
   // then distinguish "an escaped dotfile" from "a file that was already
-  // literally named _gitignore/_npmrc/_npmignore" -- both un-escape to the
-  // dotfile spelling. assets.test.ts's own "does not restore an underscore
-  // name that is not an escape" test deliberately avoids these three names
+  // literally named _gitignore/_npmrc/_npmignore/_package-lock.json" -- both
+  // un-escape to the real spelling. assets.test.ts's own "does not restore an underscore
+  // name that is not an escape" test deliberately avoids these four names
   // for the same reason. The property below is therefore scoped to exclude
   // them, and the `it.each` afterward documents the known exception
   // explicitly rather than silently dropping it.
@@ -32,12 +42,10 @@ describe("escapeDotfileName / restoreDotfileName round trip", () => {
     fc.string(),
   );
 
-  it("round-trips any name that is not itself shaped like one of the three escaped dotfile spellings", () => {
+  it("round-trips any name that is not itself shaped like one of the four escaped spellings", () => {
     fc.assert(
       fc.property(
-        nameArb.filter(
-          (name) => !(ESCAPED_FORMS as readonly string[]).includes(name),
-        ),
+        nameArb.filter((name) => !ESCAPED_FORMS.includes(name)),
         (name) => {
           expect(restoreDotfileName(escapeDotfileName(name))).toBe(name);
         },
@@ -46,12 +54,11 @@ describe("escapeDotfileName / restoreDotfileName round trip", () => {
     );
   });
 
-  it.each(ESCAPED_FORMS)(
-    "[known, documented limitation] does not round-trip %s -- it is indistinguishable from an escaped dotfile",
-    (name) => {
-      const dotForm = `.${name.slice(1)}`;
-      expect(escapeDotfileName(name)).toBe(name); // not a real dotfile name; escape is a no-op
-      expect(restoreDotfileName(escapeDotfileName(name))).toBe(dotForm);
+  it.each(NAME_PAIRS)(
+    "[known, documented limitation] does not round-trip %s's escaped form %s -- it is indistinguishable from an escaped name",
+    (real, escaped) => {
+      expect(escapeDotfileName(escaped)).toBe(escaped); // not a real name; escape is a no-op
+      expect(restoreDotfileName(escapeDotfileName(escaped))).toBe(real);
     },
   );
 });

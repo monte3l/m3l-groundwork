@@ -217,6 +217,29 @@ describe("planConflicts", () => {
     ]);
   });
 
+  it("compares a vendored nested _package-lock.json against the project's real package-lock.json", () => {
+    mkdirSync(join(templateRoot, "tools", "release"), { recursive: true });
+    mkdirSync(join(targetDir, "tools", "release"), { recursive: true });
+    writeFileSync(
+      join(templateRoot, "tools", "release", "_package-lock.json"),
+      "{}\n",
+    );
+    writeFileSync(
+      join(targetDir, "tools", "release", "package-lock.json"),
+      "{}\n",
+    );
+    const result = planConflicts(templateRoot, targetDir, {});
+    expect(
+      result.map((r) => ({ ...r, relPath: r.relPath.replaceAll("\\", "/") })),
+    ).toEqual([
+      {
+        relPath: "tools/release/package-lock.json",
+        status: "identical",
+        keyDiffs: undefined,
+      },
+    ]);
+  });
+
   describe("a project file matching a baseline name that exists but cannot be read (EACCES/EPERM)", () => {
     afterEach(() => {
       // Restore read permission before the outer afterEach's rmSync -- an

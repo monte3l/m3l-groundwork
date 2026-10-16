@@ -228,12 +228,14 @@ steps) before considering any task here done.
   `pnpm pack` from being read stale on a dev machine, and the marker is what
   stops an unscoped install from treating the consumer's own project root as
   ours. `scripts/vendor-assets.mjs` (`prepack`/`postpack`) does the copying.
-- **npm-family tooling strips `.gitignore`, `.npmrc` and `.npmignore` from a
-  tarball whatever `files` says** (measured: `pnpm pack` keeps `.gitignore` but
-  drops `.npmrc`; `npm pack` drops all three). The vendored copy therefore
-  stores them as `_gitignore`, `_npmrc`, `_npmignore`, and every walker over
-  the template tree restores the real name via `restoreDotfilePath`
-  (`emit.ts`, `conflicts.ts`). **A new walker over `templates/` must do the
+- **npm-family tooling strips `.gitignore`, `.npmrc`, `.npmignore` and
+  `package-lock.json` (at any depth) from a tarball whatever `files` says**
+  (measured: `pnpm pack` keeps `.gitignore` but drops `.npmrc`; `npm pack`
+  drops all three dotfiles; both drop the publishing pack's
+  `tools/release/package-lock.json`). The vendored copy therefore stores them
+  as `_gitignore`, `_npmrc`, `_npmignore`, `_package-lock.json`, and every
+  walker over the template tree restores the real name via
+  `restoreDotfilePath` (`emit.ts`, `conflicts.ts`, `staging.ts`). **A new walker over `templates/` must do the
   same**, or a published install silently loses those files. The name list and
   both directions of the mapping live in `assets.ts`; `vendor-assets.mjs`
   imports them from the build, so `pnpm build` must precede `pnpm pack`.

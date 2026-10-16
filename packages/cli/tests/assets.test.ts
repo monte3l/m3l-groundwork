@@ -140,6 +140,32 @@ describe("dotfile escaping", () => {
     expect(escapeDotfileName(".npmignore")).toBe("_npmignore");
   });
 
+  it("escapes package-lock.json, which npm-family tooling strips at any depth", () => {
+    expect(escapeDotfileName("package-lock.json")).toBe("_package-lock.json");
+    expect(restoreDotfileName("_package-lock.json")).toBe("package-lock.json");
+    expect(restoreDotfilePath("tools/release/_package-lock.json")).toBe(
+      "tools/release/package-lock.json",
+    );
+    expect(restoreDotfilePath("tools\\release\\_package-lock.json")).toBe(
+      "tools\\release\\package-lock.json",
+    );
+  });
+
+  it("leaves names that merely resemble the lockfile alone, both ways", () => {
+    for (const name of [
+      "package.json",
+      "_package.json",
+      "_foo",
+      "_package-lock.jsonx",
+      "package-lock.jsonx",
+    ]) {
+      expect(escapeDotfileName(name)).toBe(name);
+    }
+    for (const name of ["_package.json", "_foo", "_package-lock.jsonx"]) {
+      expect(restoreDotfileName(name)).toBe(name);
+    }
+  });
+
   it("leaves every other name alone", () => {
     expect(escapeDotfileName(".prettierrc.json")).toBe(".prettierrc.json");
     expect(escapeDotfileName("package.json")).toBe("package.json");
@@ -147,7 +173,12 @@ describe("dotfile escaping", () => {
   });
 
   it("round-trips each escaped name", () => {
-    for (const name of [".gitignore", ".npmrc", ".npmignore"]) {
+    for (const name of [
+      ".gitignore",
+      ".npmrc",
+      ".npmignore",
+      "package-lock.json",
+    ]) {
       expect(restoreDotfileName(escapeDotfileName(name))).toBe(name);
     }
   });
