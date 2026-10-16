@@ -5,8 +5,9 @@
  * Copies `templates/core` into a target directory, applying token
  * substitution to both file contents and path segments (so a token in a
  * directory or file NAME, not just its content, is honored). A published
- * tarball stores `.gitignore`/`.npmrc` as `_gitignore`/`_npmrc` (npm strips
- * the real names); they are restored here -- see `assets.ts`.
+ * tarball stores `.gitignore`/`.npmrc`/`package-lock.json` as
+ * `_gitignore`/`_npmrc`/`_package-lock.json` (npm strips the real names);
+ * they are restored here -- see `assets.ts`.
  *
  * Every destination path is planned and `lstat`-checked before the first
  * write ({@link assertSafeEmitDestinations}), so a symlink or a misplaced

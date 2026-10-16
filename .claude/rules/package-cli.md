@@ -12,9 +12,9 @@ paths:
 - **`resolveAsset()` in `src/assets.ts` is the only place that locates
   `templates/` or the plugin payload.** Never write a `join(here, "..", ...)`
   walk to a sibling directory: in a published tarball it escapes the package.
-- **A new walker over `templates/` restores escaped dotfile names** via
-  `restoreDotfilePath` (`_gitignore`, `_npmrc`, `_npmignore`), as `emit.ts`
-  and `conflicts.ts` do. Skip it and a published install silently loses
+- **A new walker over `templates/` restores escaped file names** via
+  `restoreDotfilePath` (`_gitignore`, `_npmrc`, `_npmignore`,
+  `_package-lock.json`), as `emit.ts`, `conflicts.ts` and `staging.ts` do. Skip it and a published install silently loses
   those files.
 - **No new runtime dependency.** It is a hard constraint, not a style
   preference. Parse by hand, as `packages/cli/src/jsonc.ts` does.

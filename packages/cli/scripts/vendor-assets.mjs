@@ -12,8 +12,8 @@
  * `assets.ts` probes the source checkout first, so a copy left behind by a
  * pack that crashed before `postpack` is never read from inside the checkout.
  *
- * Files npm-family tooling strips from a tarball (`.gitignore`, `.npmrc`) are
- * stored under an escaped name; the name list and the mapping live in
+ * Files npm-family tooling strips from a tarball (`.gitignore`, `.npmrc`,
+ * `.npmignore`, `package-lock.json`) are stored under an escaped name; the name list and the mapping live in
  * `src/assets.ts` and are imported from its build, so there is one definition.
  * That means `pnpm build` must run before `pnpm pack`.
  */
@@ -40,7 +40,7 @@ const vendoredLicense = join(pkgRoot, "LICENSE");
 
 const mode = process.argv[2];
 
-/** Recursively copies `from` to `to`, storing stripped dotfiles under their escaped names. */
+/** Recursively copies `from` to `to`, storing stripped files under their escaped names. */
 function copyEscaped(from, to, escapeDotfileName) {
   mkdirSync(to, { recursive: true });
   for (const name of readdirSync(from)) {

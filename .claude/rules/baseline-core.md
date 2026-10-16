@@ -25,8 +25,9 @@ paths:
 - **The grader twins must agree.** `bin/lib/harness-rules.mjs` and
   `bin/lib/toolchain-rules.mjs` mirror `packages/cli/src/harness/` and
   `src/toolchain/`. Change both sides together.
-- **A new walker or copy step over this tree restores dotfile names**
-  (`_gitignore`, `_npmrc`, `_npmignore`). `templates/core/package.json` is
+- **A new walker or copy step over this tree restores escaped file names**
+  (`_gitignore`, `_npmrc`, `_npmignore`, and `_package-lock.json` for a
+  pack's nested lockfile). `templates/core/package.json` is
   not escaped, because `caps.ts` reads it directly.
 - **`pnpm test:e2e` is mandatory before calling a change done.** It has
   caught real bugs a unit-test mock hid.

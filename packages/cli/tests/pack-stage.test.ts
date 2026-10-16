@@ -103,6 +103,44 @@ describe("stagePacks", () => {
     expect(STAGED_PACK_MANIFEST).toBe("pack.json");
   });
 
+  it("stages a vendored nested _package-lock.json under its real name", () => {
+    const filesRoot = mkdtempSync(join(tmpdir(), "pack-stage-files-"));
+    const groundworkDir = mkdtempSync(join(tmpdir(), "pack-stage-gw-"));
+    try {
+      mkdirSync(join(filesRoot, "tools", "release"), { recursive: true });
+      writeFileSync(
+        join(filesRoot, "tools", "release", "_package-lock.json"),
+        "{}\n",
+      );
+
+      const [staged] = stagePacks(
+        [makePack("lock-pack", filesRoot)],
+        groundworkDir,
+        {},
+      );
+
+      expect((staged?.files ?? []).map((f: StagedPackFile) => f.path)).toEqual([
+        "tools/release/package-lock.json",
+      ]);
+      expect(
+        existsSync(
+          join(
+            groundworkDir,
+            "packs",
+            "lock-pack",
+            "files",
+            "tools",
+            "release",
+            "package-lock.json.staged",
+          ),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(filesRoot, { recursive: true, force: true });
+      rmSync(groundworkDir, { recursive: true, force: true });
+    }
+  });
+
   it("stages pack.json and the files/ tree unmodified, each under <path>.staged, with dir/suffix matching the literal .groundwork/packs/<name> convention, restoring a dotfile name and leaving no unsuffixed file", () => {
     const filesRoot = mkdtempSync(join(tmpdir(), "pack-stage-files-"));
     const groundworkDir = mkdtempSync(join(tmpdir(), "pack-stage-gw-"));

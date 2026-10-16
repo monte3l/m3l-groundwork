@@ -30,27 +30,55 @@ export interface AssetPaths {
 }
 
 /**
- * Files npm-family tooling strips from a tarball no matter what `files` says
- * (`pnpm pack` keeps `.gitignore`, `npm pack` drops it; both drop `.npmrc`).
- * The vendored copy stores each under `_<name-without-dot>` and the walkers
- * (`emit.ts`, `conflicts.ts`) restore the real name on the way out.
+ * File names npm-family tooling strips from a tarball, at any depth, no matter
+ * what `files` says (`pnpm pack` keeps `.gitignore`, `npm pack` drops it; both
+ * drop `.npmrc` and `package-lock.json`), each paired with the escaped name
+ * the vendored copy stores it under. A dotfile's escape replaces its leading
+ * dot with `_`; `package-lock.json` has no dot to replace, so it gains a `_`
+ * prefix. The walkers (`emit.ts`, `conflicts.ts`, `staging.ts`) restore the
+ * real name on the way out. `templates/core/package.json` is not escaped:
+ * npm never strips a `package.json`.
  */
-const ESCAPED_DOTFILES = [".gitignore", ".npmrc", ".npmignore"] as const;
+const ESCAPED_NAMES: ReadonlyMap<string, string> = new Map([
+  [".gitignore", "_gitignore"],
+  [".npmrc", "_npmrc"],
+  [".npmignore", "_npmignore"],
+  ["package-lock.json", "_package-lock.json"],
+]);
 
-/** The vendored spelling of a stripped dotfile: `.gitignore` becomes `_gitignore`. */
+/** Escaped name to real name: the inverse of {@link ESCAPED_NAMES}. */
+const RESTORED_NAMES: ReadonlyMap<string, string> = new Map(
+  [...ESCAPED_NAMES].map(([real, escaped]) => [escaped, real]),
+);
+
+/**
+ * The vendored spelling of a name npm strips: `.gitignore` becomes
+ * `_gitignore` and `package-lock.json` becomes `_package-lock.json`; every
+ * other name is unchanged.
+ *
+ * @example
+ * ```ts
+ * escapeDotfileName(".npmrc"); // "_npmrc"
+ * escapeDotfileName("package.json"); // "package.json"
+ * ```
+ */
 export function escapeDotfileName(name: string): string {
-  return (ESCAPED_DOTFILES as readonly string[]).includes(name)
-    ? `_${name.slice(1)}`
-    : name;
+  return ESCAPED_NAMES.get(name) ?? name;
 }
 
-/** Inverse of `escapeDotfileName`: `_gitignore` becomes `.gitignore`; every other name is unchanged. */
+/**
+ * Inverse of `escapeDotfileName`: `_gitignore` becomes `.gitignore` and
+ * `_package-lock.json` becomes `package-lock.json`; every other name is
+ * unchanged.
+ *
+ * @example
+ * ```ts
+ * restoreDotfileName("_package-lock.json"); // "package-lock.json"
+ * restoreDotfileName("_package.json"); // "_package.json"
+ * ```
+ */
 export function restoreDotfileName(name: string): string {
-  const restored = `.${name.slice(1)}`;
-  return name.startsWith("_") &&
-    (ESCAPED_DOTFILES as readonly string[]).includes(restored)
-    ? restored
-    : name;
+  return RESTORED_NAMES.get(name) ?? name;
 }
 
 /** `restoreDotfileName` applied to the final segment of a `/`- or `\`-separated relative path. */

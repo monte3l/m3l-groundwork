@@ -105,6 +105,22 @@ describe("published tarball end-to-end", () => {
     expect(output).toContain("github");
   });
 
+  it("ships the publishing pack's lockfile escaped, because npm strips package-lock.json at any depth", () => {
+    const releaseDir = join(
+      scratch,
+      "extracted",
+      "package",
+      "templates",
+      "packs",
+      "publishing",
+      "files",
+      "tools",
+      "release",
+    );
+    expect(existsSync(join(releaseDir, "_package-lock.json"))).toBe(true);
+    expect(existsSync(join(releaseDir, "package-lock.json"))).toBe(false);
+  });
+
   it("emits exactly what the source checkout emits, dotfiles included", () => {
     const fromTarball = join(scratch, "from-tarball");
     const fromCheckout = join(scratch, "from-checkout");
@@ -116,6 +132,8 @@ describe("published tarball end-to-end", () => {
       "github",
       "--pack",
       "harness-extras",
+      "--pack",
+      "publishing",
     ];
 
     execFileSync("node", [installedBin, fromTarball, ...args], {
@@ -134,6 +152,12 @@ describe("published tarball end-to-end", () => {
     expect(tarballFiles).toContain(".npmrc");
     expect(tarballFiles).not.toContain("_gitignore");
     expect(tarballFiles).not.toContain("_npmrc");
+    expect(tarballFiles).toContain(
+      join("tools", "release", "package-lock.json"),
+    );
+    expect(tarballFiles).not.toContain(
+      join("tools", "release", "_package-lock.json"),
+    );
     expect(tarballFiles).toContain(
       join(".claude", "skills", "customize", "SKILL.md"),
     );

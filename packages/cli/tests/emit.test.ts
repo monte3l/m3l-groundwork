@@ -64,6 +64,29 @@ describe("emitTemplate", () => {
     expect(existsSync(join(targetDir, "_gitignore"))).toBe(false);
   });
 
+  it("writes a vendored nested _package-lock.json under its real name", () => {
+    mkdirSync(join(sourceDir, "tools", "release"), { recursive: true });
+    writeFileSync(
+      join(sourceDir, "tools", "release", "_package-lock.json"),
+      '{"lockfileVersion":3}',
+    );
+
+    const result = emitTemplate(sourceDir, targetDir, {});
+
+    expect(result.filesWritten.map((f) => f.replaceAll("\\", "/"))).toEqual([
+      "tools/release/package-lock.json",
+    ]);
+    expect(
+      readFileSync(
+        join(targetDir, "tools", "release", "package-lock.json"),
+        "utf8",
+      ),
+    ).toBe('{"lockfileVersion":3}');
+    expect(
+      existsSync(join(targetDir, "tools", "release", "_package-lock.json")),
+    ).toBe(false);
+  });
+
   it("substitutes a token appearing in a path segment", () => {
     mkdirSync(join(sourceDir, "__PROJECT_NAME__"), { recursive: true });
     writeFileSync(join(sourceDir, "__PROJECT_NAME__", "readme.md"), "hi");
