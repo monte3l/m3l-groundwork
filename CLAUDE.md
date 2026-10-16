@@ -106,7 +106,10 @@ packages/plugin/        Phase B: the /customize skill
                          release.yml (see "Releases"), docs.yml
                          (builds the docs site and deploys it to Cloudflare
                          Workers Static Assets -- see .claude/rules/docs-site.md
-                         and docs/cloudflare-docs.md), environments.yml (weekly
+                         and docs/cloudflare-docs.md; its `smoke` job and the
+                         daily docs-live.yml compare the live site and the
+                         package metadata with bin/check-live-site.mjs),
+                         environments.yml (weekly
                          cleanup of stale GitHub Deployments/Environments --
                          see .claude/rules/environments.md),
                          dependency-review.yml, scorecard.yml, gitleaks.yml,
@@ -129,7 +132,8 @@ tools/                  Pinned CI tooling, kept out of `.github/` because
                          lockfile.
 
 bin/                    This repo's own gate scripts: verify.mjs, check-*.mjs,
-                         build-docs.mjs, eval.mjs, ci-docs-only.mjs, soak.sh.
+                         build-docs.mjs, check-live-site.mjs, eval.mjs,
+                         ci-docs-only.mjs, soak.sh.
                          The step list they all read from is
                          bin/lib/verify-steps.mjs.
 
@@ -459,7 +463,8 @@ steps) before considering any task here done.
   `node bin/build-npm-readme.mjs` and commit both; `--check` is the `npm-readme`
   `lint`-group verify step. The package's `description`, `homepage` and
   `keywords` are kept equal to the GitHub repo's description, homepage and
-  topics by hand: change both together.
+  topics by hand: change both together. `docs-live.yml` compares them daily
+  (`node bin/check-live-site.mjs --metadata`) and fails when they differ.
 - **The docs site** (`.github/workflows/docs.yml`, deployed from `main` to
   `https://groundwork.monte3l.com` on Cloudflare Workers Static Assets) is a
   restricted, zero-dependency GFM-to-HTML renderer that throws rather than

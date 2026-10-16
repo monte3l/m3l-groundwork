@@ -119,6 +119,17 @@ paths:
   `release.yml`'s `pack` job runs the same audit before any release, so the daily
   run and the release gate agree; the policy behind both is `SECURITY.md`'s
   "Dependency and code-scanning findings".
+- `docs.yml` ends with a `smoke` job (`needs: deploy`) that runs
+  `node bin/check-live-site.mjs --site _site` against the `docs-site`
+  artifact the `build` job produced: every page, the 404 page and every asset
+  on the live site must equal the built file, with every `_headers` header at
+  its exact value, retried for about a minute after a deploy.
+  `docs-live.yml` runs the same check daily against a fresh build of `main`
+  and adds `--metadata` (package.json against the GitHub repo's description,
+  homepage and topics). It never deploys. The pure comparison helpers are
+  `bin/lib/live-site.mjs`, tested in `packages/cli/tests/live-site.test.ts`.
+  A 403 from either run means Bot Fight Mode or another Cloudflare
+  bot-protection setting was turned back on (`docs/cloudflare-docs.md`).
 - `soak.yml` is manual only (`workflow_dispatch`, input `version`, a dist-tag
   or exact version) and not a required check. It runs `bin/soak.sh` against
   the **published** `@monte3l/groundwork` from the registry, never the
