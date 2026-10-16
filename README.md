@@ -224,7 +224,9 @@ fills: a symlink there is followed.
 
 `pnpm verify` runs every gate. The pre-push hook and CI run the same five
 groups by name, so anything `pnpm verify` catches, CI catches too. CI adds
-one job on top, `pnpm test:e2e`, which is the real acceptance test: it
+the end-to-end jobs on top (`pnpm test:e2e` on Linux and macOS), a Node-current
+verify run and a DCO check, all rolled up by the `verify` job. `pnpm test:e2e`
+is the real acceptance test: it
 bootstraps throwaway projects with the built CLI and runs their own
 `pnpm verify`. It is slow and touches the network, so it is not part of
 `pnpm verify`; run it yourself after any change to `packages/cli/src/`,

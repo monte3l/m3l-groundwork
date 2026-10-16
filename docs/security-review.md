@@ -198,7 +198,7 @@ sharp 0.35.4, because miniflare pins it exactly.
 dependency, so an `overrides` entry works. `tools/deploy/package.json`
 now overrides `sharp` to `^0.35.5` beside the existing `undici` entry, and the
 lockfile resolves sharp 0.35.5 (with its platform packages and libvips 1.3.4)
-while wrangler stays at 4.141.0. Checked on 2026-10-08: every changed
+while wrangler stays out of the fix (4.141.0 at that check; the pin is 4.149.0 now). Checked on 2026-10-08: every changed
 integrity hash matches the registry, a clean `npm ci --ignore-scripts` succeeds,
 `npm audit` in that directory reports no vulnerabilities, and the same
 `wrangler deploy --dry-run` completes. The alert should close when Dependabot

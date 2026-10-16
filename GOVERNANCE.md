@@ -95,7 +95,8 @@ depends on, concretely:
 
 - **GitHub org ownership** -- controls the `main` branch ruleset, repo
   secrets (repo: `APP_CLIENT_ID`, `APP_PRIVATE_KEY`; `env-janitor`
-  environment: `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY`; org:
+  environment: `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY`; `docs-cloudflare`
+  environment: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`; org:
   `CLAUDE_CODE_OAUTH_TOKEN`, `GITLEAKS_LICENSE`), the `npm-publish`
   environment's reviewer list, and the two GitHub App installations
   (the release workflow's `version` job, and the environment-cleanup
@@ -134,9 +135,10 @@ rather than requiring a second active maintainer.
 
 Today's bus factor is **1** -- this is a single-maintainer project, stated
 plainly rather than inflated. A second person already holds real GitHub
-access (see "Roles" above), but has never authored, reviewed, or merged a
-PR (only approved `npm-publish` deployments), and holds no npm access at all -- access alone doesn't make an
-active co-maintainer. Growing past 1 is on the [roadmap](ROADMAP.md).
+access (see "Roles" above), and has merged pull requests (the merges of
+#198 to #209 in the git history) and approved `npm-publish` deployments, but
+holds no npm access at all and no review is recorded on those merges --
+access alone doesn't make an active co-maintainer. Growing past 1 is on the [roadmap](ROADMAP.md).
 
 ## Gold-level criteria this project does not meet
 
