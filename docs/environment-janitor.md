@@ -64,4 +64,5 @@ expected to have, with a retention window (`retain`) and, optionally,
 `expect`ed settings to check for drift. Adding a new workflow that
 references a new `environment:` name means adding it here in the same
 change -- otherwise the janitor deletes it (or, if it has required reviewers
-or secrets, leaves it alone and reports it as unexpected) on its next run.
+or secrets, leaves it alone and reports it under the plan's "Refused (left untouched)"
+section) on its next run.

@@ -188,8 +188,8 @@ In this repo: `templates/packs/`.
 A test that runs two supposedly-identical implementations against the same
 input and asserts they agree, so the two copies can never silently drift
 apart.
-In this repo: `tests/harness/harness-parity.test.ts`,
-`tests/toolchain/toolchain-parity.test.ts`.
+In this repo: `packages/cli/tests/harness/harness-parity.test.ts`,
+`packages/cli/tests/toolchain/toolchain-parity.test.ts`.
 
 ### Property-based testing
 

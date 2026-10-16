@@ -408,8 +408,9 @@ steps) before considering any task here done.
   every `lefthook.yml` `pre-push` lane, and every CI job reads from --
   keyed by _group_ (`format`/`lint`/`typecheck`/`build`/`test`), not by
   individual step id.** Both YAML files name a group, never a step, which
-  is what lets a pack register a gate (appended to
-  `bin/lib/verify-steps.packs.json`, a plain JSON array) without either
+  is what lets a pack register a gate (appended to the
+  emitted project's `bin/lib/verify-steps.packs.json`, a plain JSON array,
+  source `templates/core/bin/lib/verify-steps.packs.json`) without either
   YAML file changing. The same pattern applies in the emitted baseline
   (`templates/core/bin/lib/verify-steps.mjs`, which adds `CORE_STEPS` and the
   pack-contributed steps this repo's own list has no use for). Add a new
@@ -418,7 +419,7 @@ steps) before considering any task here done.
   `pnpm test:e2e` directly; `gate-lane-parity` only checks verify groups.)
 - **Continuous integration (`.github/`) and the Claude Code Action
   workflow.** `ci.yml` runs five verify lanes plus `e2e`/`e2e-macos`/`node-current`
-  behind a `verify` aggregator (the check `main`'s ruleset gates on --
+  and `dco` behind a `verify` aggregator (the check `main`'s ruleset gates on --
   see "Git Workflow"); `claude.yml` runs Anthropic's official action in
   `@claude`-mention mode. **There is no automated PR review here**:
   `claude-pr-review.yml` was removed until Anthropic fixes the action's
@@ -429,7 +430,8 @@ steps) before considering any task here done.
   `.github/**`, `lefthook.yml`, `bin/verify.mjs`, `bin/lib/verify-steps.mjs`).
 - **A pack never edits YAML or JavaScript.** It extends three JSON files
   the baseline already reads at runtime (`.claude/settings.json`,
-  `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json`) via the pure
+  `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json` of the emitted
+  project) via the pure
   merge functions in `packages/cli/src/merge-json.ts`. `.claude/settings.json`
   has two disjoint merges: `mergeSettingsHooks` owns the `hooks` block
   (entry-by-entry), and `mergeSettingsTopLevel` plants whole top-level keys
