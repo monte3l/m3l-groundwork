@@ -139,6 +139,30 @@ enforced today.
    [`docs/security-review.md`](docs/security-review.md). The exclusion is the
    only way past the release gate, so it is always visible in review.
 
+### Vulnerabilities that do not affect the project
+
+[`docs/m3l-groundwork.openvex.json`](docs/m3l-groundwork.openvex.json) is an
+[OpenVEX](https://openvex.dev) document stating which published advisories do
+**not** affect the package, and why. It holds 13 statements, one for each
+advisory recorded in [`docs/security-review.md`](docs/security-review.md) (the
+release-tools lockfiles and the docs deploy tooling). Each is `not_affected`
+with the justification `component_not_present` for versions 1.0.0, 1.0.1 and
+1.0.2: the package declares no dependencies, bundles none and ships no lockfile
+or `node_modules` directory, which was checked against those three tarballs.
+
+It says nothing about the repository's own tooling, which carried those
+packages until they were fixed or removed (the history is in
+`docs/security-review.md`), and nothing about projects the CLI generates, which
+install their own dependency trees. As of 2026-10-16 no vulnerability is open
+against any component the project ships or uses: `pnpm audit` and `npm audit`
+report none across all four lockfiles.
+
+To keep it current, add a statement when a vulnerability is judged not
+exploitable instead of fixed, in the same PR as the `audit.ignore` entry and the
+reasoning in `docs/security-review.md`. After each release, add the new version
+to every statement; the steps are in
+[`.claude/rules/releases.md`](.claude/rules/releases.md).
+
 Run `pnpm audit --audit-level=high` to see what the release gate sees.
 
 ## Verifying releases
