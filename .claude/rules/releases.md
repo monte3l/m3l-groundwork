@@ -85,6 +85,21 @@ conformant", if the claim is ever made. Scorecard v5.5.0 has no SBOM check, so t
 not move the score; its value is Baseline level 3 and consumers. An empty
 `components` list is correct while the CLI has no runtime dependencies.
 
+**The `pack` job audits before it builds.** Straight after install it runs
+`pnpm audit --audit-level=high` and `npm audit --package-lock-only --prefix
+tools/release --audit-level=high`, so no release is published while the root
+lockfile, or the release-tools lockfile the OIDC-holding `publish` job installs
+from, has a high or critical advisory. Both pass today. Both exit non-zero on a
+hit: checked against a throwaway lockfile holding a known-vulnerable
+dependency, which also showed that `audit.ignore` (GHSA ids, in
+`pnpm-workspace.yaml`, pnpm 12.4 or later) excludes only the ids listed and
+leaves any other high advisory failing. That key is the one sanctioned way past
+the root gate, and it belongs in a PR that records the reasoning in
+`docs/security-review.md`; this repo configures no equivalent for the
+release-tools lockfile, so a finding there is fixed by updating the pinned
+package. A transient registry failure fails the step, so re-run the job. The
+policy is `SECURITY.md`'s "Dependency and code-scanning findings".
+
 **Backfilling the bundle onto an older release.** Scorecard averages the last
 five releases, so a release published before the bundle was attached scores
 as unsigned until it rolls off. For a release whose tarball was attested,
