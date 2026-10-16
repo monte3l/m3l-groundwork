@@ -55,9 +55,19 @@ file is the one-time setup and later-projects runbook.
 5. **Zone-wide security settings** (Cloudflare dashboard, `monte3l.com`
    zone, all available on the Free plan):
    - SSL/TLS → Edge Certificates → **Always Use HTTPS**: on.
-   - SSL/TLS → Edge Certificates → **Minimum TLS Version**: 1.2, **TLS
-     1.3**: on.
-   - DNS → **DNSSEC**: enable it.
+   - SSL/TLS → Edge Certificates → **Minimum TLS Version**: 1.3, **TLS
+     1.3**: on. Cloudflare's guidance is to set TLS 1.3 as the general rule
+     and 1.2 for a narrow user base or PCI obligations; the cost of 1.3 is
+     that clients limited to TLS 1.2 cannot connect.
+   - SSL/TLS → Overview → encryption mode **Full (strict)**. Cloudflare
+     strongly recommends Full or Full (strict), and strict additionally
+     validates the origin certificate (an unexpired certificate from a
+     publicly trusted CA or Cloudflare's Origin CA, matching the hostname),
+     otherwise visitors see a 526. The zone was on Flexible until
+     2026-10-16.
+   - DNS → **DNSSEC**: enable it. Check from outside with
+     `dig +short DS monte3l.com @1.1.1.1`, which returns the DS record once
+     the registrar has published it.
    - Keep zone-wide **HSTS** off. HSTS is sent per-response from `_headers`
      (`bin/lib/site-headers.mjs`), and that file is the single source of
      truth. A zone HSTS setting replaces the per-response header: with it on,
