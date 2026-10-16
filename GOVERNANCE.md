@@ -97,7 +97,7 @@ depends on, concretely:
   secrets (repo: `APP_CLIENT_ID`, `APP_PRIVATE_KEY`; `env-janitor`
   environment: `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY`; `docs-cloudflare`
   environment: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`; org:
-  `CLAUDE_CODE_OAUTH_TOKEN`, `GITLEAKS_LICENSE`), the `npm-publish`
+  `GITLEAKS_LICENSE`), the `npm-publish`
   environment's reviewer list, and the two GitHub App installations
   (the release workflow's `version` job, and the environment-cleanup
   workflow -- see `docs/environment-janitor.md`). A second org owner

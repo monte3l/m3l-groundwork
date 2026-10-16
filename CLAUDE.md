@@ -115,7 +115,7 @@ packages/plugin/        Phase B: the /customize skill
                          soak.yml (manual only: runs bin/soak.sh against the
                          published package on Linux x64/arm64 and macOS -- see
                          .claude/rules/ci.md),
-                         claude.yml, dependabot.yml,
+                         dependabot.yml,
                          environments.json (the cleanup policy),
                          ISSUE_TEMPLATE/, pull_request_template.md
 
@@ -417,17 +417,16 @@ steps) before considering any task here done.
   gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
   bespoke script invocation in either YAML file. (The `e2e` lane calls
   `pnpm test:e2e` directly; `gate-lane-parity` only checks verify groups.)
-- **Continuous integration (`.github/`) and the Claude Code Action
-  workflow.** `ci.yml` runs five verify lanes plus `e2e`/`e2e-macos`/`node-current`
-  and `dco` behind a `verify` aggregator (the check `main`'s ruleset gates on --
-  see "Git Workflow"); `claude.yml` runs Anthropic's official action in
-  `@claude`-mention mode. **There is no automated PR review here**:
-  `claude-pr-review.yml` was removed until Anthropic fixes the action's
-  silent no-post bug (see `.claude/rules/ci.md`), so a PR is reviewed by the
-  maintainer and the review spokes only. Full
-  detail, including the `gate-lane-parity` rules that must never be broken
-  and the one-time GitHub App setup: `.claude/rules/ci.md` (auto-loads on
-  `.github/**`, `lefthook.yml`, `bin/verify.mjs`, `bin/lib/verify-steps.mjs`).
+- **Continuous integration (`.github/`).** `ci.yml` runs five verify lanes plus
+  `e2e`/`e2e-macos`/`node-current` and `dco` behind a `verify` aggregator (the
+  check `main`'s ruleset gates on -- see "Git Workflow"). **There is no
+  automated PR review and no `@claude` mention workflow here**:
+  `claude-pr-review.yml` was removed until Anthropic fixes the action's silent
+  no-post bug, and `claude.yml` was retired on 2026-10-16 (both in
+  `.claude/rules/ci.md`), so a PR is reviewed by the maintainer and the review
+  spokes only. Full detail, including the `gate-lane-parity` rules that must
+  never be broken: `.claude/rules/ci.md` (auto-loads on `.github/**`,
+  `lefthook.yml`, `bin/verify.mjs`, `bin/lib/verify-steps.mjs`).
 - **A pack never edits YAML or JavaScript.** It extends three JSON files
   the baseline already reads at runtime (`.claude/settings.json`,
   `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json` of the emitted

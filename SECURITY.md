@@ -193,8 +193,10 @@ secret names and dates, never values):
 | `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY` | Client ID and private key of the `monte3l-env-janitor` GitHub App                                                                | Secrets of the `env-janitor` environment, which only deploys from `main`     | `environments.yml`, the weekly cleanup               | Token limited to this repository: `administration: write`, `deployments: write`, `environments: read`, never repository secrets. The private key does not expire.                                             |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`    | A Cloudflare API token (Workers Scripts: Edit on the account, Workers Routes: Edit on the `monte3l.com` zone) and the account id | Secrets of the `docs-cloudflare` environment, which only deploys from `main` | `docs.yml`, `deploy` job                             | Its setup guide ([`docs/cloudflare-docs.md`](docs/cloudflare-docs.md)) calls for a one-year expiry. It cannot be limited to one Worker, which is why it is an environment secret and not a repository secret. |
 | `GITLEAKS_LICENSE`                                 | The license key the gitleaks action needs for an organization-owned repository                                                   | Organization secret, visible to four repositories                            | `gitleaks.yml`                                       | It licenses a scanner and authenticates to nothing else.                                                                                                                                                      |
-| `CLAUDE_CODE_OAUTH_TOKEN`                          | OAuth token for the Claude Code action                                                                                           | **Not currently set** at organization, repository or environment level       | `claude.yml`                                         | A run that needs it fails until it is set. The setup is in `.claude/rules/ci.md`.                                                                                                                             |
 | `GITHUB_TOKEN`                                     | GitHub's automatic per-run token                                                                                                 | Created for each run                                                         | Every workflow                                       | Each job sets its own `permissions:` block, and the repository default is read-only.                                                                                                                          |
+
+`claude.yml` and its `CLAUDE_CODE_OAUTH_TOKEN` were retired on 2026-10-16, so
+no secret for them is listed or needed.
 
 ### Storing
 
@@ -226,9 +228,8 @@ secret names and dates, never values):
    the two GitHub App private keys: generate a new key in the App's settings,
    update the secret, delete the old key, then run the workflow that uses it to
    prove the new one works.
-4. **`CLAUDE_CODE_OAUTH_TOKEN` and `GITLEAKS_LICENSE`** are replaced when the
-   account or license behind them changes, or on exposure. They authenticate to
-   a vendor, not to GitHub, so they have no fixed interval.
+4. **`GITLEAKS_LICENSE`** is replaced when the license changes, or on exposure.
+   It authenticates to a vendor, not to GitHub, so it has no fixed interval.
 5. A rotation is recorded in the PR or issue that makes it, never with the
    value.
 
