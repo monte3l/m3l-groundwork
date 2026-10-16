@@ -370,6 +370,26 @@ Scanning alerts. Some are dismissed as deliberate, documented trade-offs
 rather than defects -- don't re-open these by "fixing" them into a
 standing bypass that undermines the design:
 
+- **Branch-Protection** (8, from `required approving review count is 1`):
+  Scorecard's top tier asks for two approvals. With two org owners, a PR has
+  exactly one person who is not its author, so requiring two would make
+  every merge impossible without a standing bypass, which the empty
+  `bypass_actors` list exists to prevent. Every other protection it checks is
+  on: one approval from a code owner (`.github/CODEOWNERS`), approval of the
+  last push, stale-review dismissal, an up-to-date branch, required checks
+  and no force-push or deletion. See [`CLAUDE.md`](CLAUDE.md#git-workflow),
+  "Three choices are deliberate, not defaults."
+- **Signed-Releases** (8): Scorecard scores a Sigstore bundle attached to a
+  release as `*.sigstore.json` (8) and an in-toto `*.intoto.jsonl` (10).
+  Each release carries the first, which is what the file is. It is not
+  renamed to get the second score.
+- **Token-Permissions** (still 10, with a warning at `release.yml`'s
+  `publish` job): that job holds `contents: write` because it pushes the
+  release tag, creates the GitHub Release and uploads the tarball, bundle and
+  SBOM to it. It cannot be read-only. The scope sits on that job alone, which
+  waits behind the `npm-publish` environment's required reviewer, and no
+  other job in the repository holds it except the version PR job's separate
+  GitHub App token.
 - **Contributors** (fewer than three contributing organizations):
   Scorecard counts commit authors' GitHub `Company` field across the last 30
   commits. A single-maintainer project has one, and the check's own
