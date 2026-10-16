@@ -279,6 +279,17 @@ function pageTitle(page, headings) {
   return headings[0]?.level === 1 ? headings[0].text : page.label;
 }
 
+/**
+ * Href from `page` to the site-relative file `target`. A page flagged
+ * `absolute` (the 404 page, which the host serves at any path depth) links
+ * from the site root; every other page links relative to its own directory.
+ */
+function pageHref(page, target) {
+  return page.absolute
+    ? `/${target}`
+    : path.posix.relative(path.posix.dirname(page.out), target);
+}
+
 function renderTopNav(page) {
   const items = [
     { href: "index.html", label: "Docs" },
@@ -292,9 +303,7 @@ function renderTopNav(page) {
         href === "index.html" || href === "SECURITY.html"
           ? href === page.out
           : false;
-      const rel = href.startsWith("http")
-        ? href
-        : path.posix.relative(path.posix.dirname(page.out), href);
+      const rel = href.startsWith("http") ? href : pageHref(page, href);
       const aria = current ? ` aria-current="page"` : "";
       return `<li><a class="m3l-nav__link body" href="${escapeHtml(rel)}"${aria}>${escapeHtml(label)}</a></li>`;
     })
@@ -307,10 +316,7 @@ function renderSidebar(page) {
     const groupId = `nav-${group.toLowerCase()}`;
     const items = PAGES.filter((candidate) => candidate.group === group)
       .map((candidate) => {
-        const rel = path.posix.relative(
-          path.posix.dirname(page.out),
-          candidate.out,
-        );
+        const rel = pageHref(page, candidate.out);
         const aria = candidate.src === page.src ? ` aria-current="page"` : "";
         return `<li><a class="m3l-nav__link body" href="${escapeHtml(rel)}"${aria}>${escapeHtml(candidate.label)}</a></li>`;
       })
@@ -343,7 +349,11 @@ function renderPage(page, rendered) {
   const { html, headings } = rendered.get(page.src);
   const title = pageTitle(page, headings);
   const depth = page.out.split("/").length - 1;
-  const assetPrefix = depth === 0 ? "assets" : "../".repeat(depth) + "assets";
+  const assetPrefix = page.absolute
+    ? "/assets"
+    : depth === 0
+      ? "assets"
+      : "../".repeat(depth) + "assets";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -383,14 +393,19 @@ ${html}
  * groups and the top nav's active-page check; a 404 page is never "current"
  * on either).
  */
-const NOT_FOUND_PAGE = { src: "__404__", out: "404.html", label: "Not found" };
+const NOT_FOUND_PAGE = {
+  src: "__404__",
+  out: "404.html",
+  label: "Not found",
+  absolute: true,
+};
 
 function renderNotFoundPage() {
   const rendered = new Map([
     [
       NOT_FOUND_PAGE.src,
       {
-        html: `<h1 id="page-not-found">Page not found</h1>\n<p>The page you're looking for doesn't exist. <a href="index.html">Return to the docs home</a>.</p>`,
+        html: `<h1 id="page-not-found">Page not found</h1>\n<p>The page you're looking for doesn't exist. <a href="/">Return to the docs home</a>.</p>`,
         headings: [
           { level: 1, text: "Page not found", slug: "page-not-found" },
         ],
