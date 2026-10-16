@@ -209,8 +209,8 @@ one has a command or a file that proves it.
 The exit was: `pnpm changeset pre exit` and a `patch` changeset in one PR,
 the version PR, the `npm-publish` environment approval and `npm stage
 approve`. Once `latest` pointed at `1.0.0`, a docs PR dropped `@rc` from the
-README. After the publish the `next` and `rc` dist-tags were repointed to
-`1.0.0`, and `0.0.0`, the `0.1.0-next.*` releases and `1.0.0-rc.2` to
+README. The dist-tags are read with `npm view @monte3l/groundwork dist-tags` (on
+2026-10-16: `latest` `1.0.2`, `next` and `rc` both `1.0.1`). `0.0.0`, the `0.1.0-next.*` releases and `1.0.0-rc.2` to
 `1.0.0-rc.8` were deprecated ("Superseded by 1.0.0"). `latest` moved off the
 `0.0.0` placeholder. npm needs an interactive login for dist-tag and
 deprecate commands, so the maintainer runs them.

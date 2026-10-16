@@ -872,7 +872,7 @@ hard-coded and no test pins it).
   it emits) is now installed** -- see "Agent Operating Model" above for what
   and why. It arrived by running this repo's own published CLI against
   itself (`npx @monte3l/groundwork@next .` at the time, adopt mode; an adopter now
-  uses `@rc`, see `.claude/rules/releases.md`) and its own
+  uses the default `latest` tag, see `.claude/rules/releases.md`) and its own
   `/customize` skill, the same path any adopter follows -- self-hosting as
   the first real end-to-end proof of both, not a hand-rolled install. Grade
   it with the same rule module `templates/core`'s `bin/check-harness.mjs`

@@ -58,9 +58,24 @@ file is the one-time setup and later-projects runbook.
    - SSL/TLS → Edge Certificates → **Minimum TLS Version**: 1.2, **TLS
      1.3**: on.
    - DNS → **DNSSEC**: enable it.
-   - Defer zone-wide **HSTS** and **CAA records** for now. HSTS is already
-     sent per-response from `_headers` (`bin/lib/site-headers.mjs`).
-     Custom Domains issue **Advanced Certificates**, which Cloudflare's
+   - Keep zone-wide **HSTS** off. HSTS is sent per-response from `_headers`
+     (`bin/lib/site-headers.mjs`), and that file is the single source of
+     truth. A zone HSTS setting replaces the per-response header: with it on,
+     the site served `max-age=15552000; includeSubDomains; preload` instead of
+     the repo's `max-age=31536000; includeSubDomains`, and `preload` commits
+     every subdomain of `monte3l.com` to HTTPS once the zone is submitted to
+     a browser preload list.
+   - Keep **Bot Fight Mode** off. Cloudflare documents its JavaScript
+     detections as always on with Bot Fight Mode, and they inject an inline
+     script before `</body>` on every HTML page. `_headers` allows only the
+     theme script's hash and Cloudflare supports CSP nonces only, which a
+     static site cannot issue per response, so the browser blocks the injected
+     script and logs a CSP violation on each page view. Bot Fight Mode also
+     403s the requests of a GitHub Actions runner.
+   - Zone features that still add response headers the repo does not set:
+     Speed Brain (`speculation-rules`) and Network Error Logging (`nel`,
+     `report-to`). Leave them as they are.
+   - Defer **CAA records** for now. Custom Domains issue **Advanced Certificates**, which Cloudflare's
      automatic CAA-record convenience (adding the four default CAs once you
      add any CAA record) does **not** cover -- adding a CAA record without
      listing every CA an Advanced Certificate might use risks a failed
