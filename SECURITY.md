@@ -383,6 +383,13 @@ standing bypass that undermines the design:
   release as `*.sigstore.json` (8) and an in-toto `*.intoto.jsonl` (10).
   Each release carries the first, which is what the file is. It is not
   renamed to get the second score.
+- **Token-Permissions** (still 10, with a warning at `release.yml`'s
+  `publish` job): that job holds `contents: write` because it pushes the
+  release tag, creates the GitHub Release and uploads the tarball, bundle and
+  SBOM to it. It cannot be read-only. The scope sits on that job alone, which
+  waits behind the `npm-publish` environment's required reviewer, and no
+  other job in the repository holds it except the version PR job's separate
+  GitHub App token.
 - **Contributors** (fewer than three contributing organizations):
   Scorecard counts commit authors' GitHub `Company` field across the last 30
   commits. A single-maintainer project has one, and the check's own
