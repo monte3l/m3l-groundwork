@@ -24,12 +24,14 @@ this project does not meet" below) rather than an aspirational one.
 ## Decision-making
 
 - **Day-to-day changes** (bug fixes, docs, dependency bumps, most features)
-  are decided by the maintainer, usually while reviewing the pull request
-  that proposes them. There is no separate approval step beyond the branch
-  ruleset's required checks (see [`CLAUDE.md`](CLAUDE.md#git-workflow)).
-  A single maintainer cannot require a second approval on their own PR.
-  Requiring one would only force a standing ruleset bypass, and the empty
-  `bypass_actors` list is deliberately designed to avoid exactly that.
+  are decided by the maintainer, who proposes them as a pull request.
+  The branch ruleset requires one approval from someone other than the
+  author, besides its required checks (see
+  [`CLAUDE.md`](CLAUDE.md#git-workflow)). The two org owners approve each
+  other's pull requests, and the empty `bypass_actors` list means no one
+  can skip that. If one owner is unavailable, the other cannot merge their
+  own pull request until the ruleset is switched to `disabled` and back,
+  which GitHub logs.
 - **Larger or breaking changes** (anything that touches the public API
   frozen in the README's ["Versioning policy"](README.md#versioning-policy),
   a change to `templates/core`'s caps, or a new `templates/packs/` pack) should
@@ -66,6 +68,43 @@ the `npm-publish` GitHub environment. The first and third are done:
 [giulmonte](https://github.com/giulmonte) is a `monte3l` org owner and a
 required reviewer on `npm-publish` alongside the maintainer. npm
 package-maintainer access is not -- see "Bus factor" below.
+
+## Granting access
+
+This is the policy for giving anyone more than read access. It covers
+**write or admin access to this repository, membership of the `monte3l`
+organization, a seat as a required reviewer on the `npm-publish`
+environment, and npm package-maintainer access**. Write access is treated as
+access to secrets, because a workflow run from a branch can reach a
+repository-level secret.
+
+- **Who decides.** Only an org owner grants access, and the other owner
+  agrees first. Nobody else, and no automation, grants or widens it.
+- **Review before the grant.** The owner granting access checks both of
+  these first, and neither can be skipped:
+  - **Track record.** The person has a history of accepted contributions,
+    made through issues because pull requests are collaborators-only, or in
+    another project the owners can look at.
+  - **Identity.** The person's GitHub account has two-factor authentication
+    on, and an owner has confirmed who they are through a channel outside
+    GitHub, such as their employer, another project's maintainer listing or
+    a call. An owner records which check was used in the issue that proposes
+    the access.
+- **Least privilege.** Access starts at `triage`. It moves to `write` after
+  accepted contributions, and to `admin`, org ownership, the `npm-publish`
+  reviewer seat or npm access only for a co-maintainer, which needs both
+  checks above to be repeated for the wider scope.
+- **Secrets.** No credential is shared with a collaborator, in a message or
+  a file. The secrets that exist, and where each one is reachable from, are
+  listed in [`SECURITY.md`](SECURITY.md#secrets-and-credentials).
+- **Revocation.** Either owner can remove access at any time, without the
+  other's agreement, and tells the other owner afterwards. Access is
+  reviewed at least once a year, and a collaborator with no activity for 12
+  months is reduced to `triage` or removed.
+
+Today the people holding access are the two org owners listed under "Roles".
+There is no other collaborator. The entry for each future grant is the issue
+that proposed it.
 
 ## Related repositories
 
@@ -137,8 +176,9 @@ Today's bus factor is **1** -- this is a single-maintainer project, stated
 plainly rather than inflated. A second person already holds real GitHub
 access (see "Roles" above), and has merged pull requests (the merges of
 #198 to #209 in the git history) and approved `npm-publish` deployments, but
-holds no npm access at all and no review is recorded on those merges --
-access alone doesn't make an active co-maintainer. Growing past 1 is on the [roadmap](ROADMAP.md).
+holds no npm access at all. That person approves and merges the
+maintainer's pull requests, and the ruleset now requires it, but access and
+review alone don't make an active co-maintainer. Growing past 1 is on the [roadmap](ROADMAP.md).
 
 ## Gold-level criteria this project does not meet
 
@@ -153,12 +193,15 @@ matter how the project is otherwise run. Each is recorded as **Unmet** in
   contributors not affiliated with the same organization).** All
   non-trivial contribution to date is from the maintainer.
 - **`two_person_review` (MUST, requiring at least 50% of changes reviewed by
-  someone other than the author before release).** With one maintainer, no
-  proposed change can be reviewed by a second human before it's merged and
-  released -- the criterion's own wording asks for "a person other than the
-  author," and an automated tool review isn't a substitute for that (see
+  someone other than the author before release).** The ruleset now requires
+  one approval from a person other than the author, so every new change
+  meets this. The criterion counts changes, though, and most of the history
+  predates the rule: 17 of the last 60 merged pull requests carry such an
+  approval. It stays **Unmet** until the majority of recent changes do, and
+  an automated tool review is not a substitute for a person (see
   [`CONTRIBUTING.md`](CONTRIBUTING.md#code-review) for the review this
-  project does run).
+  project does run). It also depends on the second owner staying active,
+  which is the bus-factor question below.
 
 `version_tags_signed` (SUGGESTED, not a MUST) is also recorded as **Unmet**:
 changesets creates the release tags and they are unsigned, though the
