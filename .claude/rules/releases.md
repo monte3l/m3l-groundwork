@@ -100,6 +100,42 @@ release-tools lockfile, so a finding there is fixed by updating the pinned
 package. A transient registry failure fails the step, so re-run the job. The
 policy is `SECURITY.md`'s "Dependency and code-scanning findings".
 
+**The OpenVEX feed needs one step per release.**
+`docs/m3l-groundwork.openvex.json` lists the published versions each
+`not_affected` statement covers, so a new release is not covered until it is
+added. Verify the tarball first, in a fresh directory, because the statements'
+justification (`component_not_present`) is only true while the package ships no
+dependencies, lockfile or `node_modules`:
+
+```bash
+d=$(mktemp -d) && cd "$d" && npm pack "@monte3l/groundwork@<version>" --silent \
+  && tar -xzf monte3l-groundwork-<version>.tgz
+find package \( -name package-lock.json -o -name node_modules \)   # expect no output
+node -p 'JSON.stringify(require("./package/package.json").dependencies)'   # expect {}
+```
+
+Then, from the repository root, run this once (it bumps `version` each time, and
+does not duplicate a product on a rerun), and format the file:
+
+```bash
+node -e '
+const fs = require("fs");
+const f = "docs/m3l-groundwork.openvex.json";
+const d = JSON.parse(fs.readFileSync(f, "utf8"));
+const purl = `pkg:npm/%40monte3l/groundwork@${process.argv[1]}`;
+for (const s of d.statements) {
+  if (!s.products.some((p) => p["@id"] === purl)) s.products.push({ "@id": purl, identifiers: { purl } });
+}
+d.version += 1;
+d.last_updated = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+fs.writeFileSync(f, JSON.stringify(d, null, 2) + "\n");
+' <version> && pnpm exec prettier --write docs/m3l-groundwork.openvex.json
+```
+
+The schema forbids an empty `statements` list (`minItems: 1`) and unknown keys,
+so edit with care. If the package ever ships a dependency, or a statement stops
+being true, change its status; do not leave it standing.
+
 **Backfilling the bundle onto an older release.** Scorecard averages the last
 five releases, so a release published before the bundle was attached scores
 as unsigned until it rolls off. For a release whose tarball was attested,

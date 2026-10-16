@@ -218,6 +218,10 @@ years of this review. The open
 advisories above are not on that clock: they are re-checked on the day of each
 release.
 
+Every advisory recorded in this document is also accounted for, as not
+affecting the published package, in
+[`m3l-groundwork.openvex.json`](m3l-groundwork.openvex.json).
+
 ---
 
 Performed and signed off by: **Enrico Lionello, 2026-09-26** -- confirmed the manual review above (the threat model, trust-boundary checks, and findings table) was actually carried out against the real repository, not only drafted.
