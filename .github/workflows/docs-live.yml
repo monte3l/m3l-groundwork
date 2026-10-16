@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+name: Docs Live Check (Scheduled)
+
+# What this does: once a day, builds the docs site from `main` and compares it
+# with what https://groundwork.monte3l.com actually serves, then compares the
+# npm package's description, homepage and keywords with the GitHub repo's
+# (bin/check-live-site.mjs). `docs.yml` runs the same site check right after
+# each deploy; this run catches drift that appears later with no deploy at
+# all, such as a Cloudflare zone setting changed in the dashboard (HSTS,
+# JavaScript detections, Bot Fight Mode). It never deploys. A failure shows
+# as a failed run, which GitHub emails to the maintainer.
+on:
+  schedule:
+    # 06:30 UTC daily, offset from the security audit's 06:00 run.
+    - cron: "30 6 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: docs-live
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Live site and metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # Always `main`, whatever ref a manual dispatch picked: the live site is
+      # built from `main`, so any other ref would be compared with the wrong
+      # build.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      - run: node bin/build-docs.mjs --out _site
+
+      # A push to `main` around this hour deploys while this job runs, and
+      # `docs.yml` queues behind its own concurrency group, not this one; six
+      # minutes of retries let that deploy land before a mismatch is reported.
+      - run: node bin/check-live-site.mjs --site _site --metadata --attempts 12 --delay 30
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

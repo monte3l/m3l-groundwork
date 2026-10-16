@@ -98,16 +98,17 @@ file is the one-time setup and later-projects runbook.
      adding CAA records at the zone level.
 6. **First deploy:** merging the PR that adds `docs.yml` triggers the
    `build`/`deploy` jobs on the next push to `main`. Watch the run; a green
-   `wrangler deploy` step means the upload itself succeeded. There's no
-   automated post-deploy smoke test (see `docs.yml`'s own header comment
-   for why: Cloudflare's Bot Fight Mode reliably 403s a GitHub
-   Actions-runner `curl`, and that can't be selectively bypassed without
-   either weakening the zone's bot protection or allowlisting GitHub
-   Actions' entire rotating IP range) -- verify the deploy by hand instead:
-   run `curl -sI https://groundwork.monte3l.com` and confirm the CSP, HSTS
-   and other headers from `bin/lib/site-headers.mjs` are present, that the
-   certificate is valid, and that a bad path (e.g.
-   `https://groundwork.monte3l.com/does-not-exist`) returns a real 404.
+   `wrangler deploy` step means the upload itself succeeded, and the
+   `smoke` job then checks the live site: every page, the 404 page and every
+   asset must equal the built file, and each response must carry every header
+   from `bin/lib/site-headers.mjs` with the exact value
+   (`bin/check-live-site.mjs`). The same check runs daily from
+   `docs-live.yml` against a fresh build of `main`, together with a
+   comparison of the npm package's description, homepage and keywords with
+   the GitHub repo's, so a zone setting changed in the dashboard shows up as
+   a failed run. A 403 in either means a Cloudflare bot-protection setting
+   was switched back on. By hand: `curl -sI https://groundwork.monte3l.com`,
+   and `https://groundwork.monte3l.com/does-not-exist` must return a real 404.
 7. **Uninstall (or de-scope) the Cloudflare Workers & Pages GitHub App**,
    if it's installed on this org: it's only needed for Cloudflare's Git
    integration (Workers Builds), which this setup deliberately doesn't use

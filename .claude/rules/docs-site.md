@@ -3,6 +3,9 @@ paths:
   - "bin/build-docs.mjs"
   - "bin/lib/markdown.mjs"
   - "bin/lib/site-headers.mjs"
+  - "bin/check-live-site.mjs"
+  - "bin/lib/live-site.mjs"
+  - ".github/workflows/docs-live.yml"
   - ".github/workflows/docs.yml"
   - "tools/deploy/**"
 ---
@@ -67,3 +70,12 @@ token held in the `docs-cloudflare` GitHub environment (`main`-only, no
 GitHub App: Cloudflare's Git-integration path, Workers Builds, needs its own
 GitHub App installed with repo access -- direct-upload from Actions avoids
 installing it at all).
+
+After the deploy, `docs.yml`'s `smoke` job runs `bin/check-live-site.mjs`
+(helpers in `bin/lib/live-site.mjs`) against the same `_site` artifact: every
+page, the 404 page and every asset on the live site must equal the built
+file, and each response must carry every `_headers` header at its exact
+value. `docs-live.yml` repeats it daily against a fresh build of `main` and
+adds the package.json-versus-GitHub metadata comparison. Change a page, the
+`_headers` shape or a URL mapping in `build-docs.mjs` and these checks follow
+automatically, since they read the built output, not a copy of it.
