@@ -21,6 +21,21 @@ Only the latest release in a supported line gets a fix. This is a
 single-maintainer project; there is no backport policy across major
 versions yet.
 
+### Scope and duration of support
+
+Support covers the latest `1.x` release of `@monte3l/groundwork`, and the
+`/customize` plugin as it stands on `main` (the plugin ships from `main`, so
+there is no older plugin release to support).
+
+A release is supported until the next release in its line is published. From
+then on it receives no fixes, security fixes included, and the fix is to
+upgrade. There is no fixed calendar duration and no long-term-support line.
+
+When a release is superseded, the maintainer may mark it with an npm
+deprecation notice (`Superseded by <version>`), as was done for `1.0.0` and
+the prereleases. Do not read a missing notice as meaning a superseded release
+is still supported: the rule above is the policy, the notice is a courtesy.
+
 ## Reporting a vulnerability
 
 Use GitHub's [private vulnerability reporting](https://github.com/monte3l/m3l-groundwork/security/advisories/new)
