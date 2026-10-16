@@ -1,5 +1,11 @@
 # @monte3l/groundwork
 
+## 1.0.3
+
+### Patch Changes
+
+- [#211](https://github.com/monte3l/m3l-groundwork/pull/211) [`261149f`](https://github.com/monte3l/m3l-groundwork/commit/261149f48ee42f6a0a3673a0202e055afb45586e) Thanks [@enri3l](https://github.com/enri3l)! - Refresh the README shown on npm so it matches the repository (adds the OpenSSF Baseline badge).
+
 ## 1.0.2
 
 ### Patch Changes
