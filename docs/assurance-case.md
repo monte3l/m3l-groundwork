@@ -110,7 +110,8 @@ dependency -- there isn't one (`packages/cli/package.json`'s
   a shell.
 - **Complete mediation.** The `main` branch ruleset has an empty
   `bypass_actors` list -- every change, including the maintainer's own,
-  passes through the same required checks. There is no standing bypass
+  passes through the same required checks and needs one approval from
+  someone other than its author. There is no standing bypass
   path for source or test writes on `main` either: `guard-hub-src-writes.mjs`
   and `guard-branch-isolation.mjs` enforce the
   [hub-and-spoke](glossary.md#hub-and-spoke) model unconditionally.

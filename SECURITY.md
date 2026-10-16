@@ -370,17 +370,16 @@ Scanning alerts. Some are dismissed as deliberate, documented trade-offs
 rather than defects -- don't re-open these by "fixing" them into a
 standing bypass that undermines the design:
 
-- **Branch-Protection / Code-Review** (0 required approvals on `main`): a
-  single-maintainer project can't require an approval on its own PR
-  without a standing bypass, which the `main` ruleset's empty
-  `bypass_actors` list is deliberately designed to avoid. See
+- **Code-Review** (history of approvals): `main` now requires one approval
+  from someone other than the author, but Scorecard scores the last 30
+  changes, and most of them were merged before the rule. The score rises as
+  they age out; nothing needs changing. Branch-Protection is re-scored from
+  the live ruleset on the next weekly scan. See
   [`CLAUDE.md`](CLAUDE.md#git-workflow), "Three choices are deliberate,
-  not defaults." The same reasoning is why `.github/CODEOWNERS` (`*` owned
-  by the two org owners) is advisory and `require_code_owner_review` stays
-  off: GitHub doesn't let a PR author approve their own PR, so enforcing it
-  would either block every maintainer PR outright or make every PR wait on
-  the second owner, the same standing-bypass trap the 0-approvals choice
-  above already avoids. Pull requests are collaborators-only (see
+  not defaults." `.github/CODEOWNERS` (`*` owned by the two org owners) is
+  advisory and `require_code_owner_review` stays off: with one approval
+  required and both owners listed, it would add a second rule with the same
+  effect. Pull requests are collaborators-only (see
   [`CLAUDE.md`](CLAUDE.md#git-workflow)), so the file names who owns the
   repository rather than routing external, unreviewed code.
 - **Contributors** (fewer than three contributing organizations):

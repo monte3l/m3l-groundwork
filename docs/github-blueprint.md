@@ -67,12 +67,13 @@ live state that can change, the cell gives the read-only command instead.
 | Target                     | `~DEFAULT_BRANCH`, enforcement `active`                                                                      |
 | Bypass actors              | None, so nobody can push, force-push or delete `main`                                                        |
 | Rules                      | `deletion`, `non_fast_forward`, `required_signatures`                                                        |
-| Pull request               | 0 approvals, thread resolution required, stale reviews dismissed on push, merge or squash only               |
+| Pull request               | 1 approval, thread resolution required, stale reviews dismissed on push, merge or squash only                |
 | Required status checks     | `verify`, `Dependency Review`, `CodeQL` and `Gitleaks`, each pinned to its producing app by `integration_id` |
 | Up-to-date branch required | No (`strict_required_status_checks_policy: false`)                                                           |
 
-Why these choices: approvals are 0 because one maintainer cannot approve
-their own PR. Rebase-merge is excluded because GitHub cannot sign the
+Why these choices: approvals are 1 because a second owner reviews every PR;
+with a single maintainer the value has to be 0, since nobody can approve
+their own PR and a requirement would force a standing bypass. Rebase-merge is excluded because GitHub cannot sign the
 rewritten commits. `strict` is off so weekly Dependabot PRs do not each
 re-run every lane. `CLAUDE.md`'s "Git Workflow" has the full reasoning.
 

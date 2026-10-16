@@ -203,10 +203,10 @@ Claude Code Action's silent no-post bug. What review checks:
   a signed commit (see "Before opening a PR" above).
 
 A PR merges once every required CI check is green and every review thread is
-resolved. This project is honest that it does not meet the badge's
-`two_person_review` criterion: with one maintainer, no proposed change can
-be reviewed by a second human before release -- see
-[`GOVERNANCE.md`](GOVERNANCE.md#bus-factor).
+resolved, and one person other than the author has approved it. This
+project is honest that it does not yet meet the badge's `two_person_review`
+criterion, which counts changes and most of the history predates the
+approval rule -- see [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor).
 
 ## Small tasks for newcomers
 
@@ -219,7 +219,8 @@ issue and it'll get labeled appropriately. Since pull request creation is
 collaborators-only (see "Workflow" above), pick up one of these by commenting
 on the issue with your proposed approach -- the maintainer will either
 implement it referencing your comment, or add you as a collaborator so you
-can open the PR yourself.
+can open the PR yourself. What an owner checks before granting access is in
+[`GOVERNANCE.md`](GOVERNANCE.md#granting-access).
 
 ## Scope of a PR
 
