@@ -20,7 +20,7 @@ on:
       version:
         description: "npm dist-tag or exact version to soak"
         required: false
-        default: rc
+        default: latest
         type: string
 
 permissions: {}

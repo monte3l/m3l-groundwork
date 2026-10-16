@@ -8,7 +8,7 @@
 # Exits 1 if any row is FAIL or SKIP, so a CI job cannot go green on a partial soak.
 set -u
 
-VERSION="rc"
+VERSION="latest"
 WORK=""
 SECTION="all"
 while getopts "v:w:s:" o; do

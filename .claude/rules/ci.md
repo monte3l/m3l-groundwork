@@ -131,7 +131,7 @@ paths:
   A 403 from either run means Bot Fight Mode or another Cloudflare
   bot-protection setting was turned back on (`docs/cloudflare-docs.md`).
 - `soak.yml` is manual only (`workflow_dispatch`, input `version`, a dist-tag
-  or exact version) and not a required check. It runs `bin/soak.sh` against
+  or exact version, default `latest` here and in `bin/soak.sh`) and not a required check. It runs `bin/soak.sh` against
   the **published** `@monte3l/groundwork` from the registry, never the
   checkout, on `ubuntu-24.04`, `ubuntu-24.04-arm` and `macos-latest`: the
   only place the registry artifact, and Linux arm64, are exercised
