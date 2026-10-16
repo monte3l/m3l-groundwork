@@ -165,6 +165,86 @@ to every statement; the steps are in
 
 Run `pnpm audit --audit-level=high` to see what the release gate sees.
 
+## Secrets and credentials
+
+This is the project's policy for the secrets and credentials it uses: how they
+are stored, who can reach them, and when they are replaced. The first rule is
+to avoid holding one at all.
+
+### What the project does not store
+
+- **No npm token.** Releases publish through npm trusted publishing: the
+  `publish` job exchanges GitHub's short-lived OIDC identity for a
+  package-scoped token at publish time (`bin/npm-stage-publish.mjs`), and a
+  human approves the staged version with a live 2FA code.
+- **No signing key for release artifacts.** Provenance and attestations use
+  Sigstore's keyless signing, tied to the workflow run.
+- **No personal access token.** Where a job needs more than `GITHUB_TOKEN`, it
+  mints a short-lived GitHub App installation token instead.
+
+### Inventory
+
+As of 2026-10-16, read from the workflows and from the GitHub API (which lists
+secret names and dates, never values):
+
+| Secret                                             | What it is                                                                                                                       | Stored at                                                                    | Used by                                              | Scope and expiry                                                                                                                                                                                              |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_CLIENT_ID`, `APP_PRIVATE_KEY`                 | Client ID and private key of the `m3l-groundwork-release` GitHub App                                                             | Repository secrets                                                           | `release.yml`, `version` job, to open the version PR | App installed on this repository only, with `contents: write` and `pull-requests: write`. The token it mints lasts an hour and is revoked when the job ends. The private key does not expire.                 |
+| `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY` | Client ID and private key of the `monte3l-env-janitor` GitHub App                                                                | Secrets of the `env-janitor` environment, which only deploys from `main`     | `environments.yml`, the weekly cleanup               | Token limited to this repository: `administration: write`, `deployments: write`, `environments: read`, never repository secrets. The private key does not expire.                                             |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`    | A Cloudflare API token (Workers Scripts: Edit on the account, Workers Routes: Edit on the `monte3l.com` zone) and the account id | Secrets of the `docs-cloudflare` environment, which only deploys from `main` | `docs.yml`, `deploy` job                             | Its setup guide ([`docs/cloudflare-docs.md`](docs/cloudflare-docs.md)) calls for a one-year expiry. It cannot be limited to one Worker, which is why it is an environment secret and not a repository secret. |
+| `GITLEAKS_LICENSE`                                 | The license key the gitleaks action needs for an organization-owned repository                                                   | Organization secret, visible to four repositories                            | `gitleaks.yml`                                       | It licenses a scanner and authenticates to nothing else.                                                                                                                                                      |
+| `CLAUDE_CODE_OAUTH_TOKEN`                          | OAuth token for the Claude Code action                                                                                           | **Not currently set** at organization, repository or environment level       | `claude.yml`                                         | A run that needs it fails until it is set. The setup is in `.claude/rules/ci.md`.                                                                                                                             |
+| `GITHUB_TOKEN`                                     | GitHub's automatic per-run token                                                                                                 | Created for each run                                                         | Every workflow                                       | Each job sets its own `permissions:` block, and the repository default is read-only.                                                                                                                          |
+
+### Storing
+
+- A secret lives only in GitHub Actions secrets, at the narrowest scope that
+  works: an environment secret restricted to `main` for a credential one deploy
+  job uses, a repository secret for one repository's job, and an organization
+  secret limited to selected repositories only when several need it. It never
+  goes in a file, a repository variable or a log.
+- Secret scanning and push protection are on for this repository, and gitleaks
+  scans every push and pull request and runs weekly (`.gitleaks.toml`).
+
+### Accessing
+
+- Only the two organization owners, `enri3l` and `giulmonte`, can create,
+  replace or delete a secret. GitHub never shows a stored value back. The
+  organization requires two-factor authentication, by authenticator app or
+  hardware key (see [`CONTRIBUTING.md`](CONTRIBUTING.md#account-security)).
+- Environment secrets reach only jobs running on `main`. Publishing needs an
+  approval at the `npm-publish` environment, and `npm stage approve` takes a
+  live 2FA code.
+
+### Rotating
+
+1. **At once** when a secret is exposed or suspected to be, or when someone with
+   access to it leaves or loses a device that held a key.
+2. **A credential that can expire is issued with an expiry of at most one
+   year.** The Cloudflare token's setup guide already calls for one.
+3. **A credential that cannot expire is replaced at least once a year.** That is
+   the two GitHub App private keys: generate a new key in the App's settings,
+   update the secret, delete the old key, then run the workflow that uses it to
+   prove the new one works.
+4. **`CLAUDE_CODE_OAUTH_TOKEN` and `GITLEAKS_LICENSE`** are replaced when the
+   account or license behind them changes, or on exposure. They authenticate to
+   a vendor, not to GitHub, so they have no fixed interval.
+5. A rotation is recorded in the PR or issue that makes it, never with the
+   value.
+
+To compare this inventory with what is actually set, list names and dates (not
+values) with `gh api repos/monte3l/m3l-groundwork/actions/secrets`,
+`gh api orgs/monte3l/actions/secrets`, and
+`gh api repos/monte3l/m3l-groundwork/environments/<name>/secrets`.
+
+### If one is exposed
+
+Revoke it at the source first (the Cloudflare token, the App's private key, the
+license), then replace it, update the GitHub secret, and re-run the workflow
+that uses it. Review the runs since the exposure. If it could have affected a
+released artifact, handle it as a vulnerability report under
+"Response process" above.
+
 ## Verifying releases
 
 `@monte3l/groundwork` ships with [npm provenance](https://docs.npmjs.com/generating-provenance-statements)
