@@ -65,13 +65,18 @@ file is the one-time setup and later-projects runbook.
      the repo's `max-age=31536000; includeSubDomains`, and `preload` commits
      every subdomain of `monte3l.com` to HTTPS once the zone is submitted to
      a browser preload list.
-   - Keep **Bot Fight Mode** off. Cloudflare documents its JavaScript
-     detections as always on with Bot Fight Mode, and they inject an inline
-     script before `</body>` on every HTML page. `_headers` allows only the
-     theme script's hash and Cloudflare supports CSP nonces only, which a
-     static site cannot issue per response, so the browser blocks the injected
-     script and logs a CSP violation on each page view. Bot Fight Mode also
-     403s the requests of a GitHub Actions runner.
+   - Keep **JavaScript detections** off (`enable_js` in the Bot Management
+     API, a separate setting from Bot Fight Mode). With it on, Cloudflare
+     injects an inline script before `</body>` on every HTML page.
+     `_headers` allows only the theme script's hash, and Cloudflare supports
+     CSP nonces only, which a static site cannot issue per response, so the
+     browser blocks the injected script and logs a CSP violation on each page
+     view. Turning Bot Fight Mode off was not enough: on 2026-10-16 the zone
+     reported `fight_mode: false` and `enable_js: true` while every page still
+     carried the script, and it disappeared once `enable_js` was set to
+     `false`. Read both with `GET /zones/<zone id>/bot_management`
+     (token permission: Bot Management Read).
+   - Keep **Bot Fight Mode** off as well.
    - Zone features that still add response headers the repo does not set:
      Speed Brain (`speculation-rules`) and Network Error Logging (`nel`,
      `report-to`). Leave them as they are.
