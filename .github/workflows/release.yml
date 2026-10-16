@@ -146,6 +146,16 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
       - run: pnpm install --frozen-lockfile
+      # SECURITY.md, "Dependency and code-scanning findings": no release is
+      # published while a high or critical advisory is open. security-audit.yml
+      # catches one published after a merge, daily; these two catch one
+      # published since its last run, before any tarball exists. The second
+      # audits the lockfile the `publish` job installs from, which holds the
+      # OIDC token; --package-lock-only needs no install. An advisory that does
+      # not affect the project is excluded by GHSA id under `audit.ignore` in
+      # pnpm-workspace.yaml, in a reviewed PR -- the only way past this step.
+      - run: pnpm audit --audit-level=high
+      - run: npm audit --package-lock-only --prefix tools/release --audit-level=high
       # The whole gate, then the end-to-end suite, before a tarball exists.
       # `pnpm verify` is one full run of every group, the same steps ci.yml
       # spreads across its lanes -- this is a single full run rather than a

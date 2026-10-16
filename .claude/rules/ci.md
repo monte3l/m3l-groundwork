@@ -116,6 +116,9 @@ paths:
   what a PR changes, so this is the only thing that notices an advisory
   published against an already-locked dependency. It mirrors the workflow
   `templates/core` emits, at the root's own `pnpm/action-setup` pin.
+  `release.yml`'s `pack` job runs the same audit before any release, so the daily
+  run and the release gate agree; the policy behind both is `SECURITY.md`'s
+  "Dependency and code-scanning findings".
 - `soak.yml` is manual only (`workflow_dispatch`, input `version`, a dist-tag
   or exact version) and not a required check. It runs `bin/soak.sh` against
   the **published** `@monte3l/groundwork` from the registry, never the

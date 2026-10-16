@@ -79,6 +79,53 @@ are behavioral, not sandboxed. A project this tool bootstraps or adopts is
 yours to secure; this policy covers defects in the tool itself, not choices
 made on your behalf during an interview or a guidance sweep.
 
+## Dependency and code-scanning findings
+
+This is the project's policy for two kinds of automated finding: software
+composition analysis (SCA), meaning known vulnerabilities and licenses in
+dependencies, and static analysis (SAST), meaning CodeQL. It describes what is
+enforced today.
+
+### What runs
+
+| Check                                                                   | When                        | On a finding                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dependency Review (`dependency-review.yml`), a required check on `main` | Every pull request          | Fails the PR if it adds or updates a dependency with a high or critical known vulnerability, or with a license outside the allow-list in that file                                                                                                    |
+| `pnpm audit` (`security-audit.yml`)                                     | Daily, and on demand        | Opens one issue when the lockfile has a high or critical advisory, which catches one published after a merge                                                                                                                                          |
+| `pnpm audit` and `npm audit` (the `pack` job in `release.yml`)          | Every release               | Fails the release before anything is built or published, for the root lockfile and for the release-tools lockfile the publish job installs from                                                                                                       |
+| CodeQL default setup; its `CodeQL` check is required on `main`          | Every push and pull request | Fails the PR on a new alert of error severity or critical or high security severity, which is GitHub's default threshold                                                                                                                              |
+| Dependabot (`dependabot.yml`)                                           | Weekly                      | Opens update PRs for the GitHub Actions, the release-tools and deploy-tools lockfiles, and the publishing pack's own lockfile. Root npm updates are off on purpose: the CLI has no runtime dependencies, and the checks above cover the root lockfile |
+
+### Remediation thresholds
+
+| Finding                              | Threshold                                                                                                                                                                                                                                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A critical or high SCA vulnerability | A PR that introduces one does not merge. One published against a dependency already locked is fixed (update, replace or remove) within 60 days of the daily audit raising it, and **no release is published while one is open**.                                                                  |
+| A medium SCA vulnerability           | Fixed within 60 days, through a dependency update. It does not block a release.                                                                                                                                                                                                                   |
+| A low SCA vulnerability              | Fixed in the normal course of dependency updates, with no deadline.                                                                                                                                                                                                                               |
+| A license outside the allow-list     | A PR that adds one does not merge. Either the dependency is removed, or the license is added to the allow-list in the same PR with the reason in its description, as was done for BlueOak-1.0.0, Artistic-2.0 and CC-BY-3.0. One found on an already-locked dependency is fixed within 60 days.   |
+| A SAST (CodeQL) alert                | A new alert of error severity or critical or high security severity blocks the PR. One found in code already merged, with a medium or higher security severity, is fixed within 60 days of triage; a lower one is at the maintainer's discretion. A dismissed alert records its reason in GitHub. |
+
+### Process
+
+1. **Identify.** The checks above, plus Dependabot and GitHub security
+   advisories.
+2. **Prioritize.** Severity first, then whether the code ships. The CLI has no
+   runtime dependencies, so a finding in a development dependency affects
+   contributors and CI, not people who install the package. A finding in what
+   the package ships, the templates included, is treated as a vulnerability in
+   this project and follows "Response process" above.
+3. **Remediate.** Update, replace or remove the dependency. A finding in the
+   release-tools lockfile is fixed by updating the pinned package.
+4. **Accept, only when nothing else works.** An advisory that does not affect
+   the project and has no patched version can be excluded from the root audit
+   by its GHSA id under `audit.ignore` in `pnpm-workspace.yaml` (pnpm 12.4 or
+   later), in a PR that records the reasoning in
+   [`docs/security-review.md`](docs/security-review.md). The exclusion is the
+   only way past the release gate, so it is always visible in review.
+
+Run `pnpm audit --audit-level=high` to see what the release gate sees.
+
 ## Verifying releases
 
 `@monte3l/groundwork` ships with [npm provenance](https://docs.npmjs.com/generating-provenance-statements)
