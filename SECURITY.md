@@ -370,18 +370,6 @@ Scanning alerts. Some are dismissed as deliberate, documented trade-offs
 rather than defects -- don't re-open these by "fixing" them into a
 standing bypass that undermines the design:
 
-- **Code-Review** (history of approvals): `main` now requires one approval
-  from someone other than the author, but Scorecard scores the last 30
-  changes, and most of them were merged before the rule. The score rises as
-  they age out; nothing needs changing. Branch-Protection is re-scored from
-  the live ruleset on the next weekly scan. See
-  [`CLAUDE.md`](CLAUDE.md#git-workflow), "Three choices are deliberate,
-  not defaults." `.github/CODEOWNERS` (`*` owned by the two org owners) is
-  advisory and `require_code_owner_review` stays off: with one approval
-  required and both owners listed, it would add a second rule with the same
-  effect. Pull requests are collaborators-only (see
-  [`CLAUDE.md`](CLAUDE.md#git-workflow)), so the file names who owns the
-  repository rather than routing external, unreviewed code.
 - **Contributors** (fewer than three contributing organizations):
   Scorecard counts commit authors' GitHub `Company` field across the last 30
   commits. A single-maintainer project has one, and the check's own

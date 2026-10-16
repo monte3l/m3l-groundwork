@@ -516,24 +516,32 @@ repository ruleset named `main` enforces the rest. It targets
 included, can push to `main` directly, force-push it, or delete it while the
 ruleset is active. Every change lands through a pull request whose `verify`
 (the aggregator), `Dependency Review`, `CodeQL` and `Gitleaks` checks are green, which
-has one approval from someone other than its author, whose
+has one approval from a code owner other than its author, whose
 review threads are resolved, and whose commits are all signed. Each required
 check is matched on both its name and its producing app (`integration_id`), so
 a same-named status from a different app doesn't satisfy it.
 
 Three choices are deliberate, not defaults. **Approvals are 1**: the two
-org owners approve each other's PRs, and a stale approval is dismissed on
-push. This replaced an earlier 0, which existed because one maintainer
+org owners approve each other's PRs. The approval must come from a code owner
+(`.github/CODEOWNERS` names both owners for every path), the most recent push
+must be approved by someone other than whoever pushed it, and a stale
+approval is dismissed on push. This replaced an earlier 0, which existed because one maintainer
 cannot approve their own PR and requiring one would have forced a standing
 bypass; a second owner now reviews every PR, so the rule is enforceable. The
 cost is availability: if one owner is away, the other cannot merge their own
 PR without the ruleset being set to `disabled` and back (GitHub logs it),
 never a bypass actor. **Rebase-merge is not an allowed method**: GitHub rewrites
 those commits and has no key to sign them, so under required signatures the
-button would always error; merge and squash remain. **Branches need not be
-up to date before merging** (`strict` is off): with weekly Dependabot PRs,
-no auto-merge and no merge queue, strict mode would re-run every lane, e2e
-included, once per remaining PR after every merge.
+button would always error; merge and squash remain. **A branch must be
+up to date before merging** (`strict` is on). It was off until 2026-10-16:
+with weekly Dependabot PRs, no auto-merge and no merge queue, strict mode
+re-runs every lane, e2e included, once per remaining PR after every merge,
+and it dismisses the approval each time the branch is updated, so the other
+owner approves again. Two PRs that each pass `verify` can no longer combine
+into a broken `main`, and OpenSSF Scorecard's Branch-Protection check asks
+for it, which is why the cost is now accepted. After merging a PR, update the
+next one's branch (the **Update branch** button, or `@dependabot rebase`) and
+expect one re-approval.
 
 Signing is machine-local: `commit.gpgsign` is in `~/.gitconfig` but
 `user.signingkey` is tracked nowhere in this repo, so on a fresh box

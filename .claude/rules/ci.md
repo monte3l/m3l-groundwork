@@ -63,8 +63,9 @@ paths:
   Dependabot (keyed on `pull_request.user.login`, not `github.actor`), whose
   token is read-only. A new label needs no setup: the action creates it on
   first use, and `pull-requests: write` is enough for that. There is
-  advisory `.github/CODEOWNERS`, and `require_code_owner_review` is off on
-  purpose (see `SECURITY.md`).
+  `.github/CODEOWNERS`, which names both org owners and is enforced:
+  `require_code_owner_review` is on, so keep the file valid and never remove
+  an owner without a replacement.
 - **Two rules keep `gate-lane-parity` (the toolchain grader) working against
   this repo: never name a step id in a workflow** (name a group), **and
   never matrix the lanes** -- `--group ${{ matrix.group }}` reads as
