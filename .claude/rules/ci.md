@@ -130,12 +130,6 @@ paths:
   `verify.mjs`, `--group` or `--step` anywhere in it, comments included).
   Each matrix leg uploads `results.tsv` and `logs/` from `$RUNNER_TEMP/soak` as
   the artifact `soak-<os>`, kept 14 days (`if-no-files-found: warn`).
-- **`claude.yml` runs Anthropic's official `anthropics/claude-code-action`**
-  (SHA-pinned, same convention as every other action here); it needs the
-  one-time setup below.
-  It is interactive `@claude`-mention mode: it never opens a PR itself (it
-  commits to a branch and links back to a PR-creation page), so it never
-  bypasses the human-opened-PR rule above.
 - **There is deliberately no automated PR review workflow.** The root
   `claude-pr-review.yml` (Anthropic's documented "Run a skill" review, the
   `code-review@claude-code-plugins` plugin posting as `claude[bot]`) was
@@ -155,18 +149,14 @@ comment:*)` in `--allowedTools`, and a `Verify Claude posted` step failing
   `CONTRIBUTING.md` and `docs/assurance-case.md`. The `github` pack still
   ships its own `claude-pr-review.yml` twin to bootstrapped projects; that is
   deliberately unchanged here.
-- `claude.yml` has no PR to gate (it only triggers on
-  issues and comments, which stay open to everyone even under
-  collaborators-only PRs), so its `if:` instead requires the triggering
-  actor's `author_association` to be `OWNER`, `MEMBER` or `COLLABORATOR`.
-- **One-time setup, done by hand:** install the [Claude GitHub
-  App](https://github.com/apps/claude), then `claude setup-token` locally
-  and `gh secret set CLAUDE_CODE_OAUTH_TOKEN --org monte3l --repos m3l-groundwork`
-  (an org secret, not a repo secret) -- this repo uses a Claude
-  subscription's OAuth token, not a stored API key or Workload Identity
-  Federation. `templates/packs/github` ships both the mention-mode workflow
-  and a generalized `claude-pr-review.yml` twin (plus three `gh`-CLI skills)
-  as an optional pack for bootstrapped projects, defaulting to a stored API
-  key instead (the more universal choice for a project of unknown
-  ownership) with the other two auth options documented as comments in the
-  file.
+- **There is no `claude.yml`.** The `@claude`-mention workflow (Anthropic's
+  `anthropics/claude-code-action`) was retired on 2026-10-16. It was added on
+  2026-09-25 and ran 132 times, every run skipped by its `if:` gate; its
+  `CLAUDE_CODE_OAUTH_TOKEN` was never set at any scope, and its job held
+  `contents`, `pull-requests`, `issues` and `id-token` writes for nothing. To
+  restore it, take the file from git history (`git log --diff-filter=D --
+.github/workflows/claude.yml`) and redo its one-time setup: install the
+  [Claude GitHub App](https://github.com/apps/claude), run `claude setup-token`,
+  and `gh secret set CLAUDE_CODE_OAUTH_TOKEN --org monte3l --repos m3l-groundwork`.
+  The `github` pack still ships its own `claude.yml` and `claude-pr-review.yml`
+  to bootstrapped projects, deliberately unchanged here.

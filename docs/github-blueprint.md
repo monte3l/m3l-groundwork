@@ -169,6 +169,13 @@ Replace `REPO` with the repository name.
 | 7   | Scope the Claude and Cloudflare GitHub Apps            | Organization settings, GitHub Apps, Configure, Only select repositories. The Cloudflare app does not appear in the organization's installations, so check the owner account too.                                                                                                                                                                                                                                                                                        |
 | 8   | Security defaults for new repositories                 | Create a code security configuration and set it as the default for new public repositories, see [choosing a security configuration](https://docs.github.com/en/code-security/securing-your-organization/introduction-to-securing-your-organization-at-scale/choosing-a-security-configuration-for-your-repositories). Enable Dependabot alerts and security updates, secret scanning, push protection, private vulnerability reporting and code scanning default setup. |
 
+**Update, 2026-10-16.** This repository no longer uses
+`anthropics/claude-code-action`: `claude.yml` was retired (see
+`.claude/rules/ci.md`). The org settings above are unchanged by that. Row 5's
+`anthropics/claude-code-action@*` pattern, row 6's `CLAUDE_CODE_OAUTH_TOKEN`
+(which was never set) and the Claude App in row 7 are no longer needed by this
+repository, and stay in the organization until someone removes them.
+
 Row 4 is the largest change. Rows 4 and 5 must go together, and row 5 must
 list every third-party action a workflow uses. A pattern matches the exact
 `owner/repo` path, so an action referenced by sub-path needs its own
