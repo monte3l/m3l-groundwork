@@ -62,10 +62,10 @@ jobs:
           node-version-file: .node-version
 
       # Belt and suspenders: `verify`'s `docs` step already gates every PR,
-      # but `main`'s ruleset does not require a branch to be up to date
-      # before merging, so two PRs that each pass `verify` can still combine
-      # into a `main` with a broken link. `--check` re-validates the merged
-      # result before `--out` ever writes anything this job would publish.
+      # against a `main` the ruleset requires the branch to be up to date
+      # with. `--check` still re-validates the merged result before `--out`
+      # ever writes anything this job would publish, so a path that skips
+      # `verify` (a re-run, a manual dispatch) cannot ship a broken link.
       - run: node bin/build-docs.mjs --check
 
       - run: node bin/build-docs.mjs --out _site

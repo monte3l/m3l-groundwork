@@ -67,15 +67,16 @@ live state that can change, the cell gives the read-only command instead.
 | Target                     | `~DEFAULT_BRANCH`, enforcement `active`                                                                      |
 | Bypass actors              | None, so nobody can push, force-push or delete `main`                                                        |
 | Rules                      | `deletion`, `non_fast_forward`, `required_signatures`                                                        |
-| Pull request               | 1 approval, thread resolution required, stale reviews dismissed on push, merge or squash only                |
+| Pull request               | 1 approval from a code owner, last push approved by someone else, threads resolved, stale reviews dismissed  |
 | Required status checks     | `verify`, `Dependency Review`, `CodeQL` and `Gitleaks`, each pinned to its producing app by `integration_id` |
-| Up-to-date branch required | No (`strict_required_status_checks_policy: false`)                                                           |
+| Up-to-date branch required | Yes (`strict_required_status_checks_policy: true`)                                                           |
 
 Why these choices: approvals are 1 because a second owner reviews every PR;
 with a single maintainer the value has to be 0, since nobody can approve
 their own PR and a requirement would force a standing bypass. Rebase-merge is excluded because GitHub cannot sign the
-rewritten commits. `strict` is off so weekly Dependabot PRs do not each
-re-run every lane. `CLAUDE.md`'s "Git Workflow" has the full reasoning.
+rewritten commits. `strict` is on so two PRs that each pass cannot combine
+into a broken `main`; the cost is a re-run and a re-approval per open PR
+after each merge. `CLAUDE.md`'s "Git Workflow" has the full reasoning.
 
 GitHub can import and export a ruleset as JSON
 ([managing rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/managing-rulesets-for-a-repository)),
@@ -121,8 +122,9 @@ GitHub's community profile does not list them). Issue forms and the PR
 template live under `.github/`. Read GitHub's own view with
 `gh api repos/monte3l/m3l-groundwork/community/profile`.
 
-`CODEOWNERS` is present but advisory: `.github/CODEOWNERS` names both org
-owners, and `require_code_owner_review` stays off (see `SECURITY.md`). Not
+`CODEOWNERS` is enforced: `.github/CODEOWNERS` names both org owners, and
+`require_code_owner_review` is on, so a PR needs an approval from one of them
+other than its author. Not
 present, by choice or not yet: `SUPPORT.md`, `FUNDING.yml`, and a
 `.github/release.yml` release-notes config.
 
