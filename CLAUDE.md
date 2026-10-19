@@ -676,17 +676,28 @@ writer spoke only with both present, so a call carrying `agent_type` but no
 
 **Agent teams (experimental) are not covered or verified.** A split-pane
 teammate is a full session with no `agent_id`, so the guard treats it as the
-hub and blocks it (fail-closed). Whether an in-process teammate's tool calls
-carry `agent_type` and `agent_id` is undocumented, so one passing as a
-writer spoke is unconfirmed. Every spoke's `tools` list omits `Agent`, which keeps the
-roster flat even where `disallowedTools` is not applied to a teammate.
+hub and blocks it (fail-closed). An in-process teammate has a documented
+`agent_id` (hooks reference), but its `agent_type` is documented only for
+subagents and `--agent` sessions, so whether one reports a writer
+`agent_type` is unconfirmed. If it does, a teammate built from `code-implementer`
+or `test-author` passes the guard as a writer spoke. A split-pane teammate does
+not get `disallowedTools` (only an in-process one does), which is why every
+spoke's `tools` list also omits `Agent`.
+
+**Fork subagents are on by default in every surface since Claude Code 2.1.302**
+(`CLAUDE_CODE_FORK_SUBAGENT=0` turns them off). A fork inherits the hub's
+conversation and cannot spawn further agents. The docs don't say what its hook
+payload carries; the guard treats it as the hub unless the payload reports a
+writer `agent_type` together with an `agent_id` (a hub started with
+`--agent code-implementer` could produce that), and the hub is blocked from
+guarded paths.
 
 **Guards that block on a crash, the secrets deny rule and `permissionMode`.**
 The baseline's four invariant guards (`guard-secret-writes`,
 `guard-hub-src-writes`, `guard-branch-isolation`, `guard-protected-paths`) carry
-`"onFailure": "block"` (Claude Code 2.1.295 or later), so a crash outside the
-guard's own error handling, or a timeout, blocks the call instead of letting it
-through; the style guards and `guard-git-push-signed` stay fail-open (the push
+`"onFailure": "block"` (Claude Code 2.1.295 or later), so a hook that cannot
+start, times out, exits with a code other than 0 or 2, or prints invalid JSON
+blocks the call instead of letting it through; the style guards and `guard-git-push-signed` stay fail-open (the push
 guard has its own parser, and the `main` ruleset rejects unsigned commits at
 merge). `guard-hub-src-writes` is also on `Bash`, so a missing `node` blocks
 every `Bash` call until fixed. `permissions.deny` carries `Read(./.env)`,

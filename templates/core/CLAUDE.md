@@ -87,73 +87,54 @@ Skills, each in `.claude/skills/<name>/`:
   sweeps (see Freshness).
 
 **The guard also screens `Bash`, but only conservatively.** The same hook
-runs on every `Bash` call and blocks a command that visibly writes into
-`src/` or `tests/` (redirects, `tee`, `sed -i`, `cp`/`mv` into them, a
-`python`/`node`/`php` snippet that writes or deletes there, a copy, move or
-removal of a parent of `src/` such as `rsync -a /tmp/x/ ./` or `rm -rf .`, and
-similar) unless the caller is `test-author` or `code-implementer`. It cannot
-catch an indirect write -- an interpreter running a script from a project
-file, an `eval`, a computed path, a parent of the project root (`rm -rf ..`), a workspace container below the project root (`tools/packages/foo`), a build step, a formatter or fixer
-(`prettier --write`, `eslint --fix`), `git rm`/`git mv`, `find -exec`, `xargs` with a computed operand, `tar`/`curl -o`, a very long
-interpreter call (allowed with a stderr note) -- so hub-and-spoke remains a convention backed by a guard that raises the bar,
-not a proof. To override it deliberately, run the command yourself with the
-`!` prefix at the Claude Code prompt, or edit the hook's registration in
-`.claude/settings.json`.
+blocks a `Bash` command that visibly writes into `src/` or `tests/` (redirects,
+`tee`, `sed -i`, `cp`/`mv` into them, an interpreter snippet that writes there,
+a copy, move or removal of a parent of `src/` such as `rm -rf .`) unless the caller is
+`test-author` or `code-implementer`. It cannot catch an indirect write (a
+script from a project file, an `eval`, a computed path, a build step, a
+formatter or fixer, `git rm`/`git mv`, `tar`/`curl -o`), so hub-and-spoke is a
+convention backed by a guard that raises the bar, not a proof. To override it
+deliberately, run the command yourself with the `!` prefix at the Claude Code
+prompt, or edit the hook's registration in `.claude/settings.json`.
 
-**A Claude Code Enterprise/managed deployment sits above this and can
-silently disable it.** Managed settings (a `managed-settings.json` file, an
-MDM policy, or a claude.ai-console-managed remote policy) take precedence
-over every file this baseline installs, with no project-level override, and
-two managed-only keys -- `allowManagedHooksOnly` and
-`allowManagedPermissionRulesOnly` -- mean that only managed hooks run
-(`allowManagedHooksOnly`) and only managed permission rules apply
-(`allowManagedPermissionRulesOnly`) (see
-[Claude Code's managed-settings docs](https://code.claude.com/docs/en/managed-settings)).
-Nothing in this project can detect or gate against that from inside the
-repo -- the managed file lives outside any working tree, at an OS-level
-path. Run `/status` on a machine you don't control before trusting
-`guard-hub-src-writes.mjs`/`guard-branch-isolation.mjs`: its "Setting
-sources" line names every active source, and if these hooks aren't among
-what's actually running, treat hub-and-spoke as an unenforced checklist
-until confirmed otherwise.
-
-**An installed Claude Code mod is a second silent override, below managed
-settings.** Per the
-[hooks guide](https://code.claude.com/docs/en/hooks-guide), a mod that
-handles `tool.check` "can approve a call that your `PreToolUse` hook blocked,
-unless the hook is in managed settings", and project `PreToolUse` hooks run
-only after the last mod calls `next` (see the
-[mods events reference](https://code.claude.com/docs/en/plugins/mods/events)).
-Only managed-settings hooks outrank a mod, and nothing in the repo can detect
-one. Check `/plugin` for installed mods alongside `/status`.
+**Managed settings and mods can silently disable the guards.** A managed
+deployment (`managed-settings.json`, MDM, a console policy) outranks every file
+here, and `allowManagedHooksOnly` runs only managed hooks. An installed mod
+that handles `tool.check` can approve a call a project `PreToolUse` hook
+blocked, and only managed hooks outrank a mod. Nothing in the repo can detect
+either: on a machine you don't control, check `/status` ("Setting sources") and
+`/plugin` before trusting `guard-hub-src-writes.mjs` and
+`guard-branch-isolation.mjs`. Detail and sources:
+`.claude/rules/agent-dispatch.md`.
 
 **The guard keys on `agent_id` as well as `agent_type`.** A call counts as a
-writer spoke only with both present, so a call carrying `agent_type` but no
-`agent_id` is treated as the hub and is blocked.
+writer spoke only with both present, so one carrying `agent_type` alone is
+treated as the hub and blocked, as is a fork subagent unless its payload
+reports a writer `agent_type` with an `agent_id` (details and versions in
+`.claude/rules/agent-dispatch.md`). An in-process
+agent-teams teammate has a documented `agent_id`, so one built from a writer
+definition that reports that `agent_type` would pass.
 
-**Four guards block when they crash, and a secrets deny rule ships in
+**Four guards block when they fail, and a secrets deny rule ships in
 `settings.json`.** `guard-secret-writes`, `guard-hub-src-writes`,
 `guard-branch-isolation` and `guard-protected-paths` carry
-`"onFailure": "block"` (Claude Code 2.1.295 or later). By default a hook that
-crashes or times out lets the call through; with this key it is blocked. It
-applies only to a failure the hook does not handle itself: each guard still
-catches bad input and exits 0 on purpose, so the key covers a load error, a
-missing `node` or the 30-second timeout. Because `guard-hub-src-writes` is also
-registered on `Bash`, a missing `node` or a timed-out scan blocks every `Bash`
-call until it is fixed (run the command yourself with the `!` prefix to get
-past it). The style guards and `guard-git-push-signed` stay fail-open on
-purpose: the push guard has its own command parser and the remote's
-signed-commit rule is the authoritative layer. `permissions.deny` blocks
-`Read(./.env)`, `Read(./.env.*)` and `Read(./secrets/**)`, which also covers
-`cat`, `head` and `tail` on those files in `Bash`. It does not cover `grep -r`
-or a script that opens the file itself, and nothing else in this baseline does.
+`"onFailure": "block"` (Claude Code 2.1.295 or later): a hook that cannot
+start, times out, exits with any code other than 0 or 2, or prints invalid
+JSON blocks the call instead of letting it through. Each guard still handles
+bad input itself and exits 0 on purpose. Because `guard-hub-src-writes` is also
+on `Bash`, a missing `node` blocks every `Bash` call until fixed (run the
+command with the `!` prefix to get past it). The style guards and
+`guard-git-push-signed` stay fail-open on purpose: the push guard has its own
+parser and the remote's signed-commit rule is the authoritative layer.
+`permissions.deny` blocks `Read(./.env)`, `Read(./.env.*)` and
+`Read(./secrets/**)`, which also covers `cat`, `head` and `tail` on them in
+`Bash`. It does not cover `grep -r` or a script that opens the file itself.
 
 **A spoke's `permissionMode` can be overridden.** A session in auto,
 `acceptEdits` or `bypassPermissions` mode overrides a spoke's `permissionMode`
-(the field applies only when the session is in `default`, `dontAsk` or
-`plan`), so treat the hooks, not `permissionMode`, as what bounds a spoke.
-Claude Code also lets a subagent spawn subagents three layers deep by default;
-`disallowedTools: Agent` on every spoke is what keeps this roster flat.
+(the field applies only in `default`, `dontAsk` or `plan`), so the hooks, not
+`permissionMode`, bound a spoke. A subagent can spawn subagents three layers
+deep by default; `disallowedTools: Agent` on every spoke keeps the roster flat.
 
 Full dispatch-sizing and recovery guidance: `.claude/rules/agent-dispatch.md`
 (auto-loads when editing `.claude/skills/**` or `.claude/agents/**`).

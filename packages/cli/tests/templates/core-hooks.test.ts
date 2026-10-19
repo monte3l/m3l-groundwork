@@ -614,6 +614,85 @@ describe("no shipped script compares process.argv[1] to import.meta.url directly
   );
 });
 
+// UserPromptSubmit hooks run before a skill or slash command expands, so the
+// hook sees the prompt as typed (`/creating-prs fix the lint`), not the skill body.
+describe.each([
+  ["templates/core copy", hooksDir],
+  ["root copy", join(here, "..", "..", "..", "..", ".claude", "hooks")],
+])("inject-decision-gate looksLikeChangeWork (%s)", (_label, dir) => {
+  let looksLikeChangeWork: (prompt: string) => boolean;
+
+  beforeAll(async () => {
+    const mod = (await import(
+      pathToFileURL(join(dir, "inject-decision-gate.mjs")).href
+    )) as { looksLikeChangeWork: typeof looksLikeChangeWork };
+    looksLikeChangeWork = mod.looksLikeChangeWork;
+  });
+
+  it.each([
+    "/creating-prs fix the lint",
+    "/writing-commits add a changelog line",
+    "fix the failing test",
+    "implement the parser",
+  ])("fires for change work typed as %j", (prompt) => {
+    expect(looksLikeChangeWork(prompt)).toBe(true);
+  });
+
+  it.each([
+    "/starting-work",
+    "/writing-commits",
+    "/creating-prs",
+    "/finishing-work",
+    "/triaging-ci",
+    "/customize",
+  ])("stays quiet for the bare skill invocation %j", (prompt) => {
+    expect(looksLikeChangeWork(prompt)).toBe(false);
+  });
+
+  it.each(["what does this hook do", "explain the guard"])(
+    "stays quiet for the question with no change verb %j",
+    (prompt) => {
+      expect(looksLikeChangeWork(prompt)).toBe(false);
+    },
+  );
+
+  // Change verb present, so the first check passes and the READ_ONLY_OPENER
+  // arm decides; no article follows the opener, so the exception is not taken.
+  it.each([
+    "how do I fix the lint",
+    "can you add a test",
+    "why does update fail",
+  ])(
+    "stays quiet for a read-only opener with a change verb and no article after it %j",
+    (prompt) => {
+      expect(looksLikeChangeWork(prompt)).toBe(false);
+    },
+  );
+
+  // Same opener, but an article right after it triggers the exception.
+  it.each([
+    "show the fix for the parser",
+    "describe this change as a commit",
+    "list the files to delete",
+  ])("fires for a read-only opener followed by an article %j", (prompt) => {
+    expect(looksLikeChangeWork(prompt)).toBe(true);
+  });
+
+  it.each(["", "   ", "\n\t "])(
+    "stays quiet for empty or whitespace-only input %j",
+    (prompt) => {
+      expect(looksLikeChangeWork(prompt)).toBe(false);
+    },
+  );
+
+  it.each([undefined, 42])(
+    "stays quiet for the non-string input %j",
+    (prompt) => {
+      expect(looksLikeChangeWork(prompt as unknown as string)).toBe(false);
+    },
+  );
+});
+
 describe.each([
   ["templates/core copy", hooksDir],
   ["root copy", join(here, "..", "..", "..", "..", ".claude", "hooks")],

@@ -12,7 +12,9 @@
  * types. Skips cleanly (exit 0, one warning) when the target has no
  * `exports` field -- a project that isn't published doesn't need this gate,
  * and `/customize` removes the step entirely for non-library project kinds
- * rather than leaving a permanently-skipped one behind.
+ * rather than leaving a permanently-skipped one behind. attw resolves types
+ * with the TypeScript it bundles, not the project's own, so its verdict
+ * follows that resolver.
  */
 import process from "node:process";
 import { execFileSync } from "node:child_process";

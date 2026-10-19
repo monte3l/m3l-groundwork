@@ -79,6 +79,41 @@ describe("packsRootDir", () => {
   });
 });
 
+interface HookEntry {
+  command?: string;
+  onFailure?: string;
+}
+
+/** Every PreToolUse hook registration in a real pack's wiring.settings. */
+function realPreToolUseHooks(pack: string): HookEntry[] {
+  const manifest = JSON.parse(
+    readFileSync(join(realPacksRoot, pack, "pack.json"), "utf8"),
+  ) as {
+    wiring: {
+      settings: { PreToolUse: { hooks: HookEntry[] }[] };
+    };
+  };
+  return manifest.wiring.settings.PreToolUse.flatMap((group) => group.hooks);
+}
+
+describe("real packs' hook onFailure wiring", () => {
+  it("worktrees registers guard-worktree-only.mjs with onFailure block", () => {
+    const entry = realPreToolUseHooks("worktrees").find((hook) =>
+      hook.command?.includes("guard-worktree-only.mjs"),
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.onFailure).toBe("block");
+  });
+
+  it("harness-extras registers guard-readonly-bash.mjs with no onFailure of its own", () => {
+    const entry = realPreToolUseHooks("harness-extras").find((hook) =>
+      hook.command?.includes("guard-readonly-bash.mjs"),
+    );
+    expect(entry).toBeDefined();
+    expect(Object.hasOwn(entry ?? {}, "onFailure")).toBe(false);
+  });
+});
+
 describe("listPackNames / loadPack", () => {
   let packsRoot: string;
 
