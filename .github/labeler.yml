@@ -41,6 +41,10 @@
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/quality/**"]
 
+"pack:statusline":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/statusline/**"]
+
 "pack:supply-chain":
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/supply-chain/**"]

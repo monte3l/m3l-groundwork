@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "name": "statusline",
+  "description": "A five-row Claude Code statusLine (session, model, context, quota, work) plus a per-subagent row renderer -- the only documented surface carrying live context-window pressure. Three scripts and two top-level settings keys (`statusLine`, `subagentStatusLine`): no hook registrations, no verify step. Split from `harness-extras` so a project that already has its own status line can take that pack's hooks without a collision.",
+  "modes": ["fresh", "adopt"],
+  "budget": {
+    "agents": 0,
+    "skills": 0,
+    "hooks": 3,
+    "workflows": 0,
+    "scripts": 0
+  },
+  "wiring": {
+    "settings": {},
+    "settingsTopLevel": {
+      "statusLine": {
+        "type": "command",
+        "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.mjs\"",
+        "refreshInterval": 30,
+        "padding": 1
+      },
+      "subagentStatusLine": {
+        "type": "command",
+        "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-statusline.mjs\""
+      }
+    },
+    "packageScripts": {},
+    "verifySteps": []
+  },
+  "adoptNotes": "The statusline scripts read only the stdin payload, .git/HEAD (via node:fs, never a git subprocess) and process.availableMemory()/os.totalmem(), so they install anywhere a .claude/ directory exists -- no dependency on the baseline's file layout. The one real adopt risk is the two top-level settings keys: a project that already defines statusLine or subagentStatusLine collides, and its existing value must be shown and decided on, never overwritten -- if either is already set, skip that key and the script that renders it rather than failing the whole install; if both are set there is nothing left to install, so skip the pack. A statusLine in .claude/settings.local.json (or one passed with --settings) also shadows the project one; the user's own ~/.claude/settings.json ranks lower and does not -- check those before concluding the pack is wired. rate_limits.spend_limit and prompt_cache need Claude Code v2.1.251+, and the per-subagent model/contextWindowSize/effort fields need v2.1.205+/v2.1.214+, and the agentType label a row falls back to when a subagent has no name needs v2.1.293+; each renders only when present, so an older Claude Code degrades to fewer segments rather than breaking. The scripts behave the same on macOS and Linux; the memory segment uses process.availableMemory() (Node 22+), and on macOS with an older Node it is hidden rather than shown from os.freemem(), which undercounts there. Below roughly 40 columns the layout drops segments by priority rather than wrapping. These scripts used to ship inside the `harness-extras` pack; a project that installed that pack before the split keeps its files untouched."
+}

@@ -3,15 +3,14 @@
 
 /**
  * The packs acceptance test: bootstrap a throwaway project with
- * `--pack harness-extras` using the built CLI and run its real scripts,
- * including its three folded-in statusline scripts. No mocks -- this is
- * what "a pack installs correctly" has to mean, mirroring
- * bootstrap.e2e.test.ts for the baseline. `harness-extras` is one pack now
- * (statusline was folded into it), so this file bootstraps once, installs
- * once, and runs one `pnpm install` + one `pnpm verify`. The
+ * `--pack harness-extras` using the built CLI and run its real scripts. No
+ * mocks -- this is what "a pack installs correctly" has to mean, mirroring
+ * bootstrap.e2e.test.ts for the baseline. This file bootstraps once,
+ * installs once, and runs one `pnpm install` + one `pnpm verify`. The
  * type-design-analyzer agent and the file-budget gate were carved out into
- * their own `quality` pack (see packs-quality.e2e.test.ts) -- this file
- * asserts harness-extras installs WITHOUT them.
+ * their own `quality` pack (see packs-quality.e2e.test.ts), and the status
+ * line into the `statusline` pack (see packs-statusline.e2e.test.ts) -- this
+ * file asserts harness-extras installs WITHOUT them.
  */
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
@@ -22,42 +21,6 @@ import { execFileSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const binPath = join(here, "..", "bin", "m3l-groundwork.mjs");
-
-// A minimal but realistic statusLine stdin payload (code.claude.com/docs/en/
-// statusline). `resets_at` is Unix epoch seconds, so it is built from "now".
-function payload(currentDir: string): string {
-  const nowSec = Math.floor(Date.now() / 1000);
-  return JSON.stringify({
-    session_name: "feat-statusline",
-    model: { id: "claude-opus-5", display_name: "Opus" },
-    effort: { level: "high" },
-    workspace: { current_dir: currentDir },
-    context_window: {
-      used_percentage: 72,
-      remaining_percentage: 28,
-      total_input_tokens: 144000,
-      context_window_size: 200000,
-    },
-    cost: { total_cost_usd: 0.42, total_duration_ms: 450000 },
-    rate_limits: {
-      five_hour: { used_percentage: 23.5, resets_at: nowSec + 7800 },
-    },
-  });
-}
-
-/** Strips SGR/OSC-8 escape sequences so assertions read plain text. */
-function plain(text: string): string {
-  const esc = String.fromCharCode(27);
-  return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-}
-
-function render(script: string, input: string, columns: string): string {
-  return execFileSync("node", [script], {
-    input,
-    env: { ...process.env, COLUMNS: columns },
-    encoding: "utf8",
-  });
-}
 
 describe("harness-extras pack end-to-end", () => {
   it("installs alongside the baseline and the emitted project's own pnpm verify passes", () => {
@@ -105,19 +68,20 @@ describe("harness-extras pack end-to-end", () => {
         false,
       );
 
-      // The three statusline scripts, folded into this pack, also landed.
+      // The status line moved to the statusline pack -- harness-extras
+      // alone must not ship its three scripts.
       const hooksDir = join(targetDir, ".claude", "hooks");
       for (const file of [
         "statusline.mjs",
         "statusline-layout.mjs",
         "subagent-statusline.mjs",
       ]) {
-        expect(existsSync(join(hooksDir, file))).toBe(true);
+        expect(existsSync(join(hooksDir, file))).toBe(false);
       }
 
       // settings.json still parses, carries both the baseline's original
-      // fifteen registrations and the pack's three new ones, and gains
-      // exactly the two statusline top-level keys.
+      // fifteen registrations and the pack's three new ones, and gains no
+      // top-level key (no statusLine/subagentStatusLine).
       const settings = JSON.parse(
         readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
       ) as {
@@ -125,15 +89,11 @@ describe("harness-extras pack end-to-end", () => {
           string,
           { matcher?: string; hooks: { command: string }[] }[]
         >;
-        statusLine: { type: string; command: string };
-        subagentStatusLine: { type: string; command: string };
       };
       expect(Object.keys(settings)).toEqual([
         "$schema",
         "permissions",
         "hooks",
-        "statusLine",
-        "subagentStatusLine",
       ]);
       const allCommands = Object.values(settings.hooks).flatMap((entries) =>
         entries.flatMap((e) => e.hooks.map((h) => h.command)),
@@ -156,10 +116,6 @@ describe("harness-extras pack end-to-end", () => {
       expect(
         allCommands.some((c) => c.includes("guard-git-push-signed.mjs")),
       ).toBe(true);
-      expect(settings.statusLine.command).toContain("statusline.mjs");
-      expect(settings.subagentStatusLine.command).toContain(
-        "subagent-statusline.mjs",
-      );
 
       // harness-extras wires no verify step of its own (that gate moved to
       // the quality pack) -- the baseline's own empty pack-steps file comes
@@ -171,65 +127,6 @@ describe("harness-extras pack end-to-end", () => {
         ),
       ) as { id: string; group: string }[];
       expect(packSteps).toEqual([]);
-
-      // Actually run the emitted statusline scripts.
-      const statusline = join(hooksDir, "statusline.mjs");
-      const wide = plain(render(statusline, payload(targetDir), "120"));
-      const wideRows = wide.trimEnd().split("\n");
-      expect(wideRows).toHaveLength(5);
-      expect(wideRows.map((row) => row.split(/\s/)[0])).toEqual([
-        "session",
-        "model",
-        "context",
-        "quota",
-        "work",
-      ]);
-      expect(wide).toContain("feat-statusline");
-      expect(wide).toContain("72%");
-      expect(wide).toContain("$0.42");
-      // Memory renders on both macOS and Linux (process.availableMemory()), not
-      // only on the platform whose os.freemem() happens to be meaningful.
-      expect(wide).toMatch(/\d+(\.\d+)?\/\d+(\.\d+)?G free/);
-
-      // A narrow terminal drops segments rather than wrapping: still five
-      // rows, none wider than the terminal.
-      const narrow = plain(render(statusline, payload(targetDir), "40"));
-      const narrowRows = narrow.trimEnd().split("\n");
-      expect(narrowRows).toHaveLength(5);
-      for (const row of narrowRows) {
-        expect([...row].length).toBeLessThanOrEqual(40);
-      }
-
-      // Malformed input falls back to one minimal line and still exits 0.
-      expect(render(statusline, "not json", "120").trim()).toBe("ctx --%");
-
-      // The subagent renderer emits one {id, content} JSON line per task and
-      // leaves a nameless task on Claude Code's default rendering.
-      const subagentOut = render(
-        join(hooksDir, "subagent-statusline.mjs"),
-        JSON.stringify({
-          columns: 100,
-          tasks: [
-            {
-              id: "t1",
-              name: "code-reviewer",
-              effort: "high",
-              tokenCount: 12000,
-              contextWindowSize: 200000,
-              startTime: Date.now() - 60_000,
-            },
-            { id: "t2" },
-          ],
-        }),
-        "100",
-      );
-      const subagentLines = subagentOut
-        .trimEnd()
-        .split("\n")
-        .map((line) => JSON.parse(line) as { id: string; content: string });
-      expect(subagentLines).toHaveLength(1);
-      expect(subagentLines[0]?.id).toBe("t1");
-      expect(plain(subagentLines[0]?.content ?? "")).toContain("code-reviewer");
 
       execFileSync("pnpm", ["install", "--prefer-offline"], {
         cwd: targetDir,
@@ -244,7 +141,7 @@ describe("harness-extras pack end-to-end", () => {
       });
 
       // The emitted project's own full gate, pack included -- its ESLint and
-      // Prettier run over the three statusline scripts here and nowhere else.
+      // Prettier run over the pack's hook scripts.
       execFileSync("pnpm", ["verify"], { cwd: targetDir, stdio: "inherit" });
     } finally {
       rmSync(targetDir, { recursive: true, force: true });

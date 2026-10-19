@@ -40,7 +40,7 @@ packages/plugin/        Phase B: the /customize skill
 .claude/                THIS repo's own harness (not the baseline's): agents/,
                          hooks/, rules/, skills/, settings.json -- installed by
                          self-adopting `templates/core`'s harness plus the
-                         `harness-extras` pack's statusline half. See "Agent
+                         `statusline` pack. See "Agent
                          Operating Model". worktrees/ is unrelated -- see
                          "Known gaps".
 
@@ -134,7 +134,7 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
 templates/packs/        Optional add-on bundles installed on top of the
                          baseline. `claude-github/`, `github/`,
                          `harness-extras/`, `publishing/`, `quality/`,
-                         `supply-chain/`, and `worktrees/` ship
+                         `statusline/`, `supply-chain/`, and `worktrees/` ship
                          today; see its own README.md for the wiring
                          contract and "Known gaps" below for the deferred
                          candidates.

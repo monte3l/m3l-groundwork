@@ -569,31 +569,19 @@ function describeInstallFailure(error: unknown): string {
   return "`pnpm install` failed";
 }
 
-// A pack that was renamed or folded into another, mapped to its successor so
-// an old `--pack` name gets a pointed hint rather than a bare "unknown pack".
-const RENAMED_PACKS: ReadonlyMap<string, string> = new Map([
-  ["statusline", "harness-extras"],
-]);
-
 /**
  * Loads one `--pack` for fresh mode -- called for every pack before any file
- * is written. An unknown name (with a rename hint when {@link RENAMED_PACKS}
- * knows its successor) or a fresh-incompatible pack is a usage error (exit
- * 2); a pack that exists but whose manifest fails to load propagates
- * `loadPack`'s own error unchanged (exit 1), since that is a broken install,
- * not a bad invocation.
+ * is written. An unknown name (the message lists the available packs) or a
+ * fresh-incompatible pack is a usage error (exit 2); a pack that exists but
+ * whose manifest fails to load propagates `loadPack`'s own error unchanged
+ * (exit 1), since that is a broken install, not a bad invocation.
  */
 function resolveFreshPack(name: string): Pack {
   const available = listPackNames();
   if (!available.includes(name)) {
-    const successor = RENAMED_PACKS.get(name);
-    const hint =
-      successor === undefined
-        ? ""
-        : ` -- it was renamed to "${successor}"; use --pack ${successor}`;
     const list = available.length > 0 ? available.join(", ") : "none";
     throw new CliUsageError(
-      `unknown pack "${name}"${hint} (available: ${list})\n\n${USAGE}`,
+      `unknown pack "${name}" (available: ${list})\n\n${USAGE}`,
     );
   }
   const pack = loadPack(name);

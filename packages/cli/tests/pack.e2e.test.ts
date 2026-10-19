@@ -102,6 +102,7 @@ describe("published tarball end-to-end", () => {
     });
 
     expect(output).toMatch(/^harness-extras \(modes:/m);
+    expect(output).toMatch(/^statusline \(modes:/m);
     expect(output).toMatch(/^github \(modes:/m);
     expect(output).toMatch(/^claude-github \(modes:/m);
   });
@@ -135,6 +136,8 @@ describe("published tarball end-to-end", () => {
       "claude-github",
       "--pack",
       "harness-extras",
+      "--pack",
+      "statusline",
       "--pack",
       "publishing",
     ];

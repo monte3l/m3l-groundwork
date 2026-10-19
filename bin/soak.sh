@@ -63,12 +63,6 @@ negative() {
   [ "$rc" = 2 ] && [ "$n" = 0 ] && row "neg: --pack bogus" PASS "exit 2, target empty" \
     || row "neg: --pack bogus" FAIL "exit $rc, $n entries in target"
 
-  d="$WORK/neg-statusline"; rm -rf "$d"
-  cli "$d" --pack statusline >"$WORK/logs/neg-statusline.log" 2>&1; rc=$?
-  grep -q 'harness-extras' "$WORK/logs/neg-statusline.log" && hint=yes || hint=no
-  [ "$rc" = 2 ] && [ "$hint" = yes ] && row "neg: --pack statusline" PASS "exit 2, hints harness-extras" \
-    || row "neg: --pack statusline" FAIL "exit $rc, hint=$hint"
-
   d="$WORK/neg-nested-adopt"; rm -rf "$d"
   mkdir -p "$d" && (cd "$d" && git init -q && echo '{"name":"x"}' >package.json)
   cli "$d" --adopt --pack github >"$WORK/logs/neg-adopt-pack.log" 2>&1; rc=$?
@@ -131,8 +125,8 @@ adopt() { # name git-url
 if [ "$SECTION" = all ] || [ "$SECTION" = negative ]; then negative; fi
 if [ "$SECTION" = all ] || [ "$SECTION" = fresh ]; then
   fresh baseline
-  for p in claude-github github harness-extras publishing quality supply-chain worktrees; do fresh "$p" "$p"; done
-  fresh all-seven claude-github github harness-extras publishing quality supply-chain worktrees
+  for p in claude-github github harness-extras publishing quality statusline supply-chain worktrees; do fresh "$p" "$p"; done
+  fresh all-eight claude-github github harness-extras publishing quality statusline supply-chain worktrees
   fresh hooks-overlap harness-extras worktrees quality
   fresh ci-overlap claude-github supply-chain publishing
 fi

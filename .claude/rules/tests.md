@@ -171,7 +171,8 @@ some unit tests (e.g. `packages/cli/tests/templates/core-hooks.test.ts`) also sp
 `bootstrap.e2e.test.ts` (the built CLI, then `pnpm install`/`pnpm verify`
 inside the emitted project) is the acceptance test, and each `packs-*.e2e.test.ts`
 does the same with a pack installed (`harness-extras`, the oldest pack, is covered by
-`packs.e2e.test.ts`, with no `packs-harness-extras` file). They're excluded from `pnpm test`'s
+`packs.e2e.test.ts`, with no `packs-harness-extras` file; `statusline` has
+`packs-statusline.e2e.test.ts`). They're excluded from `pnpm test`'s
 default run (`vitest.config.ts`'s `**/*.e2e.test.ts` exclude) and only run via
 `pnpm test:e2e`. Run it after any change to `packages/cli/src/`,
 `templates/core/`, or `packages/plugin/skills/customize/` -- it has already
