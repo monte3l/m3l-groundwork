@@ -31,7 +31,8 @@ describe("installPack settings.json formatting", () => {
   it.each([
     ["harness-extras", "hooks and a top-level statusLine"],
     ["quality", "no settings hooks"],
-    ["github", "hooks"],
+    ["github", "no settings hooks"],
+    ["claude-github", "no settings hooks"],
   ])("%s (%s) leaves settings.json prettier-clean", async (name) => {
     installPack(loadPack(name), targetDir, {});
     const text = readSettingsText();

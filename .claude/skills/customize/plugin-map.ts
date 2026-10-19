@@ -20,7 +20,7 @@
  * again:
  *
  * - `code-review` -- duplicates the built-in `/code-review` and the optional
- *   `github` pack's PR-review Action.
+ *   `claude-github` pack's PR-review Action.
  * - `code-simplifier` -- duplicates the built-in `/simplify`; its
  *   unrestricted-tools agent is blocked by the baseline's hub-and-spoke
  *   write guard on `src/`/`tests/` anyway.

@@ -61,11 +61,13 @@ confirmed in Step 0.4:
   `recommendPacks(answers)` from `pack-map.ts` (alongside this file, same
   copy mechanism as `kind-facet-map.ts`) with the now-confirmed
   `InterviewAnswers` and compare its verdict against Step 0.4's decision.
-  `harness-extras`, `github`, `supply-chain`, `quality`, and `worktrees`
-  never disagree (none of the five's recommendation varies by kind or
-  answer -- `worktrees` is always `recommended: false`, since it changes the
-  day-to-day workflow rather than adding a nicety, and the other four are
-  always `recommended: true`), but `publishing`'s does (recommended for
+  `harness-extras`, `github`, `claude-github`, `supply-chain`, `quality`,
+  and `worktrees` never disagree (none of the six's recommendation varies by
+  kind or answer -- `worktrees` is always `recommended: false`, since it
+  changes the day-to-day workflow rather than adding a nicety, and
+  `claude-github` is always `recommended: false`, since its workflows need an
+  auth secret and the review spends API credits on every PR; the other four
+  are always `recommended: true`), but `publishing`'s does (recommended for
   `library`/`cli`, not for `frontend`/`service`) — if the comparison surfaces a real
   conflict there or for any future kind-scoped pack, raise it rather than
   silently overriding the user's Step 0.4 answer, mirroring Step 4's "the
@@ -142,8 +144,10 @@ any reason goes into `round1.dropped` with that reason.
 `PluginRecommendationContext`: `chosenPacks` is whatever the packs decision
 just above actually landed on (fresh: what `--pack` installed at bootstrap
 time, detectable from the installed files -- e.g. `.changeset/config.json`
-means `publishing`, `.github/workflows/claude-pr-review.yml` means `github`
-(the only marker `plugin-map.ts` actually reads; `harness-extras` has no
+means `publishing`, `.claude/skills/watching-pr-checks/SKILL.md` means `github`
+(the only marker `plugin-map.ts` actually reads; the `claude-github` pack's
+`.github/workflows/claude-pr-review.yml` needs no marker, since no plugin
+varies by its presence; `harness-extras` has no
 plugin that varies by its presence, so it needs no marker here); adopt: the
 packs Step 0.4(c) confirmed, revised by this step's own `recommendPacks`
 comparison if it changed anything); `hasCustomSkills` is `false` for a fresh

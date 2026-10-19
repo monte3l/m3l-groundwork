@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "name": "github",
-  "description": "GitHub-hosted collaboration on top of the baseline: Anthropic's official Claude Code GitHub Action (anthropics/claude-code-action) wired for @claude mention-mode, a second Action that posts an automated Claude review comment on every PR, and three gh-CLI skills -- reviewing-dependabot-prs (classify and batch-merge open Dependabot PRs), triaging-scan-alerts (triage open code-scanning alerts to file:line, report only), and watching-pr-checks (check a PR's CI status and hand off to a project's own /triaging-ci on a real failure).",
+  "description": "GitHub-hosted collaboration skills on top of the baseline, all driven by the gh CLI: reviewing-dependabot-prs (classify and batch-merge open Dependabot PRs), triaging-scan-alerts (triage open code-scanning alerts to file:line, report only), and watching-pr-checks (check a PR's CI status and hand off to a project's own /triaging-ci on a real failure). No hooks, no gate, no workflows: the Claude Code GitHub Action workflows are the separate `claude-github` pack.",
   "modes": ["fresh", "adopt"],
   "budget": {
     "agents": 0,
     "skills": 3,
     "hooks": 0,
-    "workflows": 2,
+    "workflows": 0,
     "scripts": 0
   },
   "wiring": {
@@ -15,5 +15,5 @@
     "packageScripts": {},
     "verifySteps": []
   },
-  "adoptNotes": "claude.yml only reacts to @claude mentions from a repository owner, member or collaborator (author_association), so an outside commenter on a public repository cannot start a job that holds contents: write and your auth secret. It also commits through the GitHub API (use_commit_signing) so a signed-commits ruleset accepts its work. Both workflows need one thing this pack cannot verify or install: an ANTHROPIC_API_KEY repository secret (the active default), or a CLAUDE_CODE_OAUTH_TOKEN from a Claude subscription, or a Workload Identity Federation setup in the Anthropic Console -- see the comments in .github/workflows/claude.yml for all three. An adopted project that already has its own .github/workflows/claude.yml or claude-pr-review.yml surfaces as an ordinary file conflict -- keep the existing one if it's already configured for that project's own auth choice, since this pack's version would just overwrite a working setup with its own generic defaults. triaging-scan-alerts reads code-scanning alerts, and nothing in the baseline or this pack produces them: turn on GitHub's CodeQL default setup for the repository (Settings > Code security), or install the `supply-chain` pack, whose scorecard.yml uploads SARIF, otherwise the skill's first call returns \"code scanning is not enabled\" and reports nothing. The other two skills have no such dependency: they install anywhere a .claude/ directory exists and need only `gh` CLI auth (already required by every other gh-CLI-based skill this baseline ships). watching-pr-checks' handoff to /triaging-ci degrades gracefully if the project doesn't have that skill installed -- it still reports the real failure, just without the handoff."
+  "adoptNotes": "The three skills need only `gh` CLI auth (already required by every other gh-CLI-based skill this baseline ships) and install anywhere a .claude/ directory exists. triaging-scan-alerts reads code-scanning alerts, and nothing in the baseline or this pack produces them: turn on GitHub's CodeQL default setup for the repository (Settings > Code security), or install the `supply-chain` pack, whose scorecard.yml uploads SARIF, otherwise the skill's first call returns \"code scanning is not enabled\" and reports nothing. watching-pr-checks' handoff to /triaging-ci degrades gracefully if the project doesn't have that skill installed -- it still reports the real failure, just without the handoff. The Claude Code GitHub Action workflows (claude.yml, claude-pr-review.yml) used to ship in this pack and are now the separate `claude-github` pack; a project that installed this pack before the split keeps those files untouched."
 }

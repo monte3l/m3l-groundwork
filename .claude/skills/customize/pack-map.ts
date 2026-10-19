@@ -46,16 +46,13 @@ function recommendHarnessExtras(): PackRecommendation {
 }
 
 /**
- * `github`'s workflow assumes only GitHub, which this baseline's whole
- * toolchain (CI, Dependency Review, rulesets) already does -- nothing about
- * any project kind. Beyond the mention-mode Action (`claude.yml`) it ships a
- * second workflow, `claude-pr-review.yml`, which posts an automated Claude
- * review comment on every PR, plus three GitHub-operations skills:
+ * `github` is three GitHub-operations skills driven by the `gh` CLI:
  * `reviewing-dependabot-prs` (classifies and batch-merges open Dependabot
  * PRs), `triaging-scan-alerts` (triages open code-scanning alerts to
- * file:line) and `watching-pr-checks`. It is not zero-setup: it adds two
- * GitHub Actions workflows and needs an auth secret the pack cannot create
- * itself.
+ * file:line) and `watching-pr-checks`. It assumes only GitHub, which this
+ * baseline's whole toolchain (CI, Dependency Review, rulesets) already does
+ * -- nothing about any project kind -- and needs only `gh` CLI auth, so it
+ * is recommended for every kind.
  */
 function recommendGithub(): PackRecommendation {
   return {
@@ -63,15 +60,35 @@ function recommendGithub(): PackRecommendation {
     recommended: true,
     because:
       "the baseline's toolchain already assumes GitHub (CI, Dependency " +
-      "Review, rulesets), so a Claude Code Action integration applies to " +
-      "any project kind. Alongside the mention-mode Action it adds a " +
-      "second workflow (claude-pr-review.yml) that posts an automated " +
-      "Claude review comment on every PR, plus skills for classifying and " +
-      "batch-merging open Dependabot PRs (reviewing-dependabot-prs), " +
-      "triaging open code-scanning alerts to file:line " +
-      "(triaging-scan-alerts) and watching a PR's checks " +
-      "(watching-pr-checks). It does add two GitHub Actions workflows and " +
-      "needs an auth secret configured by hand -- the pack cannot create it.",
+      "Review, rulesets), so its gh-CLI skills apply to any project kind: " +
+      "classifying and batch-merging open Dependabot PRs " +
+      "(reviewing-dependabot-prs), triaging open code-scanning alerts to " +
+      "file:line (triaging-scan-alerts) and watching a PR's checks " +
+      "(watching-pr-checks). It needs only gh CLI auth.",
+  };
+}
+
+/**
+ * `claude-github` is Anthropic's Claude Code GitHub Action as two
+ * workflows: `claude.yml` (mention-mode, answering `@claude` in issues and
+ * PRs) and `claude-pr-review.yml` (an automated Claude review comment on
+ * every PR). It needs an auth secret (`ANTHROPIC_API_KEY` or a Claude
+ * subscription OAuth token) configured by hand, since the pack cannot
+ * create it, and the review workflow spends API credits on every PR. That
+ * is a cost and setup decision no interview answer can infer, so it is
+ * opt-in for every project kind -- but it stays on offer.
+ */
+function recommendClaudeGithub(): PackRecommendation {
+  return {
+    name: "claude-github",
+    recommended: false,
+    because:
+      "it adds Anthropic's Claude Code GitHub Action as two workflows: " +
+      "@claude mention-mode (claude.yml) and an automated Claude review " +
+      "comment on every PR (claude-pr-review.yml). It needs an auth secret " +
+      "(ANTHROPIC_API_KEY or a Claude subscription OAuth token) configured " +
+      "by hand -- the pack cannot create it -- and the review workflow " +
+      "spends API credits on every PR, so it is opt-in.",
   };
 }
 
@@ -173,7 +190,7 @@ function recommendQuality(): PackRecommendation {
  * Every pack's recommendation for the given interview answers. Only
  * `publishing` varies by `answers.kind` today; `harness-extras`, `github`,
  * `supply-chain` and `quality` are recommended for every kind, and
- * `worktrees` is opt-in for every kind.
+ * `claude-github` and `worktrees` are opt-in for every kind.
  */
 export function recommendPacks(
   answers: InterviewAnswers,
@@ -181,6 +198,7 @@ export function recommendPacks(
   return [
     recommendHarnessExtras(),
     recommendGithub(),
+    recommendClaudeGithub(),
     recommendPublishing(answers),
     recommendWorktrees(),
     recommendSupplyChain(),

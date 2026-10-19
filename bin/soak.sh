@@ -131,10 +131,10 @@ adopt() { # name git-url
 if [ "$SECTION" = all ] || [ "$SECTION" = negative ]; then negative; fi
 if [ "$SECTION" = all ] || [ "$SECTION" = fresh ]; then
   fresh baseline
-  for p in github harness-extras publishing quality supply-chain worktrees; do fresh "$p" "$p"; done
-  fresh all-six github harness-extras publishing quality supply-chain worktrees
+  for p in claude-github github harness-extras publishing quality supply-chain worktrees; do fresh "$p" "$p"; done
+  fresh all-seven claude-github github harness-extras publishing quality supply-chain worktrees
   fresh hooks-overlap harness-extras worktrees quality
-  fresh ci-overlap github supply-chain publishing
+  fresh ci-overlap claude-github supply-chain publishing
 fi
 if [ "$SECTION" = all ] || [ "$SECTION" = adopt ]; then
   adopt ky https://github.com/sindresorhus/ky.git

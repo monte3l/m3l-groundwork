@@ -101,8 +101,9 @@ describe("published tarball end-to-end", () => {
       encoding: "utf8",
     });
 
-    expect(output).toContain("harness-extras");
-    expect(output).toContain("github");
+    expect(output).toMatch(/^harness-extras \(modes:/m);
+    expect(output).toMatch(/^github \(modes:/m);
+    expect(output).toMatch(/^claude-github \(modes:/m);
   });
 
   it("ships the publishing pack's lockfile escaped, because npm strips package-lock.json at any depth", () => {
@@ -130,6 +131,8 @@ describe("published tarball end-to-end", () => {
       "--skip-install",
       "--pack",
       "github",
+      "--pack",
+      "claude-github",
       "--pack",
       "harness-extras",
       "--pack",

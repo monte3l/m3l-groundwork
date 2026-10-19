@@ -1556,6 +1556,41 @@ describe("the real github pack", () => {
   });
 });
 
+describe("the real claude-github pack", () => {
+  it("loads cleanly, is fresh+adopt capable, declares an empty wiring surface and a 0/0/0/2/0 budget", () => {
+    expect(listPackNames()).toContain("claude-github");
+    const pack = loadPack("claude-github");
+    expect(pack.manifest.name).toBe("claude-github");
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.packageScripts).toEqual({});
+    expect(pack.manifest.wiring.verifySteps).toEqual([]);
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
+    expect(pack.manifest.budget).toEqual({
+      agents: 0,
+      skills: 0,
+      hooks: 0,
+      workflows: 2,
+      scripts: 0,
+    });
+    expect(existsSync(pack.filesDir)).toBe(true);
+  });
+
+  it("ships claude.yml and claude-pr-review.yml, which the github pack no longer carries", () => {
+    const pack = loadPack("claude-github");
+    const github = loadPack("github");
+    for (const file of ["claude.yml", "claude-pr-review.yml"]) {
+      expect(
+        existsSync(join(pack.filesDir, ".github", "workflows", file)),
+      ).toBe(true);
+      expect(
+        existsSync(join(github.filesDir, ".github", "workflows", file)),
+      ).toBe(false);
+    }
+    expect(github.manifest.budget.workflows).toBe(0);
+  });
+});
+
 describe("the real publishing pack", () => {
   it("loads cleanly, is fresh-mode only, and wires two package scripts and two verify steps across the lint/build groups", () => {
     expect(listPackNames()).toContain("publishing");

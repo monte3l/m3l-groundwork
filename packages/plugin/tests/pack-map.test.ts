@@ -3,8 +3,8 @@
 
 // This test verifies recommendPacks (src/pack-map.ts), which /customize uses
 // to suggest optional templates/packs/* bundles during its interview: given a
-// set of interview answers, it must deterministically recommend the same two
-// packs (harness-extras, github) across every project kind, and every
+// set of interview answers, it must deterministically recommend the same
+// packs (harness-extras, github, claude-github, ...) across every project kind, and every
 // recommendation must carry non-empty "because" evidence and a non-empty
 // name. Without this test, a change to pack-map.ts could silently stop
 // recommending a pack for some project kind, or return a recommendation with
@@ -45,11 +45,12 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly six recommendations: harness-extras, github, publishing, worktrees, supply-chain and quality", () => {
+  it("returns exactly seven recommendations: harness-extras, github, claude-github, publishing, worktrees, supply-chain and quality", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
     expect(names).toEqual([
       "harness-extras",
       "github",
+      "claude-github",
       "publishing",
       "worktrees",
       "supply-chain",
@@ -120,7 +121,7 @@ describe("recommendPacks", () => {
     }
   });
 
-  it("recommends github with evidence naming the automated PR-review workflow and its two triage/audit skills, for every project kind", () => {
+  it("recommends github with evidence naming its two triage/audit skills and no longer the PR-review workflow, for every project kind", () => {
     for (const kind of [
       "library",
       "cli",
@@ -132,14 +133,30 @@ describe("recommendPacks", () => {
         (r) => r.name === "github",
       );
       expect(github?.recommended).toBe(true);
-      // A substring distinguishing the new automated-review workflow
-      // (claude-pr-review.yml) from the pre-existing mention-mode
-      // claude.yml description.
-      expect(github?.because).toMatch(/pr.review|review comment/i);
+      // The automated-review workflow moved to the claude-github pack.
+      expect(github?.because).not.toMatch(/pr.review|review comment/i);
       // A substring distinguishing reviewing-dependabot-prs.
       expect(github?.because).toMatch(/dependabot/i);
       // A substring distinguishing triaging-scan-alerts.
       expect(github?.because).toMatch(/scan.alert/i);
+    }
+  });
+
+  it("recommends claude-github as opt-in (never recommended) for every project kind, with evidence naming the auth secret and the per-PR review spend", () => {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
+      const claudeGithub = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "claude-github",
+      );
+      expect(claudeGithub).toBeDefined();
+      expect(claudeGithub?.recommended).toBe(false);
+      expect(claudeGithub?.because).toMatch(/pr.review|review comment/i);
+      expect(claudeGithub?.because).toMatch(/secret|api.key/i);
     }
   });
 
