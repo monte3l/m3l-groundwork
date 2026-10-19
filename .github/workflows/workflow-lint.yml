@@ -45,6 +45,13 @@ jobs:
           persist-credentials: false
       - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
         with:
+          # Only this repository's own workflows. The default (`.`) also reads
+          # `templates/**`, which is the baseline shipped into other projects
+          # and is judged by its own gates, not by this check.
+          inputs: .github/workflows
+          # Pinned: `latest` lets a new zizmor release change what fails. Bump
+          # by hand, Dependabot does not track this value.
+          version: "1.31.1"
           # Offline audits only, so the job needs no token.
           online-audits: false
           advanced-security: false

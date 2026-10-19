@@ -116,6 +116,10 @@ jobs:
           # each other avoids a second place to remember to update.
           client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Without these the token inherits every permission the App holds
+          # (zizmor `github-app`); these are the two the App needs.
+          permission-contents: write
+          permission-pull-requests: write
       # `version:packages` syncs plugin.json to the new version (never
       # marketplace.json -- it deliberately carries no version pin, see
       # CLAUDE.md) and refreshes the lockfile (see package.json).
