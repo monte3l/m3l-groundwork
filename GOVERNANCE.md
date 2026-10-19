@@ -209,6 +209,20 @@ commits they point at are GPG-signed.
 
 Every other Gold-level criterion is met or is not applicable to this
 project -- see `.bestpractices.json` for the full, itemized self-assessment.
-Closing these three depends on finding and onboarding a genuine second
-active maintainer (see [`ROADMAP.md`](ROADMAP.md)), not on a code or process
-change.
+These three do not close the same way, and a second active maintainer from
+inside the organization closes only two of them.
+
+- **`two_person_review`** closes with time. The ruleset requires one approval
+  from a code owner other than the author, so every new change is reviewed, and
+  the criterion clears once most recent changes carry one.
+- **`bus_factor`** closes when the second owner can run the project without
+  the maintainer: npm package-maintainer access, driving a release end to end,
+  and authoring changes. Review access alone does not do it.
+- **`contributors_unassociated`** does not close that way. It asks for two
+  significant contributors who are not paid by the same organization, and both
+  people who hold access here belong to the `monte3l` organization. They are
+  treated as associated, so more contribution from either of them leaves it
+  **Unmet**. It needs a significant contributor from outside `monte3l`.
+
+Onboarding a genuine second maintainer and an outside contributor is what
+closes these (see [`ROADMAP.md`](ROADMAP.md)), not a code or process change.
