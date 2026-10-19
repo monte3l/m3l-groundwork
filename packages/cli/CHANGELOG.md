@@ -1,5 +1,11 @@
 # @monte3l/groundwork
 
+## 1.0.4
+
+### Patch Changes
+
+- [#217](https://github.com/monte3l/m3l-groundwork/pull/217) [`4c33e62`](https://github.com/monte3l/m3l-groundwork/commit/4c33e6234cad6c268591b2c89d6c08119b585c43) Thanks [@enri3l](https://github.com/enri3l)! - The publishing pack's `tools/release/package-lock.json` is now shipped in the tarball (escaped as `_package-lock.json`); previously npm-family packing stripped it, so `npm ci --ignore-scripts --prefix tools/release` had no lockfile in a project bootstrapped with `--pack publishing`.
+
 ## 1.0.3
 
 ### Patch Changes
