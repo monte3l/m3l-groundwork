@@ -250,6 +250,19 @@ jobs:
             while read -r id stage; do
               echo "staged $id with id $stage -- approve with: npm stage approve $stage"
               echo "::notice title=Staged $id::npm stage approve $stage"
+              # Older versions are deprecated by hand AFTER the approval, not
+              # here: a staged version is not installable until approved, and
+              # the OIDC publisher cannot run `npm deprecate`. A stable
+              # version only (no `-` prerelease suffix); `${id##*@}` is the
+              # version of `<name>@<version>`.
+              version="${id##*@}"
+              case "$version" in
+                *-*) ;;
+                *)
+                  echo "after approving, deprecate the older versions: node bin/deprecate-superseded.mjs --expect $version --apply"
+                  echo "::notice title=Deprecate after approving $id::node bin/deprecate-superseded.mjs --expect $version --apply"
+                  ;;
+              esac
             done < "$STAGED_IDS_FILE"
           else
             echo "no staged version was recorded by this run"

@@ -10,6 +10,8 @@ paths:
   - "bin/check-plugin-version.mjs"
   - "bin/lib/npm-publish-args.mjs"
   - "bin/lib/plugin-version.mjs"
+  - "bin/deprecate-superseded.mjs"
+  - "bin/lib/deprecation-plan.mjs"
 ---
 
 # Release rules (`release.yml`, changesets, the two `package.json`s)
@@ -214,8 +216,36 @@ README. Read the dist-tags with `npm view @monte3l/groundwork dist-tags` (on
 `0.0.0` ("Empty placeholder"), the `0.1.0-next.*` releases and `1.0.0-rc.2` to
 `1.0.0-rc.8` ("Superseded by 1.0.0"), `1.0.0` ("Superseded by 1.0.1") and
 `1.0.1` and `1.0.2` ("Superseded by 1.0.3"). `latest` moved off the `0.0.0`
-placeholder. npm needs an interactive login for dist-tag and deprecate
-commands, so the maintainer runs them.
+placeholder.
+
+**Deprecating superseded versions is one maintainer command, run after
+`npm stage approve`.** `node bin/deprecate-superseded.mjs` is a dry run that
+prints the plan; `--expect <version> --apply` runs it. It deprecates every
+version below `latest` that is not already deprecated (prereleases included) as
+`Superseded by <latest>`, and leaves existing messages alone. `release.yml`'s
+"Show the staged ids to approve" step prints the exact command for a stable
+version. Three properties are deliberate:
+
+- **It is not a CI step.** A staged version is not installable until
+  approved, so deprecating at publish time would leave only deprecated
+  versions installable until then, and for good if the approval never comes.
+  The trusted publisher's OIDC token is also scoped to publishing, so running
+  it in CI would mean storing a long-lived npm token, which this design avoids.
+- **`--apply` requires `--expect`, which checks `latest` first.** The script
+  refuses `--apply` without `--expect <version>`, and refuses when `latest` is
+  not that version, which is what catches running it before the approval.
+- **One `npm deprecate` call per run, never one per version.** npm's
+  `deprecate` takes a version range, so the script passes the planned exact
+  versions as one `a || b || c` range and npm writes the packument once, which
+  means one 2FA challenge. Pass `--otp <code>` to skip the browser entirely:
+  npm sets `auth-type` to `legacy` whenever `otp` is given. Without it, npm's
+  web authentication opens one browser approval for the whole batch. The range
+  names exact versions rather than `<latest` so existing messages are not
+  overwritten.
+
+A granular "bypass 2FA" token was rejected for this: npm documents it for
+publishing only and it is long-lived. The browser's "remember for 5 minutes"
+option is documented for `publish` only, so nothing here relies on it.
 
 **One-time setup, done by hand, that this design depends on.** npm cannot
 configure a trusted publisher for a package that does not exist yet, so

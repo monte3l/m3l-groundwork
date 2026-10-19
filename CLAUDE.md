@@ -770,7 +770,9 @@ A few invariants matter even when this file isn't open: **renaming or
 moving `release.yml` breaks npm's trusted publisher**; publishes are
 **staged, not direct** (`npm stage approve` is a separate, non-automatable
 step that needs a live 2FA code -- the git tag and GitHub Release exist before the package is
-actually installable); the version PR authenticates as a GitHub App, not
+actually installable), and superseding older versions is a maintainer command
+run **after** that approval, `node bin/deprecate-superseded.mjs`, never a CI
+step; the version PR authenticates as a GitHub App, not
 `GITHUB_TOKEN`, because `main`'s ruleset requires checks a bot-token PR
 can't trigger; and a plugin-only change needs no changeset.
 
