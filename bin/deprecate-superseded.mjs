@@ -93,7 +93,7 @@ function reason(error) {
  * @returns {Promise<import("./lib/deprecation-plan.mjs").Packument>}
  */
 async function fetchPackument(registry, headers = {}) {
-  const url = `${registry.replace(/\/+$/, "")}/${PACKAGE.replace("/", "%2f")}`;
+  const url = `${registry.replace(/\/+$/, "")}/${PACKAGE.replaceAll("/", "%2f")}`;
   let json;
   try {
     const response = await fetch(url, {
