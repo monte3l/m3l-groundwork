@@ -19,7 +19,7 @@ workflows.
   `id-token` write.** Keep `permissions` minimal and the shipped defaults unchanged.
 - **They ship without an SPDX header on purpose:** a header would carry a
   project-name token that stays literal in an adopt-mode install. The
-  license-header gate belongs to the fresh-only `publishing` pack. Do not
+  license-header gate belongs to the fresh-only `licensing` pack. Do not
   move it here.
 - **`gitleaks.yml` needs a `GITLEAKS_LICENSE` secret for an org-owned repo,**
   and `scorecard.yml` assumes a public repository. Both are in `adoptNotes`.

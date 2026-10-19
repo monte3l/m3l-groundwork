@@ -133,7 +133,7 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
 
 templates/packs/        Optional add-on bundles installed on top of the
                          baseline. `claude-github/`, `github/`,
-                         `harness-extras/`, `publishing/`, `quality/`,
+                         `harness-extras/`, `licensing/`, `publishing/`, `quality/`,
                          `statusline/`, `supply-chain/`, and `worktrees/` ship
                          today; see its own README.md for the wiring
                          contract and "Known gaps" below for the deferred

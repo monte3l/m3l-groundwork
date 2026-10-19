@@ -9,12 +9,10 @@
  * pack's own solo acceptance test). This test bootstraps with both `--pack`
  * flags, confirms both packs' signature files land on the same baseline,
  * and confirms the combination still passes the emitted project's own real
- * `pnpm verify` after the same one-time setup steps
- * packs-publishing.e2e.test.ts performs -- in particular that
- * `check-license-headers.mjs --fix` backfills the header-less
- * gitleaks.yml/scorecard.yml workflows the supply-chain pack ships (their
- * leading SPDX header lines were deliberately dropped, see that pack's own
- * pack.json), rather than the license-headers gate failing on them.
+ * `pnpm verify` after the same one-time setup step
+ * packs-publishing.e2e.test.ts performs (installing `@changesets/cli`). The
+ * SPDX license-header gate is no longer part of either pack -- it lives in
+ * the `licensing` pack (see packs-licensing.e2e.test.ts).
  */
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
@@ -29,7 +27,7 @@ const binPath = join(here, "..", "bin", "m3l-groundwork.mjs");
 const PROJECT_NAME = "publishing-supply-chain-e2e-project";
 
 describe("publishing + supply-chain packs co-installed end-to-end", () => {
-  it("lands both packs' files, and passes the emitted project's own pnpm verify once @changesets/cli is installed and the license-headers backfill has run over the header-less supply-chain workflows", () => {
+  it("lands both packs' files, and passes the emitted project's own pnpm verify once @changesets/cli is installed", () => {
     const targetDir = mkdtempSync(
       join(tmpdir(), "m3l-groundwork-pub-supply-chain-e2e-"),
     );
@@ -94,15 +92,8 @@ describe("publishing + supply-chain packs co-installed end-to-end", () => {
           "utf8",
         ),
       ) as Array<{ id: string }>;
-      // supply-chain wires no verify step -- only publishing's two.
-      expect(steps.map((step) => step.id).sort()).toEqual([
-        "dts-deps",
-        "license-headers",
-      ]);
-
-      // Stage every emitted file so the license-headers gate's `git
-      // ls-files` read has something to check.
-      execFileSync("git", ["add", "-A"], { cwd: targetDir, stdio: "inherit" });
+      // supply-chain wires no verify step -- only publishing's one.
+      expect(steps.map((step) => step.id)).toEqual(["dts-deps"]);
 
       execFileSync("pnpm", ["install", "--prefer-offline"], {
         cwd: targetDir,
@@ -119,24 +110,6 @@ describe("publishing + supply-chain packs co-installed end-to-end", () => {
         ["add", "-D", "@changesets/cli", "--prefer-offline"],
         { cwd: targetDir, stdio: "inherit" },
       );
-
-      // Required one-time setup step (see publishing's pack.json
-      // adoptNotes): backfill the SPDX header the license-headers gate now
-      // requires on every pre-existing baseline file -- including
-      // supply-chain's own gitleaks.yml/scorecard.yml, which ship with no
-      // header at all (see that pack's own pack.json for why).
-      execFileSync("node", ["bin/check-license-headers.mjs", "--fix"], {
-        cwd: targetDir,
-        stdio: "inherit",
-      });
-      execFileSync("git", ["add", "-A"], { cwd: targetDir, stdio: "inherit" });
-
-      // Confirm the fix actually reached the header-less supply-chain
-      // workflows, not just the pre-existing baseline files.
-      const gitleaksWorkflow = readFileSync(gitleaksWorkflowPath, "utf8");
-      expect(gitleaksWorkflow).toMatch(/^# SPDX-FileCopyrightText:/mu);
-      const scorecardWorkflow = readFileSync(scorecardWorkflowPath, "utf8");
-      expect(scorecardWorkflow).toMatch(/^# SPDX-FileCopyrightText:/mu);
 
       execFileSync("pnpm", ["verify"], { cwd: targetDir, stdio: "inherit" });
     } finally {

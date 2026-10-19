@@ -11,9 +11,10 @@ paths:
 
 **What it is.** The release pipeline, adapted from this repo's own
 `release.yml`: changesets version-PR and staged, provenance-attested npm
-publish through trusted publishing, the pnpm-to-staged-publish shim (libnpmpublish), and two
-gates (`check-dts-deps.mjs`, `check-license-headers.mjs`) plus a
-`REUSE.toml` template. Modes: **fresh only**. Budget: 1 workflow, 2 scripts.
+publish through trusted publishing, the pnpm-to-staged-publish shim (libnpmpublish), and one
+gate (`check-dts-deps.mjs`). Modes: **fresh only**. Budget: 1 workflow, 2
+scripts. The SPDX header gate and `REUSE.toml` used to ship here and are
+now the `licensing` pack (`pack-licensing.md`); do not add them back.
 
 - **Fresh mode only, on purpose.** It encodes registry, trusted-publisher
   and GitHub App decisions too project-specific to automate in adopt mode.
@@ -42,7 +43,6 @@ gates (`check-dts-deps.mjs`, `check-license-headers.mjs`) plus a
 | --------------------- | ------------------------------------------------- |
 | Installs and verifies | `packages/cli/tests/packs-publishing.e2e.test.ts` |
 | With `supply-chain`   | `packs-publishing-supply-chain.e2e.test.ts`       |
-| Combined              | `packs-combined.e2e.test.ts`                      |
 
 A change to this pack alone takes a changeset whose summary starts with
 `pack(publishing):`.

@@ -313,9 +313,14 @@ describe("loadPack setupSteps validation", () => {
 });
 
 describe("real packs' setupSteps", () => {
-  it("publishing declares exactly its four setup commands, in order", () => {
+  it("publishing declares exactly one setup command", () => {
     expect(loadPack("publishing").manifest.setupSteps).toEqual([
       "pnpm add -D @changesets/cli",
+    ]);
+  });
+
+  it("licensing declares exactly its three backfill commands, in order", () => {
+    expect(loadPack("licensing").manifest.setupSteps).toEqual([
       "git add -A",
       "node bin/check-license-headers.mjs --fix",
       "git add -A",
@@ -340,12 +345,13 @@ describe("real packs' setupSteps", () => {
     },
   );
 
-  test.each(listPackNames().filter((name) => name !== "publishing"))(
-    "the real %s pack declares no setupSteps",
-    (name) => {
-      expect(loadPack(name).manifest.setupSteps).toBeUndefined();
-    },
-  );
+  test.each(
+    listPackNames().filter(
+      (name) => name !== "publishing" && name !== "licensing",
+    ),
+  )("the real %s pack declares no setupSteps", (name) => {
+    expect(loadPack(name).manifest.setupSteps).toBeUndefined();
+  });
 });
 
 describe("loadPack hardened validation", () => {
@@ -1648,7 +1654,7 @@ describe("the real claude-github pack", () => {
 });
 
 describe("the real publishing pack", () => {
-  it("loads cleanly, is fresh-mode only, and wires two package scripts and two verify steps across the lint/build groups", () => {
+  it("loads cleanly, is fresh-mode only, and wires two package scripts and one build-group verify step", () => {
     expect(listPackNames()).toContain("publishing");
     const pack = loadPack("publishing");
     expect(pack.manifest.modes).toEqual(["fresh"]);
@@ -1664,13 +1670,8 @@ describe("the real publishing pack", () => {
     expect(pack.manifest.budget.workflows).toBe(1);
 
     const steps = pack.manifest.wiring.verifySteps;
-    expect(steps.map((step) => step.id).sort()).toEqual([
-      "dts-deps",
-      "license-headers",
-    ]);
-    const byId = new Map(steps.map((step) => [step.id, step]));
-    expect(byId.get("license-headers")?.group).toBe("lint");
-    expect(byId.get("dts-deps")?.group).toBe("build");
+    expect(steps.map((step) => step.id)).toEqual(["dts-deps"]);
+    expect(steps[0]?.group).toBe("build");
 
     expect(existsSync(pack.filesDir)).toBe(true);
   });
@@ -1686,7 +1687,15 @@ describe("the real publishing pack", () => {
     expect(existsSync(join(pack.filesDir, ".gitleaks.toml"))).toBe(false);
   });
 
-  it("installs alone: package.json gains both scripts, verify-steps.packs.json gains both steps", () => {
+  it("no longer ships the license-header gate or REUSE.toml -- they moved to the licensing pack", () => {
+    const pack = loadPack("publishing");
+    expect(
+      existsSync(join(pack.filesDir, "bin", "check-license-headers.mjs")),
+    ).toBe(false);
+    expect(existsSync(join(pack.filesDir, "REUSE.toml"))).toBe(false);
+  });
+
+  it("installs alone: package.json gains both scripts, verify-steps.packs.json gains only the dts-deps step", () => {
     const targetDir = mkdtempSync(join(tmpdir(), "packs-publishing-alone-"));
     try {
       writeFileSync(
@@ -1713,9 +1722,74 @@ describe("the real publishing pack", () => {
       const steps = JSON.parse(readFileSync(stepsPath, "utf8")) as Array<{
         id: string;
       }>;
-      expect(steps.map((step) => step.id).sort()).toEqual([
-        "dts-deps",
-        "license-headers",
+      expect(steps.map((step) => step.id)).toEqual(["dts-deps"]);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the real licensing pack", () => {
+  it("loads cleanly, is fresh-mode only (not adopt-capable), has a zero budget and no scripts or settings", () => {
+    expect(listPackNames()).toContain("licensing");
+    const pack = loadPack("licensing");
+    expect(pack.manifest.name).toBe("licensing");
+    expect(pack.manifest.modes).toEqual(["fresh"]);
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
+    expect(pack.manifest.wiring.packageScripts).toEqual({});
+    expect(pack.manifest.budget).toEqual({
+      agents: 0,
+      skills: 0,
+      hooks: 0,
+      workflows: 0,
+      scripts: 0,
+    });
+    expect(existsSync(pack.filesDir)).toBe(true);
+  });
+
+  it("wires exactly one lint-group verify step, license-headers", () => {
+    const steps = loadPack("licensing").manifest.wiring.verifySteps;
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.id).toBe("license-headers");
+    expect(steps[0]?.group).toBe("lint");
+    expect(steps[0]?.cmd).toEqual(["node", "bin/check-license-headers.mjs"]);
+  });
+
+  it("ships the gate script and REUSE.toml, and nothing of the release pipeline", () => {
+    const pack = loadPack("licensing");
+    expect(
+      existsSync(join(pack.filesDir, "bin", "check-license-headers.mjs")),
+    ).toBe(true);
+    expect(existsSync(join(pack.filesDir, "REUSE.toml"))).toBe(true);
+    expect(
+      existsSync(join(pack.filesDir, ".github", "workflows", "release.yml")),
+    ).toBe(false);
+    expect(existsSync(join(pack.filesDir, ".changeset"))).toBe(false);
+  });
+
+  it("installs alone: package.json scripts untouched, verify-steps.packs.json gains only license-headers", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-licensing-alone-"));
+    try {
+      writeFileSync(
+        join(targetDir, "package.json"),
+        JSON.stringify({ name: "x", scripts: {} }),
+      );
+      installPack(loadPack("licensing"), targetDir, {});
+
+      const pkg = JSON.parse(
+        readFileSync(join(targetDir, "package.json"), "utf8"),
+      ) as { scripts: Record<string, string> };
+      expect(pkg.scripts).toEqual({});
+
+      const steps = JSON.parse(
+        readFileSync(
+          join(targetDir, "bin", "lib", "verify-steps.packs.json"),
+          "utf8",
+        ),
+      ) as Array<{ id: string; group: string }>;
+      expect(steps.map((step) => [step.id, step.group])).toEqual([
+        ["license-headers", "lint"],
       ]);
     } finally {
       rmSync(targetDir, { recursive: true, force: true });

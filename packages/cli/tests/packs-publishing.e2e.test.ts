@@ -6,22 +6,19 @@
  * `--pack publishing` using the built CLI and confirm its release-pipeline
  * files land correctly token-substituted (or byte-identical where the
  * source carries no `__PROJECT_NAME__` token), that its two package scripts
- * and two verify steps are wired (check-publish-version.mjs is invoked
- * directly from release.yml's `pack` job instead -- not a wired verify
- * step, see the pack's own adoptNotes), that the former supply-chain half
- * (gitleaks.yml, scorecard.yml, .gitleaks.toml -- now the separate
- * `supply-chain` pack, see packs-supply-chain.e2e.test.ts) is absent from a
- * publishing-only install, and that the emitted project's own `pnpm
- * verify` -- including the pack's two new gates -- passes cleanly on a
- * fresh, `private: true` baseline once the pack's two required one-time
- * setup steps (see `pack.json`'s `adoptNotes`) are carried out first:
- * installing `@changesets/cli` as a devDependency (the wiring contract only
- * extends `package.json`'s scripts, never its dependencies, so knip's
- * unlisted-binaries check fails without it), and running
- * `bin/check-license-headers.mjs --fix` to backfill the SPDX header this
- * pack's new `license-headers` gate requires on every pre-existing baseline
- * file -- with every file the CLI emitted, including both of that fix step's
- * rewrites, staged in the git index before `pnpm verify` runs.
+ * and its one verify step (`dts-deps`) are wired (check-publish-version.mjs
+ * is invoked directly from release.yml's `pack` job instead -- not a wired
+ * verify step, see the pack's own adoptNotes), that the former supply-chain
+ * half (gitleaks.yml, scorecard.yml, .gitleaks.toml -- now the separate
+ * `supply-chain` pack, see packs-supply-chain.e2e.test.ts) and the former
+ * license-header gate (check-license-headers.mjs, REUSE.toml -- now the
+ * separate `licensing` pack, see packs-licensing.e2e.test.ts) are absent from
+ * a publishing-only install, and that the emitted project's own `pnpm
+ * verify` passes cleanly on a fresh, `private: true` baseline once the pack's
+ * one required one-time setup step (see `pack.json`'s `adoptNotes`) is
+ * carried out first: installing `@changesets/cli` as a devDependency (the
+ * wiring contract only extends `package.json`'s scripts, never its
+ * dependencies, so knip's unlisted-binaries check fails without it).
  */
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
@@ -66,7 +63,7 @@ function expectEmittedMatchesSource(targetDir: string, relPath: string): void {
 }
 
 describe("publishing pack end-to-end", () => {
-  it("installs the release pipeline files with __PROJECT_NAME__ substituted, wires both package scripts and both verify steps, invokes check-publish-version.mjs directly from release.yml, omits the supply-chain half, and passes the emitted project's own pnpm verify once @changesets/cli is installed and the license-headers backfill has run", () => {
+  it("installs the release pipeline files with __PROJECT_NAME__ substituted, wires both package scripts and the dts-deps verify step, invokes check-publish-version.mjs directly from release.yml, omits the supply-chain half and the license-header gate, and passes the emitted project's own pnpm verify once @changesets/cli is installed", () => {
     const targetDir = mkdtempSync(
       join(tmpdir(), "m3l-groundwork-publishing-e2e-"),
     );
@@ -91,7 +88,6 @@ describe("publishing pack end-to-end", () => {
         join("bin", "npm-stage-publish.mjs"),
         join("bin", "lib", "read-tarball-manifest.mjs"),
         join(".changeset", "config.json"),
-        "REUSE.toml",
         join("bin", "check-publish-version.mjs"),
         join("bin", "check-dts-deps.mjs"),
       ];
@@ -110,6 +106,12 @@ describe("publishing pack end-to-end", () => {
         existsSync(join(targetDir, ".github", "workflows", "scorecard.yml")),
       ).toBe(false);
       expect(existsSync(join(targetDir, ".gitleaks.toml"))).toBe(false);
+
+      // The license-header gate moved to its own pack too.
+      expect(existsSync(join(targetDir, "REUSE.toml"))).toBe(false);
+      expect(
+        existsSync(join(targetDir, "bin", "check-license-headers.mjs")),
+      ).toBe(false);
 
       // check-publish-version.mjs is deliberately not a wired verify step
       // (see the pack's adoptNotes) -- confirm release.yml's `pack` job
@@ -159,23 +161,14 @@ describe("publishing pack end-to-end", () => {
           "utf8",
         ),
       ) as Array<{ id: string }>;
-      expect(steps).toHaveLength(2);
-      expect(steps.map((step) => step.id).sort()).toEqual([
-        "dts-deps",
-        "license-headers",
-      ]);
-
-      // Stage every emitted file so the license-headers gate's `git
-      // ls-files` read actually has something to check, rather than
-      // vacuously passing on an empty index right after `git init -q`.
-      execFileSync("git", ["add", "-A"], { cwd: targetDir, stdio: "inherit" });
+      expect(steps.map((step) => step.id)).toEqual(["dts-deps"]);
 
       execFileSync("pnpm", ["install", "--prefer-offline"], {
         cwd: targetDir,
         stdio: "inherit",
       });
 
-      // Required one-time setup step 1 (see pack.json's adoptNotes): the
+      // Required one-time setup step (see pack.json's adoptNotes): the
       // wiring contract only extends package.json's scripts, never its
       // dependencies, so the wired `changeset`/`version:packages` scripts
       // reference a binary knip's unlisted-binaries check flags as missing
@@ -185,19 +178,6 @@ describe("publishing pack end-to-end", () => {
         ["add", "-D", "@changesets/cli", "--prefer-offline"],
         { cwd: targetDir, stdio: "inherit" },
       );
-
-      // Required one-time setup step 2 (see pack.json's adoptNotes):
-      // templates/core has never had a license-header gate before this
-      // pack, so every one of its own pre-existing baseline files is
-      // missing the SPDX header the pack's new license-headers verify step
-      // now requires -- --fix backfills all of them in one pass.
-      execFileSync("node", ["bin/check-license-headers.mjs", "--fix"], {
-        cwd: targetDir,
-        stdio: "inherit",
-      });
-
-      // Re-stage everything the fix step just rewrote.
-      execFileSync("git", ["add", "-A"], { cwd: targetDir, stdio: "inherit" });
 
       execFileSync("pnpm", ["verify"], { cwd: targetDir, stdio: "inherit" });
     } finally {

@@ -33,6 +33,10 @@
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/harness-extras/**"]
 
+"pack:licensing":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/licensing/**"]
+
 "pack:publishing":
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/publishing/**"]

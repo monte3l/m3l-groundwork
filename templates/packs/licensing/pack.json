@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "name": "licensing",
+  "description": "An SPDX/REUSE license-header gate for a new project: check-license-headers.mjs (a lint-group verify step that fails on any git-tracked file with neither an SPDX header nor a REUSE.toml annotation, and inserts missing headers with --fix) and a REUSE.toml template. Fresh mode only, because the one-time backfill fails an established project's pnpm verify until it has touched every file. Split from `publishing` so a project can take the header gate without the npm release pipeline, and the other way round.",
+  "modes": ["fresh"],
+  "budget": {
+    "agents": 0,
+    "skills": 0,
+    "hooks": 0,
+    "workflows": 0,
+    "scripts": 0
+  },
+  "wiring": {
+    "settings": {},
+    "packageScripts": {},
+    "verifySteps": [
+      {
+        "id": "license-headers",
+        "group": "lint",
+        "name": "Check SPDX license headers",
+        "cmd": ["node", "bin/check-license-headers.mjs"]
+      }
+    ]
+  },
+  "setupSteps": [
+    "git add -A",
+    "node bin/check-license-headers.mjs --fix",
+    "git add -A"
+  ],
+  "adoptNotes": "REQUIRED right after install, before the first pnpm verify: `git add -A`, then `node bin/check-license-headers.mjs --fix`, then `git add -A` again and commit the result (the gate only checks git-tracked files, so a fresh project with nothing staged passes it vacuously and fails on every file at its first push) -- templates/core has never had a license-header gate before this pack, so every one of its own files (hooks, bin/ scripts, CI workflows, the placeholder src/tests, and the workflows of any other installed pack such as `claude-github` or `supply-chain`) is missing the SPDX header this pack's gate now requires. The shipped REUSE.toml and gate header use NOASSERTION as the license identifier because the pack cannot know the project's license: edit REUSE.toml and the headerLines() function in bin/check-license-headers.mjs once it is decided (a LICENSE file, if one exists, is the source of truth). In a hand-copied install the CLI does not substitute tokens, so replace every literal `__PROJECT_NAME__` in the copied files (REUSE.toml, the SPDX headers) with the project's real name first. Fresh mode only: the backfill fails an established project's pnpm verify until it has touched every file, so it is staged like every other pack (at .groundwork/packs/licensing/) but never auto-installed in adopt mode -- if an adopted project wants it, copy .groundwork/packs/licensing/files/ by hand, dropping the `.staged` suffix from every name (or copy templates/packs/licensing/files/ from this repo directly) and run the backfill above. The license-headers verify step is a lint-group gate and installs anywhere a bin/verify.mjs-shaped gate runner exists; wire it into the project's real one if it differs. REUSE.toml also carries globs for `.gitleaks.toml` and `.worktreeinclude`, the files the `supply-chain` and `worktrees` packs add, so the gate's uncovered-file check passes whether or not those packs are installed. This gate used to ship in the `publishing` pack; a project that installed that pack before the split keeps its files untouched."
+}

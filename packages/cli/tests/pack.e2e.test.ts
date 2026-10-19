@@ -105,6 +105,7 @@ describe("published tarball end-to-end", () => {
     expect(output).toMatch(/^statusline \(modes:/m);
     expect(output).toMatch(/^github \(modes:/m);
     expect(output).toMatch(/^claude-github \(modes:/m);
+    expect(output).toMatch(/^licensing \(modes:/m);
   });
 
   it("ships the publishing pack's lockfile escaped, because npm strips package-lock.json at any depth", () => {
@@ -140,6 +141,8 @@ describe("published tarball end-to-end", () => {
       "statusline",
       "--pack",
       "publishing",
+      "--pack",
+      "licensing",
     ];
 
     execFileSync("node", [installedBin, fromTarball, ...args], {
