@@ -331,3 +331,21 @@ GitHub Release, or `npm stage publish` exist -- rather than only gating
 `npm stage approve` afterward, which is the second, independent approval
 this design accepts on top of npm's own staged-publish gate. Read the live
 state with `gh api repos/monte3l/m3l-groundwork/environments/npm-publish`.
+
+**A red "Check that the release tag points at the commit that was built"
+step means the tag and the attestations disagree.** `changesets/action/publish`
+makes the tag with the git refs API at the run's commit and, if that call fails,
+only logs a warning; the GitHub Release it creates next then makes the missing
+tag at the head of `main`. That happened once: `@monte3l/groundwork@1.0.3` was
+built from `2850f8e`, waited about 3.5 hours at the `npm-publish` gate while
+`main` moved, and its tag landed on `73af011`. The refs call returned 403
+(`Resource not accessible by integration`) on that run and succeeded on 1.0.4;
+the cause is not known, so the only trigger recorded is `main` having moved
+during the wait. Approve the gate soon after the build finishes. The package
+and its attestations are unaffected, since both name the built commit; only the
+tag is wrong. The `tags` ruleset blocks updating and deleting a tag with no
+bypass, so moving one is a maintainer action: set that ruleset's `enforcement`
+to `disabled`, point the tag at the built commit
+(`gh api -X PATCH repos/monte3l/m3l-groundwork/git/refs/tags/<tag>
+-f sha=<built commit> -F force=true`), and set it back to `active`. This
+procedure has not been exercised. The 1.0.3 tag was left as it is.

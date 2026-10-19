@@ -388,3 +388,30 @@ jobs:
           fi
           gh release upload "@monte3l/groundwork@${version}" \
             "${assets[@]}" --clobber --repo "${{ github.repository }}"
+      # changesets/action/publish creates the tag with the git refs API at this
+      # run's commit and, when that call fails, only logs a warning (1.0.3: a 403,
+      # "Resource not accessible by integration"). The GitHub Release it creates
+      # next then makes the missing tag at the head of `main`, which is not the
+      # commit the tarball and its attestations were built from whenever `main`
+      # moved while this job waited at the `npm-publish` gate. Nothing else
+      # notices, so compare the two here. Deliberately not `continue-on-error`:
+      # a mismatch should turn the run red. The tags ruleset blocks moving or
+      # deleting a tag, so the fix is a maintainer's, see .claude/rules/releases.md.
+      - name: Check that the release tag points at the commit that was built
+        if: steps.publish.outputs.published == 'true'
+        env:
+          REPOSITORY: ${{ github.repository }}
+          BUILT_SHA: ${{ github.sha }}
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          tag="@monte3l/groundwork@${version}"
+          # An annotated tag lists its peeled commit last; a lightweight tag has
+          # one line. Anonymous read: the repository is public.
+          tagged="$(git ls-remote "https://github.com/${REPOSITORY}.git" \
+            "refs/tags/${tag}" "refs/tags/${tag}^{}" | awk 'END { print $1 }')"
+          if [ -n "$tagged" ] && [ "$tagged" = "$BUILT_SHA" ]; then
+            echo "tag ${tag} points at the built commit ${BUILT_SHA}"
+            exit 0
+          fi
+          echo "::error title=Release tag does not match the build::${tag} points at '${tagged:-nothing}' but the tarball was built from ${BUILT_SHA}. The attestations name ${BUILT_SHA}. See .claude/rules/releases.md."
+          exit 1
