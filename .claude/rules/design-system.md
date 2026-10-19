@@ -65,3 +65,18 @@ importing a generated file, since root tooling has no build step to emit
 one into -- not compared against `term.ts` by a parity test, unlike the
 harness/toolchain grader twins, since a drift here is cosmetic (two
 terminals' output), not a behavioral contract.
+
+## Design record
+
+> Moved verbatim from the root `CLAUDE.md` ("Architecture notes") so it loads only when you edit the files it governs.
+
+- **Design system: `design/` is this repo's own vendored copy of
+  m3l-design, this repo only -- `templates/**` stays brand-neutral.**
+  Never hand-edit `design/source/`; move to a new release with
+  `bin/sync-design.sh vX.Y.Z .` from an `m3l-design` checkout, then re-run
+  `node bin/build-design-tokens.mjs` and commit `packages/cli/src/palette.ts`
+  in the same change (`--check` is the `lint`-group verify step). That
+  generator emits `packages/cli/src/palette.ts`, the terminal palette
+  `packages/cli/src/term.ts` paints console output with. Full detail:
+  `.claude/rules/design-system.md` (auto-loads on `design/**`,
+  `bin/build-design-tokens.mjs`, `packages/cli/src/{palette,term}.ts`).

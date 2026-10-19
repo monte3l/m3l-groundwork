@@ -172,3 +172,21 @@ comment:*)` in `--allowedTools`, and a `Verify Claude posted` step failing
   and `gh secret set CLAUDE_CODE_OAUTH_TOKEN --org monte3l --repos m3l-groundwork`.
   The `github` pack still ships its own `claude.yml` and `claude-pr-review.yml`
   to bootstrapped projects, deliberately unchanged here.
+
+## Design record
+
+> Moved verbatim from the root `CLAUDE.md` ("Architecture notes") so it loads only when you edit the files it governs.
+
+- **`bin/lib/verify-steps.mjs` is the single source of truth `pnpm verify`,
+  every `lefthook.yml` `pre-push` lane, and every CI job reads from --
+  keyed by _group_ (`format`/`lint`/`typecheck`/`build`/`test`), not by
+  individual step id.** Both YAML files name a group, never a step, which
+  is what lets a pack register a gate (appended to the
+  emitted project's `bin/lib/verify-steps.packs.json`, a plain JSON array,
+  source `templates/core/bin/lib/verify-steps.packs.json`) without either
+  YAML file changing. The same pattern applies in the emitted baseline
+  (`templates/core/bin/lib/verify-steps.mjs`, which adds `CORE_STEPS` and the
+  pack-contributed steps this repo's own list has no use for). Add a new
+  gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
+  bespoke script invocation in either YAML file. (The `e2e` lane calls
+  `pnpm test:e2e` directly; `gate-lane-parity` only checks verify groups.)

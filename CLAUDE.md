@@ -1,191 +1,46 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code when working in this repository.
+It is an index: detail lives in path-scoped `.claude/rules/` files, which load
+when you edit the files they govern, and in `docs/`.
 
 ## What this is
 
 **m3l-groundwork** — a two-phase TypeScript + Claude Code project
 bootstrapper. **Phase A** (`packages/cli`) is deterministic: an offline Node
 CLI with two modes, auto-detected from the target directory (`mode.ts`).
-**Fresh mode** writes a baseline Claude Code harness and TypeScript
-toolchain into an empty directory, correct for any TypeScript project.
-**Adopt mode** points at an already-established project instead: it surveys
-it read-only (`src/survey/`), diffs the baseline against what's actually
-there (`conflicts.ts`), and writes only under `.groundwork/` (a report, the inventory, and inert
-staged copies of the baseline additions and packs) plus one guarded copy of
-the `/customize` skill (at `.claude/skills/customize`, or `.groundwork/customize` when that is blocked) -- it never overwrites a project file. **Phase B** (`packages/plugin`) is adaptive: a
-`/customize` skill that, for a fresh bootstrap, interviews the user and
-tailors the baseline; for an adopted project, first reconciles the CLI's
-survey against the real repo and confirms what to change (its own Step 0).
-Either way it then runs a live guidance pass over official TypeScript and
-Anthropic sources so the result reflects current upstream recommendations
-rather than what was true when this repo last shipped.
+**Fresh mode** writes a baseline Claude Code harness and TypeScript toolchain
+into an empty directory. **Adopt mode** surveys an established project
+read-only, diffs the baseline against it, and writes only under
+`.groundwork/` plus one guarded copy of the `/customize` skill -- it never
+overwrites a project file. **Phase B** (`packages/plugin`) is the `/customize`
+skill: it interviews the owner (fresh) or reconciles the CLI's survey against
+the real repo (adopt), then runs a live guidance pass over official
+TypeScript and Anthropic sources.
 
-`templates/packs/` adds optional bundles on top of the baseline, each for one of
-two reasons: an artifact was cut from `templates/core` purely to hold its hard
-caps (it passed the generalization test), or it applies to only some project
-kinds. The CLI installs a pack directly in fresh
-mode (`--pack <name>`); in adopt mode it only surveys which packs apply and
-stages their payload at `.groundwork/packs/`, and `/customize`'s Step 0
-confirms which packs to install and Step 3 (Round 1) installs the confirmed ones from there -- the same fresh/adopt split as
-everything else Phase A does. See `templates/packs/README.md` for the
-wiring contract (a pack never edits YAML or JavaScript).
-
+`templates/packs/` adds optional bundles on top of the baseline (wiring
+contract: `templates/packs/README.md`; a pack never edits YAML or JavaScript).
 Do not confuse this repo's own toolchain with **the baseline it emits**
-(`templates/core/`) — the two share the same design (same tsconfig strict
-flags, same eslint rule set, same lefthook shape) but are separate,
-independently-verified artifacts. A change to `eslint.config.js` at this
-repo's root affects only how _this repo_ lints itself; a change to
-`templates/core/eslint.config.js` affects every project bootstrapped from
-here after the change.
+(`templates/core/`): they share a design but are separate, independently
+verified artifacts. A change to the root `eslint.config.js` affects only this
+repo; a change to `templates/core/eslint.config.js` affects every project
+bootstrapped afterwards.
 
 ## Tech Stack
 
 TypeScript, `strict: true`, ESM only, `tsc` (no bundler), `pnpm`. Node 24+
 (`.node-version` is the authority; `check:node-version` gates drift). Two
-workspace packages (`packages/cli`, `packages/plugin`), each with a
-tooling `tsconfig.json` (src + tests, no emit) and a build-only
-`tsconfig.build.json` (src only, emits `dist/`).
+workspace packages (`packages/cli`, `packages/plugin`), each with a tooling
+`tsconfig.json` (src + tests, no emit) and a build-only `tsconfig.build.json`
+(src only, emits `dist/`).
 
 ## Repository Layout
 
-```
-packages/cli/          Phase A: the offline bootstrapper CLI
-  src/                   one module per concern -- list the directory; the
-                          ones that carry a contract: assets.ts (the one place
-                          that locates templates/ and the plugin payload),
-                          baseline-stage.ts (stages absent baseline files as
-                          inert .staged copies), pack-stage.ts (the same for
-                          every pack, all packs as one unit, written to a
-                          temp sibling and swapped in by rename),
-                          staging.ts (the suffix, posix-path rule and swap/
-                          sweep helpers both share), fs-guard.ts (the shared
-                          symlink refusal), fatal.ts + format-error.ts (the
-                          bin's total, never-throwing error printer)
-  src/harness/            the harness grader: frontmatter.ts, rules.ts, grade.ts,
-                          conformance.ts, types.ts
-  src/toolchain/          the toolchain grader: rules.ts, grade.ts, conformance.ts,
-                          types.ts, tsconfig-chain.ts (the extends resolver the
-                          survey shares)
-  src/survey/             survey.ts + one collector per discovery area
-                          (survey-shape, survey-toolchain, survey-harness,
-                          survey-docs), fs-walk.ts, types.ts
-  bin/                    m3l-groundwork.mjs -- the published entry point
-  scripts/                vendor-assets.mjs -- prepack/postpack: copies templates/
-                          and the plugin payload into the package for a pack
-  tests/                  unit tests + `*.e2e.test.ts` (bootstrap, adopt, bin,
-                          one per pack or pack combination, and
-                          pack.e2e.test.ts -- the published tarball, run
-                          from outside the repo)
-
-packages/plugin/        Phase B: the /customize skill
-  skills/customize/       SKILL.md (Step 0 is the adopt-mode reconcile step)
-  src/                    kind-facet-map.ts, domain-map.ts, pack-map.ts,
-                          plugin-map.ts, index.ts
-  tests/                  unit tests for all four
-
-.claude/                THIS repo's own harness (not the baseline's): agents/,
-                         hooks/, rules/, skills/, settings.json -- installed by
-                         self-adopting `templates/core`'s harness plus the
-                         `harness-extras` pack's statusline half. See "Agent
-                         Operating Model". worktrees/ is unrelated -- see
-                         "Known gaps".
-
-.changeset/             Changesets config and any pending changesets.
-                         See "Releases".
-
-.claude-plugin/         marketplace.json: lists the plugin as a relative-path
-                         source into packages/plugin -- never npm -- for
-                         `/plugin marketplace add`.
-
-.github/                THIS repo's own CI (not the baseline's): ci.yml (five
-                         verify lanes + e2e + e2e-macos + node-current + the `verify`
-                         aggregator; the e2e trio skips its work on a
-                         documentation-only PR, see .claude/rules/ci.md),
-                         labeler.yml (area labels from .github/labeler.yml),
-                         release.yml (see "Releases"), docs.yml
-                         (builds the docs site and deploys it to Cloudflare
-                         Workers Static Assets -- see .claude/rules/docs-site.md
-                         and docs/cloudflare-docs.md; its `smoke` job and the
-                         daily docs-live.yml compare the live site and the
-                         package metadata with bin/check-live-site.mjs),
-                         environments.yml (weekly
-                         cleanup of stale GitHub Deployments/Environments --
-                         see .claude/rules/environments.md),
-                         dependency-review.yml, scorecard.yml, gitleaks.yml,
-                         security-audit.yml (daily `pnpm audit`, opens one
-                         issue on a high-severity advisory),
-                         soak.yml (manual only: runs bin/soak.sh against the
-                         published package on Linux x64/arm64 and macOS -- see
-                         .claude/rules/ci.md),
-                         dependabot.yml,
-                         environments.json (the cleanup policy),
-                         ISSUE_TEMPLATE/, pull_request_template.md
-
-tools/                  Pinned CI tooling, kept out of `.github/` because
-                         Dependabot cannot open a PR that changes files there
-                         (every attempt fails with a 400 "invalid or
-                         unauthorized changes"). deploy/ pins the exact
-                         wrangler version docs.yml's deploy job installs;
-                         release/ pins the npm version release.yml's publish
-                         job installs. Each is a package.json plus a committed
-                         lockfile.
-
-bin/                    This repo's own gate scripts: verify.mjs, check-*.mjs,
-                         build-docs.mjs, check-live-site.mjs, eval.mjs,
-                         ci-docs-only.mjs, soak.sh.
-                         The step list they all read from is
-                         bin/lib/verify-steps.mjs.
-
-evals/                  `pnpm eval` suites. `.eval-results/` is gitignored
-                         output.
-
-design/                 m3l-design, vendored -- see design/README.md and
-                         .claude/rules/design-system.md. source/ is a
-                         verbatim copy of an m3l-design release, tokens.css
-                         is vendored with it. local/ is this repo's
-                         own docs-site layout CSS, the one sanctioned
-                         divergence from the vendored system (see
-                         design/README.md's "design/local/").
-
-docs/architecture.md    A human-facing distillation of this file's own
-                         architecture notes -- for anyone reading the project
-                         rather than editing it.
-docs/assurance-case.md  The OpenSSF Best Practices Silver `assurance_case`:
-                         threat model, trust boundaries, a Saltzer & Schroeder
-                         argument, and a CWE Top 25 mitigation table.
-docs/security-review.md The Gold-level `dynamic_analysis` write-up -- see
-                         "Testing" below.
-docs/glossary.md        Term definitions shared across the other docs pages.
-docs/github-blueprint.md
-                         The exact `gh api` commands for the GitHub settings
-                         that live outside the repo -- see "Known gaps".
-docs/cloudflare-docs.md The docs-site deploy target -- see
-                         .claude/rules/docs-site.md.
-docs/environment-janitor.md
-                         The environment-cleanup GitHub App's permissions and
-                         one-time setup -- see .claude/rules/environments.md.
-docs/research/          THIS repo's own trackers (not the baseline's):
-                         typescript-refresh.md / harness-refresh.md, read and
-                         written by /customize's Round 2 guidance sweeps when
-                         run against this repo itself.
-GOVERNANCE.md            Decision model, roles, and access continuity --
-                         OpenSSF Best Practices Silver's governance criteria.
-ROADMAP.md               What's planned and what's explicitly out of scope --
-                         OpenSSF Best Practices Silver's documentation_roadmap.
-
-templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
-                         toolchain, .claude/ harness, CI workflows, and
-                         placeholder src/tests. See its own CLAUDE.md.
-
-templates/packs/        Optional add-on bundles installed on top of the
-                         baseline. `harness-extras/`, `github/`,
-                         `publishing/`, `quality/`, `supply-chain/`, and
-                         `worktrees/` ship
-                         today; see its own README.md for the wiring
-                         contract and "Known gaps" below for the deferred
-                         candidates.
-```
+`packages/cli` (Phase A), `packages/plugin` (Phase B), `templates/core` (the
+baseline), `templates/packs` (optional bundles), `.claude/` (this repo's own
+harness), `.github/` (this repo's own CI), `bin/` (gate scripts),
+`tools/` (pinned CI tooling), `evals/`, `design/` (vendored m3l-design) and
+`docs/`. The annotated tree is in `docs/repository-layout.md`.
 
 ## Commands
 
@@ -210,367 +65,50 @@ Run any task with `pnpm <script>`.
 | `pnpm check:license-headers`          | Every tracked file outside `templates/**` carries an SPDX header or is exempted by `REUSE.toml`; `-- --fix` inserts a missing header (see "Definition of Done")                                                                                                                                                                                                                                                                                               |
 | `pnpm eval`                           | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), on that same wrapper widened with every `templates/packs/*/files/.claude/skills` merged in (cross-pack triggering), and on `typescript-guidance` against a deliberately degraded project; needs `claude`, credentials, network. Skips cleanly without `claude`. See `.claude/rules/evals.md` |
 | `pnpm verify`                         | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                                                                                                                                                |
-| `pnpm test:watch`                     | Vitest in watch mode for local iteration -- not a `verify` step                                                                                                                                                                                                                                                                                                                                                                                               |
-| `pnpm prepare`                        | Installs the lefthook git hooks                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 Run `pnpm verify` (or just push -- `lefthook`'s `pre-push` runs the same
 steps) before considering any task here done.
 
 ## Architecture notes
 
-- **Token substitution is a plain string replace, not a template engine**
-  (`packages/cli/src/tokens.ts`). `applyTokens` swaps `__KEY__` literals in
-  both file content and path segments.
-- **Where `templates/` and the plugin payload live is decided in exactly one
-  place: `resolveAsset()` in `packages/cli/src/assets.ts`.** Never write a
-  `join(here, "..", "..", "..")` walk again -- in a published tarball that
-  escapes the package. `templatesCoreDir()`, `packsRootDir()` and
-  `pluginDir()` are one-liners over it. It probes the **source checkout first**
-  (a positive marker: `pnpm-workspace.yaml` plus a `package.json` named
-  `m3l-groundwork` three directories up) and only then the copy vendored
-  beside `dist/`; the order is what stops a vendored copy left by a crashed
-  `pnpm pack` from being read stale on a dev machine, and the marker is what
-  stops an unscoped install from treating the consumer's own project root as
-  ours. `scripts/vendor-assets.mjs` (`prepack`/`postpack`) does the copying.
-- **npm-family tooling strips `.gitignore`, `.npmrc`, `.npmignore` and
-  `package-lock.json` (at any depth) from a tarball whatever `files` says**
-  (measured: `pnpm pack` keeps `.gitignore` but drops `.npmrc`; `npm pack`
-  drops all three dotfiles; both drop the publishing pack's
-  `tools/release/package-lock.json`). The vendored copy therefore stores them
-  as `_gitignore`, `_npmrc`, `_npmignore`, `_package-lock.json`, and every
-  walker over the template tree restores the real name via
-  `restoreDotfilePath` (`emit.ts`, `conflicts.ts`, `staging.ts`). **A new walker over `templates/` must do the
-  same**, or a published install silently loses those files. The name list and
-  both directions of the mapping live in `assets.ts`; `vendor-assets.mjs`
-  imports them from the build, so `pnpm build` must precede `pnpm pack`.
-  `templates/core/package.json` is _not_ escaped -- `caps.ts` reads it
-  directly -- so publint prints a known, harmless warning that its `exports`
-  field is ignored.
-- **The CLI has zero runtime dependencies it can avoid**, and makes no
-  network call beyond the package install it runs at the end of fresh mode
-  (`packages/cli/src/git.ts`'s `runInstall`; adopt mode makes none at all).
-  If a change to `packages/cli` needs a new dependency, stop and
-  reconsider -- this is a hard constraint, not a style preference. It's why
-  `src/survey/` parses JSONC by hand (`jsonc.ts`) and never parses YAML at
-  all -- `lefthook.yml`/workflow files are indexed by name, not excerpted, flagged
-  `needsReading: true`, and left for `/customize`'s Step 0 to actually read.
-- **Adopt mode's contract is "the survey is an index, not an
-  interpretation."** Every `survey-*.ts` collector records facts it can
-  establish offline -- which files exist, their verbatim content, which
-  keys are set -- and never infers a verdict (there is no `ProjectKind`
-  anywhere in `packages/cli`; that inference happens once, visibly, in
-  `/customize`'s Step 1, with its evidence shown). Anything a collector
-  can't parse goes into `ProjectSurvey.undetermined` rather than being
-  silently dropped -- a survey that looks complete but isn't is worse than
-  one that admits a gap. Adopt mode writes two report files
-  (`.groundwork/inventory.json`, `.groundwork/adoption-report.md`), the
-  inert staged copies of the baseline additions and the packs
-  (`.groundwork/baseline/`, `.groundwork/packs/`), plus one
-  guarded, purely-additive copy of the `/customize` skill
-  (`installCustomizeSkillGuarded` in `plugin.ts`; `customize-paths.ts` owns
-  where it writes). It decides presence by `lstat`, never overwrites or
-  removes a project-owned entry under `.claude/skills/customize/` (anything
-  already there that is not an exact current copy sends the install to
-  `.groundwork/customize/`, as does a symlinked component under `.claude`),
-  lstat-guards every directory under `.groundwork/` it writes through,
-  writes `SKILL.md` last and rolls back the files it wrote if a later write
-  fails -- never a project file. The guard is an `lstat` check, so a
-  component swapped for a symlink after the check is not covered, and
-  `targetDir` itself and its ancestors are not checked; see the assurance
-  case's residual risks.
-  Staged baseline files carry a `.staged` suffix so no project tool (vitest,
-  tsc, eslint, Claude Code's skill loader) can discover them as live source;
-  `inventory.stagedBaseline.files` records each one's original `path`, its
-  `staged` name and a `sha256`, and `/customize` strips the suffix on install.
-  Staged packs follow the identical convention (`pack.json.staged` and
-  `files/<path>.staged` under `.groundwork/packs/<name>/`, recorded in
-  `inventory.stagedPacks`, added to schema 5 before it shipped); all packs are
-  staged as one unit in a temp sibling directory and swapped in by rename, and
-  their planned paths are scope-checked before any is written.
-  `inventory.json` is the commit marker: any old one is deleted before
-  staging starts, and it is written atomically (temp file, then rename) after
-  the staging, the `/customize` skill copy and the report, so its presence
-  means the run completed. A `.groundwork/` directory with no inventory
-  therefore means an interrupted run, which `/customize` refuses to treat as
-  a fresh bootstrap. The per-file `sha256` proves the staging is complete
-  and matches the inventory, not that it is untampered.
-  `adopt.e2e.test.ts` is the test of that guarantee; don't weaken it.
-- **A Claude Code plugin repo is a first-class adopt target** (inventory
-  schema 6). `survey.harness.pluginLayout` is `null` unless
-  `.claude-plugin/plugin.json` is a regular file; then it lists which of
-  `hooks/hooks.json`, `skills/`, `agents/`, `commands/` and `.mcp.json` exist.
-  A manifest that exists but is a symlink or directory leaves it `null` and
-  adds an `undetermined` note, so the report never calls it "no plugin"; a
-  symlinked component is likewise left out with a note. The symlink check is
-  `lstat` on the final path component only. A root `hooks/` without the
-  manifest is never recorded, since it could be React hooks. The harness grader reads `.claude/`, `CLAUDE.md`, the root `.mcp.json` and the root file listing, never a plugin's own components,
-  so the report says plugin components are outside its scope rather than
-  printing "0 of 0 checks pass". `/customize` has a fifth `plugin` kind
-  (pre-selected from `pluginLayout`, which also recommends `plugin-dev`) and a
-  final gate (its Step 6) that grades the harness after Round 2, from the
-  staged grader files when the project has no `bin/check-harness.mjs`. Any
-  `CLAUDE.md` text that names a `.claude/` file must use the full
-  `.claude/...` path, because `claudemd-refs` matches that literal.
-- **`/customize`'s two guidance skills (`typescript-guidance`,
-  `harness-guidance`, both in `templates/core/.claude/skills/`) each have
-  full authority over their entire domain**, not just the facets an
-  interview answer happens to emphasize -- see both skills' own "Authority"
-  section and `packages/plugin/skills/customize/SKILL.md`'s "Round 2". The
-  interview scopes research _priority_, never _what a sweep is allowed to
-  touch_. Don't narrow a sweep's scope to "just the facet the user asked
-  about" when adjusting either skill. `typescript-guidance` also has a third
-  mode, `gaps` (merged in from the retired `ts-advisor` pack): it recommends
-  tooling the project does not have at all, every recommendation carrying a
-  source fetched in that run, and never rules on config that already exists
-  -- that stays `research`'s and `refresh`'s authority. Its
-  `references/tooling-sources.md` is the ecosystem-tooling allowlist beside
-  `typescript-sources.md`.
-- **`packages/plugin/src/domain-map.ts` is a structural guarantee, not
-  documentation.** `packages/plugin/tests/domain-map.test.ts` walks the
-  _real_ `templates/core` tree on every test run and asserts every file is
-  claimed by exactly one of `typescript-guidance`'s domain,
-  `harness-guidance`'s domain, or an explicit neutral allowlist. Adding a
-  new file under `templates/core/` that doesn't match any of the three glob
-  lists in `domain-map.ts` fails this test -- that's the point: it's how a
-  new template file gets caught before it becomes a silent blind spot for
-  both guidance sweeps. Update the glob lists in the same commit that adds
-  the file, not as a follow-up.
-- **`pack-map.ts` and `plugin-map.ts` are the same "infer once, visibly,
-  with reasoning attached" pattern applied to two different install
-  surfaces.** `recommendPacks` (`pack-map.ts`) recommends which
-  `templates/packs/*` bundle(s) to install; `recommendPlugins`
-  (`plugin-map.ts`) recommends which locally-installed, built-in
-  `claude-plugins-official` marketplace plugin(s) to enable -- both pure
-  functions of the interview answers (plus, for `plugin-map.ts`, which
-  packs were chosen, whether the project authors its own skills, and which
-  packages it depends on), each
-  with its own unit-tested table so a recommendation's evidence is never
-  invented fresh at `/customize` run time.
-- **The harness grader has two implementations that must not drift.**
-  `packages/cli/src/harness/` (TypeScript: `frontmatter.ts`, `rules.ts`,
-  `grade.ts`) feeds adopt mode's `## Harness grade` report section and the
-  inventory's `harnessGrade`; `templates/core/bin/lib/{frontmatter,harness-rules}.mjs`
-  plus `bin/check-harness.mjs` is the emitted ESM twin every bootstrapped
-  project runs as a `pnpm verify` step. `tests/harness/harness-parity.test.ts`
-  runs both over the real baseline and a deliberately broken harness and
-  asserts identical grades -- change a rule in one, change the other in the
-  same commit or that test fails. The gate is a `CORE_STEPS` entry
-  (`cmd: ["node", "bin/check-harness.mjs"]`) with **no** `package.json`
-  script, which is how it costs zero cap budget in a baseline already at
-  every cap. Structural rules fail; rubric rules only warn, and
-  `CURRENT_MODELS` in `rules.ts` needs bumping when the model lineup moves.
-  The root `bin/check-harness.mjs` imports the emitted rule module directly
-  rather than a copy, so this repo grades `templates/core` with exactly what
-  ships.
-- **The toolchain grader has the same two-implementations shape, for the same
-  reason, and the same rule.** `packages/cli/src/toolchain/{rules,grade}.ts`
-  feeds adopt mode's `## Toolchain grade` report section and the inventory's
-  `toolchainGrade` (`schemaVersion` 4);
-  `templates/core/bin/lib/toolchain-rules.mjs` plus `bin/check-toolchain.mjs` is
-  the emitted twin every bootstrapped project runs as a `pnpm verify` step, and
-  the root `bin/check-toolchain.mjs` imports that emitted module rather than a
-  third copy. `tests/toolchain/toolchain-parity.test.ts` runs both over the real
-  baseline, an empty directory and broken projects, and asserts identical grades
-  -- change a rule in one, change the other in the same commit. Like the harness
-  gate it is a `CORE_STEPS` entry with **no** `package.json` script, so it costs
-  zero cap budget. It grades a **rubric**, not a diff against `templates/core`:
-  the baseline is expected to score zero structural findings and 100% rubric
-  (asserted by a test), and a project's deviation is reported against the rule.
-  Three properties are load-bearing. **Absence is never a defect**: a rule whose
-  subject does not exist (no `vitest.config.ts`, no verify steps) returns
-  `{ checked: 0 }`, because adopt mode runs it against arbitrary projects.
-  **It never executes project code**: `eslint.config.js`, `vitest.config.ts` and
-  `verify-steps.mjs` are read by regex over comment-stripped source, and a scrape
-  that cannot tell the answer returns `{ checked: 0 }` rather than a failure. And
-  **it does not restate what `tsc` or ESLint already reject** -- a structural rule
-  that only fires once `tsc` has failed adds nothing, which is why removed
-  options are a rubric warning about the _next_ major
-  (`tsconfig-option-lifecycle`), not a gate. For the same reason it keeps no
-  table of "current" package majors: whether a pin has fallen behind upstream is
-  `typescript-guidance`'s question, answered by a live sweep, and a closed-loop
-  gate restating it would go stale silently. The
-  tsconfig `extends` resolver (`toolchain/tsconfig-chain.ts`) is shared with
-  `survey-toolchain.ts`, so the survey's `effectiveFlags` and the grade cannot
-  disagree.
-- **Behavioural evals (`pnpm eval`) are a separate, paid layer from
-  `check:harness`**, deliberately excluded from `pnpm verify`/`pre-push`
-  since they make real model calls. Full detail: `.claude/rules/evals.md`
-  (auto-loads on `evals/**`, `packages/plugin/evals/**`, `bin/eval.mjs`).
-- **`templates/core`'s caps bind the baseline only, verified by counting
-  (`packages/cli/src/caps.ts`'s `countBaselineCaps`/`CAP_LIMITS`), not
-  every installed pack on top of it:** ≤5 agents, ≤8 skills (7 in
-  `templates/core/.claude/skills/` - `/customize` via the installed plugin
-  = 8), ≤10 hooks, ≤3 CI workflows, ≤12 root `package.json` scripts (the five things `caps.ts` counts); by
-  convention, 0 gates that exist only to check documentation about the repo itself.
-  Adding a new agent/skill/hook/workflow/script to `templates/core` means
-  removing or merging an existing one first -- `caps.ts` is the one place
-  the cap numbers and the counting logic live, so `report.ts` (the
-  adoption-report table) and `main.ts` (the fresh-mode post-`--pack`
-  summary) can't state a different number for the same cap. A pack
-  declares its own `budget` delta in `pack.json`, checked by a structural
-  test against its own `files/` tree's actual contents -- see
-  `templates/packs/README.md`.
-- **`bin/lib/verify-steps.mjs` is the single source of truth `pnpm verify`,
-  every `lefthook.yml` `pre-push` lane, and every CI job reads from --
-  keyed by _group_ (`format`/`lint`/`typecheck`/`build`/`test`), not by
-  individual step id.** Both YAML files name a group, never a step, which
-  is what lets a pack register a gate (appended to the
-  emitted project's `bin/lib/verify-steps.packs.json`, a plain JSON array,
-  source `templates/core/bin/lib/verify-steps.packs.json`) without either
-  YAML file changing. The same pattern applies in the emitted baseline
-  (`templates/core/bin/lib/verify-steps.mjs`, which adds `CORE_STEPS` and the
-  pack-contributed steps this repo's own list has no use for). Add a new
-  gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
-  bespoke script invocation in either YAML file. (The `e2e` lane calls
-  `pnpm test:e2e` directly; `gate-lane-parity` only checks verify groups.)
-- **Continuous integration (`.github/`).** `ci.yml` runs five verify lanes plus
-  `e2e`/`e2e-macos`/`node-current` and `dco` behind a `verify` aggregator (the
-  check `main`'s ruleset gates on -- see "Git Workflow"). **There is no
-  automated PR review and no `@claude` mention workflow here**:
-  `claude-pr-review.yml` was removed until Anthropic fixes the action's silent
-  no-post bug, and `claude.yml` was retired on 2026-10-16 (both in
-  `.claude/rules/ci.md`), so a PR is reviewed by the maintainer and the review
-  spokes only. Full detail, including the `gate-lane-parity` rules that must
-  never be broken: `.claude/rules/ci.md` (auto-loads on `.github/**`,
-  `lefthook.yml`, `bin/verify.mjs`, `bin/lib/verify-steps.mjs`).
-- **A pack never edits YAML or JavaScript.** It extends three JSON files
-  the baseline already reads at runtime (`.claude/settings.json`,
-  `package.json`'s `scripts`, `bin/lib/verify-steps.packs.json` of the emitted
-  project) via the pure
-  merge functions in `packages/cli/src/merge-json.ts`. `.claude/settings.json`
-  has two disjoint merges: `mergeSettingsHooks` owns the `hooks` block
-  (entry-by-entry), and `mergeSettingsTopLevel` plants whole top-level keys
-  such as `statusLine` (identical is a no-op, different is a hard collision --
-  an adopted project's own `statusLine` is never overwritten). This is what keeps
-  pack installation inside `packages/cli`'s zero-runtime-dependency,
-  no-YAML-parsing constraints in both fresh mode (the CLI installs
-  directly) and adopt mode (the CLI only surveys; `/customize` installs
-  from the staged `.groundwork/packs/<name>/` copy after reading the
-  project's real gate runner) -- see `templates/packs/README.md`.
-- **Design system: `design/` is this repo's own vendored copy of
-  m3l-design, this repo only -- `templates/**` stays brand-neutral.**
-  Never hand-edit `design/source/`; move to a new release with
-  `bin/sync-design.sh vX.Y.Z .` from an `m3l-design` checkout, then re-run
-  `node bin/build-design-tokens.mjs` and commit `packages/cli/src/palette.ts`
-  in the same change (`--check` is the `lint`-group verify step). That
-  generator emits `packages/cli/src/palette.ts`, the terminal palette
-  `packages/cli/src/term.ts` paints console output with. Full detail:
-  `.claude/rules/design-system.md` (auto-loads on `design/**`,
-  `bin/build-design-tokens.mjs`, `packages/cli/src/{palette,term}.ts`).
-- **`packages/cli/README.md` is generated, never hand-edited.** It is what npm
-  shows for `@monte3l/groundwork`, and `bin/build-npm-readme.mjs` builds it from
-  the root `README.md` (relative links rewritten to absolute
-  `github.com/.../blob/main/` URLs by `bin/lib/npm-readme.mjs`), so npm and
-  GitHub cannot describe different things. Edit the root README, then re-run
-  `node bin/build-npm-readme.mjs` and commit both; `--check` is the `npm-readme`
-  `lint`-group verify step. The package's `description`, `homepage` and
-  `keywords` are kept equal to the GitHub repo's description, homepage and
-  topics by hand: change both together. `docs-live.yml` compares them daily
-  (`node bin/check-live-site.mjs --metadata`) and fails when they differ.
-- **The docs site** (`.github/workflows/docs.yml`, deployed from `main` to
-  `https://groundwork.monte3l.com` on Cloudflare Workers Static Assets) is a
-  restricted, zero-dependency GFM-to-HTML renderer that throws rather than
-  guessing at markdown outside the ten rendered pages' inventory. Full
-  detail: `.claude/rules/docs-site.md` (auto-loads on `bin/build-docs.mjs`,
-  `bin/lib/markdown.mjs`, `.github/workflows/docs.yml`).
-- **Environment cleanup** (`.github/workflows/environments.yml`) removes
-  stale GitHub Deployments/Environments this repo's own CI leaves behind,
-  since GitHub never removes one on its own. Full detail:
-  `.claude/rules/environments.md` (auto-loads on
-  `.github/workflows/environments.yml`, `bin/cleanup-environments.mjs`).
+The design record is split by area, and each file loads when you edit the
+files it governs. CLI internals (token substitution, `resolveAsset()`, dotfile
+escaping, zero runtime dependencies, packs only extending JSON):
+`.claude/rules/package-cli.md`. Adopt mode (the survey is an index, staging,
+the inventory): `.claude/rules/adopt-mode.md`. The two grader
+implementations that must not drift: `.claude/rules/harness-graders.md`.
+`/customize`, `domain-map.ts`, `pack-map.ts`: `.claude/rules/package-plugin.md`.
+The baseline's caps (≤5 agents, ≤8 skills, ≤10 hooks, ≤3 workflows, ≤12
+scripts): `.claude/rules/baseline-core.md`. The single gate list in
+`verify-steps.mjs`, CI lanes and why there is no automated PR review:
+`.claude/rules/ci.md`. Also `.claude/rules/releases.md`,
+`.claude/rules/design-system.md`, `.claude/rules/docs-site.md`,
+`.claude/rules/environments.md` and the paid behavioural evals in
+`.claude/rules/evals.md`.
 
 ## Git Workflow
 
 Single-maintainer project on GitHub (`monte3l/m3l-groundwork`, public).
-**Pull request creation is collaborators-only**
-(`pull_request_creation_policy: collaborators_only`, a repo setting, not a
-ruleset rule -- read it with `gh api repos/monte3l/m3l-groundwork --jq
-.pull_request_creation_policy`), added 2026-09-26 after a fork account
-opened several PRs that had the shape of automated "good first issue"
-farming (a thin, low-signal profile bulk-forking many unrelated repos in a
-tight window). Issues stay open to everyone; a contribution starts as an
-issue, and a collaborator opens the PR (see CONTRIBUTING.md's "Small tasks
-for newcomers"). This also simplifies the fork-PR secrets question:
-`gitleaks.yml`'s license secret no longer needs to handle a fork-originated PR
-run at all, since one is not expected (the workflow has no fork guard of its own).
 Conventional Commits, enforced by the `commit-msg` hook
-(`bin/lint-commit.mjs`) -- same convention `templates/core` emits into every
-bootstrapped project. Add a `Co-Authored-By:` trailer when Claude authored or
-substantially assisted a commit. The release workflow's version PR and commit
-use `chore(release): version packages` so they satisfy the same convention.
-Every commit also needs a DCO `Signed-off-by:` trailer (`git commit -s`),
-enforced by the same hook via `commitlint.config.js`'s `trailer-exists` rule,
-which `bin/lint-commit.mjs` extends to merge, revert and fixup!/squash! messages
-and to a non-empty value -- see [`CONTRIBUTING.md`](CONTRIBUTING.md#developer-certificate-of-origin).
-The hook is local, so CI repeats the check: `ci.yml`'s `dco` job fails a PR
-when a commit it adds has no `Signed-off-by` trailer matching its author or
-committer email (merge commits skipped; commits by `dependabot[bot]` and
-`m3l-groundwork-release[bot]` exempt only inside a PR that same bot opened), and the `verify`
-aggregator waits on it, so it is a required check with no ruleset change. It
-reads a PR's own commits, not the commit GitHub writes on a squash merge,
-which is why the PR template also carries a sign-off checkbox.
-
-CI runs on every push and PR to `main` (see `.claude/rules/ci.md`), and a
-repository ruleset named `main` enforces the rest. It targets
-`~DEFAULT_BRANCH` with an empty `bypass_actors` list -- nobody, the org owner
-included, can push to `main` directly, force-push it, or delete it while the
-ruleset is active. Every change lands through a pull request whose `verify`
-(the aggregator), `Dependency Review`, `CodeQL` and `Gitleaks` checks are green, which
-has one approval from a code owner other than its author, whose
-review threads are resolved, and whose commits are all signed. Each required
-check is matched on both its name and its producing app (`integration_id`), so
-a same-named status from a different app doesn't satisfy it.
-
-Three choices are deliberate, not defaults. **Approvals are 1**: the two
-org owners approve each other's PRs. The approval must come from a code owner
-(`.github/CODEOWNERS` names both owners for every path), the most recent push
-must be approved by someone other than whoever pushed it, and a stale
-approval is dismissed on push. This replaced an earlier 0, which existed because one maintainer
-cannot approve their own PR and requiring one would have forced a standing
-bypass; a second owner now reviews every PR, so the rule is enforceable. The
-cost is availability: if one owner is away, the other cannot merge their own
-PR without the ruleset being set to `disabled` and back (GitHub logs it),
-never a bypass actor. **Rebase-merge is not an allowed method**: GitHub rewrites
-those commits and has no key to sign them, so under required signatures the
-button would always error; merge and squash remain. **A branch must be
-up to date before merging** (`strict` is on). It was off until 2026-10-16:
-with weekly Dependabot PRs, no auto-merge and no merge queue, strict mode
-re-runs every lane, e2e included, once per remaining PR after every merge,
-and it dismisses the approval each time the branch is updated, so the other
-owner approves again. Two PRs that each pass `verify` can no longer combine
-into a broken `main`, and OpenSSF Scorecard's Branch-Protection check asks
-for it, which is why the cost is now accepted. After merging a PR, update the
-next one's branch (the **Update branch** button, or `@dependabot rebase`) and
-expect one re-approval.
-
-Signing is machine-local: `commit.gpgsign` is in `~/.gitconfig` but
-`user.signingkey` is tracked nowhere in this repo, so on a fresh box
-`git commit` fails outright (`gpg failed to sign the data`) until the key is
-configured. Fix the key -- never `commit.gpgsign=false`, which produces
-commits the ruleset rejects only at merge time. No guard blocks it
-(`bin/soak.sh` sets it false through `GIT_CONFIG` env, the one sanctioned exception). `guard-branch-isolation.mjs`
-**is** installed on this repo's own root (see "Agent Operating Model" below)
-and blocks a `packages/*/src/`/`packages/*/tests/` write while `HEAD` is
-`main` -- but nothing in this repo's own hooks blocks committing any other
-file straight to `main` locally; the ruleset is the remote-side catch: it rejects a
-direct push to `main` at push time and gates a PR's merge at merge time, so
-branch first regardless.
-
-The ruleset is configured with `gh api`, not committed as JSON: GitHub never
-reads a checked-in export, so it would drift silently, and a gate to keep it
-in sync would be exactly the "checks documentation about the repo itself"
-kind that `templates/core`'s caps pin at zero. Read the live state with
-`gh api repos/monte3l/m3l-groundwork/rules/branches/main`. Maintenance that
-needs a force-push means `PUT`ting the ruleset to `enforcement=disabled` and
-back (a toggle GitHub is meant to log), not adding a bypass actor.
+(`bin/lint-commit.mjs`); every commit needs a DCO `Signed-off-by:` trailer
+(`git commit -s`) and a GPG signature, and a `Co-Authored-By:` trailer when
+Claude authored or substantially assisted it. Nobody can push to `main`: every
+change lands through a pull request whose `verify`, `Dependency Review`,
+`CodeQL` and `Gitleaks` checks are green, with one approval from a code owner
+other than its author, resolved review threads and signed commits. Pull
+request creation is collaborators-only; rebase-merge is not allowed; a branch
+must be up to date before merging. Signing is machine-local: fix a missing
+`user.signingkey`, never `commit.gpgsign=false`. Branch first
+(`feat/<slug>` or `fix/<slug>`); `guard-branch-isolation.mjs` blocks
+`packages/*/src/` and `packages/*/tests/` writes on `main`. The full policy and
+reasoning is in `.claude/rules/git-workflow.md`.
 
 ## Agent Operating Model
 
 This repo runs on `templates/core`'s own harness -- installed onto its own
-root by adopting itself (see "Known gaps" for how), same shape as every
+root by adopting itself (`docs/known-gaps.md` says how), same shape as every
 project it bootstraps, with one adaptation: `packages/*/src/**` and
-`packages/*/tests/**` in every path-shape rule below, not a flat `src/`/`tests/`,
-matching this repo's real two-package layout.
+`packages/*/tests/**` in every path-shape rule, not a flat `src/`/`tests/`.
 
 **Hub-and-spoke is mandatory and hook-enforced, deliberately, with no
 project-level opt-out.** The hub plans and dispatches to spokes, and never
@@ -579,11 +117,7 @@ unconditionally by `.claude/hooks/guard-hub-src-writes.mjs` (blocks any
 Write/Edit whose PreToolUse payload does not carry both a writer-spoke
 `agent_type` and an `agent_id`, i.e. every direct top-level edit, including
 one from a session started with `--agent`) and `guard-branch-isolation.mjs` (the same block
-specifically on `main`), plus `disallowedTools: Agent` on every spoke. This
-was a deliberate choice among real alternatives (installing the harness
-minus these two hooks, or holding off entirely) confirmed with the
-maintainer during the self-adoption's Step 0 -- not a default nobody looked
-at. For a piece of work with a clear contract:
+specifically on `main`), plus `disallowedTools: Agent` on every spoke. For a piece of work with a clear contract:
 
 1. `test-author` writes failing tests from the contract (RED phase), and
    confirms they fail for the right reason.
@@ -591,166 +125,31 @@ at. For a piece of work with a clear contract:
    implementation, then refactors while green (GREEN phase).
 3. Read-only review spokes (`code-reviewer` always; `silent-failure-hunter`
    when the diff has error-handling paths; `baseline-impact-reviewer` when
-   the diff touches `templates/core/` or `templates/packs/`, checking the
-   baseline's own structural contracts -- caps, `domain-map.ts` coverage,
-   dotfile escaping, pack budgets -- that the other two don't know about)
-   run in parallel over the diff. Must-fix findings route back to
-   `code-implementer`, and the loop repeats until clean.
+   the diff touches `templates/core/` or `templates/packs/`) run in parallel
+   over the diff. Must-fix findings route back to `code-implementer`, and the
+   loop repeats until clean.
 
-**The guard covers `Bash` as well as `Write|Edit`, but it raises the bar
-rather than proving anything.** `guard-hub-src-writes.mjs` also runs on every
-`Bash` call (registered under the `Bash` matcher too -- same file, no extra
-hook, so the baseline's 10-hook cap is untouched) and applies the same
-writer-spoke allowlist to a conservative scan of `tool_input.command`: it
-blocks output redirects, `tee`, `sed -i`/`perl -i`, `cp`/`mv`/`install`/
-`rsync`/`ln` into a guarded path, `rm`/`unlink`/`touch`/`truncate`, `dd of=`,
-`patch`/`git apply` whose patch headers name a guarded path, a copy into, move
-of, or removal of an ancestor of a guarded directory (the project root,
-`packages`, `packages/<pkg>`, or a glob over them: `rsync -a /tmp/pkg/
-packages/cli/`, `rm -rf packages/cli`, `rm -rf .`), and
-`python`/`node`/`ruby`/`perl`/`php`/`deno`/`bun` inline code, heredocs or
-out-of-project script files that write, delete or move a guarded path
-(issue #96). It is a conservative screen with known misses, never a proof that a call writes nothing: an
-interpreter running a script that lives inside the project, an `eval` of a
-computed string, a build step or generator that writes `src/`, a formatter or
-fixer (`prettier --write`, `eslint --fix`, `pnpm lint:fix`), `git rm`/`git mv`/
-`git stash pop`, `find -exec`, `xargs` with no literal operand, a call whose argument list is
-longer than the scanner's size cap (allowed with a stderr note), a target
-spelled through a variable or command substitution, an ancestor spelled in a
-way the lexical check does not recognise (a container other than `packages`, `apps` or `libs`, a parent of the project root (`rm -rf ..`), a workspace container below the project root,
-a linked worktree's own root), and `tar`/`curl -o`/`git checkout|restore` all
-pass. So hub-and-spoke stays a convention backed by a guard that raises the
-bar, not
-a proof; the `main` ruleset is the real backstop, and dispatching the review spokes is a hub convention, not enforced.
-The maintainer's override is to run the command yourself with the `!`
-prefix at the Claude Code prompt (it runs directly, not as a tool call, so
-the `PreToolUse` guard is not in its path; upstream does not document hook
-behaviour for it either way) or to
-edit the hook's registration in `.claude/settings.json`; no flag or
-environment variable turns the guard off.
+The guard also screens `Bash`, but only conservatively; a managed deployment,
+an installed mod, a fork subagent or an agent-teams teammate can get around
+it. `onFailure: "block"` (Claude Code 2.1.295 or later) makes the four
+invariant guards fail closed, `permissions.deny` blocks reading `.env*` and
+`secrets/**`, and a spoke's `permissionMode` is overridden by an auto,
+`acceptEdits` or `bypassPermissions` session, so the hooks, not that field,
+bound a spoke. Detail, sources and the root harness inventory:
+`.claude/rules/hub-and-spoke.md`; dispatch sizing and recovery:
+`.claude/rules/agent-dispatch.md`.
 
-**A Claude Code Enterprise/managed deployment sits above this and can
-silently disable it.** Anthropic's settings precedence puts managed
-settings (a `managed-settings.json` file, an MDM policy, or a
-claude.ai-console-managed remote policy) above every project file, with
-no override except a few security-sensitive keys where a stricter
-lower-level value still wins. Two managed-only keys narrow this repo's own
-`.claude/settings.json` further: `allowManagedHooksOnly` limits hooks to
-the ones the organization deploys, and `allowManagedPermissionRulesOnly`
-makes managed settings the only source of permission rules (see
-[Claude Code's managed-settings docs](https://code.claude.com/docs/en/managed-settings)).
-Nothing in this repo's own files can detect or gate against that -- the
-managed file lives outside any project's working tree, at an OS-level path
-(`/Library/Application Support/ClaudeCode/managed-settings.json` on macOS,
-`/etc/claude-code/managed-settings.json` on Linux, an equivalent under
-`Program Files` on Windows), so `bin/check-harness.mjs` has no on-disk fact
-to check and this is a documented limit, not a gate. Run `/status` before
-trusting hub-and-spoke enforcement on a machine you don't control: its
-"Setting sources" line lists each settings file loaded and marks
-the managed one, and if
-`guard-hub-src-writes.mjs`/`guard-branch-isolation.mjs` aren't among what's
-actually running, treat this section as an unenforced checklist rather than
-an enforced gate until confirmed otherwise.
-
-**An installed Claude Code mod is a second silent override, below managed
-settings.** Mods (plugin-shipped TypeScript handlers) are on by default from
-Claude Code 2.1.286 (the upstream mods admin page documents no terminal or
-desktop split). Per the
-[mods events guide](https://code.claude.com/docs/en/plugins/mods/events), a mod
-that handles `tool.check` can approve a call that a `PreToolUse` hook outside
-managed settings blocked, and project `PreToolUse` hooks run
-only after the last mod calls `next`, so a mod that answers `tool.call`
-without it keeps them from running at all (same page).
-Only managed-settings hooks outrank a mod. Same limit as above: nothing in
-the repo can detect it. Run `/plugin` alongside `/status` before trusting the
-guards on a machine you don't control: upstream says a terminal session shows a
-dim `N mods active` line there naming the mods it loaded, and lists built-in
-mods separately under the Installed tab's **Built-in** heading. Upstream's
-reference page says the built-in `sec-default` guard (shown as
-`cc-plugin-sec-default`) loads ahead of user-installed mods only on a machine
-with managed settings or for a user signed in with a Team or Enterprise plan.
-
-**The guard keys on `agent_id` as well as `agent_type`.** A call counts as a
-writer spoke only with both present, so a call carrying `agent_type` but no
-`agent_id` is treated as the hub and is blocked.
-
-**Agent teams (experimental) are not covered or verified.** A split-pane
-teammate is a full session with no `agent_id`, so the guard treats it as the
-hub and blocks it (fail-closed). An in-process teammate has a documented
-`agent_id` (hooks reference), but its `agent_type` is documented only for
-subagents and `--agent` sessions, so whether one reports a writer
-`agent_type` is unconfirmed. If it does, a teammate built from `code-implementer`
-or `test-author` passes the guard as a writer spoke. A split-pane teammate does
-not get `disallowedTools` (only an in-process one does), which is why every
-spoke's `tools` list also omits `Agent`.
-
-**Fork subagents are on by default in every surface since Claude Code 2.1.302**
-(`CLAUDE_CODE_FORK_SUBAGENT=0` turns them off). A fork inherits the hub's
-conversation and cannot spawn further agents. The docs don't say what its hook
-payload carries; the guard treats it as the hub unless the payload reports a
-writer `agent_type` together with an `agent_id` (a hub started with
-`--agent code-implementer` could produce that), and the hub is blocked from
-guarded paths.
-
-**Guards that block on a crash, the secrets deny rule and `permissionMode`.**
-The baseline's four invariant guards (`guard-secret-writes`,
-`guard-hub-src-writes`, `guard-branch-isolation`, `guard-protected-paths`) carry
-`"onFailure": "block"` (Claude Code 2.1.295 or later), so a hook that cannot
-start, times out, exits with a code other than 0 or 2, or prints invalid JSON
-blocks the call instead of letting it through; the style guards and `guard-git-push-signed` stay fail-open (the push
-guard has its own parser, and the `main` ruleset rejects unsigned commits at
-merge). `guard-hub-src-writes` is also on `Bash`, so a missing `node` blocks
-every `Bash` call until fixed. `permissions.deny` carries `Read(./.env)`,
-`Read(./.env.*)` and `Read(./secrets/**)`; it does not cover `grep -r` or a
-script that opens the file. A session in auto, `acceptEdits` or
-`bypassPermissions` mode overrides a spoke's `permissionMode`, so the hooks, not
-that field, bound a spoke. Claude Code lets a subagent spawn subagents three
-layers deep by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`);
-`disallowedTools: Agent` keeps the roster flat.
-
-Full dispatch-sizing and recovery guidance:
-`.claude/rules/agent-dispatch.md` (auto-loads when editing
-`.claude/skills/**` or `.claude/agents/**`). Path-scoped rules auto-load on
-matching files the same way: `.claude/rules/src.md` on `packages/*/src/**`,
-`.claude/rules/tests.md` on `**/tests/**`/`**/*.test.ts`,
-`.claude/rules/refactoring.md` on both (behavior-preserving changes),
-`.claude/rules/docs.md` on this repo's own markdown (`templates/**`
-excluded, since it ships brand-neutral into every bootstrapped project) --
-the m3l-design content conventions (bold not italics, GitHub alerts for a
-must-not-miss point, plain copy, tabular data in tables) -- and six more
-covering this repo's own area-specific surfaces: `.claude/rules/ci.md`,
-`.claude/rules/releases.md`, `.claude/rules/design-system.md`,
-`.claude/rules/docs-site.md`, `.claude/rules/environments.md`, and
-`.claude/rules/evals.md` -- and nine more, one per shipped artifact, for a
-narrower focus than this file gives: `.claude/rules/package-cli.md` on
-`packages/cli/**`, `.claude/rules/package-plugin.md` on `packages/plugin/**`,
-`.claude/rules/baseline-core.md` on `templates/core/**`, and one per pack on
-`templates/packs/<name>/**`: `.claude/rules/pack-github.md`,
-`.claude/rules/pack-harness-extras.md`, `.claude/rules/pack-publishing.md`,
-`.claude/rules/pack-quality.md`, `.claude/rules/pack-supply-chain.md` and
-`.claude/rules/pack-worktrees.md`. A pack cannot ship a rule of its own (see
-`templates/packs/README.md`), which is why these live here and not in the
-pack. Each names its own trigger paths in its frontmatter.
-
-**Root harness inventory.** The root `.claude/` also carries these wired
-surfaces beyond the guards and spokes named above. `.claude/agents/Explore.md`
-is a read-only search agent outside the TDD roster. It is byte-identical
-to `templates/core/.claude/agents/Explore.md` and is the fifth of the
-baseline's five agents.
-
-| Surface                                  | Kind     | What it does                                                                                                                                                                                                    | Fires on                                                                                                         |
-| ---------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `.claude/hooks/inject-decision-gate.mjs` | Hook     | Injects a branch and PR reminder so isolation is chosen up front, not discovered when a guard blocks a write on `main`                                                                                          | `UserPromptSubmit`, prompts with a change-intent verb; advisory, never blocks                                    |
-| `.claude/hooks/post-edit-verify.mjs`     | Hook     | Runs prettier, eslint, package `tsc -b` and related vitest on an edited `.ts`/`.mts`/`.cts` under `src/` or `tests/`; other `.mjs`/`.js` get prettier and eslint only, so failures surface in-loop, not at push | `PostToolUse` `Write\|Edit`, ten `if` registrations (`*.ts`, `*.mts`, `*.cts`, `*.mjs`, `*.js`); exit 2 advisory |
-| `.claude/hooks/nudge-invariants.mjs`     | Hook     | Reminds that CLI and emitted-twin graders, `domain-map.ts`, `design/tokens.css` and SPDX headers change together                                                                                                | `PostToolUse` after any edit, root only; advisory                                                                |
-| `.claude/hooks/repair-core-bare.mjs`     | Hook     | Resets the `core.bare = true` that `EnterWorktree`/`ExitWorktree` leave behind, which breaks every git command in the root                                                                                      | `SessionStart` (`startup\|resume`) and `PostToolUse` on `EnterWorktree\|ExitWorktree\|Agent`                     |
-| `.claude/agents/Explore.md`              | Agent    | Read-only search on `claude-haiku-5-5`, overriding the built-in, so lookups never spend the hub's model or edit files                                                                                           | Dispatched by the hub for "where is X" lookups                                                                   |
-| `.claude/skills/starting-work/`          | Skill    | Picks a branch and PR target before any write, so work never starts on `main`                                                                                                                                   | `/starting-work`, before any code change                                                                         |
-| `.claude/skills/writing-commits/`        | Skill    | Drafts a Conventional Commit from the staged diff, so the `commit-msg` hook does not reject it                                                                                                                  | `/writing-commits`, "commit this"                                                                                |
-| `.claude/skills/creating-prs/`           | Skill    | Runs the gates, pushes and opens the PR with a conventional title, so a red or unsigned branch never reaches review                                                                                             | `/creating-prs`, "open a PR"                                                                                     |
-| `.claude/skills/finishing-work/`         | Skill    | Confirms the PR merged before deleting local branches and pruning refs, so an unmerged branch is never lost                                                                                                     | `/finishing-work`, after a merge                                                                                 |
-| `.claude/skills/triaging-ci/`            | Skill    | Maps a failing run to its pipeline step with a local repro command, so CI is diagnosed from logs rather than guessed                                                                                            | `/triaging-ci`, "why did CI fail"                                                                                |
-| `bin/strip-claude-trailers.mjs`          | Git hook | Removes harness-injected `Claude-*` trailer lines (never `Co-Authored-By:`) so they do not reach `lint-commit.mjs`                                                                                              | `lefthook.yml` `commit-msg`, run before `node bin/lint-commit.mjs --edit`                                        |
+Path-scoped rules load on matching files: `.claude/rules/src.md` on
+`packages/*/src/**`, `.claude/rules/tests.md` on tests,
+`.claude/rules/refactoring.md` on both, `.claude/rules/docs.md` on this
+repo's own markdown (`templates/**` excluded: it ships brand-neutral), and one
+per shipped artifact or surface: `.claude/rules/package-cli.md`,
+`.claude/rules/package-plugin.md`, `.claude/rules/baseline-core.md`,
+`.claude/rules/pack-github.md`, `.claude/rules/pack-harness-extras.md`,
+`.claude/rules/pack-publishing.md`, `.claude/rules/pack-quality.md`,
+`.claude/rules/pack-supply-chain.md` and `.claude/rules/pack-worktrees.md`. A
+pack cannot ship a rule of its own (`templates/packs/README.md`), which is why
+these live here. Each names its trigger paths in its frontmatter.
 
 **Forbidden patterns, hook-enforced:** `any` implied by CommonJS constructs,
 a missing `.js` extension on a relative import, a hand-edit to `dist/` or
@@ -766,208 +165,46 @@ swallow an error silently, no top-level side effects and never
 
 ## Releases
 
-Only `@monte3l/groundwork` (the CLI, `packages/cli`) ships to npm.
-`@monte3l/groundwork-plugin` (`/customize`, `packages/plugin`) is `private`
-and distributes only through the Claude Code marketplace
-(`.claude-plugin/marketplace.json`'s relative-path `source`), never npm.
-A PR with a user-visible CLI change should add a changeset (`pnpm changeset`);
-the PR-template checkbox is the only check, nothing in CI enforces it. A
-push to `main` runs `release.yml`, which opens a version PR or publishes.
-The `rc` prerelease series ended at `1.0.0`; only `patch` changesets are intended to
-land in the 1.0 series, by convention (no config or workflow rejects other bump
-types).
-
-A few invariants matter even when this file isn't open: **renaming or
-moving `release.yml` breaks npm's trusted publisher**; publishes are
-**staged, not direct** (`npm stage approve` is a separate, non-automatable
-step that needs a live 2FA code -- the git tag and GitHub Release exist before the package is
-actually installable), and superseding older versions is a maintainer command
-run **after** that approval, `node bin/deprecate-superseded.mjs`, never a CI
-step; the version PR authenticates as a GitHub App, not
-`GITHUB_TOKEN`, because `main`'s ruleset requires checks a bot-token PR
-can't trigger; and a plugin-only change needs no changeset.
-
-Full detail -- the publish flow, the GA promotion record, the one-time npm
-and GitHub App setup, `bin/pnpm-publish-shim.mjs`'s OIDC workaround, and the
-`npm-publish` environment gate: `.claude/rules/releases.md` (auto-loads on
-`.github/workflows/release.yml`, `.changeset/**`, `.claude-plugin/**`,
-`packages/*/package.json`).
+Only `@monte3l/groundwork` (the CLI, `packages/cli`) ships to npm;
+`@monte3l/groundwork-plugin` is `private` and distributes only through the
+Claude Code marketplace. A PR with a user-visible CLI change should add a
+changeset (`pnpm changeset`); a plugin-only change needs none. A push to `main`
+runs `release.yml`. **Renaming or moving `release.yml` breaks npm's trusted
+publisher**, and a publish is staged: `npm stage approve` is a separate step
+that needs a live 2FA code. Detail: `.claude/rules/releases.md`, with the supply-chain signals in `.claude/rules/release-supply-chain.md` and the GA record, one-time setup and superseding versions in `.claude/rules/release-history.md`.
 
 ## Testing
 
-`pnpm test:coverage`'s v8 coverage gate is `perFile: true` at OpenSSF Best
-Practices' Gold-level bar -- 90% statements/lines, 80% branches/functions --
-applied to all four metrics rather than only the two the criteria name,
-same shape as `templates/core`'s own gate. A file with a genuinely
-unexercised branch will fail this even if the aggregate looks fine -- see
-`git.test.ts` (mocks `execFileSync` via `vi.hoisted`) and `main-run.test.ts`
-(mocks `git.js`/`plugin.js`, exercises real `emitTemplate()` against a real
-temp directory) for the patterns this repo uses to close that kind of gap
-without mocking away the thing under test.
-
-**Property-based tests** (`fast-check`, files named `*.property.test.ts`) run
-alongside example-based ones inside `pnpm test` -- this is the project's
-dynamic-analysis tool for OpenSSF Best Practices' Gold-level
-`dynamic_analysis` criterion, so it runs on every push/PR and in
-`release.yml`'s `pack` job before any release, not as a one-off manual pass.
-They generate input across a parser's or boundary function's full domain
-(`jsonc.ts`, `tokens.ts`, `assets.ts`'s dotfile mapping, `merge-json.ts`) and
-differentially fuzz the harness grader's `frontmatter.ts` implementation
-against its emitted JavaScript twin (the toolchain grader's own property
-tests check it never throws and degrades to `{checked:0}` rather than
-guessing, not a twin diff). See
-[`docs/security-review.md`](docs/security-review.md) and `SECURITY.md`'s
-"Dynamic analysis" for the full write-up.
-
-The `*.e2e.test.ts` files are the ones that bootstrap projects and pack tarballs;
-some unit tests (e.g. `packages/cli/tests/templates/core-hooks.test.ts`) also spawn real child processes.
-`bootstrap.e2e.test.ts` (the built CLI, then `pnpm install`/`pnpm verify`
-inside the emitted project) is the acceptance test, and each `packs-*.e2e.test.ts`
-does the same with a pack installed (`harness-extras`, the oldest pack, is covered by
-`packs.e2e.test.ts`, with no `packs-harness-extras` file). They're excluded from `pnpm test`'s
-default run (`vitest.config.ts`'s `**/*.e2e.test.ts` exclude) and only run via
-`pnpm test:e2e`. Run it after any change to `packages/cli/src/`,
-`templates/core/`, or `packages/plugin/skills/customize/` -- it has already
-caught real bugs a unit-test mock would hide. Don't skip it before calling a change to the emitted baseline
-done.
+Vitest with a per-file v8 coverage gate (90% statements/lines, 80%
+branches/functions), property tests (`*.property.test.ts`, `fast-check`) in
+`pnpm test`, and `*.e2e.test.ts` files that bootstrap real projects and pack
+tarballs, run only through `pnpm test:e2e`. Run `pnpm test:e2e` after any change
+to `packages/cli/src/`, `templates/core/` or `packages/plugin/skills/customize/`.
+Detail: `.claude/rules/tests.md`.
 
 ## Definition of Done
 
-`pnpm verify` passes here; `pnpm test:e2e` passes if the change touched
-`packages/cli/src/`, `templates/core/`, or the `/customize` skill (CI runs it on
-every PR except documentation-only ones, where its steps are skipped, and
-`verify` gates on it, but no local pre-push hook does, so run it before
-pushing); the
-baseline's caps (above) still hold if a `.claude/` file was added or
-removed from `templates/core`. Anything that changes what the CLI's tarball
-ships or how it locates its data is proved by `pack.e2e.test.ts`, not by
-running the CLI from the checkout, where every path resolves regardless. If
-you touched this repo's _own_ `.claude/` (agents, hooks, skills, rules,
-`settings.json` at root, not `templates/core/`), grade it the same way the
-baseline's `bin/check-harness.mjs` grades `templates/core` -- there is no
-`package.json` script for this (the root `check:harness` grades `templates/core`, and the emitted baseline has no harness script at all), so use
-the `grade-own-harness` skill (`/grade-own-harness`), which points the same
-rule module at the repo root instead. Structural failures gate, rubric
-findings only warn -- same rule as the baseline.
+`pnpm verify` passes; `pnpm test:e2e` passes too if the change touched
+`packages/cli/src/`, `templates/core/` or the `/customize` skill (CI runs it on
+every PR except documentation-only ones, but no local pre-push hook does, so
+run it before pushing). Anything that changes what the CLI's tarball ships or
+how it finds its data is proved by `pack.e2e.test.ts`, not by running the CLI
+from the checkout. The baseline's caps still hold if a `.claude/` file was
+added to or removed from `templates/core`. If you touched this repo's _own_
+`.claude/` (agents, hooks, skills, rules, root `settings.json`), grade it with
+`/grade-own-harness`: structural failures gate, rubric findings only warn. The full wording is in `.claude/rules/definition-of-done.md`.
 
 **A new tracked file outside `templates/**` needs an SPDX header** (a
-`SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors` +
-`SPDX-License-Identifier: MIT` line comment, near the top -- see
-`bin/check-license-headers.mjs`) if its extension is `.ts`/`.mjs`/`.js`/
-`.sh`/`.yml`/`.yaml`, or a glob in `REUSE.toml` otherwise (JSON, Markdown,
-and the handful of dotfiles listed there never carry an inline header).
-`node bin/check-license-headers.mjs --fix` inserts it. A file under neither
-umbrella fails the `license-headers` verify step outright -- add a glob to
-`REUSE.toml` in the same commit rather than widening the header-extension
-set for one file (`HEADER_EXTENSIONS` in `bin/check-license-headers.mjs` is
-hard-coded and no test pins it).
+`SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors` and
+`SPDX-License-Identifier: MIT` line comment) if its extension is `.ts`, `.mjs`,
+`.js`, `.sh`, `.yml` or `.yaml`, or a glob in `REUSE.toml` otherwise.
+`node bin/check-license-headers.mjs --fix` inserts the header; a file under
+neither fails the `license-headers` step. Add a glob to `REUSE.toml` in the same
+commit rather than widening `HEADER_EXTENSIONS`.
 
 ## Known gaps (deliberately out of scope so far)
 
-- `templates/packs/` ships six packs, each covering one theme (wiring contract
-  and each pack's `adoptNotes` live in `templates/packs/README.md` and its
-  `pack.json` files). `harness-extras`: Claude Code session ergonomics
-  (compaction-handoff hooks, `guard-readonly-bash`, statusLine and
-  `subagentStatusLine` renderers); the only pack using `wiring.settingsTopLevel`,
-  and in adopt mode `/customize` (not `merge-json`) skips the `statusLine`/`subagentStatusLine` keys and its three statusline scripts when either key is already set. `quality`:
-  `type-design-analyzer` agent and the `check-file-budget` ratchet. `github`:
-  `claude-action` in mention-mode, an automated PR-review workflow and three
-  `gh` skills; both workflows need an auth secret the pack cannot create.
-  `publishing`: the release pipeline adapted from this repo's own
-  (see "Releases"); **fresh mode only**, since it encodes registry and GitHub
-  App decisions too project-specific to automate in adopt mode, and it cannot
-  wire `@changesets/cli` because a pack never edits dependencies. `supply-chain`:
-  `gitleaks.yml` and `scorecard.yml`, adopt-capable for every project kind (the
-  SPDX header gate stays in `publishing` because it fails an established
-  project's `pnpm verify` until a one-time backfill). `worktrees`: enforces
-  worktree-only src/tests development (`guard-worktree-only.mjs`, a
-  `working-in-worktrees` skill, dependency-install and `core.bare` repair
-  hooks, a `.worktreeinclude`); `recommended: false` in `pack-map.ts` on
-  purpose, since it changes the day-to-day workflow.
-- **No standalone "add a pack to an already-bootstrapped project" flag.**
-  Today that path is: re-run the CLI against the now-non-empty directory
-  (it auto-detects adopt mode), then run `/customize`. Works, but is
-  indirect -- a dedicated additive install mode is real future work.
-- **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it.
-  Re-checked 2026-10-01: the original blocker is gone, since `pnpm/setup@v3`
-  (2026-09-20) has a `node-version-file` input and auto-detects
-  `.node-version`, so a migration needs no second Node pin and passes
-  `check-node-version.mjs` unchanged as long as it spells
-  `node-version-file: .node-version` (a `runtime: node@N` literal would
-  evade that gate's `node-version:` regex). It is deferred, not blocked:
-  v3 is days old with open reliability issues, it needs pnpm 11+, it changes
-  how Node is provisioned in the publishing jobs, and the org's actions
-  allowlist must add `pnpm/setup` first. `pnpm/action-setup` itself has no
-  such input. Issue #47 is closed, so track the re-check in a new issue; do it when
-  `pnpm/setup` ships a v3.x with no open hang or network-failure bug and the
-  allowlist is settled.
-- **`.claude/` harness support for working _in this repo_ (as opposed to what
-  it emits) is now installed** -- see "Agent Operating Model" above for what
-  and why. It arrived by running this repo's own published CLI against
-  itself (`npx @monte3l/groundwork@next .` at the time, adopt mode; an adopter now
-  uses the default `latest` tag, see `.claude/rules/releases.md`) and its own
-  `/customize` skill, the same path any adopter follows -- self-hosting as
-  the first real end-to-end proof of both, not a hand-rolled install. Grade
-  it with the same rule module `templates/core`'s `bin/check-harness.mjs`
-  uses (see "Definition of Done" for the command) -- 0 structural findings
-  expected.
-  What _does_ already exist independently is `.claude/worktrees/**`,
-  created ad hoc whenever a subagent runs with
-  `isolation: "worktree"`: a full second checkout of this repo, uncommitted
-  state included. `.gitignore`, `.prettierignore`, `eslint.config.js` and both
-  vitest configs exclude it explicitly -- without that, prettier fails on a
-  sibling session's in-progress formatting and every test in the repo runs
-  twice. Add the same exclusion to any new file-discovery config (a future
-  ESLint plugin config, a coverage include list) rather than assuming the
-  existing excludes cover it. `templates/core` carries the same four
-  exclusions, plus `.gitignore` entries for `.env`/`.env.local`/
-  `.env.*.local` (never commit secrets, regardless of whether a project adds
-  its own `.worktreeinclude` file) so an emitted project gets the same
-  protection from day one -- see
-  `packages/cli/tests/survey/fs-walk.test.ts` and
-  `packages/cli/tests/post-edit-verify.test.ts` for the regression coverage.
-  `.claude/hooks/post-edit-verify.mjs` (both this repo's own copy and
-  `templates/core`'s) resolves the git working-tree root that actually
-  contains the edited file (`resolveVerifyRoot`) rather than trusting
-  `CLAUDE_PROJECT_DIR`, which Claude Code pins to the session's original
-  root and does not move into a worktree -- see the hook's own
-  header comment. `finishing-work` and `starting-work` know about a linked
-  worktree too: `finishing-work` checks `git worktree list --porcelain` before
-  deleting a branch, and only `starting-work` hands the branch step to the
-  optional `worktrees` pack's own skill when it's installed. This repo's own
-  harness does not **enforce** worktree-only development or automate
-  per-worktree dependency installation: the `worktrees` pack ships that
-  (`guard-worktree-only.mjs`, `ensure-worktree-deps.mjs`), and this repo has
-  not installed it.
-- **Adopt mode's `inventory.json` still records `templateRoot` as an absolute
-  path, but baseline additions no longer depend on it** (schema 5): they are
-  staged at `.groundwork/baseline/` and hash-checked, and `/customize` never
-  falls back to `templateRoot` for a schema 5+ inventory. Only a schema 1-4
-  inventory still reads additions from it, and Step 0 reports a vanished path
-  and asks for a re-run rather than guessing. `report.ts`'s cap estimate reads
-  `templateRoot` inside the CLI run itself, where it still exists. Staged
-  pack files are inert `.staged` copies, written to a temp sibling and swapped in by rename (never half-written), like
-  `baseline/`; the staging refuses a symlinked `.groundwork` or `packs/`
-  directory.
-- **Adopt mode's post-merge cap counts (in `report.ts`) are an estimate, not
-  a reconciliation.** It assumes no name overlap between the baseline's
-  agents/skills/hooks and the project's own -- good enough to flag "you may
-  go over budget," not precise enough to be the final word; `/customize`'s
-  Step 0 confirmation round settles it for real.
-- **GitHub settings live outside the repo.** Org-write and secret-write actions
-  need a human, not an agent (Claude Code's permission classifier refuses an
-  agent's attempt), so they were applied by hand and every item was confirmed
-  applied on 2026-10-04. [`docs/github-blueprint.md`](docs/github-blueprint.md)
-  holds the exact `gh api` commands; the repo-scope ones are also scripted in
-  `monte3l/.github` (`bin/apply-repo-baseline.sh`, `--check` first). The
-  SHA-pinning allowlist must cover sub-path actions, so allow
-  `changesets/action/*` as well as `changesets/action@*`. Immutable releases
-  are deliberately off: `release.yml` uploads assets after the Release exists.
-
-  This repository's Advanced Security settings come from the organization's
-  `monte3l-default` code security configuration, enforced on the repository;
-  that configuration is the source of truth. Read it with
-  `gh api repos/monte3l/m3l-groundwork/code-security-configuration` and
-  `gh api orgs/monte3l/code-security/configurations/<id>`. One caveat remains:
-  new repositories still default to the "GitHub recommended" configuration,
-  which leaves Dependabot security updates `not_set`.
+Deliberate omissions (the six packs and what each covers, no standalone
+"add a pack" flag, `pnpm/setup` deferred, how this repo's own harness arrived,
+adopt-mode inventory and cap-count caveats, and the GitHub settings that live
+outside the repo) are recorded in `docs/known-gaps.md`.
