@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+name: Workflow lint
+
+# Lints the repository's own workflows on every change to them: actionlint for
+# syntax and expression errors, zizmor for security problems (template
+# injection, excessive permissions, unpinned actions, credential persistence).
+# Nothing here needs a secret; zizmor runs its offline audits only.
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**"]
+  pull_request:
+    branches: [main]
+    paths: [".github/workflows/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: actionlint
+        # Pinned by tag: Dependabot does not track this value, bump it by hand.
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
+        with:
+          # Offline audits only, so the job needs no token.
+          online-audits: false
+          advanced-security: false
