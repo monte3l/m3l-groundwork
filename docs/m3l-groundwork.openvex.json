@@ -4,7 +4,7 @@
   "author": "monte3l (Enrico Lionello)",
   "role": "Maintainer",
   "timestamp": "2026-10-16T14:16:58Z",
-  "version": 2,
+  "version": 3,
   "tooling": "Assembled from docs/security-review.md, GitHub's advisory records and an inspection of the published tarballs; see SECURITY.md, \"Dependency and code-scanning findings\".",
   "statements": [
     {
@@ -37,6 +37,12 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.3",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
         }
       ],
@@ -75,6 +81,12 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
         }
       ],
       "status": "not_affected",
@@ -111,6 +123,12 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.3",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
         }
       ],
@@ -149,6 +167,12 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
         }
       ],
       "status": "not_affected",
@@ -185,6 +209,12 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.3",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
         }
       ],
@@ -223,6 +253,12 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
         }
       ],
       "status": "not_affected",
@@ -259,6 +295,12 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.3",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
         }
       ],
@@ -297,6 +339,12 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
         }
       ],
       "status": "not_affected",
@@ -333,6 +381,12 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.3",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
         }
       ],
@@ -371,6 +425,12 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
         }
       ],
       "status": "not_affected",
@@ -407,6 +467,12 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.3",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
         }
       ],
@@ -445,6 +511,12 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
         }
       ],
       "status": "not_affected",
@@ -481,6 +553,12 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
         }
       ],
       "status": "not_affected",
@@ -488,5 +566,5 @@
       "impact_statement": "`sharp` is not part of the published package. The advisory was raised against the docs deploy tooling lockfile (`tools/deploy`), recorded in docs/security-review.md under \"Advisory in the docs deploy tooling\", which are not published. The package declares no dependencies, bundles none, and ships no lockfile or node_modules directory (checked against the 1.0.0, 1.0.1 and 1.0.2 tarballs), so it contains no copy of `sharp`. Projects the CLI generates install their own dependency trees, which this statement does not cover."
     }
   ],
-  "last_updated": "2026-10-16T21:01:03Z"
+  "last_updated": "2026-10-19T09:03:42Z"
 }
