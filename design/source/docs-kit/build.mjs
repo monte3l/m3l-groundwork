@@ -145,7 +145,7 @@ async function renderMarkdownPages(config, mdPages, check) {
       }
       throw cause;
     }
-    for (const span of result.italics) italics.push(`${page.src}: ${span}`);
+    for (const span of new Set(result.italics)) italics.push(`${page.src}: ${span}`);
     rendered.set(page.src, result);
   }
   return { sources, rendered, problems, italics };
@@ -325,7 +325,7 @@ async function localCssFiles(config) {
 async function copyAssets(config, outDir, localCss) {
   const design = path.join(config.root, config.designDir);
   const assets = path.join(outDir, "assets");
-  for (const sub of ["source/components", "source/fonts", "kit", "local"]) {
+  for (const sub of ["source/components", "source/fonts", "kit", ...(localCss.length > 0 ? ["local"] : [])]) {
     await mkdir(path.join(assets, sub), { recursive: true });
   }
   await copyFile(path.join(design, "tokens.css"), path.join(assets, "tokens.css"));
@@ -408,6 +408,10 @@ async function repoProblems(config, sources) {
   }
   for (const rel of config.parity ?? []) {
     const module = await import(pathToFileURL(path.join(root, rel)).href);
+    if (typeof module.default !== "function") {
+      problems.push(`${rel}: a parity module must default-export an async function ({ root, config }) => string[]`);
+      continue;
+    }
     problems.push(...(await module.default({ root, config })).map((message) => `${rel}: ${message}`));
   }
   return problems;

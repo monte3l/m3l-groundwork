@@ -3,15 +3,15 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Compares the live docs site with the site this repo builds, and the npm
- * package's description, homepage and keywords with the GitHub repo's.
+ * Compares the live docs site with the site this repo builds, and the
+ * manifest's description, homepage and keywords with the GitHub repo's.
  *
- *   node source/docs-kit/check-live.mjs --site _site [--url https://groundwork.monte3l.com]
- *   node source/docs-kit/check-live.mjs --metadata
+ *   node design/source/docs-kit/check-live.mjs [--config docs.config.mjs] --site _site [--url <origin>]
+ *   node design/source/docs-kit/check-live.mjs [--config docs.config.mjs] --metadata
  *
  * `--site <dir>` is a directory written by `node source/docs-kit/build.mjs --out`.
  * Every page, the 404 page and every file under `assets/` is fetched from
- * `--url` and must equal the built file byte for byte, and each response
+ * `--url` (default: the config's `siteUrl`) and must equal the built file byte for byte, and each response
  * must carry every header the built `_headers` file asks for (exact value).
  * That catches what the build alone cannot: a deploy that never landed, and
  * a Cloudflare zone setting that rewrites a page or replaces a header (zone
@@ -20,10 +20,10 @@
  * A fresh deploy can take a moment to reach every edge, so a failing run is
  * repeated (`--attempts`, `--delay` seconds) before it is reported.
  *
- * `--metadata` reads `packages/cli/package.json` and
- * `https://api.github.com/repos/monte3l/m3l-groundwork` (with `GITHUB_TOKEN`
- * when set) and fails when `description`, `homepage` or `keywords`/`topics`
- * differ. CLAUDE.md keeps those equal by hand; this is the check.
+ * `--metadata` reads the config's `manifest` and the GitHub API for the
+ * config's `repo` (with `GITHUB_TOKEN` when set) and fails when `description`
+ * or `homepage` differ, or `keywords` and `topics` when the manifest has
+ * `keywords`.
  *
  * Exit codes: 0 all matched, 1 a mismatch or an unreachable site, 2 usage.
  */

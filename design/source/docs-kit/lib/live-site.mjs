@@ -7,7 +7,7 @@
  * `expectedHeadersFor`), comparing a live response's headers with them
  * (`diffHeaders`), mapping a built file to its public URL (`pageUrlPath`),
  * locating the first differing line of two page bodies (`firstDifference`),
- * and comparing package.json's description, homepage and keywords with the
+ * and comparing the manifest's description, homepage and keywords with the
  * GitHub repo's (`diffMetadata`). None of them does I/O, so each is tested
  * without a network.
  */
@@ -197,7 +197,7 @@ export function firstDifference(expected, actual) {
 }
 
 /**
- * Compares package.json's `description`, `homepage` and `keywords` with the
+ * Compares the manifest's `description`, `homepage` and `keywords` with the
  * GitHub repo's `description`, `homepage` and `topics`. Keywords and topics
  * compare as sets. An empty, null or missing homepage or description equal
  * each other.

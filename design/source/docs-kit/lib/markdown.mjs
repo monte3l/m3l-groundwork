@@ -151,9 +151,22 @@ function scanHeadingLines(source) {
  * standalone call (site-wide anchor validation) and `renderMarkdown` itself,
  * so the two can never disagree about a page's ids.
  */
+/**
+ * Drops a leading YAML frontmatter block (`---` on the first line, up to the
+ * next `---` line), which a skill or agent file carries and which is metadata,
+ * not page text. Text without one is returned unchanged.
+ *
+ * @param {string} source
+ * @returns {string}
+ */
+export function stripFrontmatter(source) {
+  const match = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(source);
+  return match ? source.slice(match[0].length) : source;
+}
+
 export function extractHeadings(source) {
   const seen = new Map();
-  return scanHeadingLines(source).map(({ level, text }) => {
+  return scanHeadingLines(stripFrontmatter(source)).map(({ level, text }) => {
     const base = slugifyHeading(text);
     const count = seen.get(base) ?? 0;
     seen.set(base, count + 1);
@@ -641,8 +654,9 @@ function renderFootnotesSection(ctx) {
  * function, which is enough for a standalone render but never enough for a
  * real multi-page site -- see `source/docs-kit/build.mjs`'s own resolver.
  */
-export function renderMarkdown(source, options = {}) {
+export function renderMarkdown(rawSource, options = {}) {
   const resolveLink = options.resolveLink ?? ((href) => href);
+  const source = stripFrontmatter(rawSource);
   const stripped = stripHtmlComments(source);
   const { lines, footnoteDefs } = extractFootnoteDefs(stripped.split("\n"));
   const headings = extractHeadings(source);
