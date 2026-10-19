@@ -66,6 +66,8 @@ packages/plugin/        Phase B: the /customize skill
                          cleanup of stale GitHub Deployments/Environments --
                          see .claude/rules/environments.md),
                          dependency-review.yml, scorecard.yml, gitleaks.yml,
+                         reuse.yml (`reuse lint`), workflow-lint.yml
+                         (actionlint + zizmor),
                          security-audit.yml (daily `pnpm audit`, opens one
                          issue on a high-severity advisory),
                          soak.yml (manual only: runs bin/soak.sh against the

@@ -103,7 +103,12 @@ paths:
   importable entry point (see `packages/cli/package.json`'s `exports`), and
   Snyk overlaps with both Socket and `dependency-review.yml`/Dependabot for
   a package that has zero runtime dependencies to begin with -- one
-  vulnerability-scanning badge is enough. `gitleaks.yml` runs
+  vulnerability-scanning badge is enough. `reuse.yml` runs `reuse lint`
+  against `REUSE.toml` (the `license-headers` verify step checks only the
+  header extensions, never that REUSE itself is satisfied), and
+  `workflow-lint.yml` runs actionlint and zizmor on any change to a workflow;
+  both are copied from the org's `workflow-templates/` and neither is a
+  required check. `gitleaks.yml` runs
   `gitleaks/gitleaks-action` (secret scanning) on the same
   push/PR/weekly/dispatch shape as `scorecard.yml`, and is a required check on
   `main`'s ruleset (alongside `verify`, `Dependency Review` and `CodeQL`). Its
