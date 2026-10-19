@@ -137,3 +137,43 @@ Promise<void>` whose arrow body returns a value fails typecheck (TS2322);
   the template payload by its anchored paths (`templates/**`,
   `packages/cli/templates/**`), never `**/templates/**`, which would
   silently skip this directory.
+
+## Testing strategy
+
+> Moved verbatim from the root `CLAUDE.md` ("Testing") so it loads only when you edit a test.
+
+`pnpm test:coverage`'s v8 coverage gate is `perFile: true` at OpenSSF Best
+Practices' Gold-level bar -- 90% statements/lines, 80% branches/functions --
+applied to all four metrics rather than only the two the criteria name,
+same shape as `templates/core`'s own gate. A file with a genuinely
+unexercised branch will fail this even if the aggregate looks fine -- see
+`git.test.ts` (mocks `execFileSync` via `vi.hoisted`) and `main-run.test.ts`
+(mocks `git.js`/`plugin.js`, exercises real `emitTemplate()` against a real
+temp directory) for the patterns this repo uses to close that kind of gap
+without mocking away the thing under test.
+
+**Property-based tests** (`fast-check`, files named `*.property.test.ts`) run
+alongside example-based ones inside `pnpm test` -- this is the project's
+dynamic-analysis tool for OpenSSF Best Practices' Gold-level
+`dynamic_analysis` criterion, so it runs on every push/PR and in
+`release.yml`'s `pack` job before any release, not as a one-off manual pass.
+They generate input across a parser's or boundary function's full domain
+(`jsonc.ts`, `tokens.ts`, `assets.ts`'s dotfile mapping, `merge-json.ts`) and
+differentially fuzz the harness grader's `frontmatter.ts` implementation
+against its emitted JavaScript twin (the toolchain grader's own property
+tests check it never throws and degrades to `{checked:0}` rather than
+guessing, not a twin diff). See
+[`docs/security-review.md`](../../docs/security-review.md) and `SECURITY.md`'s
+"Dynamic analysis" for the full write-up.
+
+The `*.e2e.test.ts` files are the ones that bootstrap projects and pack tarballs;
+some unit tests (e.g. `packages/cli/tests/templates/core-hooks.test.ts`) also spawn real child processes.
+`bootstrap.e2e.test.ts` (the built CLI, then `pnpm install`/`pnpm verify`
+inside the emitted project) is the acceptance test, and each `packs-*.e2e.test.ts`
+does the same with a pack installed (`harness-extras`, the oldest pack, is covered by
+`packs.e2e.test.ts`, with no `packs-harness-extras` file). They're excluded from `pnpm test`'s
+default run (`vitest.config.ts`'s `**/*.e2e.test.ts` exclude) and only run via
+`pnpm test:e2e`. Run it after any change to `packages/cli/src/`,
+`templates/core/`, or `packages/plugin/skills/customize/` -- it has already
+caught real bugs a unit-test mock would hide. Don't skip it before calling a change to the emitted baseline
+done.

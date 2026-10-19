@@ -40,3 +40,22 @@ paths:
   root-only and has no `templates/core` twin; its test sits in the same folder.
 - **Dispatch `baseline-impact-reviewer`** alongside `code-reviewer` on any
   diff that touches this tree.
+
+## Design record
+
+> Moved verbatim from the root `CLAUDE.md` ("Architecture notes") so it loads only when you edit the files it governs.
+
+- **`templates/core`'s caps bind the baseline only, verified by counting
+  (`packages/cli/src/caps.ts`'s `countBaselineCaps`/`CAP_LIMITS`), not
+  every installed pack on top of it:** ≤5 agents, ≤8 skills (7 in
+  `templates/core/.claude/skills/` - `/customize` via the installed plugin
+  = 8), ≤10 hooks, ≤3 CI workflows, ≤12 root `package.json` scripts (the five things `caps.ts` counts); by
+  convention, 0 gates that exist only to check documentation about the repo itself.
+  Adding a new agent/skill/hook/workflow/script to `templates/core` means
+  removing or merging an existing one first -- `caps.ts` is the one place
+  the cap numbers and the counting logic live, so `report.ts` (the
+  adoption-report table) and `main.ts` (the fresh-mode post-`--pack`
+  summary) can't state a different number for the same cap. A pack
+  declares its own `budget` delta in `pack.json`, checked by a structural
+  test against its own `files/` tree's actual contents -- see
+  `templates/packs/README.md`.
