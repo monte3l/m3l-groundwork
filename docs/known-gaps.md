@@ -2,12 +2,14 @@
 
 > Moved verbatim from the root `CLAUDE.md` ("Known gaps"): what is deliberately out of scope so far.
 
-- `templates/packs/` ships seven packs, each covering one theme (wiring contract
+- `templates/packs/` ships eight packs, each covering one theme (wiring contract
   and each pack's `adoptNotes` live in `templates/packs/README.md` and its
-  `pack.json` files). `harness-extras`: Claude Code session ergonomics
-  (compaction-handoff hooks, `guard-readonly-bash`, statusLine and
-  `subagentStatusLine` renderers); the only pack using `wiring.settingsTopLevel`,
-  and in adopt mode `/customize` (not `merge-json`) skips the `statusLine`/`subagentStatusLine` keys and its three statusline scripts when either key is already set. `quality`:
+  `pack.json` files). `harness-extras`: Claude Code session hooks
+  (compaction-handoff hooks, `guard-readonly-bash`). `statusline`: the
+  `statusLine` and `subagentStatusLine` renderers; the only pack using
+  `wiring.settingsTopLevel`, and in adopt mode `/customize` (not `merge-json`)
+  skips the `statusLine`/`subagentStatusLine` keys and the script that renders
+  each when either key is already set. `quality`:
   `type-design-analyzer` agent and the `check-file-budget` ratchet. `claude-github`:
   `claude-action` in mention-mode and an automated PR-review workflow, which
   need an auth secret the pack cannot create. `github`: three `gh` skills.

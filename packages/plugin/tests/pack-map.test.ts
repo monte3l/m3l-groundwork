@@ -4,7 +4,7 @@
 // This test verifies recommendPacks (src/pack-map.ts), which /customize uses
 // to suggest optional templates/packs/* bundles during its interview: given a
 // set of interview answers, it must deterministically recommend the same
-// packs (harness-extras, github, claude-github, ...) across every project kind, and every
+// packs (harness-extras, statusline, github, claude-github, ...) across every project kind, and every
 // recommendation must carry non-empty "because" evidence and a non-empty
 // name. Without this test, a change to pack-map.ts could silently stop
 // recommending a pack for some project kind, or return a recommendation with
@@ -24,8 +24,12 @@
 // gate. Both are language-level, not harness-ergonomics-level, so they get
 // their own pack recommended for every project kind; harness-extras's own
 // evidence must no longer mention either now that they live separately --
-// only the compaction-handoff hooks, the read-only Bash guard and the
-// statusLine remain.
+// only the compaction-handoff hooks and the read-only Bash guard remain.
+//
+// The status line was then carved out of `harness-extras` into its own
+// `statusline` pack, recommended for every project kind and listed directly
+// after `harness-extras`; harness-extras's own evidence must no longer
+// mention it.
 import { describe, expect, it } from "vitest";
 import { recommendPacks } from "../src/pack-map.js";
 import type { InterviewAnswers } from "../src/kind-facet-map.js";
@@ -45,10 +49,11 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly seven recommendations: harness-extras, github, claude-github, publishing, worktrees, supply-chain and quality", () => {
+  it("returns exactly eight recommendations: harness-extras, statusline, github, claude-github, publishing, worktrees, supply-chain and quality", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
     expect(names).toEqual([
       "harness-extras",
+      "statusline",
       "github",
       "claude-github",
       "publishing",
@@ -75,7 +80,7 @@ describe("recommendPacks", () => {
     }
   });
 
-  it("recommends harness-extras with evidence naming the compaction-handoff hooks, the read-only Bash guard and the folded-in statusline segment, and no longer mentions the type-design agent or file-budget gate now that they live in the separate quality pack, for every project kind", () => {
+  it("recommends harness-extras with evidence naming the compaction-handoff hooks and the read-only Bash guard, and no longer the statusline, the type-design agent or the file-budget gate, for every project kind", () => {
     for (const kind of [
       "library",
       "cli",
@@ -89,19 +94,31 @@ describe("recommendPacks", () => {
       );
       expect(harnessExtras?.recommended).toBe(true);
       expect(harnessExtras?.because.length).toBeGreaterThan(0);
-      // Substrings distinguishing the artifacts that remain in this pack:
-      // the compaction-handoff hooks and the read-only Bash guard.
-      expect(harnessExtras?.because).toMatch(/compaction/i);
-      expect(harnessExtras?.because).toMatch(/read-only Bash/i);
-      // A substring distinguishing the folded-in statusline segment: live
-      // context-window pressure, rendered across the five documented rows
-      // (session, model, context, quota, work).
-      expect(harnessExtras?.because).toMatch(/context.window/i);
-      expect(harnessExtras?.because).toMatch(/session|model|quota|work/i);
+      expect(harnessExtras?.because).toMatch(/compact/i);
+      expect(harnessExtras?.because).toMatch(/read-only|readonly/i);
+      // The status line moved to the separate `statusline` pack.
+      expect(harnessExtras?.because).not.toMatch(/context.window/i);
+      expect(harnessExtras?.because).not.toMatch(/statusline|status line/i);
       // The type-design review agent and the file-budget gate moved to the
-      // separate `quality` pack -- this pack's own evidence must no longer
-      // claim either.
+      // separate `quality` pack.
       expect(harnessExtras?.because).not.toMatch(/file-budget|type.design/i);
+    }
+  });
+
+  it("recommends statusline for every project kind, with evidence naming live context-window pressure and the session/model/quota/work rows", () => {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
+      const statusline = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "statusline",
+      );
+      expect(statusline?.recommended).toBe(true);
+      expect(statusline?.because).toMatch(/context.window/i);
+      expect(statusline?.because).toMatch(/session|model|quota|work/i);
     }
   });
 

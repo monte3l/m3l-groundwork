@@ -184,11 +184,6 @@ describe("main", () => {
     describe("fails early, before writing anything", () => {
       it.each([
         ["an unknown pack", "no-such-pack", /unknown pack "no-such-pack"/],
-        [
-          "the retired statusline pack",
-          "statusline",
-          /renamed to "harness-extras"/,
-        ],
       ])(
         "rejects %s as a usage error and leaves the target untouched",
         (_l, pack, re) => {
@@ -555,6 +550,27 @@ describe("main", () => {
         ),
       ) as Array<{ id: string }>;
       expect(steps.map((step) => step.id)).toEqual(["file-budget"]);
+    });
+
+    it("installs the statusline pack as a live pack (no longer a retired name): its hooks land and both top-level keys are planted", () => {
+      const packTarget = join(targetDir, "sub-pack-statusline");
+
+      main([packTarget, "--skip-install", "--pack", "statusline"]);
+
+      for (const file of [
+        "statusline.mjs",
+        "statusline-layout.mjs",
+        "subagent-statusline.mjs",
+      ]) {
+        expect(existsSync(join(packTarget, ".claude", "hooks", file))).toBe(
+          true,
+        );
+      }
+      const settings = JSON.parse(
+        readFileSync(join(packTarget, ".claude", "settings.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(Object.hasOwn(settings, "statusLine")).toBe(true);
+      expect(Object.hasOwn(settings, "subagentStatusLine")).toBe(true);
     });
 
     it("prints a caps summary when a pack is installed", () => {

@@ -15,7 +15,7 @@
  * longer ships either artifact), mirroring the same split
  * packs-publishing-supply-chain.e2e.test.ts already exercises for
  * publishing/supply-chain. A second test in this file co-installs
- * `harness-extras` + `quality` together, confirming both packs' artifacts
+ * `harness-extras` + `statusline` + `quality` together, confirming both packs' artifacts
  * land on the same baseline and the combination still passes `pnpm verify`.
  */
 import { describe, expect, it } from "vitest";
@@ -117,7 +117,7 @@ describe("quality pack end-to-end", () => {
   });
 });
 
-describe("harness-extras + quality packs co-installed end-to-end", () => {
+describe("harness-extras + statusline + quality packs co-installed end-to-end", () => {
   it("lands both packs' files on the same baseline -- harness-extras's hooks/statusline wiring and quality's agent/gate -- and passes the emitted project's own pnpm verify", () => {
     const targetDir = mkdtempSync(
       join(tmpdir(), "m3l-groundwork-harness-extras-quality-e2e-"),
@@ -134,12 +134,15 @@ describe("harness-extras + quality packs co-installed end-to-end", () => {
           "--pack",
           "harness-extras",
           "--pack",
+          "statusline",
+          "--pack",
           "quality",
         ],
         { stdio: "inherit" },
       );
 
-      // harness-extras's own signature files.
+      // harness-extras's own signature files, plus statusline's (installed
+      // alongside to keep the statusLine assertions below).
       for (const relPath of [
         join(".claude", "hooks", "write-compact-handoff.mjs"),
         join(".claude", "hooks", "reinject-compact-handoff.mjs"),
@@ -164,8 +167,8 @@ describe("harness-extras + quality packs co-installed end-to-end", () => {
         statusLine?: { command: string };
       };
       // harness-extras's settings wiring landed (PreCompact/SessionStart/
-      // PreToolUse plus the two statusline top-level keys) even with
-      // quality installed alongside it.
+      // PreToolUse) and statusline's top-level keys landed even with
+      // quality installed alongside them.
       expect(Object.keys(settings.hooks).sort()).toEqual([
         "PostToolUse",
         "PreCompact",

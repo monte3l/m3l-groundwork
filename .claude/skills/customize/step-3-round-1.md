@@ -61,13 +61,13 @@ confirmed in Step 0.4:
   `recommendPacks(answers)` from `pack-map.ts` (alongside this file, same
   copy mechanism as `kind-facet-map.ts`) with the now-confirmed
   `InterviewAnswers` and compare its verdict against Step 0.4's decision.
-  `harness-extras`, `github`, `claude-github`, `supply-chain`, `quality`,
-  and `worktrees` never disagree (none of the six's recommendation varies by
-  kind or answer -- `worktrees` is always `recommended: false`, since it
-  changes the day-to-day workflow rather than adding a nicety, and
-  `claude-github` is always `recommended: false`, since its workflows need an
-  auth secret and the review spends API credits on every PR; the other four
-  are always `recommended: true`), but `publishing`'s does (recommended for
+  `harness-extras`, `statusline`, `github`, `claude-github`, `supply-chain`,
+  `quality`, and `worktrees` never disagree (none of the seven's
+  recommendation varies by kind or answer -- `worktrees` is always
+  `recommended: false`, since it changes the day-to-day workflow rather than
+  adding a nicety, and `claude-github` is always `recommended: false`, since
+  its workflows need an auth secret and the review spends API credits on
+  every PR; the other five are always `recommended: true`), but `publishing`'s does (recommended for
   `library`/`cli`, not for `frontend`/`service`) — if the comparison surfaces a real
   conflict there or for any future kind-scoped pack, raise it rather than
   silently overriding the user's Step 0.4 answer, mirroring Step 4's "the
@@ -99,13 +99,16 @@ confirmed in Step 0.4:
   `mergeSettingsTopLevel` treats a differing value as a hard error and this
   hand-applied path must not be laxer than the automated one (also check
   `.claude/settings.local.json` and the user's `~/.claude/settings.json`,
-  either of which can shadow a project `statusLine`). For `harness-extras`
+  either of which can shadow a project `statusLine`). For `statusline`
   specifically, a `statusLine`/`subagentStatusLine` collision is never a
-  reason to fail the whole pack install: skip just those two settings keys
-  and the three statusline scripts (`statusline.mjs`, `statusline-layout.mjs`,
-  `subagent-statusline.mjs`) and install the pack's other artifacts (the
-  compaction-handoff hooks and `guard-readonly-bash`) normally, stating the
-  skip plainly in Step 7. `guard-readonly-bash.mjs` imports
+  reason to fail the whole pack install: skip just the colliding key and the
+  script that renders it (`statusline.mjs` for `statusLine`,
+  `subagent-statusline.mjs` for `subagentStatusLine`; `statusline-layout.mjs`
+  stays while either remains), install the other key normally, and skip the
+  whole pack only when both keys are already set, stating the skip plainly in
+  Step 7. The pack is separate from `harness-extras` for exactly this reason,
+  so a skipped status line never costs the compaction-handoff hooks or
+  `guard-readonly-bash`. For `harness-extras`, `guard-readonly-bash.mjs` imports
   `bin/lib/agent-roster.mjs`: when the project keeps no agents and that file is
   not being installed, skip that one hook too (the pack's `adoptNotes` allow
   it), record it in `round1.dropped` and say in Step 7 that it was skipped and
@@ -147,8 +150,8 @@ time, detectable from the installed files -- e.g. `.changeset/config.json`
 means `publishing`, `.claude/skills/watching-pr-checks/SKILL.md` means `github`
 (the only marker `plugin-map.ts` actually reads; the `claude-github` pack's
 `.github/workflows/claude-pr-review.yml` needs no marker, since no plugin
-varies by its presence; `harness-extras` has no
-plugin that varies by its presence, so it needs no marker here); adopt: the
+varies by its presence; `harness-extras` and `statusline` have
+no plugin that varies by their presence, so they need no marker here); adopt: the
 packs Step 0.4(c) confirmed, revised by this step's own `recommendPacks`
 comparison if it changed anything); `hasCustomSkills` is `false` for a fresh
 bootstrap (nothing has authored a skill yet) and, for adopt mode, whatever

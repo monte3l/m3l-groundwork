@@ -27,7 +27,7 @@ const hooksDir = join(
   "..",
   "templates",
   "packs",
-  "harness-extras",
+  "statusline",
   "files",
   ".claude",
   "hooks",

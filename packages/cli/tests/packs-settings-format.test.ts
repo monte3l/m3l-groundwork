@@ -29,7 +29,8 @@ function readSettingsText(): string {
 
 describe("installPack settings.json formatting", () => {
   it.each([
-    ["harness-extras", "hooks and a top-level statusLine"],
+    ["harness-extras", "hooks"],
+    ["statusline", "a top-level statusLine"],
     ["quality", "no settings hooks"],
     ["github", "no settings hooks"],
     ["claude-github", "no settings hooks"],
@@ -57,8 +58,8 @@ describe("installPack settings.json formatting", () => {
     },
   );
 
-  it("harness-extras plants statusLine after the baseline keys", () => {
-    installPack(loadPack("harness-extras"), targetDir, {});
+  it("statusline plants statusLine after the baseline keys", () => {
+    installPack(loadPack("statusline"), targetDir, {});
 
     expect(Object.keys(JSON.parse(readSettingsText()) as object)).toEqual([
       "$schema",

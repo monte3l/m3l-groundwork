@@ -1317,7 +1317,7 @@ describe("observeWiring", () => {
 });
 
 describe("the real harness-extras pack", () => {
-  it("loads cleanly from the real templates/packs directory, no longer wires any verify step after the quality-pack split, and keeps the folded-in statusline top-level keys", () => {
+  it("loads cleanly from the real templates/packs directory, wires no verify step and no top-level settings key (the status line lives in the statusline pack)", () => {
     const names = listPackNames();
     expect(names).toContain("harness-extras");
     const pack = loadPack("harness-extras");
@@ -1329,23 +1329,13 @@ describe("the real harness-extras pack", () => {
     expect(pack.manifest.budget).toEqual({
       agents: 0,
       skills: 0,
-      hooks: 6,
+      hooks: 3,
       workflows: 0,
       scripts: 0,
     });
     expect(pack.manifest.requires?.paths).toEqual(["bin/lib/agent-roster.mjs"]);
 
-    expect(Object.keys(pack.manifest.wiring.settingsTopLevel ?? {})).toEqual([
-      "statusLine",
-      "subagentStatusLine",
-    ]);
-    for (const value of Object.values(
-      pack.manifest.wiring.settingsTopLevel ?? {},
-    )) {
-      expect(JSON.stringify(value)).toContain(
-        "$CLAUDE_PROJECT_DIR/.claude/hooks/",
-      );
-    }
+    expect(pack.manifest.wiring.settingsTopLevel).toBeUndefined();
     // The file-budget gate and its bin/lib/report.mjs requirement moved to
     // the new quality pack -- harness-extras wires no verify step at all.
     expect(pack.manifest.wiring.verifySteps).toEqual([]);
@@ -1366,7 +1356,7 @@ describe("the real harness-extras pack", () => {
     ).toBe(false);
   });
 
-  it("installs alone: settings.json gains $schema, hooks (all three events) and both statusline top-level keys, with no agent and no gate wired", () => {
+  it("installs alone: settings.json gains $schema and hooks (all three events) but no statusLine/subagentStatusLine key, with no agent and no gate wired", () => {
     const targetDir = mkdtempSync(
       join(tmpdir(), "packs-harness-extras-alone-"),
     );
@@ -1382,17 +1372,83 @@ describe("the real harness-extras pack", () => {
       const settings = JSON.parse(
         readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
       ) as Record<string, unknown>;
+      expect(Object.keys(settings)).toEqual(["$schema", "hooks"]);
+      expect(Object.keys(settings["hooks"] as object).sort()).toEqual([
+        "PreCompact",
+        "PreToolUse",
+        "SessionStart",
+      ]);
+      expect(existsSync(join(targetDir, ".claude", "agents"))).toBe(false);
+      expect(
+        existsSync(join(targetDir, "bin", "lib", "verify-steps.packs.json")),
+      ).toBe(false);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the real statusline pack", () => {
+  it("loads cleanly, is fresh+adopt capable, budgets three hooks, and wires exactly the statusLine and subagentStatusLine top-level keys", () => {
+    expect(listPackNames()).toContain("statusline");
+    const pack = loadPack("statusline");
+    expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
+    expect(existsSync(pack.filesDir)).toBe(true);
+    expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
+    expect(pack.manifest.budget).toEqual({
+      agents: 0,
+      skills: 0,
+      hooks: 3,
+      workflows: 0,
+      scripts: 0,
+    });
+    expect(pack.manifest.requires).toBeUndefined();
+
+    expect(pack.manifest.wiring.settings).toEqual({});
+    expect(pack.manifest.wiring.packageScripts).toEqual({});
+    expect(pack.manifest.wiring.verifySteps).toEqual([]);
+    const topLevel = pack.manifest.wiring.settingsTopLevel ?? {};
+    expect(Object.keys(topLevel)).toEqual(["statusLine", "subagentStatusLine"]);
+    expect(JSON.stringify(topLevel["statusLine"])).toContain(
+      "$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.mjs",
+    );
+    expect(JSON.stringify(topLevel["subagentStatusLine"])).toContain(
+      "$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-statusline.mjs",
+    );
+  });
+
+  it("ships the three status-line hook files", () => {
+    const pack = loadPack("statusline");
+    for (const file of [
+      "statusline.mjs",
+      "statusline-layout.mjs",
+      "subagent-statusline.mjs",
+    ]) {
+      expect(existsSync(join(pack.filesDir, ".claude", "hooks", file))).toBe(
+        true,
+      );
+    }
+  });
+
+  it("installs alone: settings.json gains both top-level keys and no hook entries, with no agent and no gate wired", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "packs-statusline-alone-"));
+    try {
+      mkdirSync(join(targetDir, ".claude"), { recursive: true });
+      writeFileSync(
+        join(targetDir, ".claude", "settings.json"),
+        JSON.stringify({ $schema: "s", hooks: {} }),
+      );
+      installPack(loadPack("statusline"), targetDir, {});
+      const settings = JSON.parse(
+        readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
+      ) as Record<string, unknown>;
       expect(Object.keys(settings)).toEqual([
         "$schema",
         "hooks",
         "statusLine",
         "subagentStatusLine",
       ]);
-      expect(Object.keys(settings["hooks"] as object).sort()).toEqual([
-        "PreCompact",
-        "PreToolUse",
-        "SessionStart",
-      ]);
+      expect(settings["hooks"]).toEqual({});
       expect(existsSync(join(targetDir, ".claude", "agents"))).toBe(false);
       expect(
         existsSync(join(targetDir, "bin", "lib", "verify-steps.packs.json")),
