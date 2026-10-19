@@ -2,7 +2,7 @@
 
 > Moved verbatim from the root `CLAUDE.md` ("Known gaps"): what is deliberately out of scope so far.
 
-- `templates/packs/` ships eight packs, each covering one theme (wiring contract
+- `templates/packs/` ships nine packs, each covering one theme (wiring contract
   and each pack's `adoptNotes` live in `templates/packs/README.md` and its
   `pack.json` files). `harness-extras`: Claude Code session hooks
   (compaction-handoff hooks, `guard-readonly-bash`). `statusline`: the
@@ -18,8 +18,8 @@
   App decisions too project-specific to automate in adopt mode, and it cannot
   wire `@changesets/cli` because a pack never edits dependencies. `supply-chain`:
   `gitleaks.yml` and `scorecard.yml`, adopt-capable for every project kind (the
-  SPDX header gate stays in `publishing` because it fails an established
-  project's `pnpm verify` until a one-time backfill). `worktrees`: enforces
+  SPDX header gate is the separate fresh-only `licensing` pack, because it
+  fails an established project's `pnpm verify` until a one-time backfill). `worktrees`: enforces
   worktree-only src/tests development (`guard-worktree-only.mjs`, a
   `working-in-worktrees` skill, dependency-install and `core.bare` repair
   hooks, a `.worktreeinclude`); `recommended: false` in `pack-map.ts` on

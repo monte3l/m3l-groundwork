@@ -71,7 +71,7 @@ describe("classifyPath", () => {
     );
   });
 
-  it("classifies the publishing pack's release-pipeline and supply-chain config files as typescript-domain", () => {
+  it("classifies the publishing pack's release-pipeline config, the licensing pack's REUSE.toml and the supply-chain pack's .gitleaks.toml as typescript-domain", () => {
     expect(classifyPath(".changeset/config.json")).toBe("typescript");
     expect(classifyPath("tools/release/package.json")).toBe("typescript");
     expect(classifyPath("REUSE.toml")).toBe("typescript");

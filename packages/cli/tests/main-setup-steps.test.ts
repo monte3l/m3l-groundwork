@@ -7,7 +7,7 @@
  * main-run.test.ts; packs.js wraps the real `loadPack`, injecting fixture
  * `setupSteps` for the names in `injectedSteps` so multi-pack ordering is
  * reachable (the real packs root cannot be injected into `main()`, and only
- * `publishing` really declares steps). With `injectedSteps` empty, the real
+ * `publishing` and `licensing` really declare steps). With `injectedSteps` empty, the real
  * manifests pass through untouched.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,8 +52,10 @@ vi.mock("../src/packs.js", async (importOriginal) => {
 const { main } = await import("../src/main.js");
 
 /** publishing's setupSteps, as printed (two-space indent), in order. */
-const PUBLISHING_COMMANDS = [
-  "  pnpm add -D @changesets/cli",
+const PUBLISHING_COMMANDS = ["  pnpm add -D @changesets/cli"];
+
+/** licensing's setupSteps, as printed (two-space indent), in order. */
+const LICENSING_COMMANDS = [
   "  git add -A",
   "  node bin/check-license-headers.mjs --fix",
   "  git add -A",
@@ -178,18 +180,50 @@ describe("fresh mode: pack setupSteps block", () => {
     );
     const p = after.findIndex((line) => line.includes("publishing"));
     const p1 = after.indexOf("  pnpm add -D @changesets/cli");
-    const p2 = after.lastIndexOf("  git add -A");
-    expect(after.indexOf("  node bin/check-license-headers.mjs --fix")).toBe(
-      p2 - 1,
-    );
     const q = after.findIndex((line) => line.includes("quality"));
     const q1 = after.indexOf("  echo quality-1");
     const q2 = after.indexOf("  echo quality-2");
     expect(p).toBeGreaterThanOrEqual(0);
-    expect([p, p1, p2, q, q1, q2]).toEqual(
-      [p, p1, p2, q, q1, q2].toSorted((a, b) => a - b),
+    expect([p, p1, q, q1, q2]).toEqual(
+      [p, p1, q, q1, q2].toSorted((a, b) => a - b),
     );
-    expect(new Set([p, p1, p2, q, q1, q2]).size).toBe(6);
+    expect(new Set([p, p1, q, q1, q2]).size).toBe(5);
+  });
+
+  it("prints licensing's three backfill commands, in order, under its own pack line", () => {
+    runFresh(["--skip-install", "--pack", "licensing"]);
+
+    const after = lines.slice(readyIndex() + 1);
+    const packLine = after.findIndex((line) => line.includes("licensing"));
+    expect(packLine).toBeGreaterThanOrEqual(0);
+    expect(after.slice(packLine + 1)).toEqual(LICENSING_COMMANDS);
+  });
+
+  it("keeps each pack's commands contiguous under its own heading when licensing, publishing and quality are installed together (alphabetical install order)", () => {
+    injectedSteps.set("quality", ["echo quality-1"]);
+    runFresh([
+      "--skip-install",
+      "--pack",
+      "quality",
+      "--pack",
+      "publishing",
+      "--pack",
+      "licensing",
+    ]);
+
+    const after = lines.slice(readyIndex() + 1);
+    expect(after.filter((line) => line.includes("pnpm verify"))).toHaveLength(
+      1,
+    );
+    const l = after.findIndex((line) => line.includes("licensing"));
+    const p = after.findIndex((line) => line.includes("publishing"));
+    const q = after.findIndex((line) => line.includes("quality"));
+    expect(l).toBeGreaterThanOrEqual(0);
+    expect(l).toBeLessThan(p);
+    expect(p).toBeLessThan(q);
+    expect(after.slice(l + 1, p)).toEqual(LICENSING_COMMANDS);
+    expect(after.slice(p + 1, q)).toEqual(PUBLISHING_COMMANDS);
+    expect(after.slice(q + 1)).toEqual(["  echo quality-1"]);
   });
 
   it("prints the same block whichever order the packs are requested in", () => {

@@ -81,17 +81,25 @@ fresh() { # name pack...
   if [ "$rc" != 0 ]; then row "fresh: $name" FAIL "CLI exit $rc (logs/fresh-$name.cli.log)"; return; fi
   (cd "$d" && pnpm verify) >"$WORK/logs/fresh-$name.verify.log" 2>&1; vrc=$?
   note=""; vlog="fresh-$name.verify.log"
-  case " $* " in *" publishing "*)
-    if [ "$vrc" != 0 ]; then # the pack's documented required setup (its adoptNotes)
-      # The pack's setupSteps, in order. The header gate only sees tracked
+  case " $* " in *" publishing "*|*" licensing "*)
+    # licensing always runs its setup: a fresh project has nothing tracked, so its
+    # gate passes vacuously and the first verify can be green without checking a file.
+    lic=no; case " $* " in *" licensing "*) lic=yes ;; esac
+    if [ "$vrc" != 0 ] || [ "$lic" = yes ]; then # the packs' documented required setup (their adoptNotes)
+      # Each pack's setupSteps, in order. The header gate only sees tracked
       # files, and a fresh project has none until it is staged.
-      (cd "$d" && pnpm add -D @changesets/cli && git add -A && node bin/check-license-headers.mjs --fix && git add -A) >"$WORK/logs/fresh-$name.setup.log" 2>&1
+      (cd "$d" && {
+        case " $* " in *" publishing "*) pnpm add -D @changesets/cli ;; esac
+        case " $* " in *" licensing "*) git add -A && node bin/check-license-headers.mjs --fix && git add -A ;; esac
+      }) >"$WORK/logs/fresh-$name.setup.log" 2>&1
       (cd "$d" && pnpm verify) >"$WORK/logs/fresh-$name.verify2.log" 2>&1; vrc=$?
-      note=" (first verify failed; passes after the pack's documented setup)"
+      note=" (passes after the packs' documented setup)"
       vlog="fresh-$name.verify2.log"
       # A green verify proves nothing if the header gate had zero files to check.
-      lh=$(cd "$d" && node bin/check-license-headers.mjs 2>&1 | tail -1)
-      case "$lh" in *"ok -- 0 file"*) vrc=1; note=" (license-header gate checked 0 files)" ;; esac
+      case " $* " in *" licensing "*)
+        lh=$(cd "$d" && node bin/check-license-headers.mjs 2>&1 | tail -1)
+        case "$lh" in *"ok -- 0 file"*) vrc=1; note=" (license-header gate checked 0 files)" ;; esac ;;
+      esac
     fi ;;
   esac
   left=$(grep -rIlE '__[A-Z][A-Z_]+__' "$d" --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=customize --exclude=pnpm-lock.yaml 2>/dev/null | head -3 | tr '\n' ' ')
@@ -125,8 +133,8 @@ adopt() { # name git-url
 if [ "$SECTION" = all ] || [ "$SECTION" = negative ]; then negative; fi
 if [ "$SECTION" = all ] || [ "$SECTION" = fresh ]; then
   fresh baseline
-  for p in claude-github github harness-extras publishing quality statusline supply-chain worktrees; do fresh "$p" "$p"; done
-  fresh all-eight claude-github github harness-extras publishing quality statusline supply-chain worktrees
+  for p in claude-github github harness-extras licensing publishing quality statusline supply-chain worktrees; do fresh "$p" "$p"; done
+  fresh all-nine claude-github github harness-extras licensing publishing quality statusline supply-chain worktrees
   fresh hooks-overlap harness-extras worktrees quality
   fresh ci-overlap claude-github supply-chain publishing
 fi

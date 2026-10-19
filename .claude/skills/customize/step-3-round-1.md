@@ -67,14 +67,15 @@ confirmed in Step 0.4:
   `recommended: false`, since it changes the day-to-day workflow rather than
   adding a nicety, and `claude-github` is always `recommended: false`, since
   its workflows need an auth secret and the review spends API credits on
-  every PR; the other five are always `recommended: true`), but `publishing`'s does (recommended for
-  `library`/`cli`, not for `frontend`/`service`) — if the comparison surfaces a real
+  every PR; the other five are always `recommended: true`), but `publishing`'s and `licensing`'s do (each
+  recommended for `library`/`cli`, not for `frontend`/`service`) — if the comparison surfaces a real
   conflict there or for any future kind-scoped pack, raise it rather than
   silently overriding the user's Step 0.4 answer, mirroring Step 4's "the
   one exception" rule for guidance findings. Before installing, check the
   pack's own `modes`: a pack whose `modes` doesn't include `"adopt"` (today,
   `publishing` — its release flow encodes decisions too project-specific to
-  apply blind) is never auto-installed here even if staged and approved;
+  apply blind — and `licensing`, whose one-time SPDX header backfill fails an
+  established project's `pnpm verify`) is never auto-installed here even if staged and approved;
   instead, state in Step 7 that it needs a manual install (point at `.groundwork/packs/<name>/` and the pack's own `adoptNotes`, and say to strip the `.staged` suffix from every name when copying by hand and to replace every `__KEY__` token with the project's real value) and stop
   there for that pack. Before merging any staged `pack.json.staged` wiring, repeat
   the prototype-key check from Step 0.4(c): if a key of `wiring.settings`,

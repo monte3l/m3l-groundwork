@@ -69,7 +69,7 @@ describe("supply-chain pack end-to-end", () => {
         expect(emittedContent).toBe(sourceContent);
         // No token substitution should have occurred -- these files carry
         // no __PROJECT_NAME__ token in the first place (the pack's own
-        // adoptNotes explain why: unlike publishing's copies, the leading
+        // adoptNotes explain why: unlike licensing's copies, the leading
         // SPDX header lines that carried the token were dropped when the
         // supply-chain half was carved out, since adopt mode never
         // substitutes tokens and the header would stay literal).

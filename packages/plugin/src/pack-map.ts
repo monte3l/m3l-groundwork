@@ -114,9 +114,10 @@ function recommendClaudeGithub(): PackRecommendation {
 }
 
 /**
- * `publishing` is the one kind-scoped pack: a release pipeline (a changesets
+ * `publishing` is a kind-scoped pack: a release pipeline (a changesets
  * version PR, then a staged, provenance-attested npm publish via trusted
- * publishing) plus SPDX/REUSE license headers. Secret scanning and OpenSSF
+ * publishing) plus a gate that the published type declarations' dependencies
+ * are installable by consumers (dts-deps). Secret scanning and OpenSSF
  * Scorecard are not part of it -- they are the separate `supply-chain` pack,
  * since they apply to any repo, published or not. A `library` or `cli`
  * typically publishes an npm package; a
@@ -133,17 +134,50 @@ function recommendPublishing(answers: InterviewAnswers): PackRecommendation {
     because: recommended
       ? "a library or CLI typically ships an npm package, so this pack's " +
         "release pipeline applies: a changesets version PR, then a staged, " +
-        "provenance-attested npm publish via trusted publishing -- plus " +
-        "SPDX/REUSE license headers. The repository-hygiene scans that " +
-        "apply to any project, published or not, are the separate " +
-        "supply-chain pack. It is fresh-mode only and needs one-time npm and GitHub setup (the " +
-        "trusted publisher, the release credentials) the pack cannot do " +
-        "itself."
+        "provenance-attested npm publish via trusted publishing, with a " +
+        "dts-deps gate that the published type declarations' dependencies " +
+        "resolve for consumers. The repository-hygiene scans that apply to " +
+        "any project, published or not, are the separate supply-chain " +
+        "pack. It is fresh-mode only and needs one-time npm and GitHub " +
+        "setup (the trusted publisher, the release credentials) the pack " +
+        "cannot do itself."
       : "a frontend or service is typically deployed, and a Claude Code " +
         "plugin ships through a marketplace manifest, rather than published " +
         "to a package registry, so a changesets/npm release pipeline is not " +
         "recommended by default -- it is still available if this project " +
         "does publish an npm package.",
+  };
+}
+
+/**
+ * `licensing` is the half carved out of `publishing`: an SPDX/REUSE
+ * license-header gate (`check-license-headers`) plus a `REUSE.toml`
+ * template. Licensing metadata matters most for code that is distributed,
+ * so it is pre-selected for a `library` or `cli`, the same kinds
+ * `publishing` targets -- but it is independent of `publishing` and stays
+ * on offer for every kind. It is fresh-mode only: an established project
+ * fails `pnpm verify` until the one-time backfill (`git add -A`, then
+ * `node bin/check-license-headers.mjs --fix`) has touched every file.
+ */
+function recommendLicensing(answers: InterviewAnswers): PackRecommendation {
+  const recommended = answers.kind === "library" || answers.kind === "cli";
+  return {
+    name: "licensing",
+    recommended,
+    because: recommended
+      ? "a library or CLI is distributed, which is where licensing metadata " +
+        "matters most, so this pack's SPDX/REUSE license-header gate and " +
+        "REUSE.toml template apply. It is independent of the publishing " +
+        "pack. It is fresh-mode only: the one-time backfill (git add -A, " +
+        "then node bin/check-license-headers.mjs --fix) has to touch every " +
+        "file before pnpm verify passes, which an established project " +
+        "would fail until then."
+      : "a frontend, service or Claude Code plugin is less often " +
+        "redistributed as source, so an SPDX/REUSE license-header gate is " +
+        "not recommended by default -- it is still available, independent " +
+        "of the publishing pack. It is fresh-mode only: the one-time " +
+        "backfill (git add -A, then node bin/check-license-headers.mjs " +
+        "--fix) has to touch every file before pnpm verify passes.",
   };
 }
 
@@ -208,11 +242,16 @@ function recommendQuality(): PackRecommendation {
 }
 
 /**
- * Every pack's recommendation for the given interview answers. Only
- * `publishing` varies by `answers.kind` today; `harness-extras`,
- * `statusline`, `github`, `supply-chain` and `quality` are recommended for
- * every kind, and
- * `claude-github` and `worktrees` are opt-in for every kind.
+ * Every pack's recommendation for the given interview answers. Two packs
+ * vary by `answers.kind` today, `publishing` and `licensing`;
+ * `harness-extras`, `statusline`, `github`, `supply-chain` and `quality`
+ * are recommended for every kind, and `claude-github` and `worktrees` are
+ * opt-in for every kind.
+ *
+ * @example
+ * ```ts
+ * const picks = recommendPacks(answers).filter((r) => r.recommended);
+ * ```
  */
 export function recommendPacks(
   answers: InterviewAnswers,
@@ -223,6 +262,7 @@ export function recommendPacks(
     recommendGithub(),
     recommendClaudeGithub(),
     recommendPublishing(answers),
+    recommendLicensing(answers),
     recommendWorktrees(),
     recommendSupplyChain(),
     recommendQuality(),

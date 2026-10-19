@@ -19,6 +19,11 @@
 // library or CLI. `publishing`'s own evidence must no longer mention
 // gitleaks/secret-scanning/Scorecard now that they live in a separate pack.
 //
+// `licensing` (the SPDX/REUSE license-header gate) was likewise carved out of
+// `publishing` into its own fresh-only pack, recommended for the same kinds
+// (library, cli) and listed directly after `publishing`; `publishing`'s own
+// evidence must no longer mention SPDX/REUSE/license headers.
+//
 // `quality` was carved out of `harness-extras` into its own pack: the
 // type-design-analyzer agent and the per-file-size (file-budget) ratchet
 // gate. Both are language-level, not harness-ergonomics-level, so they get
@@ -49,7 +54,7 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly eight recommendations: harness-extras, statusline, github, claude-github, publishing, worktrees, supply-chain and quality", () => {
+  it("returns exactly nine recommendations: harness-extras, statusline, github, claude-github, publishing, licensing, worktrees, supply-chain and quality", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
     expect(names).toEqual([
       "harness-extras",
@@ -57,6 +62,7 @@ describe("recommendPacks", () => {
       "github",
       "claude-github",
       "publishing",
+      "licensing",
       "worktrees",
       "supply-chain",
       "quality",
@@ -209,6 +215,26 @@ describe("recommendPacks", () => {
     // out into its own `supply-chain` pack -- publishing's own evidence
     // must no longer claim it.
     expect(publishing?.because).not.toMatch(/gitleaks|secret|scorecard/i);
+    // The license-header gate moved to the `licensing` pack.
+    expect(publishing?.because).not.toMatch(/SPDX|REUSE|license/i);
+  });
+
+  it("recommends licensing only for library and cli, with SPDX/REUSE evidence that mentions the one-time backfill", () => {
+    for (const kind of [
+      "library",
+      "cli",
+      "frontend",
+      "service",
+      "plugin",
+    ] as const) {
+      const licensing = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "licensing",
+      );
+      expect(licensing).toBeDefined();
+      expect(licensing?.recommended).toBe(kind === "library" || kind === "cli");
+      expect(licensing?.because).toMatch(/SPDX|REUSE/);
+      expect(licensing?.because).toMatch(/backfill/i);
+    }
   });
 
   it("explains why publishing is not recommended for frontend/service/plugin kinds", () => {

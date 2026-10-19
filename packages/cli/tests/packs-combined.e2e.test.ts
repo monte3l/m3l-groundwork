@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Co-installability acceptance test for `publishing` + `worktrees` together:
- * each pack passes its own solo e2e test (`packs-publishing.e2e.test.ts`,
- * `packs-worktrees.e2e.test.ts`), but the two were never proven to install
+ * Co-installability acceptance test for `publishing` + `licensing` +
+ * `worktrees` together: each pack passes its own solo e2e test
+ * (`packs-publishing.e2e.test.ts`, `packs-licensing.e2e.test.ts`,
+ * `packs-worktrees.e2e.test.ts`), but they were never proven to install
  * onto the SAME baseline in one bootstrap. That combination surfaced a real
- * gap: `publishing`'s `license-headers` verify step (`bin/check-license-
- * headers.mjs`) requires every tracked file to be either header-eligible (an
+ * gap: `licensing`'s `license-headers` verify step (`bin/check-license-
+ * headers.mjs`, shipped in `licensing` together with `REUSE.toml`) requires every tracked file to be either header-eligible (an
  * extension in `HEADER_EXTENSIONS`) or matched by a `REUSE.toml` glob, and
  * `worktrees`' own `.worktreeinclude` -- a dotfile with no extension -- was
- * neither, so the gate failed only once both packs were present together.
- * This test bootstraps with both `--pack` flags, confirms both packs' files
- * land, confirms the `REUSE.toml` fix actually discriminates the bug (the
+ * neither, so the gate failed only once those packs were present together.
+ * This test bootstraps with all three `--pack` flags, confirms the packs'
+ * files land, confirms the `REUSE.toml` fix actually discriminates the bug (the
  * gate fails again if the fix's glob is reverted, proven against a mutated
  * COPY of the emitted project's own `REUSE.toml`, never the template), and
  * confirms `release.yml`'s tag-lookup fix (`gh release view` against both
@@ -36,14 +37,14 @@ import { execFileSync, spawnSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const binPath = join(here, "..", "bin", "m3l-groundwork.mjs");
-const publishingSourceRoot = join(
+const licensingSourceRoot = join(
   here,
   "..",
   "..",
   "..",
   "templates",
   "packs",
-  "publishing",
+  "licensing",
   "files",
 );
 
@@ -67,8 +68,8 @@ function runLicenseHeadersCheck(targetDir: string): {
   return { status: result.status, stderr: result.stderr };
 }
 
-describe("publishing + worktrees packs co-installed end-to-end", () => {
-  it("lands both packs' files, keeps .changeset/config.json public and .worktreeinclude's .env.*.local line, fixes release.yml's tag lookup, discriminates the REUSE.toml fix, and passes the emitted project's own pnpm verify", () => {
+describe("publishing + licensing + worktrees packs co-installed end-to-end", () => {
+  it("lands the packs' files, keeps .changeset/config.json public and .worktreeinclude's .env.*.local line, fixes release.yml's tag lookup, discriminates the REUSE.toml fix, and passes the emitted project's own pnpm verify", () => {
     const targetDir = mkdtempSync(join(tmpdir(), "m3l-groundwork-combo-e2e-"));
     try {
       execFileSync(
@@ -82,12 +83,14 @@ describe("publishing + worktrees packs co-installed end-to-end", () => {
           "--pack",
           "publishing",
           "--pack",
+          "licensing",
+          "--pack",
           "worktrees",
         ],
         { stdio: "inherit" },
       );
 
-      // Both packs' signature files land.
+      // The packs' signature files land.
       const worktreeIncludePath = join(targetDir, ".worktreeinclude");
       const skillPath = join(
         targetDir,
@@ -108,6 +111,8 @@ describe("publishing + worktrees packs co-installed end-to-end", () => {
         skillPath,
         changesetConfigPath,
         releaseWorkflowPath,
+        join(targetDir, "REUSE.toml"),
+        join(targetDir, "bin", "check-license-headers.mjs"),
       ]) {
         expect(existsSync(path)).toBe(true);
       }
@@ -137,7 +142,7 @@ describe("publishing + worktrees packs co-installed end-to-end", () => {
       // ls-files` read (and the probes below) has something to check.
       execFileSync("git", ["add", "-A"], { cwd: targetDir, stdio: "inherit" });
 
-      // Required one-time setup step (see publishing's pack.json
+      // Required one-time setup step (see licensing's pack.json
       // adoptNotes): backfill the SPDX header the license-headers gate now
       // requires on every pre-existing baseline file. This is a plain node
       // script with no dependencies, so it runs fine before `pnpm install`.
@@ -147,7 +152,7 @@ describe("publishing + worktrees packs co-installed end-to-end", () => {
       });
       execFileSync("git", ["add", "-A"], { cwd: targetDir, stdio: "inherit" });
 
-      // The fix: with both packs installed, the baseline backfilled, and
+      // The fix: with the packs installed, the baseline backfilled, and
       // REUSE.toml as emitted, the license-headers gate passes --
       // .worktreeinclude is covered by its glob.
       const withFix = runLicenseHeadersCheck(targetDir);
@@ -155,7 +160,7 @@ describe("publishing + worktrees packs co-installed end-to-end", () => {
 
       // Discriminate the fix: revert the glob on a COPY of the emitted
       // project's own REUSE.toml (never the template under templates/packs/
-      // publishing/files/), re-stage, and confirm the gate fails again,
+      // licensing/files/), re-stage, and confirm the gate fails again,
       // flagging .worktreeinclude specifically as neither header-eligible
       // nor REUSE-covered -- proving this test's assertion actually
       // exercises the REUSE.toml glob rather than passing for an unrelated
@@ -163,7 +168,7 @@ describe("publishing + worktrees packs co-installed end-to-end", () => {
       const reuseTomlPath = join(targetDir, "REUSE.toml");
       const originalReuseToml = readFileSync(reuseTomlPath, "utf8");
       const sourceReuseToml = readFileSync(
-        join(publishingSourceRoot, "REUSE.toml"),
+        join(licensingSourceRoot, "REUSE.toml"),
         "utf8",
       );
       expect(

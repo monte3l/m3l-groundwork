@@ -99,7 +99,7 @@ precedence = "override"
 SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
 SPDX-License-Identifier = "MIT"
 
-# The `publishing` pack's files ship with `SPDX-License-Identifier: NOASSERTION`
+# The `publishing` and `licensing` packs' files ship with `SPDX-License-Identifier: NOASSERTION`
 # on purpose: it is a placeholder the owner of a bootstrapped project replaces
 # with their own license, and `NOASSERTION` has no text in LICENSES/, so
 # `reuse lint` reports it as a missing license. This repo's own copy of the
@@ -107,7 +107,10 @@ SPDX-License-Identifier = "MIT"
 # records, so override what REUSE sees here. The shipped files keep their
 # placeholder, since this annotation never leaves the repository.
 [[annotations]]
-path = ["templates/packs/publishing/files/**"]
+path = [
+  "templates/packs/publishing/files/**",
+  "templates/packs/licensing/files/**",
+]
 precedence = "override"
 SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
 SPDX-License-Identifier = "MIT"
