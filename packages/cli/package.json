@@ -1,6 +1,6 @@
 {
   "name": "@monte3l/groundwork",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "CLI that bootstraps a TypeScript project with a strict toolchain and Claude Code setup, or read-only surveys an existing one, plus a /customize plugin that tailors it to current guidance.",
   "keywords": [
     "bootstrap",
