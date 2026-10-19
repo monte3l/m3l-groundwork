@@ -21,6 +21,7 @@ interface Plan {
 }
 
 interface Packument {
+  name?: string;
   "dist-tags": { latest?: string };
   versions: Record<string, { deprecated?: string }>;
 }
@@ -51,22 +52,31 @@ function packument(
 
 const realWorld = (): Packument =>
   packument("1.0.4", {
-    "0.0.0": "Empty placeholder",
-    "0.1.0-next.0": "Superseded by 1.0.0",
-    "0.1.0-next.1": "Superseded by 1.0.0",
-    "1.0.0-rc.2": "Superseded by 1.0.0",
-    "1.0.0-rc.3": "Superseded by 1.0.0",
-    "1.0.0-rc.4": "Superseded by 1.0.0",
-    "1.0.0-rc.5": "Superseded by 1.0.0",
-    "1.0.0-rc.6": "Superseded by 1.0.0",
-    "1.0.0-rc.7": "Superseded by 1.0.0",
-    "1.0.0-rc.8": "Superseded by 1.0.0",
-    "1.0.0": "Superseded by 1.0.1",
-    "1.0.1": "Superseded by 1.0.3",
-    "1.0.2": "Superseded by 1.0.3",
+    "0.0.0":
+      "Empty placeholder. Use @monte3l/groundwork@latest (1.0.0 or later).",
+    "0.1.0-next.0": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "0.1.0-next.1": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "1.0.0-rc.2": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "1.0.0-rc.3": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "1.0.0-rc.4": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "1.0.0-rc.5": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "1.0.0-rc.6": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "1.0.0-rc.7": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "1.0.0-rc.8": "Superseded by 1.0.0. Use @monte3l/groundwork@latest.",
+    "1.0.0": "Superseded by 1.0.1. Use @monte3l/groundwork@latest.",
+    "1.0.1": "Superseded by 1.0.3. Use @monte3l/groundwork@latest.",
+    "1.0.2": "Superseded by 1.0.3. Use @monte3l/groundwork@latest.",
     "1.0.3": undefined,
     "1.0.4": undefined,
   });
+
+const realWorldFullyDeprecated = (): Packument => {
+  const p = realWorld();
+  p.versions["1.0.3"] = {
+    deprecated: "Superseded by 1.0.4. Use @monte3l/groundwork@latest.",
+  };
+  return p;
+};
 
 describe("compareSemver", () => {
   it.each([
@@ -105,7 +115,10 @@ describe("planDeprecations", () => {
     expect(plan.refused).toBeUndefined();
     expect(plan.target).toBe("1.0.4");
     expect(plan.deprecate).toEqual([
-      { version: "1.0.3", message: "Superseded by 1.0.4" },
+      {
+        version: "1.0.3",
+        message: "Superseded by 1.0.4. Use @monte3l/groundwork@latest.",
+      },
     ]);
     expect([...plan.alreadyDeprecated].sort()).toEqual(
       [
@@ -123,6 +136,32 @@ describe("planDeprecations", () => {
         "1.0.1",
         "1.0.2",
       ].sort(),
+    );
+  });
+
+  it("returns an empty plan for the fully deprecated real-world packument", () => {
+    const plan = lib.planDeprecations(realWorldFullyDeprecated());
+    expect(plan.refused).toBeUndefined();
+    expect(plan.deprecate).toEqual([]);
+    expect(plan.alreadyDeprecated).toContain("1.0.3");
+  });
+
+  it("takes the package name in the message from the packument name", () => {
+    const p = packument("1.0.4", { "1.0.3": undefined, "1.0.4": undefined });
+    p.name = "@other/pkg";
+    expect(lib.planDeprecations(p).deprecate).toEqual([
+      {
+        version: "1.0.3",
+        message: "Superseded by 1.0.4. Use @other/pkg@latest.",
+      },
+    ]);
+  });
+
+  it("falls back to @monte3l/groundwork when the packument has no name", () => {
+    const p = packument("1.0.4", { "1.0.3": undefined, "1.0.4": undefined });
+    expect(p.name).toBeUndefined();
+    expect(lib.planDeprecations(p).deprecate[0]?.message).toBe(
+      "Superseded by 1.0.4. Use @monte3l/groundwork@latest.",
     );
   });
 
@@ -145,7 +184,10 @@ describe("planDeprecations", () => {
       "1.0.10",
     ]);
     expect(
-      plan.deprecate.every((d) => d.message === "Superseded by 2.0.0"),
+      plan.deprecate.every(
+        (d) =>
+          d.message === "Superseded by 2.0.0. Use @monte3l/groundwork@latest.",
+      ),
     ).toBe(true);
   });
 
@@ -163,7 +205,7 @@ describe("planDeprecations", () => {
   it("returns an empty plan when nothing is left to deprecate", () => {
     const plan = lib.planDeprecations(
       packument("1.0.4", {
-        "1.0.3": "Superseded by 1.0.4",
+        "1.0.3": "Superseded by 1.0.4. Use @monte3l/groundwork@latest.",
         "1.0.4": undefined,
       }),
     );

@@ -18,7 +18,7 @@ interface PlanLib {
   planDeprecations(packument: {
     "dist-tags": { latest?: string };
     versions: Record<string, { deprecated?: string }>;
-  }): { deprecate: { version: string }[]; refused?: string };
+  }): { deprecate: { version: string; message: string }[]; refused?: string };
 }
 
 const lib = (await import(
@@ -90,7 +90,10 @@ describe("planDeprecations properties", () => {
             "dist-tags": { latest },
             versions: map,
           });
-          for (const { version } of plan.deprecate) {
+          for (const { version, message } of plan.deprecate) {
+            expect(message).toBe(
+              `Superseded by ${latest}. Use @monte3l/groundwork@latest.`,
+            );
             expect(version).not.toBe(latest);
             expect(lib.compareSemver(version, latest)).toBe(-1);
             expect(map[version]?.deprecated).toBeUndefined();

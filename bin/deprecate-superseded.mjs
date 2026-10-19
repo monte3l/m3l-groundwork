@@ -4,7 +4,8 @@
 
 /**
  * Deprecates every published `@monte3l/groundwork` version older than
- * `latest` that is not already deprecated, as `Superseded by <latest>`.
+ * `latest` that is not already deprecated, as
+ * `Superseded by <latest>. Use @monte3l/groundwork@latest.`
  * Existing messages are left alone. The plan comes from the pure
  * `lib/deprecation-plan.mjs`; this file only does the I/O.
  *

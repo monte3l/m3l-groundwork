@@ -5,7 +5,9 @@
  * A pure planner for deprecating superseded npm versions, for
  * `bin/deprecate-superseded.mjs`: given an already-fetched packument, it
  * decides which versions older than `latest` still need a
- * `Superseded by <latest>` message.
+ * `Superseded by <latest>. Use <name>@latest.` message -- the exact wording
+ * the versions deprecated by hand before this script already carry. `<name>`
+ * is the packument's `name`, or `@monte3l/groundwork` when it has none.
  *
  * No filesystem, no network -- the packument arrives as an argument and the
  * result is a plain data plan, so the I/O wrapper can dry-run it and the
@@ -22,6 +24,10 @@
  * SemVer precedence is hand-rolled because the repo adds no `semver`
  * dependency for this.
  */
+
+// The package the wrapper deprecates; the message falls back to it when a
+// packument carries no `name`.
+const DEFAULT_NAME = "@monte3l/groundwork";
 
 // SemVer 2.0's own grammar (semver.org): no leading zeros in numeric parts or
 // numeric prerelease identifiers, optional prerelease and build metadata.
@@ -112,6 +118,7 @@ export function compareSemver(a, b) {
 
 /**
  * @typedef {object} Packument
+ * @property {string} [name]
  * @property {{ latest?: string }} "dist-tags"
  * @property {Record<string, { deprecated?: string }>} versions
  */
@@ -142,10 +149,12 @@ function refuse(target, reason) {
  *
  * @example
  * const plan = planDeprecations({
+ *   name: "@monte3l/groundwork",
  *   "dist-tags": { latest: "1.0.4" },
  *   versions: { "1.0.3": {}, "1.0.4": {} },
  * });
- * // plan.deprecate: [{ version: "1.0.3", message: "Superseded by 1.0.4" }]
+ * // plan.deprecate: [{ version: "1.0.3",
+ * //   message: "Superseded by 1.0.4. Use @monte3l/groundwork@latest." }]
  *
  * @param {Packument} packument
  * @returns {DeprecationPlan}
@@ -177,7 +186,11 @@ export function planDeprecations(packument) {
   const older = Object.keys(versions)
     .filter((v) => compareSemver(v, latest) < 0)
     .sort(compareSemver);
-  const message = `Superseded by ${latest}`;
+  const name =
+    typeof packument?.name === "string" && packument.name !== ""
+      ? packument.name
+      : DEFAULT_NAME;
+  const message = `Superseded by ${latest}. Use ${name}@latest.`;
   return {
     target: latest,
     deprecate: older

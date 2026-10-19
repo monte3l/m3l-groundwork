@@ -212,17 +212,24 @@ The exit was: `pnpm changeset pre exit` and a `patch` changeset in one PR,
 the version PR, the `npm-publish` environment approval and `npm stage
 approve`. Once `latest` pointed at `1.0.0`, a docs PR dropped `@rc` from the
 README. Read the dist-tags with `npm view @monte3l/groundwork dist-tags` (on
-2026-10-16, after `1.0.3`: `latest`, `next` and `rc` all `1.0.3`). Every version before `1.0.3` is deprecated:
-`0.0.0` ("Empty placeholder"), the `0.1.0-next.*` releases and `1.0.0-rc.2` to
-`1.0.0-rc.8` ("Superseded by 1.0.0"), `1.0.0` ("Superseded by 1.0.1") and
-`1.0.1` and `1.0.2` ("Superseded by 1.0.3"). `latest` moved off the `0.0.0`
-placeholder.
+2026-10-16, after `1.0.3`: `latest`, `next` and `rc` all `1.0.3`). On
+2026-10-19, with `1.0.4` as `latest`, every version before it is deprecated.
+The messages are `Superseded by <version>. Use @monte3l/groundwork@latest.`
+(the `0.1.0-next.*` releases and `1.0.0-rc.2` to `1.0.0-rc.8` name `1.0.0`;
+`1.0.0` names `1.0.1`; `1.0.1` and `1.0.2` name `1.0.3`; `1.0.3` names
+`1.0.4`), except `0.0.0`: `Empty placeholder. Use @monte3l/groundwork@latest
+(1.0.0 or later).` `latest` moved off the `0.0.0` placeholder.
 
 **Deprecating superseded versions is one maintainer command, run after
 `npm stage approve`.** `node bin/deprecate-superseded.mjs` is a dry run that
 prints the plan; `--expect <version> --apply` runs it. It deprecates every
-version below `latest` that is not already deprecated (prereleases included) as
-`Superseded by <latest>`, and leaves existing messages alone. `release.yml`'s
+version below `latest` that is not already deprecated (prereleases included)
+with exactly `Superseded by <latest>. Use <name>@latest.` (for example
+`Superseded by 1.0.4. Use @monte3l/groundwork@latest.`), the wording the
+versions deprecated by hand already carry. `<name>` is the packument's `name`.
+It leaves existing messages alone. The message on `0.0.0`
+(`Empty placeholder. Use @monte3l/groundwork@latest (1.0.0 or later).`) was a
+hand-written one-off; the script never generates it. `release.yml`'s
 "Show the staged ids to approve" step prints the exact command for a stable
 version. Three properties are deliberate:
 

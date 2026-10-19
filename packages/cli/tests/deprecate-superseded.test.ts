@@ -32,8 +32,13 @@ type Versions = Record<string, { deprecated?: string }>;
 /** The 1.0.4-latest world: 1.0.3 and 1.0.2 are the undeprecated ones. */
 function freshVersions(): Versions {
   return {
-    "0.0.0": { deprecated: "Empty placeholder" },
-    "1.0.0": { deprecated: "Superseded by 1.0.1" },
+    "0.0.0": {
+      deprecated:
+        "Empty placeholder. Use @monte3l/groundwork@latest (1.0.0 or later).",
+    },
+    "1.0.0": {
+      deprecated: "Superseded by 1.0.1. Use @monte3l/groundwork@latest.",
+    },
     "1.0.2": {},
     "1.0.3": {},
     "1.0.4": {},
@@ -193,7 +198,7 @@ describe("deprecate-superseded", () => {
     expect(npmCalls()).toEqual([]);
     expect(r.stdout).toContain("1.0.3");
     expect(r.stdout).toContain(
-      'npm deprecate "@monte3l/groundwork@1.0.3 || 1.0.2" "Superseded by 1.0.4"',
+      'npm deprecate "@monte3l/groundwork@1.0.3 || 1.0.2" "Superseded by 1.0.4. Use @monte3l/groundwork@latest."',
     );
     expect(hits[0]).toMatch(/^GET \/@monte3l%2[fF]groundwork/);
   });
@@ -205,7 +210,7 @@ describe("deprecate-superseded", () => {
       [
         "deprecate",
         "@monte3l/groundwork@1.0.3 || 1.0.2",
-        "Superseded by 1.0.4",
+        "Superseded by 1.0.4. Use @monte3l/groundwork@latest.",
       ],
     ]);
   });
@@ -222,7 +227,7 @@ describe("deprecate-superseded", () => {
     expect(argv.slice(0, 3)).toEqual([
       "deprecate",
       "@monte3l/groundwork@1.0.3 || 1.0.2",
-      "Superseded by 1.0.4",
+      "Superseded by 1.0.4. Use @monte3l/groundwork@latest.",
     ]);
     const i = argv.indexOf("--otp");
     expect(i).toBeGreaterThan(2);
@@ -312,8 +317,12 @@ describe("deprecate-superseded", () => {
   });
 
   it("exits 0 with no npm call when there is nothing to deprecate", async () => {
-    versions["1.0.2"] = { deprecated: "Superseded by 1.0.3" };
-    versions["1.0.3"] = { deprecated: "Superseded by 1.0.4" };
+    versions["1.0.2"] = {
+      deprecated: "Superseded by 1.0.3. Use @monte3l/groundwork@latest.",
+    };
+    versions["1.0.3"] = {
+      deprecated: "Superseded by 1.0.4. Use @monte3l/groundwork@latest.",
+    };
     const r = await run(["--apply", "--expect", "1.0.4"], env);
     expect(r.status).toBe(0);
     expect(npmCalls()).toEqual([]);
