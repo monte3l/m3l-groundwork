@@ -347,5 +347,8 @@ tag is wrong. The `tags` ruleset blocks updating and deleting a tag with no
 bypass, so moving one is a maintainer action: set that ruleset's `enforcement`
 to `disabled`, point the tag at the built commit
 (`gh api -X PATCH repos/monte3l/m3l-groundwork/git/refs/tags/<tag>
--f sha=<built commit> -F force=true`), and set it back to `active`. This
-procedure has not been exercised. The 1.0.3 tag was left as it is.
+-f sha=<built commit> -F force=true`), and set it back to `active`. It was
+used once, on 2026-10-19, to move the 1.0.3 tag from `73af011` to `2850f8e`; the
+ruleset was active again afterwards, with the same rules and no bypass actor.
+Rebuilding 1.0.3 from `2850f8e` gave a tarball with the published SHA-256, which
+the tag at `73af011` did not.
