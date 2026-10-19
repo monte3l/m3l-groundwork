@@ -90,7 +90,7 @@ confirmed in Step 0.4:
   from `pack.json.staged` (the bytes Step 0.1 read) for a schema 5 or later inventory and
   from the unsuffixed `pack.json` for schema 1-4,
   against what Step 0.2's deep read already found — a `.claude/settings.json`
-  hook fragment merges the same way the baseline's own hook entries would;
+  hook fragment merges the same way the baseline's own hook entries would, and when the project already registers the same hook `command` (a pack installed before it gained a key such as `onFailure`), add only the keys the fragment has and the existing registration lacks, keep every field the project already sets, and ask before changing a key both define with a different value (the CLI's `mergeSettingsHooks` never overwrites one);
   `wiring.settingsTopLevel` is a set of top-level keys (e.g. `statusLine`)
   planted whole, and only when the project doesn't already define that key —
   when it does, show the existing value and ask, since the CLI's own
