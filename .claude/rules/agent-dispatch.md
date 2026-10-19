@@ -37,6 +37,52 @@ auto, `acceptEdits` or `bypassPermissions` mode overrides a spoke's
 guards bound a spoke, not `permissionMode`. Source:
 [sub-agents](https://code.claude.com/docs/en/sub-agents).
 
+## Guard limits and overrides (detail)
+
+Sources: [hooks](https://code.claude.com/docs/en/hooks),
+[hooks guide](https://code.claude.com/docs/en/hooks-guide),
+[managed settings](https://code.claude.com/docs/en/managed-settings),
+[mods events](https://code.claude.com/docs/en/plugins/mods/events),
+[sub-agents](https://code.claude.com/docs/en/sub-agents) and
+[agent teams](https://code.claude.com/docs/en/agent-teams).
+
+- **The `Bash` screen is conservative.** `guard-hub-src-writes.mjs` blocks
+  redirects, `tee`, `sed -i`, `cp`/`mv` into a guarded path, an interpreter
+  snippet that writes there, and a copy, move or removal of a parent
+  (`rsync -a /tmp/x/ ./`, `rm -rf .`). It cannot see an interpreter running a
+  script from a project file, an `eval`, a computed path, a parent of the
+  project root (`rm -rf ..`), a workspace container below the project root, a
+  build step, a formatter or fixer (`prettier --write`, `eslint --fix`),
+  `git rm`/`git mv`, `find -exec`, `xargs` with a computed operand,
+  `tar`/`curl -o`, or a very long interpreter call (allowed with a stderr
+  note).
+- **Managed settings outrank every project file.** A `managed-settings.json`
+  file, an MDM policy or a console-managed policy has no project-level
+  override, and `allowManagedHooksOnly` and `allowManagedPermissionRulesOnly`
+  mean only managed hooks run and only managed permission rules apply. The
+  file lives outside any working tree, so nothing here can detect it. On a
+  machine you don't control, run `/status` and read its "Setting sources"
+  line: if `guard-hub-src-writes.mjs` and `guard-branch-isolation.mjs` aren't
+  running, treat hub-and-spoke as an unenforced checklist.
+- **An installed mod sits below managed settings and above project hooks.** A
+  mod that handles `tool.check` can approve a call a non-managed `PreToolUse`
+  hook blocked, and project `PreToolUse` hooks run only after the last mod
+  calls `next`. Only managed hooks outrank a mod. Check `/plugin` alongside
+  `/status`.
+- **Who counts as a writer.** The guard needs a writer-spoke `agent_type` and a
+  non-empty `agent_id`. A fork subagent (on by default in every surface since
+  Claude Code 2.1.302) is not a writer spoke, so unless its payload reports a
+  writer `agent_type` it is treated as the hub (the docs don't say what a
+  fork's payload carries). A fork cannot spawn further agents. With agent teams on, an in-process
+  teammate has a documented `agent_id`; one built from a writer definition that
+  also reports that `agent_type` passes as a writer. A split-pane teammate does
+  not get `disallowedTools` (only an in-process one does), so every spoke's
+  `tools` list also omits `Agent`.
+- **What `onFailure: "block"` covers.** A failure is a hook that cannot start,
+  times out, exits with any code other than 0 or 2, or prints invalid JSON. It
+  has no effect on `Stop`, `SubagentStop`, `TaskCompleted`, `TeammateIdle` or
+  async hooks.
+
 ## Dispatch sizing
 
 - **Decompose before you dispatch.** Scale the dispatch to task complexity —

@@ -14,6 +14,10 @@
  * instead of being discovered when `guard-branch-isolation.mjs` blocks a
  * src/test write on `main`.
  *
+ * It sees the line as typed: Claude Code runs `UserPromptSubmit` hooks before
+ * a skill or slash command expands (2.1.299), so `/creating-prs fix the lint`
+ * is judged on those words, and a bare `/starting-work` carries no change verb.
+ *
  * It is advisory: it emits `additionalContext` and exits 0. It never blocks.
  * The heuristic is deliberately loose (inject on any change-intent verb,
  * stay quiet on obvious reads) -- a spurious reminder is cheap; a missed one

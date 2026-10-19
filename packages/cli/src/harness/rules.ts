@@ -556,7 +556,7 @@ const descriptionSubstance: HarnessRule = {
       } else if (description.length > DESCRIPTION_MAX) {
         failures.push({
           subject,
-          message: `description is ${description.length} chars; over ${DESCRIPTION_MAX} it is truncated in the skill listing`,
+          message: `description is ${description.length} chars; over the ${DESCRIPTION_MAX}-char Agent Skills maximum (Claude Code also truncates description + when_to_use at 1,536 in its skill listing)`,
         });
       }
     };

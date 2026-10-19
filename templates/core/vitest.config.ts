@@ -19,9 +19,10 @@ export default defineConfig({
       // barrel pattern): a fresh scaffold's index.ts IS its real content,
       // so excluding it would make this gate measure nothing at all.
       exclude: ["**/*.d.ts"],
-      // json emits coverage-final.json: the v8 text table hides files that
-      // are 100% on every metric, so the JSON is the authoritative
-      // per-file record when investigating a suspected gap.
+      // json emits coverage-final.json: the text table can hide files that
+      // are 100% on every metric (Vitest sets `skipFull` when it detects an
+      // AI coding agent), so the JSON is the authoritative per-file record
+      // when investigating a suspected gap.
       reporter: ["text", "html", "json"],
       thresholds: {
         // Scaffold-appropriate starting floor. Raise these to the project's

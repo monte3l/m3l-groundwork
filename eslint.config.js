@@ -99,6 +99,8 @@ export default defineConfig(
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/switch-exhaustiveness-check": "error",
+      // Overlaps `verbatimModuleSyntax` (typescript-eslint warns the two can
+      // report the same import twice); kept for the rule's autofix.
       "@typescript-eslint/consistent-type-imports": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",

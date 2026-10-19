@@ -19,7 +19,10 @@ because it changes the day-to-day workflow.
 - **The guard is stricter than the baseline's.** It blocks every
   `src`/`tests` write outside a linked worktree under `.claude/worktrees/`,
   on any branch, for any caller. Do not soften it, and do not make the pack
-  recommended.
+  recommended. Its `pack.json` registration carries `"onFailure": "block"`
+  like the baseline's invariant guards, so a crash blocks the write.
+  `harness-extras`' `guard-readonly-bash.mjs` stays fail-open on purpose: it
+  is ergonomics, not an invariant.
 - **`ensure-worktree-deps.mjs` runs `pnpm install --frozen-lockfile`.** That
   runs lifecycle scripts, limited only by the project's own pnpm policy. It
   must skip when `node_modules` is a symlink, since installing there would

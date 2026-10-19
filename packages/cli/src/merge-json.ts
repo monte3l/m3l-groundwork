@@ -122,6 +122,8 @@ interface SettingsHookCommand {
   command: string;
   if?: string;
   timeout?: number;
+  /** Hook failure policy (Claude Code 2.1.295+); defaults to `"continue"`. */
+  onFailure?: "continue" | "block";
 }
 
 interface SettingsHookEntry {
@@ -137,7 +139,7 @@ export type SettingsHooksFragment = Record<string, SettingsHookEntry[]>;
  * counts as a match -- e.g. `PreCompact`, which has none); within a matched
  * entry, only `hooks` commands not already present (compared by exact
  * `command` string) are appended. A command that matches on `command` but
- * differs in its other fields (`if`, `timeout`) is a hard collision, never
+ * differs in its other fields (`if`, `timeout`, `onFailure`) is a hard collision, never
  * a silent overwrite. An event name of `__proto__`, `constructor` or
  * `prototype` throws: the check runs per key inside the loop, before that
  * key is read or written, and nothing escapes the failed merge -- `existing`
