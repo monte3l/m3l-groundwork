@@ -88,7 +88,7 @@ export const TYPESCRIPT_DOMAIN_GLOBS = [
  * `bin/lib/*.mjs` are typescript-domain globs, so without this list the
  * grader's own rules would be swept by `typescript-guidance` -- wrong,
  * because they encode Claude Code harness guidance. The Claude Code Action
- * workflows (`claude.yml`, and the `github` pack's automated-review
+ * workflows (`claude.yml`, and the `claude-github` pack's automated-review
  * `claude-pr-review.yml`) are here for the same reason against
  * `.github/workflows/*.yml`: their trigger, action pin and model choice are
  * Anthropic guidance, not toolchain. Consulted before the typescript list in

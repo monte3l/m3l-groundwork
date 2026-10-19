@@ -61,11 +61,11 @@ describe("classifyPath", () => {
     expect(classifyPath("bin/lib/report.mjs")).toBe("typescript");
   });
 
-  it("classifies the github pack's workflow file as harness-domain despite the .github/workflows/*.yml typescript glob", () => {
+  it("classifies the claude-github pack's workflow file as harness-domain despite the .github/workflows/*.yml typescript glob", () => {
     expect(classifyPath(".github/workflows/claude.yml")).toBe("harness");
   });
 
-  it("classifies the github pack's claude-pr-review.yml as harness-domain despite the .github/workflows/*.yml typescript glob", () => {
+  it("classifies the claude-github pack's claude-pr-review.yml as harness-domain despite the .github/workflows/*.yml typescript glob", () => {
     expect(classifyPath(".github/workflows/claude-pr-review.yml")).toBe(
       "harness",
     );

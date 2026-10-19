@@ -50,7 +50,7 @@ CLI flag or mode waits for a `1.1` release (see
   `/code-review` directly, not through that action. It is unproven. It goes
   ahead only if it posts reliably, its per-review cost is acceptable, and it
   fails the job when nothing was posted. It will never be a required check.
-  The `github` pack's own review workflow is a separate implementation and
+  The `claude-github` pack's own review workflow is a separate implementation and
   is not affected.
 - Keeping `templates/core` and `templates/packs/` current against upstream
   TypeScript and Anthropic guidance is ongoing, ordinary maintenance, not a

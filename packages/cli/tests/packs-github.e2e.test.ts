@@ -4,8 +4,8 @@
 /**
  * The github pack's acceptance test: bootstrap a throwaway project with
  * `--pack github` using the built CLI and confirm it is a pure file drop --
- * both workflow files and all three skill files land byte-identical to
- * their sources, each skill's frontmatter parses with a non-empty
+ * all three skill files land byte-identical to their sources, no
+ * Claude workflow lands (those belong to the claude-github pack), each skill's frontmatter parses with a non-empty
  * `name`/`description`, and (unlike harness-extras) settings.json and
  * verify-steps.packs.json come through completely untouched, since the pack
  * registers no hooks, no top-level settings keys, no package scripts and no
@@ -14,7 +14,13 @@
  * here.
  */
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,7 +53,7 @@ function extractFrontmatter(content: string): string {
 }
 
 describe("github pack end-to-end", () => {
-  it("installs both workflow files and all three skills byte-identical, each skill's frontmatter parses with a name/description, and leaves settings/verify-steps untouched while the emitted project's own pnpm verify passes", () => {
+  it("installs all three skills byte-identical, emits no claude workflow, each skill's frontmatter parses with a name/description, and leaves settings/verify-steps untouched while the emitted project's own pnpm verify passes", () => {
     const targetDir = mkdtempSync(join(tmpdir(), "m3l-groundwork-ca-e2e-"));
     try {
       execFileSync(
@@ -64,41 +70,14 @@ describe("github pack end-to-end", () => {
         { stdio: "inherit" },
       );
 
-      const workflowPath = join(
-        targetDir,
-        ".github",
-        "workflows",
-        "claude.yml",
-      );
-      expect(existsSync(workflowPath)).toBe(true);
-      const sourcePath = join(
-        packSourceRoot,
-        ".github",
-        "workflows",
-        "claude.yml",
-      );
-      expect(readFileSync(workflowPath, "utf8")).toBe(
-        readFileSync(sourcePath, "utf8"),
-      );
-
-      // The pack's second workflow lands byte-identical too, same as the
-      // first.
-      const reviewWorkflowPath = join(
-        targetDir,
-        ".github",
-        "workflows",
-        "claude-pr-review.yml",
-      );
-      expect(existsSync(reviewWorkflowPath)).toBe(true);
-      const reviewSourcePath = join(
-        packSourceRoot,
-        ".github",
-        "workflows",
-        "claude-pr-review.yml",
-      );
-      expect(readFileSync(reviewWorkflowPath, "utf8")).toBe(
-        readFileSync(reviewSourcePath, "utf8"),
-      );
+      // The Claude workflows moved to the claude-github pack: none land.
+      const workflowsDir = join(targetDir, ".github", "workflows");
+      const claudeWorkflows = existsSync(workflowsDir)
+        ? readdirSync(workflowsDir).filter((file) =>
+            /^claude.*\.yml$/u.test(file),
+          )
+        : [];
+      expect(claudeWorkflows).toEqual([]);
 
       // All three skill files land byte-identical, and each one's
       // frontmatter parses with a non-empty name/description matching the

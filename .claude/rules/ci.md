@@ -158,7 +158,7 @@ comment:*)` in `--allowedTools`, and a `Verify Claude posted` step failing
   on it. To restore it, take the file from git history (`git log --diff-filter=D
 -- .github/workflows/claude-pr-review.yml`), re-check those issues first,
   and re-add the references this change removed from `CLAUDE.md`,
-  `CONTRIBUTING.md` and `docs/assurance-case.md`. The `github` pack still
+  `CONTRIBUTING.md` and `docs/assurance-case.md`. The `claude-github` pack still
   ships its own `claude-pr-review.yml` twin to bootstrapped projects; that is
   deliberately unchanged here.
 - **There is no `claude.yml`.** The `@claude`-mention workflow (Anthropic's
@@ -170,7 +170,7 @@ comment:*)` in `--allowedTools`, and a `Verify Claude posted` step failing
 .github/workflows/claude.yml`) and redo its one-time setup: install the
   [Claude GitHub App](https://github.com/apps/claude), run `claude setup-token`,
   and `gh secret set CLAUDE_CODE_OAUTH_TOKEN --org monte3l --repos m3l-groundwork`.
-  The `github` pack still ships its own `claude.yml` and `claude-pr-review.yml`
+  The `claude-github` pack still ships its own `claude.yml` and `claude-pr-review.yml`
   to bootstrapped projects, deliberately unchanged here.
 
 ## Design record

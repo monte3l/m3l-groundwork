@@ -21,6 +21,10 @@
   - changed-files:
       - any-glob-to-any-file: ["templates/core/**"]
 
+"pack:claude-github":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/claude-github/**"]
+
 "pack:github":
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/github/**"]

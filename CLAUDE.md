@@ -145,8 +145,8 @@ Path-scoped rules load on matching files: `.claude/rules/src.md` on
 repo's own markdown (`templates/**` excluded: it ships brand-neutral), and one
 per shipped artifact or surface: `.claude/rules/package-cli.md`,
 `.claude/rules/package-plugin.md`, `.claude/rules/baseline-core.md`,
-`.claude/rules/pack-github.md`, `.claude/rules/pack-harness-extras.md`,
-`.claude/rules/pack-publishing.md`, `.claude/rules/pack-quality.md`,
+`.claude/rules/pack-claude-github.md`, `.claude/rules/pack-github.md`,
+`.claude/rules/pack-harness-extras.md`, `.claude/rules/pack-publishing.md`, `.claude/rules/pack-quality.md`,
 `.claude/rules/pack-supply-chain.md` and `.claude/rules/pack-worktrees.md`. A
 pack cannot ship a rule of its own (`templates/packs/README.md`), which is why
 these live here. Each names its trigger paths in its frontmatter.
@@ -204,7 +204,7 @@ commit rather than widening `HEADER_EXTENSIONS`.
 
 ## Known gaps (deliberately out of scope so far)
 
-Deliberate omissions (the six packs and what each covers, no standalone
+Deliberate omissions (the seven packs and what each covers, no standalone
 "add a pack" flag, `pnpm/setup` deferred, how this repo's own harness arrived,
 adopt-mode inventory and cap-count caveats, and the GitHub settings that live
 outside the repo) are recorded in `docs/known-gaps.md`.
