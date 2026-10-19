@@ -6,8 +6,8 @@ name: Docs Live Check (Scheduled)
 # What this does: once a day, builds the docs site from `main` and compares it
 # with what https://groundwork.monte3l.com actually serves, then compares the
 # npm package's description, homepage and keywords with the GitHub repo's
-# (bin/check-live-site.mjs). `docs.yml` runs the same site check right after
-# each deploy; this run catches drift that appears later with no deploy at
+# (the docs kit's check-live.mjs). `docs.yml` runs the same site check right
+# after each deploy; this run catches drift that appears later with no deploy at
 # all, such as a Cloudflare zone setting changed in the dashboard (HSTS,
 # JavaScript detections, Bot Fight Mode). It never deploys. A failure shows
 # as a failed run, which GitHub emails to the maintainer.
@@ -43,11 +43,11 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - run: node bin/build-docs.mjs --out _site
+      - run: node design/source/docs-kit/build.mjs --out _site
 
       # A push to `main` around this hour deploys while this job runs, and
       # `docs.yml` queues behind its own concurrency group, not this one; six
       # minutes of retries let that deploy land before a mismatch is reported.
-      - run: node bin/check-live-site.mjs --site _site --metadata --attempts 12 --delay 30
+      - run: node design/source/docs-kit/check-live.mjs --site _site --metadata --attempts 12 --delay 30
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

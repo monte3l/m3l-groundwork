@@ -3,20 +3,20 @@
 
 name: Docs
 
-# What this does: builds this repo's own docs site (bin/build-docs.mjs) and
-# deploys it to Cloudflare Workers Static Assets at
-# https://groundwork.monte3l.com, on a Custom Domain
+# What this does: builds this repo's own docs site with the vendored docs kit
+# (design/source/docs-kit/build.mjs) and deploys it to Cloudflare Workers
+# Static Assets at https://groundwork.monte3l.com, on a Custom Domain
 # (tools/deploy/wrangler.jsonc). Runs on every push to `main` and on
 # manual dispatch -- not on every PR, since a PR's docs changes are already
-# checked by `pnpm verify`'s `docs` step (bin/build-docs.mjs --check, in the
+# checked by `pnpm verify`'s `docs` step (the kit's `build.mjs --check`, in the
 # `build` group); this workflow is what actually ships the result.
 #
 # Cloudflare has no GitHub OIDC as of this writing, so the deploy job
 # authenticates with a long-lived, narrowly-scoped API token (Workers
 # Scripts: Edit + Workers Routes: Edit on the monte3l.com zone only), stored
 # as a `docs-cloudflare` environment secret restricted to `main`. See
-# docs/cloudflare-docs.md for the one-time setup and the token's scope
-# rationale.
+# docs/cloudflare-docs.md, which points at the org runbook, for the one-time
+# setup and the token's scope rationale.
 #
 # Previously deployed to GitHub Pages (`pages.yml`); replaced because the
 # maintainer owns monte3l.com on Cloudflare and wants every project's docs
@@ -25,13 +25,13 @@ name: Docs
 # After the deploy, the `smoke` job fetches every page, the 404 page and
 # every asset from the live site and requires each to equal the file the
 # `build` job produced, with every header the generated `_headers` file asks
-# for (bin/check-live-site.mjs). That catches a deploy that never landed and a
+# for (the kit's check-live.mjs). That catches a deploy that never landed and a
 # Cloudflare zone setting that rewrites the site behind the repo's back (zone
 # HSTS replacing the per-response header, JavaScript detections injecting a
 # script). An earlier smoke test got a persistent 403 from a GitHub Actions
 # runner because Bot Fight Mode was on; the zone now has it off (see
-# docs/cloudflare-docs.md), so this job needs no bypass rule. If it fails with
-# a 403 again, a bot-protection setting was switched back on.
+# the org runbook linked from docs/cloudflare-docs.md), so this job needs no
+# bypass rule. If it fails with a 403 again, a bot-protection setting was switched back on.
 on:
   push:
     branches: [main]
@@ -66,9 +66,9 @@ jobs:
       # with. `--check` still re-validates the merged result before `--out`
       # ever writes anything this job would publish, so a path that skips
       # `verify` (a re-run, a manual dispatch) cannot ship a broken link.
-      - run: node bin/build-docs.mjs --check
+      - run: node design/source/docs-kit/build.mjs --check
 
-      - run: node bin/build-docs.mjs --out _site
+      - run: node design/source/docs-kit/build.mjs --out _site
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -139,4 +139,4 @@ jobs:
 
       # Retries for about a minute by default: a fresh deploy can take a
       # moment to reach the edge that answers this runner.
-      - run: node bin/check-live-site.mjs --site _site
+      - run: node design/source/docs-kit/check-live.mjs --site _site

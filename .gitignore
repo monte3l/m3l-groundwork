@@ -33,7 +33,7 @@ lefthook-local.yml
 .eval-results/
 packages/plugin/evals/results/
 
-# The docs site build output (`node bin/build-docs.mjs --out _site`, the
+# The docs site build output (`node design/source/docs-kit/build.mjs --out _site`, the
 # staging directory `.github/workflows/docs.yml`'s build job uploads as an
 # artifact for the deploy job to pick up) -- generated, never committed.
 _site/
