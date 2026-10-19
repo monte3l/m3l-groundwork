@@ -38,14 +38,53 @@ Read this project's rendered docs site at
 
 ## Quickstart
 
-1. Install [Node 24+](https://nodejs.org/) and [pnpm](https://pnpm.io/installation)
-   (see ["Requirements"](#requirements) below for exact versions).
-2. Run `npx @monte3l/groundwork my-app` to bootstrap a new project
-   named `my-app`.
-3. `cd my-app`.
-4. Open the `my-app` folder in Claude Code.
-5. Run `/customize` -- it interviews you and tailors the baseline to your
-   project.
+Install [Node 24+](https://nodejs.org/), [pnpm](https://pnpm.io/installation)
+and [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) first
+(see ["Requirements"](#requirements) below for exact versions). Nothing is
+installed globally: `npx` and `pnpm dlx` fetch the CLI, run it once and leave
+only a download cache behind.
+
+**A new project.** Point the CLI at an empty or missing directory:
+
+```bash
+# with npx
+npx @monte3l/groundwork my-app
+
+# or with pnpm
+pnpm dlx @monte3l/groundwork my-app
+```
+
+It writes the baseline, runs `git init` and `pnpm install`, and installs the
+`/customize` skill. Add `--pack <name>` to install an optional
+[pack](#packs) at the same time (`--list-packs` shows them).
+
+**An existing project.** Run the CLI from the project's root, or pass its path.
+It detects that the directory already looks like a project and switches to
+adopt mode, which surveys it read-only and never overwrites a project file:
+
+```bash
+cd path/to/your-project
+
+# with npx
+npx @monte3l/groundwork .
+
+# or with pnpm
+pnpm dlx @monte3l/groundwork .
+```
+
+It writes a report and staged copies of what it would add under
+`.groundwork/`, plus one guarded copy of the `/customize` skill.
+
+**Then, in either case:**
+
+```bash
+cd my-app        # or stay in your existing project
+claude           # open the project in Claude Code
+```
+
+Run `/customize` inside Claude Code. For a new project it interviews you and
+tailors the baseline. For an existing one it first reconciles the survey
+against your repo and confirms each change with you before editing anything.
 
 > [!NOTE]
 > Earlier releases shipped on other [dist-tags](docs/glossary.md#dist-tag).

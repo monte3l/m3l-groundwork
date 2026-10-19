@@ -4,50 +4,54 @@ What this project intends to do, and not do, over roughly the next year.
 Kept in one file rather than GitHub Issues/Projects so it survives outside
 any one tool -- see `documentation_roadmap` in the
 [OpenSSF Best Practices badge](https://www.bestpractices.dev/) criteria.
+This file lists what is still ahead; what has shipped is in the git history
+and the GitHub Releases.
 
-## Now: 1.0 is out
+## Now: the 1.0 series
 
 The public API has been frozen since the first `1.0.0-rc`
 (see the README's ["Versioning policy"](README.md#versioning-policy)), and
-`1.0.0` shipped it unchanged. Only `patch`
-[changesets](docs/glossary.md#changeset) land in the 1.0 series, and any further API
-change waits for a `1.1` release (see
+`1.0.0` shipped it unchanged. The series is at `1.0.4`. Only `patch`
+[changesets](docs/glossary.md#changeset) land in it, so anything that adds a
+CLI flag or mode waits for a `1.1` release (see
 [`.claude/rules/releases.md`](.claude/rules/releases.md), which
-[`CLAUDE.md`](CLAUDE.md#releases) summarises). The `rc` series and its
-promotion checklist are recorded there.
+[`CLAUDE.md`](CLAUDE.md#releases) summarises).
 
 ## Next 12 months
 
-- **A standalone "add a pack" mode.** Today, adding an optional pack to an
-  already-bootstrapped project means re-running the CLI (auto-detected as
-  adopt mode) and then `/customize`. A dedicated additive-install flag is
-  real, planned work -- see [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
-- ~~**A `publishing` pack**~~ -- shipped: a release workflow
-  (`release.yml`, changesets version-PR / staged, provenance-attested npm
-  publish), `check-publish-version.mjs`, `check-dts-deps.mjs`,
-  `check-license-headers.mjs` (generalized with a `__PROJECT_NAME__` token)
-  and a `REUSE.toml` template. The secret-scanning and Scorecard half this
-  repo itself carries (`gitleaks.yml`, `scorecard.yml`) ships as the separate,
-  adopt-capable `supply-chain` pack. Fresh-mode only:
-  the release flow encodes decisions (registry access, npm trusted-publisher
-  setup, a GitHub App for the version PR) too project-specific for an
-  automated adopt-mode install -- see its `adoptNotes`.
-  (`reviewing-dependabot-prs`, `triaging-scan-alerts`, and a
-  `watching-pr-checks` skill, the same build's other deferred candidates,
-  ship in the `github` pack.)
-- **Growing the bus factor past 1.** See [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor).
-  No committed timeline -- this depends on finding a second maintainer
-  willing to take on release and security-response duties, not on writing
-  code. It's also what stands between this project and the three Gold-level
-  OpenSSF Best Practices criteria that need more than one active
-  contributor -- see [`GOVERNANCE.md`](GOVERNANCE.md#gold-level-criteria-this-project-does-not-meet).
-- **`pnpm/setup` in CI.** Its v3 (2026-09-20) now reads Node's version from
-  `.node-version` through a `node-version-file` input, so the original
-  blocker is gone. What is left is reliability and trust surface: v3 is days
-  old with open hang and network-failure issues, it provisions Node through
-  `pnpm runtime set` in the publish jobs that hold the OIDC token, and it
-  needs pnpm 11 or newer. Migration waits for those to settle -- see
+- **A standalone "add a pack" mode, targeted at 1.1.** Today, adding an
+  optional pack to an already-bootstrapped project means re-running the CLI
+  (auto-detected as adopt mode) and then `/customize`. A dedicated
+  additive-install flag is real, planned work, and it extends adopt mode's
+  survey-only contract rather than loosening it -- see
   [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
+- **Growing the bus factor past 1.** See [`GOVERNANCE.md`](GOVERNANCE.md#bus-factor).
+  A second org owner already approves and merges every pull request, and the
+  `main` ruleset requires it, so `two_person_review` closes on its own as
+  reviewed changes outnumber older ones. The other two criteria need people,
+  not code: `bus_factor` needs a second maintainer who takes on release and
+  security-response duties (and npm access, which no one else holds), and
+  `contributors_unassociated` needs significant contributors from outside the
+  organization. No committed timeline. See
+  [`GOVERNANCE.md`](GOVERNANCE.md#gold-level-criteria-this-project-does-not-meet).
+- **`pnpm/setup` in CI.** Its v3 reads Node's version from `.node-version`
+  through a `node-version-file` input, so the original blocker is gone. What
+  is left is reliability and trust surface: v3 is new with open hang and
+  network-failure issues, it provisions Node through `pnpm runtime set` in
+  the publish jobs that hold the OIDC token, and it needs pnpm 11 or newer.
+  Migration waits for those to settle. The old tracking issue is closed, so
+  the re-check needs a new one -- see
+  [`CLAUDE.md`](CLAUDE.md#known-gaps-deliberately-out-of-scope-so-far).
+- **Automated PR review, only if it can be made reliable.** This repository
+  has none: the `claude-code-action` workflow was removed because it could
+  finish green without posting anything (see
+  [`.claude/rules/ci.md`](.claude/rules/ci.md)). The candidate replacement is
+  a manually dispatched workflow that runs the Claude Code CLI's
+  `/code-review` directly, not through that action. It is unproven. It goes
+  ahead only if it posts reliably, its per-review cost is acceptable, and it
+  fails the job when nothing was posted. It will never be a required check.
+  The `github` pack's own review workflow is a separate implementation and
+  is not affected.
 - Keeping `templates/core` and `templates/packs/` current against upstream
   TypeScript and Anthropic guidance is ongoing, ordinary maintenance, not a
   one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
