@@ -4,9 +4,9 @@ This directory is m3l-groundwork's copy of **m3l-design**, the shared design
 system for everything Enrico Lionello (`enri3l`) builds personally and
 everything published under the `monte3l` GitHub org.
 
-- **Source:** [github.com/monte3l/m3l-design](https://github.com/monte3l/m3l-design), release tag `v1.0.0`
-- **Version copied:** `v1.0.0`
-- **Last re-synced:** 2026-10-11
+- **Source:** [github.com/monte3l/m3l-design](https://github.com/monte3l/m3l-design), release tag `v1.1.0`
+- **Version copied:** `v1.1.0`
+- **Last re-synced:** 2026-10-20
 - **Date vendored into this repo:** 2026-09-26
 
 ## Governance: copy-based, not a live dependency
@@ -49,6 +49,10 @@ rewrites the version lines at the top of this file; it never touches
   (see `source/licenses/`). Chosen for character distinctiveness, which
   helps both dyslexia and dyscalculia accessibility -- see the brand book's
   "Typography" section.
+- `source/docs-kit/` -- the docs-site builder and its gates, vendored like
+  the rest of `source/`. `docs.config.mjs` at the repo root configures it, and
+  `source/docs-kit/README.md` is its contract. See `docs/architecture.md`'s
+  "Design system".
 - `source/brand-book.md` -- the full design brief and its "Built" record:
   personality, color system, typography, shape, motion, accessibility bar,
   token architecture, governance. Read this first for _why_ a token or
@@ -101,11 +105,8 @@ specific to this repo), that divergence goes in a new `design/local/`
 directory, clearly separated from the vendored `source/` tree, rather than
 edited into `source/` where a re-sync would silently discard it.
 
-- `local/site.css` -- the docs site's page-shell layout (a sticky header, a
-  sidebar + content grid, the footnotes section): a page-layout concern none
-  of the seven vendored components cover, since each of those styles one
-  component, not a page. It spends only `design/tokens.css`'s own custom
-  properties and `source/components/bundle.css`'s own classes -- never a new
-  color, space, or radius literal -- so it stays a layout addition, not a
-  second design system. See `bin/build-docs.mjs` and `docs/architecture.md`'s
-  "Design system".
+Nothing is there today. The docs site's page shell used to live in
+`local/site.css`; it now ships in the vendored docs kit
+(`source/docs-kit/site.css`), so this repo has no local divergence. A future
+override stylesheet goes in `design/local/`, and the kit's `--check` holds it
+to `var(--token)` values only.

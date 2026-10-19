@@ -82,7 +82,8 @@ The baseline's caps (≤5 agents, ≤8 skills, ≤10 hooks, ≤3 workflows, ≤1
 scripts): `.claude/rules/baseline-core.md`. The single gate list in
 `verify-steps.mjs`, CI lanes and why there is no automated PR review:
 `.claude/rules/ci.md`. Also `.claude/rules/releases.md`,
-`.claude/rules/design-system.md`, `.claude/rules/docs-site.md`,
+`.claude/rules/design-system.md`, `.claude/rules/docs-site.md` (the docs site
+is built by the vendored docs kit, configured in `docs.config.mjs`),
 `.claude/rules/environments.md` and the paid behavioural evals in
 `.claude/rules/evals.md`.
 

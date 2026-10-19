@@ -22,14 +22,14 @@ paths:
 
 - **Bold, not italics or underlines, for emphasis.** The brand book calls
   this out explicitly: italics/underlines "make text appear to run
-  together." Use `**bold**`. `bin/build-docs.mjs --check` (the `docs`
+  together." Use `**bold**`. `node design/source/docs-kit/build.mjs --check` (the `docs`
   verify step) already fails the build on a stray `_x_`/`*x*` emphasis
   span in one of the ten rendered site pages -- this rule extends the
   same convention to the rest of the repo's markdown, where it's a
   checklist rather than an automated gate.
 - **A GitHub alert (`> [!NOTE|TIP|IMPORTANT|WARNING|CAUTION]`) for
   anything the reader must not miss**, never a bare bold lead-in or a
-  plain blockquote for the same job. `bin/lib/markdown.mjs` renders
+  plain blockquote for the same job. The docs kit's renderer (`design/source/docs-kit/lib/markdown.mjs`) renders
   `NOTE`/`TIP`/`IMPORTANT` as an info callout, `WARNING` as a warning
   callout, and `CAUTION` as a danger callout, each with its own glyph so
   the status survives even without colour. Match the severity to the
