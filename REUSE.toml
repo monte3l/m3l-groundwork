@@ -91,6 +91,7 @@ SPDX-License-Identifier = "MIT"
 path = [
   ".bestpractices.json",
   "CLAUDE.md",
+  ".claude/rules/definition-of-done.md",
   "bin/check-license-headers.mjs",
   "packages/cli/tests/packs.test.ts",
 ]
