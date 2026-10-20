@@ -142,9 +142,10 @@ the work is gone.
 **If a log is written here, commit and land it immediately** (its own small
 `docs:` commit via `writing-commits`) before moving on to any other task,
 rather than leaving it as an uncommitted file. **"Commit it" does not mean
-commit directly to `main`** — branch first (`git switch -c docs/<slug>-log`),
-commit there, push, and open a PR, even for a trivial docs-only change, if
-the project requires a PR for every change to `main`.
+commit directly to `main`** when the project requires a PR for every change to
+`main`: in that case branch first (`git switch -c docs/<slug>-log`), commit
+there, push, and open a PR, even for a trivial docs-only change. Only if the
+project allows direct pushes to `main` is the PR step skipped.
 
 ### 7 — Orphaned journal sweep
 
