@@ -9,15 +9,19 @@
 // of interview answers and an optional recommendation context (which packs
 // were chosen, whether the project already carries custom skills, and the
 // project's package.json dependency names, i.e. its `dependencies` field), it
-// must deterministically return exactly ten recommendations, in a fixed
-// order, each carrying a non-empty "because" string and an id suffixed with
+// must deterministically return ten recommendations (eleven for the `plugin`
+// kind, whose `plugin-dev` entry comes last, and for the `frontend` kind,
+// whose `frontend-design` entry comes last), in a fixed order, each carrying
+// a non-empty "because" string and an id suffixed with
 // "@claude-plugins-official". Four entries (context7, typescript-lsp,
 // claude-md-management, claude-security) are recommended unconditionally; one
 // (claude-code-setup) is never recommended; the remaining five (github,
 // security-guidance, skill-creator, agent-sdk-dev, mcp-server-dev) vary by
 // context/answers -- the last two by the project's package.json
-// dependencies. Without this test, a change to plugin-map.ts could silently
-// drop a plugin from the fixed list, flip a conditional recommendation's
+// dependencies. The two kind-gated eleventh entries are plugin-dev (kind
+// plugin) and frontend-design (kind frontend). Without this test, a change to
+// plugin-map.ts could silently drop a plugin from the fixed list, flip a
+// conditional recommendation's
 // branch, return a recommendation with no justification shown to the user, or
 // make the mapping non-deterministic across identical inputs -- none of which
 // any other test in this repo would catch.
@@ -350,6 +354,81 @@ describe("recommendPlugins", () => {
         );
         expect(bare?.recommended ?? false).toBe(false);
         expect(withContext?.recommended ?? false).toBe(false);
+      },
+    );
+  });
+
+  describe("frontend-design", () => {
+    const frontend: InterviewAnswers = { ...BASE_ANSWERS, kind: "frontend" };
+
+    it("is the eleventh and last entry for the frontend kind, recommended by default", () => {
+      const recs = recommendPlugins(frontend);
+      expect(recs).toHaveLength(11);
+      expect(recs.at(-1)?.id).toBe("frontend-design@claude-plugins-official");
+      expect(recs.at(-1)?.recommended).toBe(true);
+    });
+
+    it("is not recommended when the project already has a design system", () => {
+      const rec = find(
+        recommendPlugins(frontend, { hasDesignSystem: true }),
+        "frontend-design",
+      );
+      expect(rec?.recommended).toBe(false);
+    });
+
+    it("treats an absent or false hasDesignSystem exactly like the default", () => {
+      const base = recommendPlugins(frontend);
+      expect(recommendPlugins(frontend, {})).toEqual(base);
+      expect(recommendPlugins(frontend, { hasDesignSystem: false })).toEqual(
+        base,
+      );
+    });
+
+    it("describes itself as a single design-guidance skill and mentions the design system condition in both states", () => {
+      for (const hasDesignSystem of [false, true]) {
+        const rec = find(
+          recommendPlugins(frontend, { hasDesignSystem }),
+          "frontend-design",
+        );
+        expect(rec?.because).toMatch(/skill/i);
+        expect(rec?.because).toMatch(/design system/i);
+      }
+    });
+
+    it("carries no prerequisites", () => {
+      const rec = find(recommendPlugins(frontend), "frontend-design");
+      expect(rec?.prerequisites).toBeUndefined();
+    });
+
+    it.each(["library", "cli", "service"] as const)(
+      "is absent for the %s kind, which keeps exactly ten entries",
+      (kind) => {
+        const recs = recommendPlugins(
+          { ...BASE_ANSWERS, kind },
+          { hasDesignSystem: false },
+        );
+        expect(recs).toHaveLength(10);
+        expect(find(recs, "frontend-design")).toBeUndefined();
+      },
+    );
+
+    it("is absent for the plugin kind, which keeps plugin-dev last of eleven", () => {
+      const recs = recommendPlugins({ ...BASE_ANSWERS, kind: "plugin" });
+      expect(recs).toHaveLength(11);
+      expect(recs.at(-1)?.id).toBe("plugin-dev@claude-plugins-official");
+      expect(find(recs, "frontend-design")).toBeUndefined();
+    });
+
+    it.each(["library", "cli", "frontend", "service", "plugin"] as const)(
+      "never appears before index 10 for the %s kind",
+      (kind) => {
+        const ids = recommendPlugins({ ...BASE_ANSWERS, kind }).map(
+          (r) => r.id.split("@")[0],
+        );
+        expect(ids.slice(0, 10)).toEqual([...FIXED_ORDER]);
+        expect(ids.indexOf("frontend-design")).toBe(
+          kind === "frontend" ? 10 : -1,
+        );
       },
     );
   });

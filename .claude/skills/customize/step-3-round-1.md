@@ -162,11 +162,19 @@ already-installed pack's skills (e.g. the `github` pack's three);
 in the project's root `package.json` (the same read in both modes; a fresh
 bootstrap carries only the baseline's own devDependencies, so no SDK plugin
 is pre-selected there, and a monorepo whose SDK dependency sits only in a
-workspace package is not pre-selected either -- the user can still pick it). Call
+workspace package is not pre-selected either -- the user can still pick it);
+`hasDesignSystem` is `true` when the project already carries its own design
+system: a design-token file (`tokens.css` or `tokens.json`, at the project
+root or under `design/` or `src/`), a CSS file with a Tailwind `@theme` block,
+or an in-house design-system package among its `dependencies`. A bare Tailwind
+config does not count, and a fresh bootstrap is `false`. It only decides
+whether `frontend-design` is pre-selected, since that plugin's skill defaults
+to proposing its own palette and token system. Call
 `recommendPlugins(answers, context)` from `plugin-map.ts`
 (alongside this file, same copy mechanism as `pack-map.ts`) with the
 now-confirmed `InterviewAnswers`, and offer every entry it returns (ten, or
-eleven for the `plugin` kind, whose `plugin-dev` entry comes last) in **one**
+eleven for the `plugin` kind, whose `plugin-dev` entry comes last, or the
+`frontend` kind, whose `frontend-design` entry comes last) in **one**
 `AskUserQuestion` call holding three multi-select questions (a question
 takes at most four options, so split the list in its fixed order: entries
 1-4, 5-7, and 8 to the last entry, so 8-10 or 8-11), each option pre-selected per its entry's `recommended`
