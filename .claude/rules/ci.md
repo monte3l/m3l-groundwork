@@ -61,8 +61,12 @@ paths:
   shipped artifact) with GitHub's own `actions/labeler`, on `pull_request`,
   never `pull_request_target`. It is not a required check, and it skips
   Dependabot (keyed on `pull_request.user.login`, not `github.actor`), whose
-  token is read-only. A new label needs no setup: the action creates it on
-  first use, and `pull-requests: write` is enough for that. There is
+  token is read-only. `area:ci`, `area:docs`, `area:design` and
+  `area:harness` are shared labels from the org blueprint
+  (`monte3l/.github`, `blueprint/labels.json`); a repo-specific label is
+  created by hand with `gh label create <name> --color 554d50 --description ...`,
+  because one the action creates itself comes out in GitHub's default grey.
+  `pull-requests: write` is enough to apply them. There is
   `.github/CODEOWNERS`, which names both org owners and is enforced:
   `require_code_owner_review` is on, so keep the file valid and never remove
   an owner without a replacement.
