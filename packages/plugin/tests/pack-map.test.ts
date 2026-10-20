@@ -35,6 +35,10 @@
 // `statusline` pack, recommended for every project kind and listed directly
 // after `harness-extras`; harness-extras's own evidence must no longer
 // mention it.
+//
+// `frontend` (a read-only UI/accessibility review agent plus a new-component
+// scaffolding skill) is the third kind-varying pack, after `publishing` and
+// `licensing`: it is recommended only for the `frontend` project kind.
 import { describe, expect, it } from "vitest";
 import { recommendPacks } from "../src/pack-map.js";
 import type { InterviewAnswers } from "../src/kind-facet-map.js";
@@ -54,7 +58,7 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly nine recommendations: harness-extras, statusline, github, claude-github, publishing, licensing, worktrees, supply-chain and quality", () => {
+  it("returns exactly ten recommendations: harness-extras, statusline, github, claude-github, publishing, licensing, worktrees, supply-chain, quality and frontend", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
     expect(names).toEqual([
       "harness-extras",
@@ -66,6 +70,7 @@ describe("recommendPacks", () => {
       "worktrees",
       "supply-chain",
       "quality",
+      "frontend",
     ]);
   });
 
@@ -296,4 +301,25 @@ describe("recommendPacks", () => {
       expect(quality?.because).toMatch(/type.design/i);
     }
   });
+
+  it.each([
+    ["frontend", true],
+    ["library", false],
+    ["cli", false],
+    ["service", false],
+    ["plugin", false],
+  ] as const)(
+    "recommends frontend only for the frontend kind (kind %s -> %s), with evidence naming frontend and, when recommended, accessibility",
+    (kind, expected) => {
+      const frontend = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "frontend",
+      );
+      expect(frontend).toBeDefined();
+      expect(frontend?.recommended).toBe(expected);
+      expect(frontend?.because).toMatch(/frontend/i);
+      if (expected) {
+        expect(frontend?.because).toMatch(/accessib/i);
+      }
+    },
+  );
 });

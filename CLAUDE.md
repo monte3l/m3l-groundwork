@@ -138,13 +138,13 @@ Path-scoped rules load on matching files: `.claude/rules/src.md` on
 repo's own markdown (`templates/**` excluded: it ships brand-neutral), and one
 per shipped artifact or surface: `.claude/rules/package-cli.md`,
 `.claude/rules/package-plugin.md`, `.claude/rules/baseline-core.md`,
-`.claude/rules/pack-claude-github.md`, `.claude/rules/pack-github.md`,
-`.claude/rules/pack-harness-extras.md`, `.claude/rules/pack-licensing.md`,
-`.claude/rules/pack-publishing.md`, `.claude/rules/pack-quality.md`,
-`.claude/rules/pack-statusline.md`, `.claude/rules/pack-supply-chain.md` and
-`.claude/rules/pack-worktrees.md`. A pack cannot ship a rule of its own
-(`templates/packs/README.md`), so these live here; each names its trigger paths
-in its frontmatter.
+`.claude/rules/pack-claude-github.md`, `.claude/rules/pack-frontend.md`,
+`.claude/rules/pack-github.md`, `.claude/rules/pack-harness-extras.md`,
+`.claude/rules/pack-licensing.md`, `.claude/rules/pack-publishing.md`,
+`.claude/rules/pack-quality.md`, `.claude/rules/pack-statusline.md`,
+`.claude/rules/pack-supply-chain.md` and `.claude/rules/pack-worktrees.md`. A
+pack cannot ship a rule of its own (`templates/packs/README.md`), so these
+live here; each names its trigger paths in its frontmatter.
 
 **Forbidden patterns, hook-enforced:** `any` implied by CommonJS constructs,
 a missing `.js` extension on a relative import, a hand-edit to `dist/` or
@@ -197,5 +197,5 @@ two header lines: `.claude/rules/definition-of-done.md`.
 
 ## Known gaps (deliberately out of scope so far)
 
-The nine packs, `pnpm/setup` deferred, adopt-mode caveats and the GitHub
+The ten packs, `pnpm/setup` deferred, adopt-mode caveats and the GitHub
 settings that live outside the repo: `docs/known-gaps.md`.

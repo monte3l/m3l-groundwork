@@ -140,11 +140,12 @@ must-not-miss point, plain copy, tabular data in tables) -- and six more
 covering this repo's own area-specific surfaces: `.claude/rules/ci.md`,
 `.claude/rules/releases.md`, `.claude/rules/design-system.md`,
 `.claude/rules/docs-site.md`, `.claude/rules/environments.md`, and
-`.claude/rules/evals.md` -- and twelve more, one per shipped artifact, for a
+`.claude/rules/evals.md` -- and thirteen more, one per shipped artifact, for a
 narrower focus than this file gives: `.claude/rules/package-cli.md` on
 `packages/cli/**`, `.claude/rules/package-plugin.md` on `packages/plugin/**`,
 `.claude/rules/baseline-core.md` on `templates/core/**`, and one per pack on
 `templates/packs/<name>/**`: `.claude/rules/pack-claude-github.md`,
+`.claude/rules/pack-frontend.md`,
 `.claude/rules/pack-github.md`, `.claude/rules/pack-harness-extras.md`,
 `.claude/rules/pack-licensing.md`, `.claude/rules/pack-publishing.md`, `.claude/rules/pack-quality.md`,
 `.claude/rules/pack-statusline.md`, `.claude/rules/pack-supply-chain.md` and

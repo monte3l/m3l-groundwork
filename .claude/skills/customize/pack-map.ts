@@ -242,11 +242,36 @@ function recommendQuality(): PackRecommendation {
 }
 
 /**
- * Every pack's recommendation for the given interview answers. Two packs
- * vary by `answers.kind` today, `publishing` and `licensing`;
- * `harness-extras`, `statusline`, `github`, `supply-chain` and `quality`
- * are recommended for every kind, and `claude-github` and `worktrees` are
- * opt-in for every kind.
+ * `frontend` is a kind-scoped pack: a read-only `ui-reviewer` agent (a
+ * static accessibility review against WCAG 2.2) plus a `new-component`
+ * skill that scaffolds a component by mirroring a sibling's conventions.
+ * Both only have something to work on in a project that builds UI, so it
+ * is pre-selected for the `frontend` kind alone -- but it stays on offer
+ * for every other kind.
+ */
+function recommendFrontend(answers: InterviewAnswers): PackRecommendation {
+  const recommended = answers.kind === "frontend";
+  return {
+    name: "frontend",
+    recommended,
+    because: recommended
+      ? "a frontend project builds UI, so the pack's read-only ui-reviewer " +
+        "agent (a static accessibility review against WCAG 2.2) and its " +
+        "new-component skill (mirrors a sibling component's conventions) " +
+        "have something to work on."
+      : "not preselected because it adds a UI accessibility reviewer and a " +
+        "component skill that only help a project that builds UI; it is " +
+        "preselected for the frontend kind.",
+  };
+}
+
+/**
+ * Every pack's recommendation for the given interview answers, ten in all.
+ * Three packs vary by `answers.kind` today: `publishing` and `licensing`
+ * (pre-selected for a library or CLI) and `frontend` (pre-selected for the
+ * frontend kind). `harness-extras`, `statusline`, `github`, `supply-chain`
+ * and `quality` are recommended for every kind, and `claude-github` and
+ * `worktrees` are opt-in for every kind.
  *
  * @example
  * ```ts
@@ -266,5 +291,6 @@ export function recommendPacks(
     recommendWorktrees(),
     recommendSupplyChain(),
     recommendQuality(),
+    recommendFrontend(answers),
   ];
 }

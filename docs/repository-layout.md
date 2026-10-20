@@ -135,7 +135,7 @@ templates/core/         THE BASELINE -- exactly what the CLI emits. Its own
                          placeholder src/tests. See its own CLAUDE.md.
 
 templates/packs/        Optional add-on bundles installed on top of the
-                         baseline. `claude-github/`, `github/`,
+                         baseline. `claude-github/`, `frontend/`, `github/`,
                          `harness-extras/`, `licensing/`, `publishing/`, `quality/`,
                          `statusline/`, `supply-chain/`, and `worktrees/` ship
                          today; see its own README.md for the wiring

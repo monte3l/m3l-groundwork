@@ -31,6 +31,10 @@
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/claude-github/**"]
 
+"pack:frontend":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/frontend/**"]
+
 "pack:github":
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/github/**"]
