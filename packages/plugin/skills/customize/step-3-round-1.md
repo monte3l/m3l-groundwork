@@ -162,7 +162,8 @@ already-installed pack's skills (e.g. the `github` pack's three);
 in the project's root `package.json` (the same read in both modes; a fresh
 bootstrap carries only the baseline's own devDependencies, so no SDK plugin
 is pre-selected there, and a monorepo whose SDK dependency sits only in a
-workspace package is not pre-selected either -- the user can still pick it);
+workspace package is not pre-selected either -- the user can still pick it,
+except for an integration, where `recommendIntegrations` does not return it);
 `hasDesignSystem` is `true` when the project already carries its own design
 system: a design-token file (`tokens.css` or `tokens.json`, at the project
 root or under `design/` or `src/`), a CSS file with a Tailwind `@theme` block,
@@ -181,7 +182,25 @@ takes at most four options, so split the list in its fixed order: entries
 boolean with its `because` shown as the evidence -- same
 "visible reasoning" principle as every other inference in this skill.
 
-Write every confirmed `true` entry into `.claude/settings.json`'s
+**Integrations (both modes), right after that offer.** Call
+`recommendIntegrations(context)` from the same `plugin-map.ts` with the same
+context. It returns a plugin only when the project's `dependencies` name that
+service's SDK or CLI (for example `@sentry/node`, `@supabase/supabase-js`,
+`prisma`, `wrangler`), so it is usually empty: when it is, say nothing and move
+on. Otherwise offer its entries in one more `AskUserQuestion` call, in the
+table's order, with none pre-selected -- every `recommended` is `false`,
+because these plugins connect Claude to a live account or run unpinned code
+and the user opts in -- and each `because` shown as the evidence, with its
+`prerequisites` beside it (for three of the plugins they include a note that
+the server starts through an unpinned `npx` launch). The tool takes two to four
+options per question, so use as few multi-select questions as fit four options
+each and split evenly across them, never leaving a question with fewer than two
+options (five entries are 3+2, seven are 4+3). A single entry is asked as one
+`Enable / Skip` question instead. Write every entry the user selected into
+`enabledPlugins` and print their install commands and `prerequisites` as
+described below.
+
+Write every entry the user selected into `.claude/settings.json`'s
 `enabledPlugins` (`{"<id>": true}` per entry, e.g.
 `"context7@claude-plugins-official": true`) -- additive and entry-by-entry,
 same discipline as the CLI's own `mergeSettingsHooks` (which owns the
