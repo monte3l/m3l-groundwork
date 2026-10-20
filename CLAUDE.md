@@ -126,8 +126,8 @@ specifically on `main`), plus `disallowedTools: Agent` on every spoke. For a pie
 The guard also screens `Bash`, only conservatively: a managed deployment, an
 installed mod, a fork subagent or an agent-teams teammate can get around it.
 `onFailure: "block"` (Claude Code 2.1.295 or later) makes the four invariant
-guards fail closed, `permissions.deny` blocks reading `.env*` and `secrets/**`,
-and the hooks, not a spoke's `permissionMode` (an auto, `acceptEdits` or
+guards fail closed, `permissions.deny` blocks secret reads and lockfile and
+`.git/` edits (list in `.claude/rules/hub-and-spoke.md`), and the hooks, not a spoke's `permissionMode` (an auto, `acceptEdits` or
 `bypassPermissions` session overrides it), bound a spoke. Detail and the root
 harness inventory: `.claude/rules/hub-and-spoke.md`; dispatch sizing and
 recovery: `.claude/rules/agent-dispatch.md`.

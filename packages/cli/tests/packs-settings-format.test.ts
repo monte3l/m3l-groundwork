@@ -10,7 +10,17 @@ import { emitTemplate } from "../src/emit.js";
 import { templatesCoreDir } from "../src/main.js";
 import { installPack, loadPack } from "../src/packs.js";
 
-const DENY = ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"];
+const DENY = [
+  "Read(./.env)",
+  "Read(./.env.*)",
+  "Read(./secrets/**)",
+  "Read(**/credentials.json)",
+  "Read(**/secrets.yaml)",
+  "Edit(**/pnpm-lock.yaml)",
+  "Edit(**/package-lock.json)",
+  "Edit(**/yarn.lock)",
+  "Edit(**/.git/**)",
+];
 
 let targetDir: string;
 

@@ -115,8 +115,13 @@ blocks the call instead of letting it through; the style guards and `guard-git-p
 guard has its own parser, and the `main` ruleset rejects unsigned commits at
 merge). `guard-hub-src-writes` is also on `Bash`, so a missing `node` blocks
 every `Bash` call until fixed. `permissions.deny` carries `Read(./.env)`,
-`Read(./.env.*)` and `Read(./secrets/**)`; it does not cover `grep -r` or a
-script that opens the file. A session in auto, `acceptEdits` or
+`Read(./.env.*)`, `Read(./secrets/**)`, `Read(**/credentials.json)` and
+`Read(**/secrets.yaml)`, plus `Edit(...)` rules for `pnpm-lock.yaml`,
+`package-lock.json`, `yarn.lock` and the repository's `.git/` directory. The
+mix of `./` (root-only: `.env`, `secrets/`) and `**/` (any depth: the rest) is
+deliberate, so a nested `packages/x/.env` is not covered. It does not cover
+`grep -r`, a script that opens the file, a subprocess such as `pnpm install`
+rewriting the lock file, or a linked worktree, where `.git` is a file. A session in auto, `acceptEdits` or
 `bypassPermissions` mode overrides a spoke's `permissionMode`, so the hooks, not
 that field, bound a spoke. Claude Code lets a subagent spawn subagents three
 layers deep by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`);

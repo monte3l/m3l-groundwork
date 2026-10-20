@@ -126,9 +126,12 @@ on `Bash`, a missing `node` blocks every `Bash` call until fixed (run the
 command with the `!` prefix to get past it). The style guards and
 `guard-git-push-signed` stay fail-open on purpose: the push guard has its own
 parser and the remote's signed-commit rule is the authoritative layer.
-`permissions.deny` blocks `Read(./.env)`, `Read(./.env.*)` and
-`Read(./secrets/**)`, which also covers `cat`, `head` and `tail` on them in
-`Bash`. It does not cover `grep -r` or a script that opens the file itself.
+`permissions.deny` blocks reading `.env`, `.env.*`, `secrets/`,
+`credentials.json` and `secrets.yaml` (which also covers `cat`, `head` and
+`tail` on them in `Bash`) and editing `pnpm-lock.yaml`, `package-lock.json`,
+`yarn.lock` and the repository's `.git/` directory. It does not cover `grep -r`,
+a script that opens the file itself, a subprocess such as `pnpm install`
+rewriting the lock file, or a linked worktree, where `.git` is a file.
 
 **A spoke's `permissionMode` can be overridden.** A session in auto,
 `acceptEdits` or `bypassPermissions` mode overrides a spoke's `permissionMode`
