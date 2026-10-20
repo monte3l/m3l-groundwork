@@ -58,5 +58,20 @@
     "skill": "working-in-worktrees",
     "query": "Implement a new feature: add a slugify helper that turns a title into a URL slug. Let's get going.",
     "should_trigger": false
+  },
+  {
+    "skill": "new-component",
+    "query": "Add a new component for a paginated data table that looks and is tested like our other components.",
+    "should_trigger": true
+  },
+  {
+    "skill": "new-component",
+    "query": "Implement a new feature: add a slugify helper that turns a title into a URL slug. Let's get going.",
+    "should_trigger": false
+  },
+  {
+    "skill": "new-component",
+    "query": "Why did CI fail on my PR? Dig into the actual failure.",
+    "should_trigger": false
   }
 ]

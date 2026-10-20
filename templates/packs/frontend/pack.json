@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "frontend",
+  "description": "Two aids for a project that builds UI, on top of the baseline: a read-only ui-reviewer agent that does a static accessibility review of changed components, markup and styles against WCAG 2.2 (level AA, plus the animation criterion at AAA) and reports anything that needs a browser as NOT CHECKED, and a new-component skill that scaffolds a component by mirroring an existing sibling component's conventions and routing the work through the baseline's test-author, code-implementer and ui-reviewer loop. No hooks, no settings, no gate, no framework templates.",
+  "modes": ["fresh", "adopt"],
+  "budget": {
+    "agents": 1,
+    "skills": 1,
+    "hooks": 0,
+    "workflows": 0,
+    "scripts": 0
+  },
+  "wiring": {
+    "settings": {},
+    "packageScripts": {},
+    "verifySteps": []
+  },
+  "adoptNotes": "Both files install anywhere a .claude/ directory exists and need no gate runner. ui-reviewer is a read-only review spoke (model claude-sonnet-5-5 at medium effort, tools Read, Grep and Glob only, so it never runs a command): nothing in the baseline's hub-and-spoke instructions dispatches it by name, so ask for it after changing UI, or add it to the project's own CLAUDE.md review step. It reviews source statically and cannot measure contrast, focus order or layout, so it reports those as NOT CHECKED instead of guessing. new-component ships no framework templates: it reads an existing sibling component to learn the project's layout, naming and test conventions, so it works best with at least one component already in the project (with none it stops and asks the owner which conventions to use), and it hands the writing to test-author and code-implementer, which an adopted project must keep for the skill to work as written."
+}

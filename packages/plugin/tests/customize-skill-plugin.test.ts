@@ -266,3 +266,18 @@ describe("SKILL.md Step 7 -- follow-ups the project's files cannot carry", () =>
     }
   });
 });
+
+describe("step-3-round-1.md -- kind-scoped packs", () => {
+  const step3 = read("step-3-round-1.md");
+
+  it("names frontend among the kind-scoped packs whose recommendation can disagree", () => {
+    expect(step3).toContain(
+      "but `publishing`'s, `licensing`'s and `frontend`'s do",
+    );
+  });
+
+  it("no longer carries the old publishing/licensing-only clause", () => {
+    expect(step3).not.toContain("not for `frontend`/`service`");
+    expect(step3).not.toContain("`publishing`'s and `licensing`'s do");
+  });
+});
