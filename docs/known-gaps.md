@@ -2,7 +2,7 @@
 
 > Moved verbatim from the root `CLAUDE.md` ("Known gaps"): what is deliberately out of scope so far.
 
-- `templates/packs/` ships ten packs, each covering one theme (wiring contract
+- `templates/packs/` ships eleven packs, each covering one theme (wiring contract
   and each pack's `adoptNotes` live in `templates/packs/README.md` and its
   `pack.json` files). `harness-extras`: Claude Code session hooks
   (compaction-handoff hooks, `guard-readonly-bash`). `statusline`: the
@@ -26,7 +26,11 @@
   purpose, since it changes the day-to-day workflow. `frontend`: a read-only
   `ui-reviewer` agent (a static WCAG 2.2 review, with anything needing a
   browser reported as `NOT CHECKED`) and a `new-component` skill that mirrors
-  a sibling component; recommended only for the `frontend` kind.
+  a sibling component; recommended only for the `frontend` kind. `service`: a
+  read-only `performance-analyzer` agent (a static review for blocking calls
+  and unbounded work, with anything needing profiling reported as
+  `NOT CHECKED`) and an `api-doc` skill that writes an OpenAPI description
+  from the routes the code defines; recommended only for the `service` kind.
 - **No standalone "add a pack to an already-bootstrapped project" flag.**
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is

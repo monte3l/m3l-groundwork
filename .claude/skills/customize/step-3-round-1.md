@@ -67,8 +67,8 @@ confirmed in Step 0.4:
   `recommended: false`, since it changes the day-to-day workflow rather than
   adding a nicety, and `claude-github` is always `recommended: false`, since
   its workflows need an auth secret and the review spends API credits on
-  every PR; the other five are always `recommended: true`), but `publishing`'s, `licensing`'s and `frontend`'s do (`publishing` and
-  `licensing` are each recommended for `library`/`cli`, `frontend` only for the `frontend` kind) — if the comparison surfaces a real
+  every PR; the other five are always `recommended: true`), but `publishing`'s, `licensing`'s, `frontend`'s and `service`'s do (`publishing` and
+  `licensing` are each recommended for `library`/`cli`, `frontend` only for the `frontend` kind, `service` only for the `service` kind) — if the comparison surfaces a real
   conflict there or for any future kind-scoped pack, raise it rather than
   silently overriding the user's Step 0.4 answer, mirroring Step 4's "the
   one exception" rule for guidance findings. Before installing, check the

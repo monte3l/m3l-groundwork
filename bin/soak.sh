@@ -133,8 +133,8 @@ adopt() { # name git-url
 if [ "$SECTION" = all ] || [ "$SECTION" = negative ]; then negative; fi
 if [ "$SECTION" = all ] || [ "$SECTION" = fresh ]; then
   fresh baseline
-  for p in claude-github frontend github harness-extras licensing publishing quality statusline supply-chain worktrees; do fresh "$p" "$p"; done
-  fresh all-ten claude-github frontend github harness-extras licensing publishing quality statusline supply-chain worktrees
+  for p in claude-github frontend github harness-extras licensing publishing quality service statusline supply-chain worktrees; do fresh "$p" "$p"; done
+  fresh all-eleven claude-github frontend github harness-extras licensing publishing quality service statusline supply-chain worktrees
   fresh hooks-overlap harness-extras worktrees quality
   fresh ci-overlap claude-github supply-chain publishing
 fi
