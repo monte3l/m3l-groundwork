@@ -509,6 +509,41 @@ describe("recommendPlugins", () => {
       expect(rec?.because).toMatch(/gaps/i);
       expect(rec?.because).not.toMatch(/ts-advisor|recommending-ts-tooling/i);
     });
+
+    const becauseOf = (): string => {
+      const because = find(
+        recommendPlugins(BASE_ANSWERS),
+        "claude-code-setup",
+      )?.because;
+      expect(because).toBeDefined();
+      return because ?? "";
+    };
+
+    it("names hooks, subagents, plugins and plugin-supplied skills as the competing categories", () => {
+      const competing = /[^.]*compet[^.]*\./.exec(becauseOf())?.[0] ?? "";
+      expect(competing).toMatch(/hooks/i);
+      expect(competing).toMatch(/subagents/i);
+      expect(competing).toMatch(/plugins/i);
+      expect(competing).toMatch(/skills/i);
+    });
+
+    it("says it alone would add MCP servers (from dependencies) and domain skills", () => {
+      const because = becauseOf();
+      expect(because).toMatch(/alone would add[^.]*MCP/i);
+      expect(because).toMatch(/alone would add[^.]*depend/i);
+      expect(because).toMatch(/MCP[^.]*\/customize does not/i);
+      expect(because).toMatch(/alone would add[^.]*skill/i);
+    });
+
+    it("does not carry the old 'overlaps what /customize is already doing' claim", () => {
+      expect(becauseOf()).not.toMatch(
+        /overlaps what \/customize is already doing/i,
+      );
+    });
+
+    it("opens by saying the recommender skill is read-only", () => {
+      expect(becauseOf().split(". ")[0]).toMatch(/read-only/i);
+    });
   });
 
   it("type: PluginRecommendation's fields are readonly and prerequisites is optional", () => {

@@ -35,6 +35,11 @@
  * - `remember` -- third-party under a source-available license that forbids
  *   modification and redistribution; it sends transcripts to `claude -p`,
  *   writes `.remember/`, and can push memory to a remote.
+ * - `commit-commands` -- its `/commit` asks for neither Conventional Commits
+ *   nor a Co-Authored-By trailer, `/commit-push-pr` commits, pushes and opens
+ *   the PR in one turn, and `/clean_gone` force-deletes local branches whose
+ *   remote is gone, and their worktrees, so it bypasses and competes with the
+ *   baseline's `writing-commits`, `creating-prs` and `finishing-work`.
  */
 import type { InterviewAnswers } from "./kind-facet-map.js";
 
@@ -288,28 +293,41 @@ function recommendSkillCreator(
 }
 
 /**
- * `claude-code-setup` recommends automations (hooks, skills, MCP servers,
- * subagents) for a codebase -- which is exactly the job `/customize` is
- * already doing, against a baseline designed for it. Running both would
- * produce two competing sets of suggestions, so it is never pre-selected;
- * it is listed with that reason rather than silently omitted, so the user
- * can see why. TypeScript-toolchain gaps are a distinct question from Claude
- * Code automation and are answered instead by the baseline
- * `typescript-guidance` skill's `gaps` mode.
+ * `claude-code-setup`'s `claude-automation-recommender` skill is read-only:
+ * it recommends hooks, subagents, skills, plugins and MCP servers for any
+ * codebase but edits nothing. The overlap with `/customize` is partial.
+ * Hooks, subagents, plugins and the skills those plugins supply are where the
+ * two compete -- `/customize` already tailors hooks, subagents and plugins
+ * against the baseline and edits the files, and its `harness-guidance` skill
+ * has authority over skills, so the plugin's picks would duplicate or
+ * contradict it (its skills table suggests skills from plugins this table
+ * deliberately rejects, such as `commit`, `writing-rules` and `feature-dev`,
+ * and it suggests a `code-reviewer` subagent the baseline already ships).
+ * What it alone would add -- MCP server suggestions drawn mostly from the
+ * project's dependencies and tooling signals, which `/customize` does not
+ * make, plus project-domain skill ideas such as API docs, migrations or
+ * component scaffolds -- is not enough to outweigh that conflict, so it is
+ * never pre-selected; it is listed with that reason rather than silently
+ * omitted, so the user can see why. TypeScript-toolchain gaps are a distinct
+ * question from Claude Code automation and are answered instead by the
+ * baseline `typescript-guidance` skill's `gaps` mode.
  */
 function recommendClaudeCodeSetup(): PluginRecommendation {
   return {
     id: pluginId("claude-code-setup"),
     recommended: false,
     because:
-      "its automation recommender overlaps what /customize is already " +
-      "doing -- tailoring hooks, skills and agents to this project against " +
-      "the baseline -- so enabling it would produce a second, competing " +
-      "set of suggestions. TypeScript-toolchain gaps are a separate " +
-      "question from Claude Code automation, and are answered instead by " +
-      "the baseline typescript-guidance skill's gaps mode with " +
-      "live-researched, cited recommendations. " +
-      "Listed so the choice is visible, not silently left out.",
+      "its claude-automation-recommender skill is read-only: it suggests " +
+      "hooks, subagents, skills, plugins and MCP servers but edits nothing. " +
+      "It competes with /customize on hooks, subagents, plugins and the " +
+      "skills those plugins supply, which /customize already tailors " +
+      "against the baseline, so its picks would duplicate or contradict " +
+      "them. What it alone would add is MCP server suggestions drawn mostly " +
+      "from the project's dependencies, which /customize does not make, " +
+      "plus project-domain skill ideas such as API docs or migrations. " +
+      "TypeScript-toolchain gaps are answered instead by the baseline " +
+      "typescript-guidance skill's gaps mode. Listed so the choice is " +
+      "visible, not silently left out.",
   };
 }
 
