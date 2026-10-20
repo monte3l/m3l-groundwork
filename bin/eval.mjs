@@ -12,12 +12,14 @@
  * `packs` suite -- see `evals/packs-harness/triggers.json`'s cross-pack
  * negatives), and (4) the `harness`-suite wrapper carrying authored cases
  * from `evals/core-toolchain/` that run a skill against a deliberately
- * degraded project (the `toolchain` suite). Unlike `pnpm check:harness` this
+ * degraded project (the `toolchain` suite), and (5) a throwaway plugin wrapping
+ * the `frontend` and `service` pack agents, dispatched against seeded and
+ * clean fixtures from `evals/pack-agents/` (the `agents` suite). Unlike `pnpm check:harness` this
  * makes real model calls -- it needs the `claude` CLI, credentials, network,
  * and money -- so it is NEVER part of `pnpm verify`, and skips cleanly (exit
  * 0) when `claude` is not installed.
  *
- *   node bin/eval.mjs [--suite plugin|harness|packs|toolchain|all] [--runs N] [--max-cost-usd N]
+ *   node bin/eval.mjs [--suite plugin|harness|packs|toolchain|agents|all] [--runs N] [--max-cost-usd N]
  *                     [--model M] [--judge-model M] [--ablation none|with-without]
  *                     [--threshold 0..1] [--case GLOB] [-j N] [--check] [--update]
  *                     [--keep-temp]
@@ -54,13 +56,16 @@ import {
   compareToBaseline,
   coreHarnessParams,
   evalArgs,
+  packAgentsParams,
   packsHarnessParams,
   parseArgs,
   shouldUpdateBaseline,
   suiteMissingForCheck,
   summarizeRun,
+  suiteExtras,
   SUITES,
   withSuiteScores,
+  writeAgentPlugin,
   writeHarnessPlugin,
   writeToolchainPlugin,
 } from "./lib/eval-lib.mjs";
@@ -150,7 +155,7 @@ if (baselineMissingForCheck(opts.check, baseline)) {
 try {
   for (const name of suites) {
     let target;
-    let extra = {};
+    const extra = suiteExtras(name);
     if (name === "plugin" || name === "toolchain") {
       // The scaffolds run the built CLI, so it must be current.
       const build = spawnSync("pnpm", ["build"], {
@@ -163,11 +168,10 @@ try {
           { cause: build.error },
         );
       }
-      // Write/Edit are granted because the workspace is throwaway. For
+      // The Write/Edit grants live in suiteExtras (eval-lib.mjs). For
       // `plugin`, /customize's Step 0.3 writes findings back into
       // .groundwork/ and the case's graders forbid touching anything outside
       // it; for `toolchain`, the graders forbid editing at all.
-      extra = { scaffold: true, allowTools: ["Write", "Edit"] };
     }
     if (name === "plugin") {
       target = resolve(root, "packages", "plugin");
@@ -180,6 +184,13 @@ try {
         outDir: target,
         cliPath: resolve(root, "packages", "cli", "bin", "m3l-groundwork.mjs"),
       });
+    } else if (name === "agents") {
+      // The fixtures are scaffolded files the agents read; the cases grant
+      // only read tools, and suiteExtras forces --ablation none because the
+      // baseline arm cannot dispatch a plugin agent.
+      target = mkdtempSync(join(tmpdir(), "m3l-agents-plugin-"));
+      tempDirs.push(target);
+      writeAgentPlugin({ ...packAgentsParams(root), outDir: target });
     } else if (name === "packs") {
       target = mkdtempSync(join(tmpdir(), "m3l-packs-plugin-"));
       tempDirs.push(target);

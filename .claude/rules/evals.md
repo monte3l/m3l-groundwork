@@ -15,7 +15,7 @@ paths:
 
 **Behavioural evals (`pnpm eval`, `bin/eval.mjs`) are a separate, paid layer
 from `check:harness`** and are deliberately not in `pnpm verify` or
-`pre-push`: they make real model calls. Four suites, all driven by
+`pre-push`: they make real model calls. Five suites, all driven by
 `claude plugin eval`.
 
 The third, `toolchain`, runs `typescript-guidance` against a bootstrapped
@@ -32,6 +32,22 @@ have fetched fails). The judge reads only the final message,
 hence the prompt's request for one self-contained summary. Its `fixture.sh`
 is a template -- it uses `__M3L_CLI__`, substituted by `writeToolchainPlugin`
 when the case is copied.
+
+The fifth, `agents`, grades the review quality of the two read-only pack agents
+(`ui-reviewer`, `performance-analyzer`), which the trigger suites cannot reach.
+`writeAgentPlugin` wraps them as a throwaway plugin named `m3l-pack-agents`
+and installs the authored cases under `evals/pack-agents/`: per agent a
+`-seeded` case (a fixture with planted defects, graded on naming them with the
+right criterion), a `-clean` case (no invented Must-fix, no conformance claim)
+and a `-no-files` case (returns asking for a file list). Each case grants only
+`Read`, `Glob`, `Grep` and `Agent` (the docs allow `Agent` as a read-only tool;
+a plugin agent is dispatched by its namespaced name, here
+`m3l-pack-agents:<agent>`), so `bin/eval.mjs` passes no `--allow-tools`. Run it
+with `--ablation none`: the no-plugin arm cannot find the agent. The judge
+reads the final message only, hence the prompts' request to reproduce the
+agent's report in full. Fixtures need no built CLI, so `fixture.sh` is copied
+byte for byte; the corpus invariants live in
+`packages/cli/tests/eval-agents.test.ts`.
 
 `packages/plugin/evals/` grades `/customize` itself (`fresh-interview`,
 `adopt-reconcile`); each case's `fixture.sh` runs this repo's own **built**

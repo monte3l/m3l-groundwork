@@ -761,8 +761,14 @@ describe("evalArgs", () => {
 });
 
 describe("SUITES", () => {
-  it("names the four eval suites", () => {
-    expect(lib.SUITES).toEqual(["plugin", "harness", "packs", "toolchain"]);
+  it("names the five eval suites", () => {
+    expect(lib.SUITES).toEqual([
+      "plugin",
+      "harness",
+      "packs",
+      "toolchain",
+      "agents",
+    ]);
   });
 });
 
