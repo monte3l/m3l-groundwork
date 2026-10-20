@@ -47,10 +47,6 @@ packages/plugin/        Phase B: the /customize skill
 .changeset/             Changesets config and any pending changesets.
                          See "Releases".
 
-.claude-plugin/         marketplace.json: lists the plugin as a relative-path
-                         source into packages/plugin -- never npm -- for
-                         `/plugin marketplace add`.
-
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
                          verify lanes + e2e + e2e-macos + node-current + the `verify`
                          aggregator; the e2e trio skips its work on a

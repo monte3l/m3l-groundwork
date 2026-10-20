@@ -14,19 +14,25 @@ real repo. Either way it then runs a live guidance sweep over official
 TypeScript and Anthropic sources.
 
 This package is never published to npm -- it's a private workspace package,
-built and typechecked like any other, but distributed only through the Claude
-Code plugin marketplace in this same repository:
+built and typechecked like any other, but distributed only through the
+central `monte3l/m3l-plugins` Claude Code marketplace (this repository ships no
+marketplace of its own):
 
 ```
-/plugin marketplace add monte3l/m3l-groundwork
+/plugin marketplace add monte3l/m3l-plugins
 /plugin install m3l-groundwork-customize@monte3l
 ```
+
+To try a local change, run `claude --plugin-dir packages/plugin` from the
+repository root.
 
 `@monte3l/groundwork` copies the same skill into a project it bootstraps, so
 you only need the marketplace install if the project did not come from that
 CLI. The plugin's version (`.claude-plugin/plugin.json`) tracks the CLI's for
-display; a change here ships to marketplace users the moment it lands on
-`main`, independent of any npm release.
+display. The marketplace pins this plugin to a CLI release tag
+(`@monte3l/groundwork@X.Y.Z`), so a change here does not reach marketplace
+users when it lands on `main`: it ships after the CLI's next Changesets
+release and a pin-bump PR in `monte3l/m3l-plugins`.
 
 There's no separate changelog for the plugin -- it has no release of its
 own. See [`packages/cli/CHANGELOG.md`](../cli/CHANGELOG.md) for what changed

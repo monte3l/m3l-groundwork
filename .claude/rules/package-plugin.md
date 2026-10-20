@@ -6,8 +6,8 @@ paths:
 # Plugin package rules (`packages/plugin/**`)
 
 > This file is the terse checklist that auto-loads when you edit the
-> `/customize` plugin. It is private and ships only through the Claude Code
-> marketplace, never npm. It adds to `src.md` and `tests.md`.
+> `/customize` plugin. It is private and ships only through the central
+> `monte3l/m3l-plugins` marketplace, never npm. It adds to `src.md` and `tests.md`.
 
 - **`src/domain-map.ts` is a structural guarantee.** Its test walks the real
   `templates/core` tree and every `templates/packs/*/files` tree, and fails
@@ -20,8 +20,11 @@ paths:
 - **The plugin version tracks the CLI's.** `bin/check-plugin-version.mjs`
   fails the `verify` run on drift, and `bin/sync-plugin-version.mjs` fixes
   it. `packages/plugin/package.json` stays `private`.
-- **A plugin-only change takes no changeset and no release step.** The
-  marketplace entry is a relative path into this directory.
+- **A plugin-only change takes no changeset, and is not live on merge.** The
+  central `monte3l/m3l-plugins` catalog pins a CLI release tag and commit, so
+  it ships after the next CLI release and a pin-bump PR there (see
+  `releases.md`). This repo carries no `marketplace.json`; develop locally
+  with `claude --plugin-dir packages/plugin`.
 - **`SKILL.md` edits change `/customize`'s behaviour,** so run
   `pnpm test:e2e`. The behavioural evals (`pnpm eval`) are paid and never
   part of `verify`; `evals.md` covers them.
