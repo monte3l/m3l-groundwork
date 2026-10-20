@@ -1,0 +1,48 @@
+# OpenAPI description template for the api-doc skill.
+# Replace every placeholder; delete what the API does not have.
+# Version 3.2.1 was the current OpenAPI Specification when this was written
+# (https://spec.openapis.org/oas/latest.html): check that page and use the
+# version the project's tooling supports.
+openapi: "3.2.1"
+info:
+  title: Example service API
+  version: "0.1.0"
+  description: What this API does, in one sentence.
+servers:
+  - url: https://api.example.com
+paths:
+  /items/{itemId}:
+    get:
+      # operationId is optional, but when present it must be unique among all
+      # operations in the document.
+      operationId: getItem
+      summary: Get one item
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "404":
+          description: No item has that id.
+      security:
+        - bearerAuth: []
+components:
+  schemas:
+    Item:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

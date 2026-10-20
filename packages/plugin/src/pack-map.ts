@@ -266,10 +266,35 @@ function recommendFrontend(answers: InterviewAnswers): PackRecommendation {
 }
 
 /**
- * Every pack's recommendation for the given interview answers, ten in all.
- * Three packs vary by `answers.kind` today: `publishing` and `licensing`
- * (pre-selected for a library or CLI) and `frontend` (pre-selected for the
- * frontend kind). `harness-extras`, `statusline`, `github`, `supply-chain`
+ * `service` is a kind-scoped pack: a read-only `performance-analyzer` agent
+ * (a static review for blocking calls and unbounded work) plus an `api-doc`
+ * skill that writes an OpenAPI description from the routes the code
+ * defines. Both only have something to work on in a project that serves an
+ * API, so it is pre-selected for the `service` kind alone -- but it stays
+ * on offer for every other kind.
+ */
+function recommendService(answers: InterviewAnswers): PackRecommendation {
+  const recommended = answers.kind === "service";
+  return {
+    name: "service",
+    recommended,
+    because: recommended
+      ? "a service project serves an API, so the pack's read-only " +
+        "performance-analyzer agent (a static review for blocking calls and " +
+        "unbounded work) and its api-doc skill (an OpenAPI description from " +
+        "the routes the code defines) have something to work on."
+      : "not preselected because it adds a performance reviewer and an " +
+        "API-documentation skill that only help a project that serves an " +
+        "API; it is preselected for the service kind.",
+  };
+}
+
+/**
+ * Every pack's recommendation for the given interview answers, eleven in
+ * all. Four packs vary by `answers.kind` today: `publishing` and
+ * `licensing` (pre-selected for a library or CLI), `frontend` (pre-selected
+ * for the frontend kind) and `service` (pre-selected for the service kind).
+ * `harness-extras`, `statusline`, `github`, `supply-chain`
  * and `quality` are recommended for every kind, and `claude-github` and
  * `worktrees` are opt-in for every kind.
  *
@@ -292,5 +317,6 @@ export function recommendPacks(
     recommendSupplyChain(),
     recommendQuality(),
     recommendFrontend(answers),
+    recommendService(answers),
   ];
 }

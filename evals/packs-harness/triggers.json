@@ -73,5 +73,20 @@
     "skill": "new-component",
     "query": "Why did CI fail on my PR? Dig into the actual failure.",
     "should_trigger": false
+  },
+  {
+    "skill": "api-doc",
+    "query": "Document our API: write the OpenAPI spec for the routes this service exposes.",
+    "should_trigger": true
+  },
+  {
+    "skill": "api-doc",
+    "query": "Implement a new feature: add a slugify helper that turns a title into a URL slug. Let's get going.",
+    "should_trigger": false
+  },
+  {
+    "skill": "api-doc",
+    "query": "Why did CI fail on my PR? Dig into the actual failure.",
+    "should_trigger": false
   }
 ]

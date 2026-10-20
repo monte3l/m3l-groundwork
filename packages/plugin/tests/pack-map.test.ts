@@ -39,6 +39,9 @@
 // `frontend` (a read-only UI/accessibility review agent plus a new-component
 // scaffolding skill) is the third kind-varying pack, after `publishing` and
 // `licensing`: it is recommended only for the `frontend` project kind.
+//
+// `service` (a read-only performance-analyzer agent plus an api-doc skill) is
+// the fourth kind-varying pack: recommended only for the `service` kind.
 import { describe, expect, it } from "vitest";
 import { recommendPacks } from "../src/pack-map.js";
 import type { InterviewAnswers } from "../src/kind-facet-map.js";
@@ -58,7 +61,7 @@ describe("recommendPacks", () => {
     expect(second).toEqual(first);
   });
 
-  it("returns exactly ten recommendations: harness-extras, statusline, github, claude-github, publishing, licensing, worktrees, supply-chain, quality and frontend", () => {
+  it("returns exactly eleven recommendations: harness-extras, statusline, github, claude-github, publishing, licensing, worktrees, supply-chain, quality, frontend and service", () => {
     const names = recommendPacks(BASE_ANSWERS).map((r) => r.name);
     expect(names).toEqual([
       "harness-extras",
@@ -71,6 +74,7 @@ describe("recommendPacks", () => {
       "supply-chain",
       "quality",
       "frontend",
+      "service",
     ]);
   });
 
@@ -319,6 +323,30 @@ describe("recommendPacks", () => {
       expect(frontend?.because).toMatch(/frontend/i);
       if (expected) {
         expect(frontend?.because).toMatch(/accessib/i);
+      }
+    },
+  );
+
+  it.each([
+    ["service", true],
+    ["library", false],
+    ["cli", false],
+    ["frontend", false],
+    ["plugin", false],
+  ] as const)(
+    "recommends service only for the service kind (kind %s -> %s), with evidence naming service and, when recommended, performance and OpenAPI",
+    (kind, expected) => {
+      const service = recommendPacks({ ...BASE_ANSWERS, kind }).find(
+        (r) => r.name === "service",
+      );
+      expect(service).toBeDefined();
+      expect(service?.recommended).toBe(expected);
+      expect(service?.because).toMatch(/service/i);
+      if (expected) {
+        expect(service?.because).toMatch(/performance/i);
+        expect(service?.because).toMatch(/OpenAPI/i);
+      } else {
+        expect(service?.because).toMatch(/preselected for the service kind/);
       }
     },
   );

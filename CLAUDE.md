@@ -141,7 +141,7 @@ per shipped artifact or surface: `.claude/rules/package-cli.md`,
 `.claude/rules/pack-claude-github.md`, `.claude/rules/pack-frontend.md`,
 `.claude/rules/pack-github.md`, `.claude/rules/pack-harness-extras.md`,
 `.claude/rules/pack-licensing.md`, `.claude/rules/pack-publishing.md`,
-`.claude/rules/pack-quality.md`, `.claude/rules/pack-statusline.md`,
+`.claude/rules/pack-quality.md`, `.claude/rules/pack-service.md`, `.claude/rules/pack-statusline.md`,
 `.claude/rules/pack-supply-chain.md` and `.claude/rules/pack-worktrees.md`. A
 pack cannot ship a rule of its own (`templates/packs/README.md`), so these
 live here; each names its trigger paths in its frontmatter.
@@ -197,5 +197,5 @@ two header lines: `.claude/rules/definition-of-done.md`.
 
 ## Known gaps (deliberately out of scope so far)
 
-The ten packs, `pnpm/setup` deferred, adopt-mode caveats and the GitHub
+The eleven packs, `pnpm/setup` deferred, adopt-mode caveats and the GitHub
 settings that live outside the repo: `docs/known-gaps.md`.

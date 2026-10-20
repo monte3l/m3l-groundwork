@@ -55,6 +55,10 @@
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/quality/**"]
 
+"pack:service":
+  - changed-files:
+      - any-glob-to-any-file: ["templates/packs/service/**"]
+
 "pack:statusline":
   - changed-files:
       - any-glob-to-any-file: ["templates/packs/statusline/**"]
