@@ -7,7 +7,7 @@ when you edit the files they govern, and in `docs/`.
 ## What this is
 
 **m3l-groundwork** — a two-phase TypeScript + Claude Code project
-bootstrapper. **Phase A** (`packages/cli`) is deterministic: an offline Node
+bootstrapper. **Phase A** (`packages/cli`) is an offline, deterministic Node
 CLI with two modes, auto-detected from the target directory (`mode.ts`).
 **Fresh mode** writes a baseline Claude Code harness and TypeScript toolchain
 into an empty directory. **Adopt mode** surveys an established project
@@ -15,16 +15,14 @@ read-only, diffs the baseline against it, and writes only under
 `.groundwork/` plus one guarded copy of the `/customize` skill -- it never
 overwrites a project file. **Phase B** (`packages/plugin`) is the `/customize`
 skill: it interviews the owner (fresh) or reconciles the CLI's survey against
-the real repo (adopt), then runs a live guidance pass over official
-TypeScript and Anthropic sources.
+the real repo (adopt), then runs a live guidance pass over official sources.
 
 `templates/packs/` adds optional bundles on top of the baseline (wiring
 contract: `templates/packs/README.md`; a pack never edits YAML or JavaScript).
 Do not confuse this repo's own toolchain with **the baseline it emits**
-(`templates/core/`): they share a design but are separate, independently
-verified artifacts. A change to the root `eslint.config.js` affects only this
-repo; a change to `templates/core/eslint.config.js` affects every project
-bootstrapped afterwards.
+(`templates/core/`): separate, independently verified artifacts. A change to the
+root `eslint.config.js` affects only this repo; one to
+`templates/core/eslint.config.js` affects every project bootstrapped afterwards.
 
 ## Tech Stack
 
@@ -32,15 +30,15 @@ TypeScript, `strict: true`, ESM only, `tsc` (no bundler), `pnpm`. Node 24+
 (`.node-version` is the authority; `check:node-version` gates drift). Two
 workspace packages (`packages/cli`, `packages/plugin`), each with a tooling
 `tsconfig.json` (src + tests, no emit) and a build-only `tsconfig.build.json`
-(src only, emits `dist/`).
+(src only, emits `dist/`; declarations only for the CLI).
 
 ## Repository Layout
 
 `packages/cli` (Phase A), `packages/plugin` (Phase B), `templates/core` (the
-baseline), `templates/packs` (optional bundles), `.claude/` (this repo's own
-harness), `.github/` (this repo's own CI), `bin/` (gate scripts),
-`tools/` (pinned CI tooling), `evals/`, `design/` (vendored m3l-design) and
-`docs/`. The annotated tree is in `docs/repository-layout.md`.
+baseline), `templates/packs` (optional bundles), `.claude/` and `.github/`
+(this repo's own harness and CI), `bin/` (gate scripts), `tools/` (pinned CI
+tooling), `evals/`, `design/` (vendored m3l-design) and `docs/`. The annotated
+tree is in `docs/repository-layout.md`.
 
 ## Commands
 
@@ -66,43 +64,38 @@ Run any task with `pnpm <script>`.
 | `pnpm eval`                           | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), on that same wrapper widened with every `templates/packs/*/files/.claude/skills` merged in (cross-pack triggering), and on `typescript-guidance` against a deliberately degraded project; needs `claude`, credentials, network. Skips cleanly without `claude`. See `.claude/rules/evals.md` |
 | `pnpm verify`                         | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                                                                                                                                                |
 
-Run `pnpm verify` (or just push -- `lefthook`'s `pre-push` runs the same
-steps) before considering any task here done.
+Run `pnpm verify` (or push: `lefthook`'s `pre-push` runs it) before calling a task done.
 
 ## Architecture notes
 
-The design record is split by area, and each file loads when you edit the
-files it governs. CLI internals (token substitution, `resolveAsset()`, dotfile
-escaping, zero runtime dependencies, packs only extending JSON):
-`.claude/rules/package-cli.md`. Adopt mode (the survey is an index, staging,
-the inventory): `.claude/rules/adopt-mode.md`. The two grader
-implementations that must not drift: `.claude/rules/harness-graders.md`.
-`/customize`, `domain-map.ts`, `pack-map.ts`: `.claude/rules/package-plugin.md`.
-The baseline's caps (≤5 agents, ≤8 skills, ≤10 hooks, ≤3 workflows, ≤12
-scripts): `.claude/rules/baseline-core.md`. The single gate list in
-`verify-steps.mjs`, CI lanes and why there is no automated PR review:
-`.claude/rules/ci.md`. Also `.claude/rules/releases.md`,
-`.claude/rules/design-system.md`, `.claude/rules/docs-site.md` (the docs site
-is built by the vendored docs kit, configured in `docs.config.mjs`),
-`.claude/rules/environments.md` and the paid behavioural evals in
-`.claude/rules/evals.md`.
+The design record is split by area; each file loads when you edit the files it
+governs. CLI internals (token substitution, `resolveAsset()`, dotfile escaping,
+zero runtime dependencies): `.claude/rules/package-cli.md`. Adopt mode:
+`.claude/rules/adopt-mode.md`. The two grader implementations that must not
+drift: `.claude/rules/harness-graders.md`. `/customize`, `domain-map.ts`,
+`pack-map.ts`: `.claude/rules/package-plugin.md`. The baseline's caps (≤5
+agents, ≤8 skills, ≤10 hooks, ≤3 workflows, ≤12 scripts):
+`.claude/rules/baseline-core.md`. The gate list in `verify-steps.mjs`, CI lanes
+and why there is no automated PR review: `.claude/rules/ci.md`. Also
+`.claude/rules/releases.md`, `.claude/rules/design-system.md`,
+`.claude/rules/docs-site.md` (the docs site is built by the vendored docs kit,
+configured in `docs.config.mjs`), `.claude/rules/environments.md` and the paid
+behavioural evals in `.claude/rules/evals.md`.
 
 ## Git Workflow
 
 Single-maintainer project on GitHub (`monte3l/m3l-groundwork`, public).
 Conventional Commits, enforced by the `commit-msg` hook
 (`bin/lint-commit.mjs`); every commit needs a DCO `Signed-off-by:` trailer
-(`git commit -s`) and a GPG signature, and a `Co-Authored-By:` trailer when
-Claude authored or substantially assisted it. Nobody can push to `main`: every
-change lands through a pull request whose `verify`, `Dependency Review`,
-`CodeQL` and `Gitleaks` checks are green, with one approval from a code owner
-other than its author, resolved review threads and signed commits. Pull
-request creation is collaborators-only; rebase-merge is not allowed; a branch
-must be up to date before merging. Signing is machine-local: fix a missing
-`user.signingkey`, never `commit.gpgsign=false`. Branch first
-(`feat/<slug>` or `fix/<slug>`); `guard-branch-isolation.mjs` blocks
-`packages/*/src/` and `packages/*/tests/` writes on `main`. The full policy and
-reasoning is in `.claude/rules/git-workflow.md`.
+(`git commit -s`), a GPG signature, and a `Co-Authored-By:` trailer when Claude
+authored or substantially assisted it. Nobody can push to `main`: every change
+lands through a pull request with green `verify`, `Dependency Review`,
+`CodeQL` and `Gitleaks` checks, one approval from a code owner other than its
+author, resolved threads and signed commits (no rebase-merge; the branch must
+be up to date). Signing is machine-local: fix a missing `user.signingkey`,
+never `commit.gpgsign=false`. Branch first (`feat/<slug>` or `fix/<slug>`);
+`guard-branch-isolation.mjs` blocks `packages/*/src/` and `packages/*/tests/`
+writes on `main`. Full policy: `.claude/rules/git-workflow.md`.
 
 ## Agent Operating Model
 
@@ -130,15 +123,14 @@ specifically on `main`), plus `disallowedTools: Agent` on every spoke. For a pie
    over the diff. Must-fix findings route back to `code-implementer`, and the
    loop repeats until clean.
 
-The guard also screens `Bash`, but only conservatively; a managed deployment,
-an installed mod, a fork subagent or an agent-teams teammate can get around
-it. `onFailure: "block"` (Claude Code 2.1.295 or later) makes the four
-invariant guards fail closed, `permissions.deny` blocks reading `.env*` and
-`secrets/**`, and a spoke's `permissionMode` is overridden by an auto,
-`acceptEdits` or `bypassPermissions` session, so the hooks, not that field,
-bound a spoke. Detail, sources and the root harness inventory:
-`.claude/rules/hub-and-spoke.md`; dispatch sizing and recovery:
-`.claude/rules/agent-dispatch.md`.
+The guard also screens `Bash`, only conservatively: a managed deployment, an
+installed mod, a fork subagent or an agent-teams teammate can get around it.
+`onFailure: "block"` (Claude Code 2.1.295 or later) makes the four invariant
+guards fail closed, `permissions.deny` blocks reading `.env*` and `secrets/**`,
+and the hooks, not a spoke's `permissionMode` (an auto, `acceptEdits` or
+`bypassPermissions` session overrides it), bound a spoke. Detail and the root
+harness inventory: `.claude/rules/hub-and-spoke.md`; dispatch sizing and
+recovery: `.claude/rules/agent-dispatch.md`.
 
 Path-scoped rules load on matching files: `.claude/rules/src.md` on
 `packages/*/src/**`, `.claude/rules/tests.md` on tests,
@@ -150,9 +142,9 @@ per shipped artifact or surface: `.claude/rules/package-cli.md`,
 `.claude/rules/pack-harness-extras.md`, `.claude/rules/pack-licensing.md`,
 `.claude/rules/pack-publishing.md`, `.claude/rules/pack-quality.md`,
 `.claude/rules/pack-statusline.md`, `.claude/rules/pack-supply-chain.md` and
-`.claude/rules/pack-worktrees.md`. A
-pack cannot ship a rule of its own (`templates/packs/README.md`), which is why
-these live here. Each names its trigger paths in its frontmatter.
+`.claude/rules/pack-worktrees.md`. A pack cannot ship a rule of its own
+(`templates/packs/README.md`), so these live here; each names its trigger paths
+in its frontmatter.
 
 **Forbidden patterns, hook-enforced:** `any` implied by CommonJS constructs,
 a missing `.js` extension on a relative import, a hand-edit to `dist/` or
@@ -181,8 +173,8 @@ that needs a live 2FA code. Detail: `.claude/rules/releases.md`, with the supply
 Vitest with a per-file v8 coverage gate (90% statements/lines, 80%
 branches/functions), property tests (`*.property.test.ts`, `fast-check`) in
 `pnpm test`, and `*.e2e.test.ts` files that bootstrap real projects and pack
-tarballs, run only through `pnpm test:e2e`. Run `pnpm test:e2e` after any change
-to `packages/cli/src/`, `templates/core/` or `packages/plugin/skills/customize/`.
+tarballs, run only through `pnpm test:e2e` (after any change to
+`packages/cli/src/`, `templates/core/` or `packages/plugin/skills/customize/`).
 Detail: `.claude/rules/tests.md`.
 
 ## Definition of Done
@@ -194,20 +186,15 @@ run it before pushing). Anything that changes what the CLI's tarball ships or
 how it finds its data is proved by `pack.e2e.test.ts`, not by running the CLI
 from the checkout. The baseline's caps still hold if a `.claude/` file was
 added to or removed from `templates/core`. If you touched this repo's _own_
-`.claude/` (agents, hooks, skills, rules, root `settings.json`), grade it with
-`/grade-own-harness`: structural failures gate, rubric findings only warn. The full wording is in `.claude/rules/definition-of-done.md`.
+`.claude/`, grade it with `/grade-own-harness`: structural failures gate,
+rubric findings only warn.
 
-**A new tracked file outside `templates/**` needs an SPDX header** (a
-`SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors` and
-`SPDX-License-Identifier: MIT` line comment) if its extension is `.ts`, `.mjs`,
-`.js`, `.sh`, `.yml` or `.yaml`, or a glob in `REUSE.toml` otherwise.
-`node bin/check-license-headers.mjs --fix` inserts the header; a file under
-neither fails the `license-headers` step. Add a glob to `REUSE.toml` in the same
-commit rather than widening `HEADER_EXTENSIONS`.
+**A new tracked file outside `templates/**` needs an SPDX header** (`.ts`,
+`.mjs`, `.js`, `.sh`, `.yml`, `.yaml`) or a `REUSE.toml` glob (anything else);
+`node bin/check-license-headers.mjs --fix` inserts the header. Wording and the
+two header lines: `.claude/rules/definition-of-done.md`.
 
 ## Known gaps (deliberately out of scope so far)
 
-Deliberate omissions (the nine packs and what each covers, no standalone
-"add a pack" flag, `pnpm/setup` deferred, how this repo's own harness arrived,
-adopt-mode inventory and cap-count caveats, and the GitHub settings that live
-outside the repo) are recorded in `docs/known-gaps.md`.
+The nine packs, `pnpm/setup` deferred, adopt-mode caveats and the GitHub
+settings that live outside the repo: `docs/known-gaps.md`.
