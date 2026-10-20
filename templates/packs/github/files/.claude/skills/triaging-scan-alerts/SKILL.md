@@ -7,6 +7,7 @@ description: >-
   /triaging-scan-alerts, "review the scan alerts", "what does CodeQL flag",
   "triage the security findings", or after a code-scanning workflow run.
   GitHub stance: gh CLI.
+disallowed-tools: Write, Edit, NotebookEdit
 ---
 
 Fetch every open code-scanning alert for this repository, group it by
@@ -14,6 +15,8 @@ which tool raised it and how severe it is, and map each to the exact
 file and line it points at. This skill produces a report and a set of
 options per alert -- it never edits code, dismisses an alert, or opens a
 PR on its own.
+
+**Write and Edit are unavailable while this skill is active** (its `disallowed-tools`): it only reports. Fixing an alert belongs in a fresh request or a spoke, not in this run.
 
 ## Steps
 

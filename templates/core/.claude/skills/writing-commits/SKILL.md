@@ -5,6 +5,7 @@ description: >-
   imperative subject ≤70 chars, decide whether a body is needed, structure it as
   What → Why/How → semver impact, add Co-Authored-By when AI-assisted, then
   commit. Use for "commit this", "write a commit", "stage and commit".
+allowed-tools: Bash(git status --porcelain)
 ---
 
 # writing-commits

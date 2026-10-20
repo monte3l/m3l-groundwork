@@ -1,6 +1,7 @@
 ---
 name: api-doc
 description: Writes or updates an OpenAPI description of a service's HTTP API from the routes the code actually defines, using the template in this skill. Use for /api-doc, "document the API", "write the OpenAPI spec", "add an endpoint to the API docs", or when the API docs are out of date with the routes.
+argument-hint: "[output-path]"
 ---
 
 # api-doc

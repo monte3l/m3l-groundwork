@@ -11,6 +11,7 @@ description: >-
   up to date with Anthropic", "model pins current". Not how this project's
   harness is wired today — that's CLAUDE.md and the `.claude/` files
   themselves.
+argument-hint: "[research <question> | refresh]"
 ---
 
 # harness-guidance
