@@ -68,7 +68,7 @@ CLI flag or mode waits for a `1.1` release (see
   string replace (`packages/cli/src/tokens.ts`) -- see `CLAUDE.md`'s
   "Architecture notes" and `tokens.ts`'s own header comment.
 - **Publish `@monte3l/groundwork-plugin` to npm.** It ships only through the
-  Claude Code marketplace; see the README's ["Releasing"](README.md#releasing)
+  central `monte3l/m3l-plugins` Claude Code marketplace; see the README's ["Releasing"](README.md#releasing)
   section for why.
 - **Let adopt mode write project files directly.** Its contract --
   survey-only, `.groundwork/` plus a guarded copy of `/customize` -- is

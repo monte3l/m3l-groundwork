@@ -4,9 +4,9 @@
 
 /**
  * Fails when the plugin's Claude Code identity has drifted from the CLI's
- * release, or when either file has quietly grown npm-publish shape again --
- * the plugin ships only through the marketplace relative-path source, never
- * to npm. The sync half is `sync-plugin-version.mjs`; see lib/plugin-version.mjs.
+ * release, or when the plugin package has quietly grown npm-publish shape
+ * again -- the plugin is listed by the central `monte3l/m3l-plugins`
+ * marketplace, pinned to a release tag, never published to npm. The sync half is `sync-plugin-version.mjs`; see lib/plugin-version.mjs.
  */
 import process from "node:process";
 import { createReporter, parseJsonFlag, repoRoot } from "./lib/report.mjs";
@@ -28,33 +28,7 @@ if (v.pluginPackagePrivate) {
   reporter.ok("packages/plugin/package.json stays private (no npm release)");
 } else {
   reporter.fail(
-    'packages/plugin/package.json is not private -- the plugin ships only through the Claude Code marketplace, not npm; set "private": true, or restore its npm publish setup deliberately',
-  );
-}
-
-if (v.marketplace.entryName === undefined) {
-  reporter.fail(
-    `.claude-plugin/marketplace.json has no plugin entry named "${v.manifest.name}"`,
-  );
-} else {
-  reporter.ok(
-    `marketplace entry "${v.marketplace.entryName}" matches plugin.json`,
-  );
-}
-
-if (v.marketplace.sourceIsNpm) {
-  reporter.fail(
-    ".claude-plugin/marketplace.json points the plugin at an npm source -- it should be a relative path into packages/plugin instead",
-  );
-}
-
-if (v.marketplace.entryVersion !== undefined) {
-  reporter.fail(
-    `.claude-plugin/marketplace.json pins the plugin to ${v.marketplace.entryVersion} -- drop that field so it inherits plugin.json's version instead`,
-  );
-} else {
-  reporter.ok(
-    "marketplace entry has no separate version pin (inherits plugin.json)",
+    'packages/plugin/package.json is not private -- the plugin ships only through the central monte3l/m3l-plugins marketplace, not npm; set "private": true, or restore its npm publish setup deliberately',
   );
 }
 

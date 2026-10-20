@@ -200,7 +200,7 @@ The `/customize` skill is also available as a Claude Code plugin, for use in
 a project that was not bootstrapped by this CLI:
 
 ```
-/plugin marketplace add monte3l/m3l-groundwork
+/plugin marketplace add monte3l/m3l-plugins
 /plugin install m3l-groundwork-customize@monte3l
 ```
 
@@ -282,6 +282,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full setup and PR workflow.
 See [`CONTRIBUTING.md`](CONTRIBUTING.md#releasing) for how
 `@monte3l/groundwork` is released, published, and verified, and
 [`CLAUDE.md`](CLAUDE.md#releases) for the full design.
+
+The `/customize` plugin has no release of its own. The central
+`monte3l/m3l-plugins` marketplace lists it pinned to a CLI release tag
+(`@monte3l/groundwork@X.Y.Z`), so a plugin change reaches marketplace users
+only after the next CLI release **and** a pin-bump PR in `monte3l/m3l-plugins`.
 
 [`CLAUDE.md`](CLAUDE.md) is the full reference: architecture, the command
 table, conventions, and known gaps.

@@ -22,11 +22,6 @@ interface PluginVersionLib {
     cliPackage: { name: string; version: string };
     manifest: { name: string; version: string };
     pluginPackagePrivate: boolean;
-    marketplace: {
-      entryName: string | undefined;
-      entryVersion: string | undefined;
-      sourceIsNpm: boolean;
-    };
   };
   setVersion(text: string, version: string): string;
 }
@@ -69,9 +64,6 @@ describe("the plugin-version gate", () => {
     cli?: string;
     manifest?: string;
     pluginPrivate?: boolean;
-    entryName?: string;
-    entrySource?: unknown;
-    entryVersion?: string;
   }): void {
     const put = (rel: string, value: unknown): void => {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
@@ -89,18 +81,6 @@ describe("the plugin-version gate", () => {
     put("packages/plugin/.claude-plugin/plugin.json", {
       name: "the-plugin",
       version: overrides.manifest ?? "1.0.0",
-    });
-
-    const entry: Record<string, unknown> = {
-      name: overrides.entryName ?? "the-plugin",
-      source: overrides.entrySource ?? "./packages/plugin",
-    };
-    if (overrides.entryVersion !== undefined) {
-      entry["version"] = overrides.entryVersion;
-    }
-    put(".claude-plugin/marketplace.json", {
-      name: "mkt",
-      plugins: [entry],
     });
   }
 
@@ -121,7 +101,7 @@ describe("the plugin-version gate", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("reads every version, name and source fact from a fixture", () => {
+  it("reads every version and name fact from a fixture", () => {
     writeFixture({});
 
     const versions = lib.readVersions(root);
@@ -129,9 +109,6 @@ describe("the plugin-version gate", () => {
     expect(versions.cliPackage.version).toBe("1.0.0");
     expect(versions.manifest.version).toBe("1.0.0");
     expect(versions.pluginPackagePrivate).toBe(true);
-    expect(versions.marketplace.entryName).toBe("the-plugin");
-    expect(versions.marketplace.sourceIsNpm).toBe(false);
-    expect(versions.marketplace.entryVersion).toBeUndefined();
   });
 
   it("passes when everything agrees", () => {
@@ -142,8 +119,6 @@ describe("the plugin-version gate", () => {
     expect(result.status).toBe(0);
     expect(result.output).toContain("plugin.json version is 1.0.0");
     expect(result.output).toContain("stays private");
-    expect(result.output).toContain('marketplace entry "the-plugin" matches');
-    expect(result.output).toContain("no separate version pin");
   });
 
   it("fails, naming the file, when plugin.json has drifted from the CLI", () => {
@@ -167,40 +142,6 @@ describe("the plugin-version gate", () => {
     expect(result.output).toContain("not npm");
   });
 
-  it("fails when the marketplace has no entry named after the plugin", () => {
-    writeFixture({ entryName: "some-other-name" });
-
-    const result = run("check-plugin-version.mjs");
-
-    expect(result.status).toBe(1);
-    expect(result.output).toContain('no plugin entry named "the-plugin"');
-  });
-
-  it("fails when the marketplace source has grown npm shape again", () => {
-    writeFixture({
-      entrySource: {
-        source: "npm",
-        package: "@scope/plugin",
-        version: "1.0.0",
-      },
-    });
-
-    const result = run("check-plugin-version.mjs");
-
-    expect(result.status).toBe(1);
-    expect(result.output).toContain("points the plugin at an npm source");
-  });
-
-  it("fails when the marketplace entry pins its own version", () => {
-    writeFixture({ entryVersion: "1.0.0" });
-
-    const result = run("check-plugin-version.mjs");
-
-    expect(result.status).toBe(1);
-    expect(result.output).toContain("pins the plugin to 1.0.0");
-    expect(result.output).toContain("inherits plugin.json's version");
-  });
-
   it("sync copies the CLI's version into plugin.json only", () => {
     writeFixture({ cli: "2.0.0-next.0", manifest: "1.0.0" });
     expect(run("check-plugin-version.mjs").status).toBe(1);
@@ -215,7 +156,7 @@ describe("the plugin-version gate", () => {
         "utf8",
       ),
     ).toContain('"version": "2.0.0-next.0"');
-    // Untouched: the plugin package's own version and the marketplace file.
+    // Untouched: the plugin package's own version.
     expect(
       readFileSync(join(root, "packages/plugin/package.json"), "utf8"),
     ).toContain('"version": "0.0.0"');

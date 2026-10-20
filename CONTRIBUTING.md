@@ -253,9 +253,14 @@ git tag and a GitHub Release -- a maintainer still has to approve the
 staged version (2FA, via `npm stage approve`) before it's actually
 installable, npm's own recommended flow for trusted publishers.
 
-`@monte3l/groundwork-plugin` is never published to npm -- it ships only
-through the Claude Code marketplace (`.claude-plugin/marketplace.json`), so
-a change to it is live the moment it lands on `main`; its `plugin.json`
+`@monte3l/groundwork-plugin` is never published to npm, and this repo ships
+no marketplace manifest. The central `monte3l/m3l-plugins` marketplace lists
+it, pinned to a CLI release tag and its commit, so a plugin-only change is
+**not** live when it lands on `main`. It reaches marketplace users after the
+CLI's next Changesets release (tag `@monte3l/groundwork@X.Y.Z`) **and** a
+pin-bump PR in `monte3l/m3l-plugins`. A daily `pins` workflow there opens an
+issue when the pin is stale; a maintainer runs
+`node bin/bump-pins.mjs --apply` in that repo. The plugin's `plugin.json`
 version just tracks the CLI's, for display.
 
 The full design -- why staging is a separate gate from npm's own 2FA step,

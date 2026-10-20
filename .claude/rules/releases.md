@@ -21,12 +21,12 @@ paths:
 
 Only `@monte3l/groundwork` (the CLI, `packages/cli`) ships to npm.
 `@monte3l/groundwork-plugin` (`/customize`, `packages/plugin`) is `private`
-and never published there -- it distributes only through the Claude Code
-marketplace, `.claude-plugin/marketplace.json`'s single entry, whose `source`
-is a **relative path** into `packages/plugin` in this same repo, not an npm
-source -- the documented, no-registry way to ship a Claude Code plugin that
-lives in the same repo as its CLI, and there is no equivalent reason to run
-the plugin through a registry the way `npx @scope/pkg` needs one for the CLI.
+and never published there -- it distributes only through the central
+`monte3l/m3l-plugins` marketplace (marketplace name `monte3l`, install id
+`m3l-groundwork-customize@monte3l`). That catalog lists it as a `git-subdir`
+source (this repo, path `packages/plugin`) **pinned to a release tag**
+(`@monte3l/groundwork@X.Y.Z`) and its commit. This repo ships no
+`marketplace.json` of its own, and a plugin repo must not.
 
 **The flow.** A PR with a user-visible change to the CLI adds a changeset
 (`pnpm changeset`) -- the plugin never takes one, since it has no release of
@@ -46,6 +46,14 @@ back out of its own artifact (never rebuilt), runs
 Release with `gh release upload`, together with the attestation's Sigstore
 bundle as `<tarball>.sigstore.json` -- a second, independent proof alongside
 npm provenance itself. A plugin-only change needs no changeset of its own.
+
+**Plugin-only changes are not live on merge.** Because the central catalog
+pins a release tag and commit, a change under `packages/plugin` reaches
+marketplace users only after (1) the CLI's next Changesets release, which tags
+`@monte3l/groundwork@X.Y.Z`, and (2) a pin-bump PR in `monte3l/m3l-plugins`.
+A daily `pins` workflow there opens an issue when the pin is stale; a
+maintainer runs `node bin/bump-pins.mjs --apply` in that repo. After a release
+that carries plugin changes, do step 2.
 
 **Packs have no release of their own.** `templates/packs/<name>/` ships
 inside the CLI tarball, so a user-visible change to one pack is a CLI change
@@ -111,11 +119,8 @@ version tracks `packages/cli/package.json`'s (`bin/sync-plugin-version.mjs`
 edits the text in place, not re-serializing JSON, so Prettier stays
 satisfied). `check-plugin-version` (the `lint`-group gate,
 `bin/check-plugin-version.mjs`) fails on that drift, and separately asserts
-`packages/plugin/package.json` stays `private` and that
-`.claude-plugin/marketplace.json`'s entry names the plugin correctly, points
-at a non-npm source, and carries no version pin of its own -- three structural
-guards against this design quietly regrowing the npm-publish shape it
-deliberately dropped.
+`packages/plugin/package.json` stays `private` -- a structural guard against
+this design quietly regrowing the npm-publish shape it deliberately dropped.
 
 **The `npm-publish` environment closes the tag/Release ordering gap.**
 `release.yml`'s `publish` job has `environment: npm-publish`, a GitHub

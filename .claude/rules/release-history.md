@@ -43,7 +43,7 @@ one has a command or a file that proves it.
    open npm bundled-dependency advisories in `docs/security-review.md` are
    either fixed upstream or still recorded there as accepted.
 5. **The plugin and the CLI agree.** `pnpm check:plugin-version` passes, so
-   marketplace users get the stable plugin with the stable CLI.
+   the plugin tag the central marketplace pins carries the stable CLI's version.
 6. **The docs say what the live settings are.** `pnpm verify` passes (the
    `docs` step included), and the read-only `gh api` commands in
    `docs/github-blueprint.md` still return the values that file states.

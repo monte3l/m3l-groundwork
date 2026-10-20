@@ -62,9 +62,10 @@ See: [Claude Code documentation](https://docs.claude.com/en/docs/claude-code/ove
 ### Claude Code plugin / marketplace
 
 A plugin is a packaged bundle of skills and commands that Claude Code can
-install; a marketplace is a registry (here, a relative-path entry in a
-`marketplace.json` file) that Claude Code installs a plugin from.
-In this repo: `.claude-plugin/marketplace.json`, `packages/plugin/`.
+install; a marketplace is a registry (here, the central `monte3l/m3l-plugins`
+catalog, which pins this plugin to a CLI release tag) that Claude Code installs
+a plugin from. In this repo: `packages/plugin/`; the marketplace itself lives
+in `monte3l/m3l-plugins`.
 
 ### Commit marker
 

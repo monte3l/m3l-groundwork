@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Runs `claude plugin validate --strict` against this repo's marketplace
- * manifest and the plugin it lists, catching a `plugin.json`/
- * `marketplace.json` mistake `check-plugin-version.mjs` doesn't check
- * (kebab-case names, path forms, unknown fields, a missing `version`/
+ * Runs `claude plugin validate --strict` against the plugin in
+ * `packages/plugin` (this repo ships no marketplace manifest; the central
+ * `monte3l/m3l-plugins` catalog lists it), catching a `plugin.json` mistake
+ * `check-plugin-version.mjs` doesn't check (kebab-case names, path forms, unknown fields, a missing `version`/
  * `description`/`author`). Skips cleanly (exit 0, one warning) when the
  * `claude` CLI isn't installed, same pattern as `bin/eval.mjs` -- this is a
  * local/CI convenience, not something a contributor without Claude Code
@@ -25,7 +25,6 @@ if (spawnSync("claude", ["--version"], { stdio: "ignore" }).error) {
 }
 
 const targets = [
-  { label: "marketplace manifest", path: root },
   { label: "m3l-groundwork-customize plugin", path: "packages/plugin" },
 ];
 

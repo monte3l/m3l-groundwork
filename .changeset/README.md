@@ -7,8 +7,8 @@ with the PR. Merging to `main` opens (or updates) a
 See `.github/workflows/release.yml`.
 
 `@monte3l/groundwork-plugin` (the `/customize` skill) never takes a changeset
--- it has no npm release. It ships through the Claude Code marketplace
-(`.claude-plugin/marketplace.json`, a relative-path source into
-`packages/plugin`), so a change to it is live for marketplace users the
-moment it lands on `main`. Its `plugin.json` version just tracks the CLI's,
+-- it has no npm release. It is listed by the central `monte3l/m3l-plugins`
+marketplace, pinned to a CLI release tag, so a change to it reaches
+marketplace users only after the next CLI release and a pin-bump PR in that
+repo. Its `plugin.json` version just tracks the CLI's,
 for display (`bin/sync-plugin-version.mjs`).
