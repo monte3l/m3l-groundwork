@@ -8,9 +8,12 @@ name: Label PRs by area
 # paths the PR changes, so the PR list reads by artifact. Labels only: it
 # never blocks anything, and it is not a required check.
 #
-# The action creates a missing label itself the first time it applies it, and
-# `pull-requests: write` is enough for that (checked on this workflow's first
-# run), so there is no label setup step and `issues: write` is not needed.
+# The action does not create the labels this workflow applies: the four shared
+# ones (`area:ci`, `area:docs`, `area:design`, `area:harness`) come from the
+# org blueprint, and the repo-specific ones are created by hand (see
+# `.github/labeler.yml`), because a label the action creates itself comes out
+# in GitHub's default grey. `pull-requests: write` is enough to apply labels,
+# and `issues: write` is not needed.
 #
 # `pull_request`, never `pull_request_target`: PR creation is
 # collaborators-only here, so no fork PR exists, and the checked-out code is

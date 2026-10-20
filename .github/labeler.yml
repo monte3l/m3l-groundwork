@@ -6,8 +6,14 @@
 # filter to the one they care about. A PR that touches several areas gets
 # several labels. The path scopes of the matching rules in `.claude/rules/`
 # are the source for these globs; nothing checks that they agree, so update
-# both when a scope moves. A new label here needs no setup: the workflow
-# creates it on first use.
+# both when a scope moves.
+#
+# `area:ci`, `area:docs`, `area:design` and `area:harness` are shared labels
+# defined in the org blueprint (`monte3l/.github`, `blueprint/labels.json`),
+# so their globs here follow the org's shared rules. The others are specific
+# to this repo and are created by hand with
+# `gh label create <name> --color 554d50 --description ...`, because a label
+# the action creates itself comes out in GitHub's default grey.
 
 "area:cli":
   - changed-files:
@@ -67,7 +73,7 @@
 
 "area:docs":
   - changed-files:
-      - any-glob-to-any-file: ["docs/**", "*.md"]
+      - any-glob-to-any-file: ["docs/**", "*.md", "docs.config.mjs"]
 
 "area:design":
   - changed-files:
