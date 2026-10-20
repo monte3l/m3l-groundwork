@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Denylist gaps in `guard-readonly-bash.mjs`'s `classifyBashCommand` (missing
+ * Denylist gaps in `guard-readonly-bash.mjs`'s `classifyBashCommand` (the hook
+ * is now an allowlist of read verbs with these denylist guards kept as
+ * specific reasons; the allowlist itself is covered in the sibling
+ * `guard-readonly-bash-*.test.ts` files) (missing
  * git/pnpm/npm mutating subcommands, `sed --in-place`, prefix-verb blind
  * spots for `sudo`/`env`/`xargs`/`bash -c`, and `find -delete`/`-exec`), and
  * a CRLF/quoting gap in `readOnlyAgentNames`'s frontmatter parsing.
@@ -459,8 +462,10 @@ describe("classifyBashCommand -- ANSI-C quoting ($'...') must not desync quote p
     expect(guard.classifyBashCommand(command).blocked).toBe(true);
   });
 
-  it("still allows echo $'a\\tb' (no redirect present)", () => {
-    expect(guard.classifyBashCommand("echo $'a\\tb'").blocked).toBe(false);
+  it("blocks echo $'a\\tb' (an argument whose ANSI-C quoting cannot be read fails closed)", () => {
+    const verdict = guard.classifyBashCommand("echo $'a\\tb'");
+    expect(verdict.blocked).toBe(true);
+    expect(verdict.reason).toMatch(/quoting could not be read/);
   });
 });
 
@@ -642,17 +647,24 @@ describe("classifyBashCommand -- version-pinned wrapped tools must not evade the
   it.each([
     ["npx prettier@3 --check .", "a pinned version with only a read-only flag"],
     ["pnpm dlx eslint@9 .", "a pinned version with no fixer flag at all"],
-    [
-      "npx @scope/tool@1 --check",
-      "a scoped, version-pinned package name with no fixer flag",
-    ],
     ["npx vitest@4 run", "a pinned version on a non-fixer tool"],
-    [
-      "npx @scope/tool@1 --write",
-      "a scoped, version-pinned UNKNOWN tool must not be mangled into matching prettier/eslint -- only the two known fixers are judged",
-    ],
   ])("still allows %s (%s)", (command) => {
     expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+
+  it.each([
+    [
+      "npx @scope/tool@1 --check",
+      "a scoped, version-pinned package name that is not on the allowlist",
+    ],
+    [
+      "npx @scope/tool@1 --write",
+      "a scoped, version-pinned UNKNOWN tool is not mangled into matching prettier/eslint; it blocks because the wrapped tool is off the allowlist",
+    ],
+  ])("blocks %s (%s)", (command) => {
+    const verdict = guard.classifyBashCommand(command);
+    expect(verdict.blocked).toBe(true);
+    expect(verdict.reason).toMatch(/allowlist/);
   });
 });
 
@@ -1105,7 +1117,6 @@ describe("classifyBashCommand -- quoted/escaped verb words must be unquoted befo
       'FOO="a b" pnpm test',
       "a quoted env-assignment value ahead of a non-mutating verb",
     ],
-    ["bash script.sh", "an unquoted script operand, not a -c payload"],
     [`"bash" -c 'ls'`, "a quoted shell name whose nested payload is read-only"],
     [
       `bash -c '"ls" src'`,
@@ -1113,6 +1124,12 @@ describe("classifyBashCommand -- quoted/escaped verb words must be unquoted befo
     ],
   ])("still allows %s (%s)", (command) => {
     expect(guard.classifyBashCommand(command).blocked).toBe(false);
+  });
+
+  it("blocks bash script.sh (a shell without -c is not on the allowlist; the operand is not a -c payload)", () => {
+    const verdict = guard.classifyBashCommand("bash script.sh");
+    expect(verdict.blocked).toBe(true);
+    expect(verdict.reason).toMatch(/allowlist/);
   });
 });
 
