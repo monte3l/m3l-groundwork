@@ -273,7 +273,7 @@ project's commands in advance.
 **Dependabot grouping:** at CI depth thorough in a fresh bootstrap, `.github/dependabot.yml`
 gets an `npm` entry with `groups` (see Step 3 Round 1). Report whether it was
 added, and that Dependabot support for the project's pnpm version is
-**unconfirmed**: tell the owner to check the first Dependabot PR. At any other
+**unconfirmed**: tell the owner to check the first Dependabot PR, and to expect failed or partial updates if the project uses pnpm `catalogs` or workspace `overrides`. At any other
 depth, mention it as an option only.
 
 **Write the report to a file as well (adopt mode only).** Save the same report
