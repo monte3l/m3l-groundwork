@@ -1,6 +1,7 @@
 ---
 name: new-component
 description: Adds a new component to a UI project by mirroring an existing sibling component's conventions, then runs it through the test-author, code-implementer and ui-reviewer loop. Use for /new-component, "add a new component", "scaffold a component", "create a UI component", or when asked for a component that should look and be tested like the ones already in the project.
+argument-hint: "[component-name]"
 ---
 
 # new-component

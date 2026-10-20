@@ -15,6 +15,7 @@ description: >-
   we missing", or before changing a compiler flag. Not for a general Claude
   Code automation review, and not how this project's config is wired today
   — that's CLAUDE.md and the config files.
+argument-hint: "[research <question> | refresh | gaps]"
 ---
 
 # typescript-guidance

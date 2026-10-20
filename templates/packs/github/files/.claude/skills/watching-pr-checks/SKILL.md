@@ -7,12 +7,16 @@ description: >-
   check name alone. Use for /watching-pr-checks, "check this PR's status",
   "is this PR ready to merge", "did CI pass on my PR". GitHub stance: gh
   CLI.
+allowed-tools: Bash(gh pr view *) Bash(gh pr checks *) Bash(gh run view *)
+disallowed-tools: Write, Edit, NotebookEdit
 ---
 
 Check one pull request's CI status and act on what the checks actually
 say, rather than assuming green or guessing at a failure. This is a
 single check, not a polling loop -- if checks are still running, report
 that plainly and let the user decide whether to ask again later or wait.
+
+**Write and Edit are unavailable while this skill is active** (its `disallowed-tools`): it only reads check status. A fix for a red check belongs in a fresh request or a spoke after `/triaging-ci`, not in this run.
 
 ## Steps
 

@@ -8,6 +8,8 @@ description: >-
   worktree", "what worktrees are open", "sync this worktree with main", or
   "finish this worktree" -- and from `starting-work`'s own branch step, which
   hands off here automatically when this skill is installed.
+allowed-tools: Bash(git worktree list --porcelain) Bash(git status --porcelain)
+argument-hint: "[start <slug> | status | sync <slug> | finish <slug> | fan-out]"
 ---
 
 # working-in-worktrees

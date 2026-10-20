@@ -7,6 +7,8 @@ description: >-
   approve. Use for /reviewing-dependabot-prs, "review the dependabot PRs",
   "triage dependency updates", or when several Dependabot PRs have
   accumulated. GitHub stance: gh CLI.
+allowed-tools: Bash(gh pr list *) Bash(gh pr view *) Bash(gh pr checks *)
+disallowed-tools: Write, Edit, NotebookEdit
 ---
 
 Triage every open Dependabot pull request in this repository: classify each
@@ -15,6 +17,8 @@ action per PR, then act only on the batch the user actually confirms. This
 skill never merges or closes a PR the user hasn't approved, and never
 guesses at a version bump's safety from the checks alone -- a major bump is
 always held for a human look, checks or no checks.
+
+**Write and Edit are unavailable while this skill is active** (its `disallowed-tools`): it acts only through `gh`. A code fix for a failing update belongs in a fresh request or a spoke, not in this run.
 
 ## Steps
 

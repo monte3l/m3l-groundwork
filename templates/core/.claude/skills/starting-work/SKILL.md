@@ -8,6 +8,7 @@ description: >-
   seen the code yet. Inspects git state, recommends a branch (feat/fix <slug>)
   and push target, and decides whether a PR is required, all confirmed before
   any write. Skip for research and questions that change nothing.
+allowed-tools: Bash(git status --porcelain) Bash(git rev-parse --abbrev-ref HEAD) Bash(git rev-parse --git-path hooks) Bash(node --version)
 ---
 
 # starting-work
@@ -39,6 +40,25 @@ git status --porcelain               # is the tree already dirty?
   isolation purposes — it's the same tree state the guard protects.
 - **Re-run this inspection after any conversational gap, not just at the
   start.** The branch is not a stable fact across a long session.
+
+### 1a — Environment preflight (read-only)
+
+Before recommending anything, check that the checkout can actually run the
+project's gates. This only reads and will report findings: **never install** anything and
+never change a file, since a missing piece is the owner's call.
+
+- **Node.** Compare `node --version` with the major in `.node-version` (the
+  project's authority for it). A mismatch is a finding, not an error.
+- **Dependencies.** `node_modules` should exist. If it is missing, the
+  hooks and `pnpm verify` will fail until `pnpm install` is run.
+- **Git hooks.** `lefthook`'s hooks should be installed in the checkout (look
+  for `pre-commit` and `pre-push` under the directory `git rev-parse --git-path hooks`
+  prints, which honours `core.hooksPath` and linked worktrees). If they are
+  missing, nothing runs the gates before a commit or push.
+
+Report each finding in one line and carry on: they feed the Step 4 summary
+and never block the branch decision. Skip a check whose file does not exist in
+this project (no `.node-version`, no `lefthook.yml`).
 
 ### 2 — Infer the change scope
 

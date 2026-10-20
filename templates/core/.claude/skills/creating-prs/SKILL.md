@@ -6,6 +6,7 @@ description: >-
   path. Use for /creating-prs, "open a PR", "create a pull request", "ship
   this for review", "get this merged", or after finishing a fix. Requires gh
   CLI auth.
+allowed-tools: Bash(git status --porcelain) Bash(git fetch origin) Bash(git log origin/main..HEAD --oneline) Bash(gh pr view *)
 ---
 
 # creating-prs

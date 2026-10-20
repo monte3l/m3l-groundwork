@@ -9,6 +9,7 @@ description: >-
   branch or stale refs linger -- even when it sounds like a one-line git
   command, because deleting a branch that never merged loses work and this
   skill checks first. GitHub stance: gh CLI.
+allowed-tools: Bash(git status --porcelain) Bash(git worktree list --porcelain) Bash(gh pr view *)
 ---
 
 # finishing-work
