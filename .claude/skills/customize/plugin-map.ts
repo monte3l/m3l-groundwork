@@ -4,7 +4,9 @@
 /**
  * The plugin recommendation table `/customize` reads in Step 3 to pre-select
  * which built-in `claude-plugins-official` marketplace plugin(s) to offer,
- * with the evidence shown alongside each recommendation -- the same
+ * and, separately, which service-integration plugins to offer (never
+ * pre-selected) for the SDKs the project depends on, with the evidence
+ * shown alongside each recommendation -- the same
  * "inference happens once, visibly, with its reasoning attached" principle
  * `pack-map.ts` applies to `templates/packs/` bundles. A stored, unit-tested
  * module rather than a judgment made afresh each run, so the same interview
@@ -42,6 +44,15 @@
  *   the PR in one turn, and `/clean_gone` force-deletes local branches whose
  *   remote is gone, and their worktrees, so it bypasses and competes with the
  *   baseline's `writing-commits`, `creating-prs` and `finishing-work`.
+ * - `vercel` -- ships SessionStart and Skill hooks and, by default, sends
+ *   telemetry that includes an install id.
+ * - `stripe` -- its node hooks run on every prompt and every tool batch,
+ *   spawn the `stripe` CLI and inject feedback prompts.
+ * - `convex` -- a PreToolUse lint hook, a Stop hook that can run for up to
+ *   180 seconds, polling shell monitors, default-on telemetry and an
+ *   unpinned `npx convex@latest`.
+ * - `linear` -- its SDK package name was not confirmed from vendor docs, so
+ *   there is no verified dependency signal to offer it from.
  */
 import type { InterviewAnswers } from "./kind-facet-map.js";
 
@@ -442,4 +453,176 @@ export function recommendPlugins(
     return [...fixed, recommendFrontendDesign(context)];
   }
   return fixed;
+}
+
+/**
+ * One service-integration plugin: the exact package names and whole npm
+ * scopes (written with their trailing `/`) that signal it, whether the
+ * plugin ships skills beside its MCP server, an optional phrase saying how
+ * the server serves the dependency, the caveat that closes its reasoning,
+ * and its prerequisites.
+ */
+interface IntegrationSpec {
+  readonly name: string;
+  readonly exact: readonly string[];
+  readonly scopes: readonly string[];
+  readonly hasSkills: boolean;
+  readonly serves?: string;
+  readonly caveat: string;
+  readonly prerequisites: readonly string[];
+}
+
+const LIVE_ACCOUNT =
+  "Not pre-selected because the plugin connects Claude to a live account.";
+
+const INTEGRATIONS: readonly IntegrationSpec[] = [
+  {
+    name: "playwright",
+    exact: ["@playwright/test", "@playwright/mcp"],
+    scopes: [],
+    hasSkills: false,
+    serves: " by driving a real browser",
+    caveat:
+      "Not pre-selected because its server downloads and runs unpinned " +
+      "npm code at every launch.",
+    prerequisites: [
+      "Node.js 18 or newer",
+      "the plugin's MCP server launches through " +
+        "`npx @playwright/mcp@latest`, which is unpinned: it downloads and " +
+        "runs npm code at every launch",
+      "no account or sign-in is needed",
+    ],
+  },
+  {
+    name: "firebase",
+    exact: ["firebase", "firebase-admin", "firebase-tools"],
+    scopes: [],
+    hasSkills: false,
+    caveat: LIVE_ACCOUNT,
+    prerequisites: [
+      "Node.js and npm",
+      "a Firebase (Google) account and a Firebase project",
+      "`firebase login` (the server also has a login tool)",
+      "the server launches through `npx -y firebase-tools@latest mcp`, " +
+        "which is unpinned",
+    ],
+  },
+  {
+    name: "supabase",
+    exact: [],
+    scopes: ["@supabase/"],
+    hasSkills: true,
+    caveat:
+      LIVE_ACCOUNT +
+      " Note: the catalog entry's repository is under the " +
+      "supabase-community org, although its manifest names Supabase as " +
+      "author.",
+    prerequisites: [
+      "a Supabase account",
+      "the MCP server signs in with OAuth 2.1 (a scoped personal access " +
+        "token in a Bearer header is the CI alternative)",
+    ],
+  },
+  {
+    name: "neon",
+    exact: ["@neon/ai-sdk-provider"],
+    scopes: ["@neondatabase/"],
+    hasSkills: true,
+    caveat: LIVE_ACCOUNT,
+    prerequisites: [
+      "a Neon account",
+      "OAuth sign-in on first use of the MCP tools",
+    ],
+  },
+  {
+    name: "prisma",
+    exact: ["prisma", "@prisma/client"],
+    scopes: [],
+    hasSkills: false,
+    caveat: LIVE_ACCOUNT,
+    prerequisites: [
+      "a Prisma account and workspace (sign-in for the remote server)",
+      "the plugin also ships a local server that launches through " +
+        "`npx -y prisma mcp`, which is unpinned",
+    ],
+  },
+  {
+    name: "sentry",
+    exact: [],
+    scopes: ["@sentry/"],
+    hasSkills: true,
+    caveat: LIVE_ACCOUNT,
+    prerequisites: ["a Sentry account"],
+  },
+  {
+    name: "cloudflare",
+    exact: ["wrangler", "@cloudflare/ai-chat", "@cloudflare/sandbox"],
+    scopes: [],
+    hasSkills: true,
+    caveat: LIVE_ACCOUNT,
+    prerequisites: ["a Cloudflare account"],
+  },
+];
+
+function integrationBecause(spec: IntegrationSpec, dependency: string): string {
+  const surface = spec.hasSkills ? "MCP server and skills" : "MCP server";
+  return (
+    `${dependency} is among the project's dependencies, so this ` +
+    `plugin's ${surface} would serve it${spec.serves ?? ""}. ${spec.caveat}`
+  );
+}
+
+function matchesSpec(spec: IntegrationSpec, dependency: unknown): boolean {
+  if (typeof dependency !== "string") return false;
+  return (
+    spec.exact.some((name) => name === dependency) ||
+    spec.scopes.some((scope) => dependency.startsWith(scope))
+  );
+}
+
+/**
+ * The service-integration plugins worth offering for the project's
+ * dependencies: `playwright`, `firebase`, `supabase`, `neon`, `prisma`,
+ * `sentry` and `cloudflare`, each returned only when one of its verified
+ * dependency signals is present, at most once, in that fixed order. None is
+ * ever pre-selected (`recommended` is always false): each connects Claude to
+ * a live account or runs unpinned code, which is the user's call to make.
+ * Each `because` names the first matching dependency in the order the
+ * context lists them, and `prerequisites` is always non-empty.
+ *
+ * An integration is offered only if its plugin ships an MCP server (and
+ * sometimes skills) but no hooks and no default-on telemetry, and only on a
+ * verified dependency signal: an exact package name or a whole npm scope,
+ * never a bare prefix. Kept apart from {@link recommendPlugins}, whose ids
+ * it never repeats. A pure function -- identical inputs always produce an
+ * equal result, and the context is never mutated.
+ *
+ * @example
+ * ```ts
+ * import { recommendIntegrations } from "./plugin-map.js";
+ *
+ * const offers = recommendIntegrations({
+ *   dependencies: ["@sentry/node", "prisma"],
+ * });
+ * const ids = offers.map((offer) => offer.id);
+ * ```
+ */
+export function recommendIntegrations(
+  context?: PluginRecommendationContext,
+): PluginRecommendation[] {
+  const dependencies: readonly unknown[] = context?.dependencies ?? [];
+  const offers: PluginRecommendation[] = [];
+  for (const spec of INTEGRATIONS) {
+    const matched = dependencies.find((dependency) =>
+      matchesSpec(spec, dependency),
+    );
+    if (typeof matched !== "string") continue;
+    offers.push({
+      id: pluginId(spec.name),
+      recommended: false,
+      because: integrationBecause(spec, matched),
+      prerequisites: [...spec.prerequisites],
+    });
+  }
+  return offers;
 }

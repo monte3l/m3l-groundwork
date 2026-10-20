@@ -25,8 +25,16 @@
 // branch, return a recommendation with no justification shown to the user, or
 // make the mapping non-deterministic across identical inputs -- none of which
 // any other test in this repo would catch.
+//
+// It also verifies recommendIntegrations, the second export: a pure function
+// of the project's dependency names alone that returns the integration
+// plugins (playwright, firebase, supabase, neon, prisma, sentry, cloudflare)
+// whose service SDK/CLI the project depends on, in a fixed table order, never
+// pre-selected (they connect Claude to a live account or run unpinned code, so the user
+// opts in)
+// and never overlapping the ids recommendPlugins returns.
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { recommendPlugins } from "../src/plugin-map.js";
+import { recommendIntegrations, recommendPlugins } from "../src/plugin-map.js";
 import type {
   PluginRecommendation,
   PluginRecommendationContext,
@@ -623,6 +631,263 @@ describe("recommendPlugins", () => {
     it("opens by saying the recommender skill is read-only", () => {
       expect(becauseOf().split(". ")[0]).toMatch(/read-only/i);
     });
+  });
+
+  describe("recommendIntegrations", () => {
+    const ids = (dependencies: string[]): string[] =>
+      recommendIntegrations({ dependencies }).map((r) => r.id);
+    const MARKET = "@claude-plugins-official";
+    const TABLE_ORDER = [
+      "playwright",
+      "firebase",
+      "supabase",
+      "neon",
+      "prisma",
+      "sentry",
+      "cloudflare",
+    ] as const;
+
+    // [plugin, dependency that must trigger it]
+    const SIGNALS: [string, string][] = [
+      ["playwright", "@playwright/test"],
+      ["playwright", "@playwright/mcp"],
+      ["firebase", "firebase"],
+      ["firebase", "firebase-admin"],
+      ["firebase", "firebase-tools"],
+      ["supabase", "@supabase/supabase-js"],
+      ["supabase", "@supabase/ssr"],
+      ["neon", "@neondatabase/serverless"],
+      ["neon", "@neon/ai-sdk-provider"],
+      ["prisma", "prisma"],
+      ["prisma", "@prisma/client"],
+      ["sentry", "@sentry/node"],
+      ["sentry", "@sentry/react"],
+      ["cloudflare", "wrangler"],
+      ["cloudflare", "@cloudflare/ai-chat"],
+      ["cloudflare", "@cloudflare/sandbox"],
+    ];
+
+    it.each(SIGNALS)(
+      "recommends only %s@claude-plugins-official for the dependency %s, never pre-selected",
+      (plugin, dependency) => {
+        const recs = recommendIntegrations({ dependencies: [dependency] });
+        expect(recs.map((r) => r.id)).toEqual([`${plugin}${MARKET}`]);
+        expect(recs[0]?.recommended).toBe(false);
+      },
+    );
+
+    it.each([
+      [undefined],
+      [{}],
+      [{ dependencies: [] }],
+      [{ chosenPacks: ["github"], hasCustomSkills: true }],
+    ] as const)("returns [] for the absent or empty context %j", (context) => {
+      expect(recommendIntegrations(context)).toEqual([]);
+    });
+
+    it("returns [] when called with no argument at all", () => {
+      expect(recommendIntegrations()).toEqual([]);
+    });
+
+    it.each([
+      ["stripe"],
+      ["@stripe/stripe-js"],
+      ["convex"],
+      ["@convex-dev/agent"],
+      ["@vercel/blob"],
+      ["next"],
+      ["ai"],
+      ["@linear/sdk"],
+      ["playwright"],
+      ["sentry"],
+      ["neon"],
+      ["@sentryx/node"],
+      ["@supabasefoo/x"],
+      ["@neondatabasex/x"],
+      ["@prismax/client"],
+      ["@cloudflare/workers-types"],
+      ["__proto__"],
+      ["constructor"],
+    ])("offers nothing for the non-signal dependency %s", (dependency) => {
+      expect(recommendIntegrations({ dependencies: [dependency] })).toEqual([]);
+    });
+
+    it("offers nothing for the whole non-signal list at once", () => {
+      expect(
+        recommendIntegrations({
+          dependencies: [
+            "stripe",
+            "@stripe/stripe-js",
+            "convex",
+            "@convex-dev/agent",
+            "@vercel/blob",
+            "next",
+            "ai",
+            "@linear/sdk",
+            "playwright",
+            "sentry",
+            "@sentryx/node",
+            "__proto__",
+            "constructor",
+          ],
+        }),
+      ).toEqual([]);
+    });
+
+    it("returns every integration in the fixed table order whatever order the dependencies list", () => {
+      const forward = [
+        "@playwright/test",
+        "firebase",
+        "@supabase/supabase-js",
+        "@neondatabase/serverless",
+        "prisma",
+        "@sentry/node",
+        "wrangler",
+      ];
+      const expected = TABLE_ORDER.map((n) => `${n}${MARKET}`);
+      expect(ids(forward)).toEqual(expected);
+      expect(ids([...forward].reverse())).toEqual(expected);
+      expect(ids(["wrangler", "prisma", "firebase", "@sentry/node"])).toEqual([
+        `firebase${MARKET}`,
+        `prisma${MARKET}`,
+        `sentry${MARKET}`,
+        `cloudflare${MARKET}`,
+      ]);
+    });
+
+    it("returns one entry per plugin even when several dependencies match", () => {
+      const recs = recommendIntegrations({
+        dependencies: ["firebase", "firebase-admin", "firebase-tools"],
+      });
+      expect(recs).toHaveLength(1);
+    });
+
+    it("names the first matching dependency, in the order the context lists them, in because", () => {
+      const a = recommendIntegrations({
+        dependencies: ["firebase-admin", "firebase"],
+      });
+      const b = recommendIntegrations({
+        dependencies: ["firebase", "firebase-admin"],
+      });
+      expect(a[0]?.because).toContain("firebase-admin");
+      expect(b[0]?.because).toContain("firebase");
+      expect(b[0]?.because).not.toContain("firebase-admin");
+    });
+
+    it.each(SIGNALS)(
+      "%s: because mentions the matched dependency %s",
+      (_plugin, dependency) => {
+        const rec = recommendIntegrations({ dependencies: [dependency] })[0];
+        expect(rec?.because).toContain(dependency);
+      },
+    );
+
+    it.each(
+      TABLE_ORDER.map(
+        (plugin) =>
+          [
+            plugin,
+            plugin === "playwright" ? /no account/i : /account/i,
+          ] as const,
+      ),
+    )(
+      "%s: prerequisites is a non-empty string array matching %s",
+      (plugin, accountPattern) => {
+        const dependency = SIGNALS.find(([p]) => p === plugin)?.[1] ?? "";
+        const rec = recommendIntegrations({ dependencies: [dependency] })[0];
+        expect(Array.isArray(rec?.prerequisites)).toBe(true);
+        expect(rec?.prerequisites?.length).toBeGreaterThan(0);
+        expect(rec?.prerequisites?.every((p) => typeof p === "string")).toBe(
+          true,
+        );
+        expect(rec?.prerequisites?.join(" ")).toMatch(accountPattern);
+      },
+    );
+
+    it.each([
+      ["playwright", "@playwright/test", /unpinned/i],
+      ["playwright", "@playwright/test", /Node/],
+      ["firebase", "firebase", /unpinned/i],
+      ["firebase", "firebase", /firebase login/],
+      ["prisma", "prisma", /unpinned/i],
+    ])("%s prerequisites (for %s) match %s", (_plugin, dependency, pattern) => {
+      const rec = recommendIntegrations({ dependencies: [dependency] })[0];
+      expect(rec?.prerequisites?.join(" ")).toMatch(pattern);
+    });
+
+    it("flags the supabase catalog entry as community-maintained in because", () => {
+      const rec = recommendIntegrations({
+        dependencies: ["@supabase/supabase-js"],
+      })[0];
+      expect(rec?.because).toMatch(/community/i);
+    });
+
+    it.each(["library", "cli", "frontend", "service", "plugin"] as const)(
+      "never overlaps the ids recommendPlugins returns for the %s kind",
+      (kind) => {
+        const everything = SIGNALS.map(([, dependency]) => dependency);
+        const integrationIds = new Set(
+          recommendIntegrations({ dependencies: everything }).map((r) => r.id),
+        );
+        expect(integrationIds.size).toBe(TABLE_ORDER.length);
+        const pluginIds = recommendPlugins(
+          { ...BASE_ANSWERS, kind },
+          { dependencies: everything },
+        ).map((r) => r.id);
+        expect(pluginIds.filter((id) => integrationIds.has(id))).toEqual([]);
+      },
+    );
+
+    it("does not mutate a frozen dependencies array and is deterministic", () => {
+      const dependencies = Object.freeze(["wrangler", "@sentry/node"]);
+      const first = recommendIntegrations({ dependencies });
+      const second = recommendIntegrations({ dependencies });
+      expect(second).toEqual(first);
+      expect(first).toHaveLength(2);
+      expect(dependencies).toEqual(["wrangler", "@sentry/node"]);
+    });
+
+    it("type: returns PluginRecommendation[] and accepts an optional context", () => {
+      expectTypeOf(recommendIntegrations).returns.toEqualTypeOf<
+        PluginRecommendation[]
+      >();
+      expectTypeOf(recommendIntegrations).parameters.toEqualTypeOf<
+        [context?: PluginRecommendationContext | undefined]
+      >();
+    });
+
+    it("ignores non-string dependency entries without throwing", () => {
+      const dependencies = [
+        42 as unknown as string,
+        null as unknown as string,
+        "wrangler",
+      ];
+      expect(() => recommendIntegrations({ dependencies })).not.toThrow();
+      expect(ids(dependencies)).toEqual([`cloudflare${MARKET}`]);
+    });
+
+    // Verified: the playwright, firebase and prisma plugins ship only an MCP
+    // server (no skills); supabase, neon, sentry and cloudflare ship both.
+    it.each([
+      ["playwright", "@playwright/test", false],
+      ["firebase", "firebase", false],
+      ["prisma", "prisma", false],
+      ["supabase", "@supabase/supabase-js", true],
+      ["neon", "@neondatabase/serverless", true],
+      ["sentry", "@sentry/node", true],
+      ["cloudflare", "wrangler", true],
+    ] as const)(
+      "the because of %s (dependency %s) mentions skills: %s",
+      (plugin, dependency, expectsSkills) => {
+        const rec = recommendIntegrations({ dependencies: [dependency] })[0];
+        expect(rec?.id).toBe(`${plugin}${MARKET}`);
+        if (expectsSkills) {
+          expect(rec?.because).toMatch(/skills/i);
+        } else {
+          expect(rec?.because).not.toMatch(/skills/i);
+        }
+      },
+    );
   });
 
   it("type: PluginRecommendation's fields are readonly and prerequisites is optional", () => {

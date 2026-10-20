@@ -69,4 +69,9 @@ paths:
   packs were chosen, whether the project authors its own skills, which
   packages it depends on, and whether it already has a design system), each
   with its own unit-tested table so a recommendation's evidence is never
-  invented fresh at `/customize` run time.
+  invented fresh at `/customize` run time. `plugin-map.ts` also holds
+  `recommendIntegrations`, which maps verified SDK dependencies to optional
+  MCP-server plugins (some also ship skills), never pre-selects one, and
+  offers none whose plugin ships hooks or default-on telemetry. It lives in that file, not a new one,
+  because every file beside `SKILL.md` is listed in `customize-paths.ts` and
+  a new one would be a CLI change.

@@ -209,6 +209,28 @@ describe("step-3-round-1.md -- plugin offer split capacity", () => {
     expect(step3).not.toContain("for any of the ten");
   });
 
+  it.each([
+    "recommendIntegrations",
+    "one more `AskUserQuestion`",
+    "none pre-selected",
+    "split evenly",
+    "fewer than two options",
+    "Enable / Skip",
+    "every entry the user selected",
+    "does not return it",
+    "unpinned `npx` launch",
+  ])("documents the integration offer: contains %s", (text) => {
+    expect(step3).toContain(text);
+  });
+
+  it.each([
+    "one multi-select question per four entries",
+    "at most seven entries",
+    "Write every confirmed `true` entry",
+  ])("no longer contains the old integration wording: %s", (text) => {
+    expect(step3).not.toContain(text);
+  });
+
   it("names the frontend-design entry and defines the hasDesignSystem context field", () => {
     expect(step3).toContain("frontend-design");
     expect(step3).toContain("hasDesignSystem");
