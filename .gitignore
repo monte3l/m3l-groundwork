@@ -26,6 +26,10 @@ lefthook-local.yml
 # for why every tool that walks this tree already excludes it.
 .claude/worktrees/
 
+# The harness-extras PreCompact hook's handoff artifact
+# (`tmp/compact-handoff-<session_id>.json`) -- session state, never committed.
+tmp/
+
 # Adopt mode's own output, from testing it against this repo itself
 .groundwork/
 
