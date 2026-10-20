@@ -86,13 +86,41 @@ describe("settings.json hook failure modes", () => {
 });
 
 describe("settings.json permissions", () => {
-  it("denies reading secrets, and sets nothing else", () => {
-    expect(settings.permissions?.["deny"]).toEqual([
+  const deny = (settings.permissions?.["deny"] ?? []) as string[];
+
+  it("denies secrets reads and lockfile/.git edits, and sets nothing else", () => {
+    expect(deny).toEqual([
       "Read(./.env)",
       "Read(./.env.*)",
       "Read(./secrets/**)",
+      "Read(**/credentials.json)",
+      "Read(**/secrets.yaml)",
+      "Edit(**/pnpm-lock.yaml)",
+      "Edit(**/package-lock.json)",
+      "Edit(**/yarn.lock)",
+      "Edit(**/.git/**)",
     ]);
     expect(Object.keys(settings.permissions ?? {})).toEqual(["deny"]);
+  });
+
+  it("every deny entry is a Read(...) or Edit(...) rule", () => {
+    expect(deny.length).toBeGreaterThan(0);
+    // Write(/MultiEdit(/NotebookEdit( path rules are accepted but never consulted; only Edit( covers every editing tool.
+    for (const entry of deny) expect(entry).toMatch(/^(Read|Edit)\(.+\)$/);
+  });
+
+  it.each([
+    ["pnpm-lock.yaml", "Edit(**/pnpm-lock.yaml)"],
+    ["package-lock.json", "Edit(**/package-lock.json)"],
+    ["yarn.lock", "Edit(**/yarn.lock)"],
+    [".git", "Edit(**/.git/**)"],
+  ])("write-protects %s through an Edit( deny rule", (_name, expected) => {
+    expect(expected).toMatch(/^Edit\(/);
+    expect(deny).toContain(expected);
+  });
+
+  it("has no duplicate deny entries", () => {
+    expect(new Set(deny).size).toBe(deny.length);
   });
 });
 

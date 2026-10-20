@@ -1,7 +1,17 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
-    "deny": ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"]
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(**/credentials.json)",
+      "Read(**/secrets.yaml)",
+      "Edit(**/pnpm-lock.yaml)",
+      "Edit(**/package-lock.json)",
+      "Edit(**/yarn.lock)",
+      "Edit(**/.git/**)"
+    ]
   },
   "hooks": {
     "UserPromptSubmit": [
