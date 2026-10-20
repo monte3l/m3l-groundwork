@@ -34,6 +34,9 @@
       "toolchain-repair": 1
     },
     "packs": {
+      "api-doc-fires-1": 1,
+      "api-doc-quiet-1": 1,
+      "api-doc-quiet-2": 1,
       "new-component-fires-1": 1,
       "new-component-quiet-1": 1,
       "new-component-quiet-2": 1,
