@@ -270,6 +270,12 @@ Bash and MCP calls and proposes an allowlist for the project's
 `.claude/settings.json`; the baseline ships none because it cannot know the
 project's commands in advance.
 
+**Dependabot grouping:** at CI depth thorough in a fresh bootstrap, `.github/dependabot.yml`
+gets an `npm` entry with `groups` (see Step 3 Round 1). Report whether it was
+added, and that Dependabot support for the project's pnpm version is
+**unconfirmed**: tell the owner to check the first Dependabot PR. At any other
+depth, mention it as an option only.
+
 **Write the report to a file as well (adopt mode only).** Save the same report
 to `.groundwork/customization-report.md`, so a reviewer can read it without
 asking for the chat. Include which conflicts were resolved and which packs
