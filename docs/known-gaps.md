@@ -50,7 +50,12 @@
   the first real end-to-end proof of both, not a hand-rolled install. Grade
   it with the same rule module `templates/core`'s `bin/check-harness.mjs`
   uses (see "Definition of Done" for the command) -- 0 structural findings
-  expected.
+  expected. A later `/customize` pass (2026-10-20) back-ported the baseline
+  fixes this copy had missed and installed two packs on top of the
+  `statusline` pack it already had: `harness-extras` (the compaction-handoff
+  hooks and `guard-readonly-bash`) and `github` (`reviewing-dependabot-prs`,
+  `triaging-scan-alerts`, `watching-pr-checks`). It kept every toolchain and
+  CI file as this repo's own, as the first pass did.
   What _does_ already exist independently is `.claude/worktrees/**`,
   created ad hoc whenever a subagent runs with
   `isolation: "worktree"`: a full second checkout of this repo, uncommitted

@@ -17,8 +17,15 @@ description: >-
 
 One skill, two modes, sharing one allowlist
 (`references/official-sources.md`) so they can't drift apart. Pick the mode
-from how you were invoked: a specific question → `research`; a periodic or
-`/customize`-driven sweep → `refresh`.
+by what's actually being asked, not by surface phrasing: a question that
+names one setting, one hook, one agent, or one narrow facet of `.claude/` —
+even when phrased as "is X still current" — stays `research`, because
+there's one thing to look up and answer. A request that names no specific
+facet, that asks about the whole `.claude/` surface ("our harness", "are we
+behind"), or that's periodic/`/customize`-driven, is `refresh`. When
+genuinely torn between the two, default to `research` — it's cheaper and
+faster — and say in the answer that a full `refresh` sweep is available if
+the question turns out to implicate more than the one facet asked about.
 
 **Must only run in the main (hub) agent, never inside a subagent** — it ends
 in `EnterPlanMode` (refresh) or dispatches other agents (either mode), which a
@@ -110,8 +117,7 @@ concern) — every other facet below is identical regardless of project kind.
 
    Each brief carries: the facet row, Step 2's delta, the tracker's prior
    claims for that facet, the allowlist + GitHub caveat + date anchor, the
-   exact filename to write (`<run-dir>/<facet-id>.md`), and this verdict
-   format per claim:
+   facet id, and this verdict format per claim:
 
    ```
    CLAIM: <the tracker's prior claim, or "NEW" if none existed>
@@ -120,10 +126,13 @@ concern) — every other facet below is identical regardless of project kind.
    REPO-IMPACT: <which emitted file(s) this affects, or "none">
    ```
 
-   Return value: **write the full file, return only a compact digest**
-   (counts per verdict + every non-"none" REPO-IMPACT line + the file path).
+   Return value: **the full verdict list inline, inside the ~8,000-character
+   cap** -- `Explore` holds no write tool, so it cannot write a file. Put
+   every non-"none" REPO-IMPACT claim first so a truncation drops only
+   the no-impact ones. The hub saves each returned report to
+   `<run-dir>/<facet-id>.md` itself; that is what step 4 reads.
 
-4. **Aggregate.** Read every scratchpad file in full. Four buckets:
+4. **Aggregate.** Read every saved facet report in full. Four buckets:
    confirmed drift with repo impact (verify each against the cited file
    itself before trusting it — an agent can misread a page), guidance
    changes with no impact, dead/moved URLs, coverage gaps.

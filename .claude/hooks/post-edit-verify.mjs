@@ -41,11 +41,13 @@
  * ORIGINAL project root and stays there even after the session moves into a
  * worktree with `EnterWorktree` (see code.claude.com/docs/en/worktrees,
  * "Hook paths don't follow the worktree"). Resolving every path against it
- * would run every check below against the wrong tree's node_modules and
- * config. Instead this hook asks git which working tree actually contains
- * the edited file (`resolveVerifyRoot`, the same "resolve from the file, not
- * the session" approach `guard-branch-isolation.mjs` already uses for the
- * same reason) and scopes every step to that root.
+ * would run every check below against the wrong tree -- or, worse, silently
+ * skip the file, since a worktree lives at `<projectDir>/.claude/worktrees/
+ * <name>/` and a projectDir-relative path into it starts with `.claude/`.
+ * Instead this hook asks git which working tree actually contains the
+ * edited file (`resolveVerifyRoot`, the same "resolve from the file, not the
+ * session" approach `guard-branch-isolation.mjs` already uses for the same
+ * reason) and scopes every step to that root.
  */
 import process from "node:process";
 import path, { dirname, resolve } from "node:path";
