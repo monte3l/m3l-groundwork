@@ -57,6 +57,21 @@ integration` under a Secrets-only grant).
    before ever dispatching with `dry_run: false` or waiting for the
    schedule.
 
+## Other repositories
+
+The rest of the monte3l repositories run this same pipeline through the org
+workflow template (`monte3l/.github`, `workflow-templates/environments.yml`).
+It checks out this repository's `bin/` at a pinned commit and runs
+`bin/cleanup-environments.mjs` against the calling repository's own
+`.github/environments.json`, so there is one copy of the planner. Each
+repository installs the same `monte3l-env-janitor` App and has its own
+`env-janitor` environment (steps 3 and 4 above, with its own name in place of
+`m3l-groundwork`).
+
+The script's interface is therefore a contract with those repositories: the
+policy path and format, `--dry-run`, `GH_TOKEN` and `GITHUB_REPOSITORY`. A
+breaking change here needs a new pin in each of them.
+
 ## Updating the policy
 
 `.github/environments.json` lists every environment this repo's CI is
