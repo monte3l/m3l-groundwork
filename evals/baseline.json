@@ -34,6 +34,9 @@
       "toolchain-repair": 1
     },
     "packs": {
+      "new-component-fires-1": 1,
+      "new-component-quiet-1": 1,
+      "new-component-quiet-2": 1,
       "reviewing-dependabot-prs-fires-1": 1,
       "reviewing-dependabot-prs-quiet-1": 1,
       "starting-work-fires-1": 1,
