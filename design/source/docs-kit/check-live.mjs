@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-FileCopyrightText: 2026 Enrico Lionello (enri3l), Giulia Montevecchi (giulmonte), monte3l
 // SPDX-License-Identifier: MIT
 
 /**
- * Compares the live docs site with the site this repo builds, and the npm
- * package's description, homepage and keywords with the GitHub repo's.
+ * Compares the live docs site with the site this repo builds, and the
+ * manifest's description, homepage and keywords with the GitHub repo's.
  *
- *   node bin/check-live-site.mjs --site _site [--url https://groundwork.monte3l.com]
- *   node bin/check-live-site.mjs --metadata
+ *   node design/source/docs-kit/check-live.mjs [--config docs.config.mjs] --site _site [--url <origin>]
+ *   node design/source/docs-kit/check-live.mjs [--config docs.config.mjs] --metadata
  *
- * `--site <dir>` is a directory written by `node bin/build-docs.mjs --out`.
+ * `--site <dir>` is a directory written by `node source/docs-kit/build.mjs --out`.
  * Every page, the 404 page and every file under `assets/` is fetched from
- * `--url` and must equal the built file byte for byte, and each response
+ * `--url` (default: the config's `siteUrl`) and must equal the built file byte for byte, and each response
  * must carry every header the built `_headers` file asks for (exact value).
  * That catches what the build alone cannot: a deploy that never landed, and
  * a Cloudflare zone setting that rewrites a page or replaces a header (zone
@@ -20,15 +20,16 @@
  * A fresh deploy can take a moment to reach every edge, so a failing run is
  * repeated (`--attempts`, `--delay` seconds) before it is reported.
  *
- * `--metadata` reads `packages/cli/package.json` and
- * `https://api.github.com/repos/monte3l/m3l-groundwork` (with `GITHUB_TOKEN`
- * when set) and fails when `description`, `homepage` or `keywords`/`topics`
- * differ. CLAUDE.md keeps those equal by hand; this is the check.
+ * `--metadata` reads the config's `manifest` and the GitHub API for the
+ * config's `repo` (with `GITHUB_TOKEN` when set) and fails when `description`
+ * or `homepage` differ, or `keywords` and `topics` when the manifest has
+ * `keywords`.
  *
  * Exit codes: 0 all matched, 1 a mismatch or an unreachable site, 2 usage.
  */
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { ConfigError, loadConfig } from "./lib/config.mjs";
 import {
   HeadersParseError,
   diffHeaders,
@@ -39,10 +40,8 @@ import {
   parseHeadersFile,
 } from "./lib/live-site.mjs";
 
-const DEFAULT_URL = "https://groundwork.monte3l.com";
-const REPO_API = "https://api.github.com/repos/monte3l/m3l-groundwork";
 const NOT_FOUND_PROBE = "/__m3l-live-parity-404__";
-const USER_AGENT = "m3l-groundwork-live-parity";
+const USER_AGENT = "m3l-docs-kit-live-parity";
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_ATTEMPTS = 60;
 const MAX_DELAY_SECONDS = 600;
@@ -56,7 +55,7 @@ class LiveSiteError extends Error {}
 function usage(message) {
   console.error(`check-live-site: ${message}`);
   console.error(
-    "usage: node bin/check-live-site.mjs [--site <dir>] [--url <origin>] [--attempts <n>] [--delay <seconds>] [--metadata]",
+    "usage: node source/docs-kit/check-live.mjs [--config <docs.config.mjs>] [--site <dir>] [--url <origin>] [--attempts <n>] [--delay <seconds>] [--metadata]",
   );
   process.exitCode = 2;
 }
@@ -206,9 +205,9 @@ async function compareSite({ siteDir, origin, blocks, targets }) {
   return { problems, checked: targets.length, headerChecks };
 }
 
-async function checkSite(args) {
+async function checkSite(args, config) {
   const siteDir = option(args, "--site");
-  const origin = (option(args, "--url") ?? DEFAULT_URL).replace(/\/+$/, "");
+  const origin = (option(args, "--url") ?? config.siteUrl).replace(/\/+$/, "");
   const attempts = boundedInteger(
     option(args, "--attempts"),
     6,
@@ -244,19 +243,20 @@ async function checkSite(args) {
   return false;
 }
 
-async function checkMetadata() {
+async function checkMetadata(config) {
+  if (!config.manifest) {
+    throw new LiveSiteError(
+      `${config.configPath} has no "manifest", so there is nothing to compare`,
+    );
+  }
+  const REPO_API = `https://api.github.com/repos/${new URL(config.repo).pathname.slice(1)}`;
   let pkg;
   try {
     pkg = JSON.parse(
-      await readFile(
-        path.join(import.meta.dirname, "..", "packages", "cli", "package.json"),
-        "utf8",
-      ),
+      await readFile(path.join(config.root, config.manifest), "utf8"),
     );
   } catch (error) {
-    throw new LiveSiteError(
-      `cannot read packages/cli/package.json: ${error.message}`,
-    );
+    throw new LiveSiteError(`cannot read ${config.manifest}: ${error.message}`);
   }
   const headers = {
     "user-agent": USER_AGENT,
@@ -295,14 +295,14 @@ async function checkMetadata() {
       `${REPO_API} did not return a repository (no topics array, description or homepage)`,
     );
   }
-  const problems = diffMetadata(pkg, repo);
+  const problems = diffMetadata(pkg, repo, config.manifest);
   if (problems.length === 0) {
     console.log(
-      "  ok  package.json and the GitHub repo agree on description, homepage and keywords",
+      `  ok  ${config.manifest} and the GitHub repo agree on description, homepage and keywords`,
     );
     return true;
   }
-  console.error("  FAIL  package.json and the GitHub repo disagree:");
+  console.error(`  FAIL  ${config.manifest} and the GitHub repo disagree:`);
   for (const problem of problems) console.error(`  - ${problem}`);
   return false;
 }
@@ -321,6 +321,7 @@ async function run(name, check) {
 async function main() {
   const args = process.argv.slice(2);
   try {
+    const config = await loadConfig(option(args, "--config") ?? "docs.config.mjs");
     const wantsSite = args.includes("--site");
     const wantsMetadata = args.includes("--metadata");
     if (!wantsSite && !wantsMetadata) {
@@ -334,11 +335,11 @@ async function main() {
       boundedInteger(option(args, "--delay"), 10, "--delay", MAX_DELAY_SECONDS);
     }
     const results = [];
-    if (wantsSite) results.push(await run("live site", () => checkSite(args)));
-    if (wantsMetadata) results.push(await run("metadata", checkMetadata));
+    if (wantsSite) results.push(await run("live site", () => checkSite(args, config)));
+    if (wantsMetadata) results.push(await run("metadata", () => checkMetadata(config)));
     if (!results.every(Boolean)) process.exitCode = 1;
   } catch (error) {
-    if (error instanceof UsageError) {
+    if (error instanceof UsageError || error instanceof ConfigError) {
       usage(error.message);
       return;
     }

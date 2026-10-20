@@ -59,6 +59,9 @@ export default defineConfig(
       "_site/**",
       // Wrangler's local cache/state dir -- see .gitignore.
       "tools/deploy/.wrangler/**",
+      // Vendored from an m3l-design release, byte for byte (the docs kit
+      // included); design/SHA256SUMS fails on any edit. See .prettierignore.
+      "design/source/**",
     ],
   },
   js.configs.recommended,

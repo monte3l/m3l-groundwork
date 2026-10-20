@@ -1,13 +1,13 @@
-// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-FileCopyrightText: 2026 Enrico Lionello (enri3l), Giulia Montevecchi (giulmonte), monte3l
 // SPDX-License-Identifier: MIT
 
 /**
- * Pure helpers behind `bin/check-live-site.mjs`: reading the generated
+ * Pure helpers behind `source/docs-kit/check-live.mjs`: reading the generated
  * Cloudflare `_headers` file back into rules (`parseHeadersFile`,
  * `expectedHeadersFor`), comparing a live response's headers with them
  * (`diffHeaders`), mapping a built file to its public URL (`pageUrlPath`),
  * locating the first differing line of two page bodies (`firstDifference`),
- * and comparing package.json's description, homepage and keywords with the
+ * and comparing the manifest's description, homepage and keywords with the
  * GitHub repo's (`diffMetadata`). None of them does I/O, so each is tested
  * without a network.
  */
@@ -197,7 +197,7 @@ export function firstDifference(expected, actual) {
 }
 
 /**
- * Compares package.json's `description`, `homepage` and `keywords` with the
+ * Compares the manifest's `description`, `homepage` and `keywords` with the
  * GitHub repo's `description`, `homepage` and `topics`. Keywords and topics
  * compare as sets. An empty, null or missing homepage or description equal
  * each other.
@@ -206,24 +206,26 @@ export function firstDifference(expected, actual) {
  * @param {{ description?: string | null, homepage?: string | null, topics?: string[] }} repo
  * @returns {string[]}
  */
-export function diffMetadata(pkg, repo) {
+export function diffMetadata(pkg, repo, manifest = "package.json") {
   const problems = [];
   for (const field of ["description", "homepage"]) {
     const left = pkg[field] ?? "";
     const right = repo[field] ?? "";
     if (left !== right) {
       problems.push(
-        `${field}: package.json has "${left}", GitHub has "${right}"`,
+        `${field}: ${manifest} has "${left}", GitHub has "${right}"`,
       );
     }
   }
-  const keywords = new Set(pkg.keywords ?? []);
+  // A manifest without `keywords` (a plugin.json, say) opts out of the topic comparison.
+  if (!Array.isArray(pkg.keywords)) return problems;
+  const keywords = new Set(pkg.keywords);
   const topics = new Set(repo.topics ?? []);
   const onlyKeywords = [...keywords].filter((entry) => !topics.has(entry));
   const onlyTopics = [...topics].filter((entry) => !keywords.has(entry));
   if (onlyKeywords.length > 0 || onlyTopics.length > 0) {
     problems.push(
-      `keywords: only in package.json: [${onlyKeywords.join(", ")}]; only in GitHub topics: [${onlyTopics.join(", ")}]`,
+      `keywords: only in ${manifest}: [${onlyKeywords.join(", ")}]; only in GitHub topics: [${onlyTopics.join(", ")}]`,
     );
   }
   return problems;

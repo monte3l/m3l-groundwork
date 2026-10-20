@@ -27,17 +27,6 @@
         // report as unused.
         "bin/lib/design-tokens.mjs",
         // Same reason, same dynamic-import pattern, from
-        // packages/cli/tests/markdown*.test.ts: without this entry,
-        // slugifyHeading (used only via that test file's dynamically
-        // imported module object) reports as unused.
-        "bin/lib/markdown.mjs",
-        // Same reason, same dynamic-import pattern, from
-        // packages/cli/tests/site-headers*.test.ts: without this entry,
-        // HeadersLimitError (thrown, not imported, by bin/build-docs.mjs's
-        // production usage) and assertHeadersLimits (called inside
-        // buildHeadersFile, exercised directly by the tests) report as unused.
-        "bin/lib/site-headers.mjs",
-        // Same reason, same dynamic-import pattern, from
         // packages/cli/tests/eval-lib.test.ts: listPackSkillDirs's only
         // static consumer used to be bin/eval.mjs and
         // bin/make-harness-plugin.mjs directly; once both were refactored to

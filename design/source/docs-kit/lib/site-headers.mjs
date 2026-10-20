@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-FileCopyrightText: 2026 Enrico Lionello (enri3l), Giulia Montevecchi (giulmonte), monte3l
 // SPDX-License-Identifier: MIT
 
 /**
@@ -58,7 +58,7 @@ const KNOWN_BADGE_REDIRECT_TARGETS = {
  *
  * @example
  * ```js
- * import { hashInlineScript } from "./bin/lib/site-headers.mjs";
+ * import { hashInlineScript } from "./source/docs-kit/lib/site-headers.mjs";
  * hashInlineScript("document.title = 'hi';"); // "sha256-..."
  * ```
  */
@@ -91,7 +91,7 @@ export function hashInlineScript(scriptSource) {
  *
  * @example
  * ```js
- * import { externalImageHosts } from "./bin/lib/site-headers.mjs";
+ * import { externalImageHosts } from "./source/docs-kit/lib/site-headers.mjs";
  * externalImageHosts(['<img src="https://badge.socket.dev/x.svg">']);
  * // ["badge.socket.dev"]
  * ```
@@ -150,7 +150,7 @@ export function externalImageHosts(htmlPages) {
  *   buildHeadersFile,
  *   externalImageHosts,
  *   hashInlineScript,
- * } from "./bin/lib/site-headers.mjs";
+ * } from "./source/docs-kit/lib/site-headers.mjs";
  * const text = buildHeadersFile({
  *   scriptHash: hashInlineScript(inlineScript),
  *   imageHosts: externalImageHosts(renderedPages),
@@ -196,7 +196,7 @@ export function buildHeadersFile({ scriptHash, imageHosts }) {
  *
  * @example
  * ```js
- * import { assertHeadersLimits } from "./bin/lib/site-headers.mjs";
+ * import { assertHeadersLimits } from "./source/docs-kit/lib/site-headers.mjs";
  * assertHeadersLimits("/*\n  X-Content-Type-Options: nosniff\n"); // ok
  * ```
  */

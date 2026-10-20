@@ -37,7 +37,7 @@ not from decoration:
 Structurally the palette is still **near-monochrome + one accent** (see
 "Color system") — that's a color-architecture decision, independent of
 personality, shared with systems like Geist. Warmth is expressed through
-_how_ that structure is tuned, not by abandoning it.
+**how** that structure is tuned, not by abandoning it.
 
 **Explicitly avoided:** the AI-generated-design cluster this document's own
 authoring guidance warns about — warm cream + serif + terracotta, a
@@ -70,7 +70,7 @@ own instruction elsewhere never to invent a value without checking it.
 
 **Neutrals:** warm-biased, not cool-biased — i.e. a slight hue lean toward
 the accent's warmth rather than a pure grey scale. The exact stops are
-under Built below. The _direction_ is decided: this system should
+under Built below. The **direction** is decided: this system should
 never ship a neutral that reads as an unconsidered default grey.
 
 **Contrast bar:** WCAG 2.2 AA minimum everywhere (4.5:1 text, 3:1 large
@@ -128,21 +128,21 @@ shape alone.
 
 A 2026 meta-analysis found dyslexia-specialized fonts have **no reliable
 effect** on reading speed or accuracy. **OpenDyslexic specifically tested
-slightly _worse_** than mainstream fonts in controlled studies — it should
+slightly worse** than mainstream fonts in controlled studies — it should
 not be used. **Lexend** is the one exception with real measured
 reading-speed gains across large studies, and was seriously considered, but
 Atkinson Hyperlegible's distinctness-first design was judged the better fit
-here because it serves both dyslexia _and_ dyscalculia accessibility goals
+here because it serves both dyslexia **and** dyscalculia accessibility goals
 at once, where Lexend's evidence is specifically about reading speed.
 
-**The stronger, better-evidenced lever is typographic _treatment_, not
+**The stronger, better-evidenced lever is typographic treatment, not
 typeface choice** (British Dyslexia Association Style Guide; consistent
 across the sources checked). Bake these in as tokens, not as one-off CSS:
 
 - **Line-height ≥ 1.5** for body text; anything below 1.4 is called out as
   likely to cause reading difficulty.
 - **Letter/word spacing:** the BDA guide asks for an inter-letter gap of
-  ~35% of the _average letter width_ (not of the font size), and a word gap
+  ~35% of the **average letter width** (not of the font size), and a word gap
   of at least 3.5× the letter gap. Measured on the real fonts, this gives
   +0.055em at weight 400, +0.08em at 600, +0.09em at 700, and word-spacing
   +0.015em at 400. Mono 400 already exceeds 35%, so it gets 0; mono 700
@@ -235,8 +235,8 @@ this brief is deliberately borrowing.
 **Layering:** three tiers, and don't skip the middle one —
 
 1. **Primitive** — raw values with no context (`purple-70`, `space-4`).
-2. **Semantic (alias)** — brand-agnostic, mode-agnostic _meaning_ names that
-   point at primitives (`color-surface-primary`, `color-text-on-surface`).
+2. **Semantic (alias)** — brand-agnostic, mode-agnostic **meaning** names that
+   point at primitives (`color-surface-default`, `color-text-primary`).
    Semantic tokens must alias primitives directly, never chain through
    another semantic token — chained aliases are called out repeatedly across
    sources as the most expensive mistake to unwind later.

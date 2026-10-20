@@ -1,81 +1,70 @@
 ---
 paths:
-  - "bin/build-docs.mjs"
-  - "bin/lib/markdown.mjs"
-  - "bin/lib/site-headers.mjs"
-  - "bin/check-live-site.mjs"
-  - "bin/lib/live-site.mjs"
+  - "docs.config.mjs"
+  - "design/source/docs-kit/**"
   - ".github/workflows/docs-live.yml"
   - ".github/workflows/docs.yml"
   - "tools/deploy/**"
 ---
 
-# Docs site rules (`build-docs.mjs`, the markdown renderer, `docs.yml`)
+# Docs site rules (`docs.config.mjs`, the vendored docs kit, `docs.yml`)
 
 > This file is the terse checklist that auto-loads when you touch the docs
-> site builder or its deploy workflow. See `docs/cloudflare-docs.md` for the
-> full Cloudflare Workers Static Assets write-up.
+> site config, the vendored kit or the deploy workflow. The standard and the
+> Cloudflare runbook are org-wide:
+> [blueprint/docs-site.md](https://github.com/monte3l/.github/blob/main/blueprint/docs-site.md).
+> `docs/cloudflare-docs.md` keeps only what is specific to this repo.
 
 **The docs site** (`.github/workflows/docs.yml`, deployed from `main` to
-`https://groundwork.monte3l.com` on Cloudflare Workers Static Assets -- see
-`docs/cloudflare-docs.md`) is a restricted, zero-dependency GFM-to-HTML
-renderer (`bin/lib/markdown.mjs`) plus a builder (`bin/build-docs.mjs`) that
-renders ten of this repo's own pages -- README (as `index.html`),
-CONTRIBUTING, SECURITY, GOVERNANCE, ROADMAP, CODE_OF_CONDUCT, and four
-`docs/*.md` pages (`docs/research/*` is excluded, an internal tracker, not
-reader-facing) -- styled with `design/tokens.css`,
-`design/source/components/bundle.css`, and `design/local/site.css` (the
-page-shell layout `design/README.md`'s "design/local/" section reserves for
-exactly this: something no single vendored component covers).
+`https://groundwork.monte3l.com` on Cloudflare Workers Static Assets) is built
+by the **docs kit**, which ships inside the m3l-design release and is vendored
+at `design/source/docs-kit/`. The kit is a restricted, zero-dependency
+Markdown-to-HTML renderer and site builder. Its contract (config keys, CLI,
+exit codes, every gate) is `design/source/docs-kit/README.md`. This repo owns
+only `docs.config.mjs`, the deploy wiring and the workflows.
 
-**The renderer is restricted, not a general CommonMark implementation:** it
-covers exactly the markdown inventory those ten pages use (ATX headings
-h1-h3 with GitHub-compatible slug ids, pipe tables, fenced code, lists,
-blockquotes -- a GitHub alert `[!NOTE|TIP|IMPORTANT|WARNING|CAUTION]`
-becomes a status `m3l-callout`, a plain blockquote a neutral one --
-footnotes, code spans, bold/italic, and images, including a link wrapping a
-badge image) and throws a `MarkdownError` rather than guessing at anything
-outside that set (an h4+, an unknown footnote reference). Every internal
-link is rewritten: one of the ten pages becomes a relative link to its
-sibling output file (`.md` -> `.html`, anchor kept); anything else in the
-repo (`CLAUDE.md`, `LICENSE`, `templates/packs/README.md`, a `.github/**`
-file) becomes a `github.com/.../blob/main/<path>` link -- there is no
-raw-HTML pass-through and no unescaped text anywhere in the output.
+**Never edit the kit here.** `design/source/` is verbatim and
+`design/SHA256SUMS` proves it, so a local edit fails `--check`. A renderer,
+headers or live-check change is made in m3l-design and arrives by
+`bin/sync-design.sh`. A page-shell layout change goes in `design/local/`,
+which does not exist today and is held to `var(--token)` values only.
 
-The builder also emits `404.html` (Cloudflare's `not_found_handling:
-"404-page"` serves it for any unmatched path) and a Cloudflare `_headers`
-file (`bin/lib/site-headers.mjs`) carrying a real `Content-Security-Policy`
--- `script-src` pins the exact SHA-256 hash of the page's one inline
-`<script>` rather than `'unsafe-inline'` -- plus HSTS,
-`X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and
-`Cross-Origin-Opener-Policy`.
+**`docs.config.mjs` is where this site is defined:**
 
-`node bin/build-docs.mjs --check` (the `docs` step, `bin/lib/verify-steps.mjs`'s
-`build` group) builds to a throwaway temp directory and fails on any broken
-internal link or anchor, a stray italic `_x_`/`*x*` emphasis span surviving
-in one of the ten sources -- the same bold-not-italic rule
-`.claude/rules/docs.md` states, enforced here from the moment this gate
-existed rather than only once that rule file did -- or a `_headers` file
-that would exceed Cloudflare's own limits (100 rule blocks, 2,000 characters
-per line). `--out <dir>` (plain, no `--check`) writes the real site;
-`docs.yml`'s `build` job runs it with no `pnpm install` first, since the
-builder is Node-builtins-only.
+- `pages` are the ten rendered pages: README (as `index.html`), CONTRIBUTING,
+  GOVERNANCE, ROADMAP, CODE_OF_CONDUCT, SECURITY, and four `docs/*.md` pages.
+  `navGroups` order the sidebar, and `nav` holds the top links (Security,
+  GitHub, npm).
+- `exclude` lists every other tracked `*.md` file with a reason. A new
+  Markdown file anywhere in the repo fails `--check` until it is added to
+  `pages` or covered by an `exclude` entry, and a stale entry fails too.
+- `manifest` is `packages/cli/package.json`. Its `homepage` must equal
+  `siteUrl`, and `check-live.mjs --metadata` compares its description,
+  homepage and keywords with the GitHub repository's.
 
-The `deploy` job then runs `wrangler deploy` from `tools/deploy/` (a
-pinned, lockfile-verified `wrangler`, installed with `--ignore-scripts` --
-verified locally that an assets-only deploy needs neither esbuild's nor
-workerd's postinstall-fetched binaries) against
-`tools/deploy/wrangler.jsonc`, authenticating with a Cloudflare API
-token held in the `docs-cloudflare` GitHub environment (`main`-only, no
-GitHub App: Cloudflare's Git-integration path, Workers Builds, needs its own
-GitHub App installed with repo access -- direct-upload from Actions avoids
-installing it at all).
+**The renderer is restricted, not general CommonMark.** It throws rather than
+guessing on anything outside its subset (an h4 or deeper, an unknown footnote
+reference, raw HTML). A page that stops building is fixed in its source
+Markdown, never in the renderer. Every internal link to a page becomes a
+relative link to its output file, and a link to any other repo file becomes a
+`github.com/.../blob/main/<path>` link.
 
-After the deploy, `docs.yml`'s `smoke` job runs `bin/check-live-site.mjs`
-(helpers in `bin/lib/live-site.mjs`) against the same `_site` artifact: every
+**`node design/source/docs-kit/build.mjs --check`** is the `docs` step in
+`bin/lib/verify-steps.mjs`'s `build` group. It builds to a throwaway
+directory and fails on a broken link or anchor, an italic span (the same
+bold-not-italic rule `.claude/rules/docs.md` states), a `_headers` file over
+Cloudflare's limits, uncovered or stale Markdown, a `design/SHA256SUMS`
+mismatch, a literal in `design/local/`, more than two alerts in a row, and a
+manifest `homepage` that is not the site URL. `--out <dir>` writes the real
+site. `docs.yml`'s `build` job runs it with no `pnpm install`, since the kit
+uses Node builtins only.
+
+**Deploy.** The `deploy` job runs `wrangler deploy` from `tools/deploy/` (a
+pinned, lockfile-verified `wrangler`, installed with `--ignore-scripts`)
+against `tools/deploy/wrangler.jsonc`, with a Cloudflare API token held in the
+`docs-cloudflare` GitHub environment (`main`-only, no GitHub App). The `smoke`
+job then runs `check-live.mjs --site _site` against the same artifact: every
 page, the 404 page and every asset on the live site must equal the built
 file, and each response must carry every `_headers` header at its exact
-value. `docs-live.yml` repeats it daily against a fresh build of `main` and
-adds the package.json-versus-GitHub metadata comparison. Change a page, the
-`_headers` shape or a URL mapping in `build-docs.mjs` and these checks follow
-automatically, since they read the built output, not a copy of it.
+value. `docs-live.yml` repeats it daily against a fresh build of `main` with
+`--metadata`.

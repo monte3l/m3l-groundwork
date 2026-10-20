@@ -141,12 +141,13 @@ text either way.
 This repo's own docs site (published to
 [`https://groundwork.monte3l.com`](https://groundwork.monte3l.com) by
 `.github/workflows/docs.yml`, on Cloudflare Workers Static Assets -- see
-[`docs/cloudflare-docs.md`](cloudflare-docs.md)) is built by a small,
-restricted, zero-dependency markdown-to-HTML renderer
-(`bin/lib/markdown.mjs`) and site builder (`bin/build-docs.mjs`), styled
-with the same generated `design/tokens.css` plus the vendored component CSS
-and one repo-specific addition, `design/local/site.css`, for the page-shell
-layout no single vendored component covers. `bin/build-docs.mjs --check`
+[`docs/cloudflare-docs.md`](cloudflare-docs.md)) is built by the docs kit, a
+restricted, zero-dependency markdown-to-HTML renderer and site builder that
+ships inside the vendored m3l-design release (`design/source/docs-kit/`),
+configured by `docs.config.mjs` at the repo root and styled with the same
+`design/tokens.css`, the vendored component CSS and the kit's own page shell.
+The kit's README (`design/source/docs-kit/README.md`) is its contract. The
+`docs` verify step, `node design/source/docs-kit/build.mjs --check`,
 builds to a throwaway directory and fails, without writing the site, on any
 of the following:
 
@@ -160,11 +161,17 @@ of the following:
 - an italic `_x_` or `*x*` emphasis span in any page source (use bold)
 - markdown outside the renderer's supported subset, which it throws on
   rather than guessing at
-- a generated `_headers` file (`bin/lib/site-headers.mjs`) that exceeds
-  Cloudflare's limits of 100 rule blocks or 2,000 characters on any line
+- a generated `_headers` file that exceeds Cloudflare's limits of 100 rule
+  blocks or 2,000 characters on any line
+- a tracked `*.md` file that is neither a page nor listed in
+  `docs.config.mjs`'s `exclude` with a reason, or a stale entry in either
+- a `design/` file that no longer matches `design/SHA256SUMS`, or a literal
+  colour or length in a stylesheet under `design/local/`
+- more than two GitHub alerts in a row in a page source
+- a `packages/cli/package.json` `homepage` that is not the site URL
 
-See [`CLAUDE.md`](../CLAUDE.md#architecture-notes) for the full renderer
-contract.
+See [`.claude/rules/docs-site.md`](../.claude/rules/docs-site.md) for the
+maintainer checklist.
 
 ## Inventory schema
 

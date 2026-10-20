@@ -61,7 +61,8 @@ packages/plugin/        Phase B: the /customize skill
                          Workers Static Assets -- see .claude/rules/docs-site.md
                          and docs/cloudflare-docs.md; its `smoke` job and the
                          daily docs-live.yml compare the live site and the
-                         package metadata with bin/check-live-site.mjs),
+                         package metadata with the docs kit's
+                         check-live.mjs),
                          environments.yml (weekly
                          cleanup of stale GitHub Deployments/Environments --
                          see .claude/rules/environments.md),
@@ -87,8 +88,9 @@ tools/                  Pinned CI tooling, kept out of `.github/` because
                          lockfile.
 
 bin/                    This repo's own gate scripts: verify.mjs, check-*.mjs,
-                         build-docs.mjs, check-live-site.mjs, eval.mjs,
-                         ci-docs-only.mjs, soak.sh.
+                         eval.mjs, ci-docs-only.mjs, soak.sh. The docs
+                         site builder is not here: it is the vendored kit,
+                         design/source/docs-kit/.
                          The step list they all read from is
                          bin/lib/verify-steps.mjs.
 
@@ -98,9 +100,9 @@ evals/                  `pnpm eval` suites. `.eval-results/` is gitignored
 design/                 m3l-design, vendored -- see design/README.md and
                          .claude/rules/design-system.md. source/ is a
                          verbatim copy of an m3l-design release, tokens.css
-                         is vendored with it. local/ is this repo's
-                         own docs-site layout CSS, the one sanctioned
-                         divergence from the vendored system (see
+                         is vendored with it. source/docs-kit/ is the
+                         docs-site builder. local/ would hold this repo's
+                         own overrides; it does not exist today (see
                          design/README.md's "design/local/").
 
 docs/architecture.md    A human-facing distillation of this file's own
@@ -115,8 +117,11 @@ docs/glossary.md        Term definitions shared across the other docs pages.
 docs/github-blueprint.md
                          The exact `gh api` commands for the GitHub settings
                          that live outside the repo -- see "Known gaps".
-docs/cloudflare-docs.md The docs-site deploy target -- see
+docs/cloudflare-docs.md Pointer to the org docs-site runbook plus the
+                         groundwork-specific facts -- see
                          .claude/rules/docs-site.md.
+docs.config.mjs         (repo root) The docs kit's config: pages, nav,
+                         excluded Markdown and the manifest.
 docs/environment-janitor.md
                          The environment-cleanup GitHub App's permissions and
                          one-time setup -- see .claude/rules/environments.md.

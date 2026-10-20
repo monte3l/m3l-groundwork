@@ -104,7 +104,7 @@ export const VERIFY_STEPS = [
     id: "docs",
     group: "build",
     name: "Check docs site builds cleanly",
-    cmd: ["node", "bin/build-docs.mjs", "--check"],
+    cmd: ["node", "design/source/docs-kit/build.mjs", "--check"],
   },
   {
     id: "test",

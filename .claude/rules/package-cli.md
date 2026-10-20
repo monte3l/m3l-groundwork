@@ -105,4 +105,4 @@ paths:
   `lint`-group verify step. The package's `description`, `homepage` and
   `keywords` are kept equal to the GitHub repo's description, homepage and
   topics by hand: change both together. `docs-live.yml` compares them daily
-  (`node bin/check-live-site.mjs --metadata`) and fails when they differ.
+  (`node design/source/docs-kit/check-live.mjs --metadata`) and fails when they differ.

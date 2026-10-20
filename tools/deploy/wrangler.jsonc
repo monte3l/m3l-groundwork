@@ -12,8 +12,8 @@
     // root before this deploy job downloads its artifact there.
     "directory": "../../_site",
     "html_handling": "auto-trailing-slash",
-    // bin/build-docs.mjs emits a real 404.html at the site root; without
-    // this, a missing path would silently fall through to index.html.
+    // The docs kit (design/source/docs-kit/build.mjs) emits a real 404.html at
+    // the site root; without this, a missing path would silently fall through to index.html.
     "not_found_handling": "404-page",
   },
   "routes": [

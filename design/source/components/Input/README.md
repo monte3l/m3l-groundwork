@@ -46,7 +46,7 @@ A single-line text field with a visible label, an optional hint and an inline er
 
 ## Flags
 
-- `color-surface-sunken` equals `color-surface-default` in dark (both `neutral-1000`), so a sunken disabled field would look the same as an enabled one (1.00:1 against the page and the field fill). The disabled fill uses `color-surface-hover` until a token decision is made. That fill is `neutral-100` in light (the same colour as sunken) and `neutral-850` in dark (1.35:1 against the page). The disabled border is `color-border-default`, not `color-border-subtle`: in dark, subtle is `neutral-850`, the same colour as the fill (1.00:1). `border-default` is 1.18:1 against the fill in light and 1.21:1 in dark, quieter on purpose than the enabled `color-border-control` (3.34 / 3.71).
+- `color-surface-sunken` equals `color-surface-default` in dark (both `neutral-1000`), so a sunken disabled field would look the same as an enabled one (1.00:1 against the page and the field fill). The disabled fill uses `color-surface-hover` until a token decision is made. That fill is `neutral-100` in light (the same colour as sunken) and `neutral-850` in dark (1.35:1 against the page). The disabled border is `color-border-default`, not `color-border-subtle`: in dark, subtle is `neutral-850`, the same colour as the fill (1.00:1). `color-border-default` is 1.18:1 against the fill in light and 1.21:1 in dark, quieter on purpose than the enabled `color-border-control` (3.34 / 3.71).
 
 ## Contrast (WCAG 2.2 AA)
 

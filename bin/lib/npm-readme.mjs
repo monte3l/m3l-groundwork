@@ -22,7 +22,7 @@ const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 // `](target)` or `](target "title")`; a target holds no whitespace or `)`.
 const LINK_RE = /\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g;
 // Forms the rewriter does not handle. They throw rather than ship a silently
-// broken relative link to npm, the way bin/lib/markdown.mjs throws on markdown
+// broken relative link to npm, the way the docs kit's renderer throws on markdown
 // it cannot render.
 const UNSUPPORTED = [
   [/^ {0,3}\[(?!\^)[^\]]+\]:\s*\S/, "a reference-style link definition"],
