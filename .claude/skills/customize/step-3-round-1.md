@@ -24,6 +24,42 @@
   **CI depth = thorough**: note this for Round 2 — `harness-guidance` may
   recommend additional current-best-practice lanes (e.g. a scheduled
   dependency audit) beyond what the baseline ships.
+- **CI depth = thorough also adds npm grouping to Dependabot.** Append this
+  block to `updates:` in `.github/dependabot.yml`, which the baseline ships
+  with only the `github-actions` ecosystem, at the same two-space item
+  indentation as that entry:
+
+  ```yaml
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+    labels:
+      - "dependencies"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+      prod-dependencies:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+  ```
+
+  The baseline's comment above the `github-actions` entry says npm updates are
+  deliberately not enabled here: rewrite or drop that sentence when you add the
+  block, so the file does not contradict itself. Major bumps stay one PR each.
+  Dependabot's `npm` ecosystem also covers pnpm, but GitHub's
+  supported-ecosystems page lists pnpm only up to v10 and the baseline pins a
+  newer pnpm, so when the project uses pnpm, support for its pnpm version is
+  **unconfirmed**: say so in Step 7 and tell the owner to check the first
+  Dependabot PR. **At any other CI depth in a fresh bootstrap** this is not
+  offered as a question (the plugin offer's question counts are fixed); it is
+  only a Step 7 follow-up.
+
 - **Agents not kept**: delete their `.claude/agents/<name>.md` file. Never
   delete `Explore`, `test-author`, or `code-implementer` even if unselected
   — they're load-bearing for the hub-and-spoke loop `CLAUDE.md` documents.
@@ -39,6 +75,12 @@
 the project actually has, instead of a named baseline path — "tests must not
 hard-fail `pre-push`" is applied to _the gate the inventory found_ (jest in
 CI, husky locally, whatever it is), not to `lefthook.yml`/`ci.yml` by name.
+In adopt mode the Dependabot block above is never applied, because Step 0.4
+did not confirm it. When `.github/dependabot.yml` already exists and has no
+`npm` entry for directory "/", name the block in Step 7 as a follow-up the
+owner can paste in; never create the file, and never touch an existing `npm`
+entry (the project's own cadence and groups win).
+
 Concretely, adopt-mode Round 1 applies exactly three things, all already
 confirmed in Step 0.4:
 

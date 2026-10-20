@@ -282,3 +282,123 @@ describe("step-3-round-1.md -- kind-scoped packs", () => {
     expect(step3).not.toContain("`licensing`'s and `frontend`'s do");
   });
 });
+
+describe("step-3-round-1.md -- npm Dependabot grouping", () => {
+  const step3 = read("step-3-round-1.md");
+  const raw = readFileSync(join(skillDir, "step-3-round-1.md"), "utf8");
+  const fences = [...raw.matchAll(/```yaml\n([\s\S]*?)```/g)].map(
+    (m) => m[1] ?? "",
+  );
+  const block = fences.find((f) => f.includes('package-ecosystem: "npm"'));
+  const blockText = block ?? "";
+  const blockLines = blockText.split("\n").filter((l) => l.trim() !== "");
+
+  it("carries a fenced yaml block with an npm package-ecosystem entry", () => {
+    expect(block).toBeDefined();
+  });
+
+  it("indents every line of the block at least two spaces, item starting exactly at two", () => {
+    expect(blockLines.length).toBeGreaterThan(0);
+    for (const line of blockLines) {
+      expect(line).toMatch(/^ {2,}\S/);
+    }
+    expect(blockText).toMatch(/^ {2}- package-ecosystem: "npm"/m);
+  });
+
+  it("groups development and production dependencies", () => {
+    expect(blockText).toContain("groups:");
+    expect(blockText).toContain("dev-dependencies");
+    expect(blockText).toContain("prod-dependencies");
+    expect(blockText).toContain('dependency-type: "development"');
+    expect(blockText).toContain('dependency-type: "production"');
+  });
+
+  it("groups minor and patch updates but never major", () => {
+    const typeLines = blockLines.filter(
+      (l) =>
+        l.includes("update-types") ||
+        /^\s*- "?(minor|patch|major)"?\s*$/.test(l),
+    );
+    const joined = typeLines.join("\n");
+    expect(joined).toContain("minor");
+    expect(joined).toContain("patch");
+    expect(joined).not.toContain("major");
+  });
+
+  it("carries the cooldown line", () => {
+    expect(blockText).toContain("default-days: 7");
+  });
+
+  it("names .github/dependabot.yml as the file the block goes into", () => {
+    expect(step3).toContain(".github/dependabot.yml");
+  });
+
+  it("states the npm ecosystem also covers pnpm", () => {
+    expect(step3).toMatch(/`npm` ecosystem[^.]*pnpm/);
+  });
+
+  it("tells the owner to rewrite or drop the baseline comment saying npm updates are not enabled", () => {
+    expect(step3).toMatch(
+      /deliberately not enabled|npm updates are deliberately/,
+    );
+    expect(step3).toMatch(
+      /(rewrite|drop)[^.]*(deliberately not enabled|npm updates are deliberately)|(deliberately not enabled|npm updates are deliberately)[^.]*(rewrite|drop)/,
+    );
+  });
+
+  it("never applies the block in adopt mode, since Step 0.4 did not confirm it", () => {
+    expect(step3).toMatch(/never applied/);
+    expect(step3).toMatch(/Step 0\.4 did not confirm/);
+  });
+
+  it("scopes the adopt follow-up to an existing file with no npm entry for directory /", () => {
+    expect(step3).toContain("already exists");
+    expect(step3).toMatch(/no `npm` entry[^.]*"\/"/);
+  });
+
+  it("never creates the file and never touches an existing npm entry", () => {
+    expect(step3).toContain("never create");
+    expect(step3).toMatch(/never touch[^.]*`npm` entry/);
+  });
+
+  it("keeps the adopt-mode 'exactly three things' list unextended", () => {
+    expect(step3).toContain("exactly three things");
+    expect(step3).not.toContain("plus the one Dependabot edit");
+  });
+
+  it("flags pnpm support as unconfirmed beyond v10 and points at the first Dependabot PR", () => {
+    expect(step3).toMatch(/pnpm[^.]*up to v10|up to v10[^.]*pnpm/);
+    expect(step3).toContain("unconfirmed");
+    expect(step3).toMatch(/first Dependabot PR/);
+  });
+
+  it("makes the unconfirmed caveat conditional on the project using pnpm", () => {
+    expect(step3).toMatch(
+      /(project (uses|runs) pnpm|uses pnpm)[^.]*unconfirmed|unconfirmed[^.]*(project (uses|runs) pnpm|uses pnpm)/i,
+    );
+  });
+
+  it("makes fresh mode at any other CI depth a Step 7 follow-up, not a question", () => {
+    expect(step3).toMatch(/Step 7 follow-up/i);
+    expect(step3).toMatch(/not (offered as )?a question/i);
+  });
+});
+
+describe("SKILL.md Step 7 -- npm Dependabot grouping follow-up", () => {
+  const step7Start = skill.indexOf("## Step 7");
+  expect(step7Start).toBeGreaterThan(-1);
+  const step7 = skill.slice(step7Start);
+
+  it("names dependabot.yml and groups in a follow-up", () => {
+    expect(step7).toContain("dependabot.yml");
+    expect(step7).toContain("groups");
+  });
+
+  it("flags pnpm support as unconfirmed", () => {
+    expect(step7).toContain("unconfirmed");
+  });
+
+  it("does not hedge the follow-up with 'or on request'", () => {
+    expect(step7).not.toContain("or on request");
+  });
+});
