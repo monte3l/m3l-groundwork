@@ -178,7 +178,7 @@ case." Report what you found rather than chasing diminishing returns.
 many changed exports can itself run you out of turn budget mid-report.
 Return your report **inline in your response** — you hold no write tool and
 cannot write any file (this project's read-only Bash guard,
-`guard-readonly-bash.mjs`, blocks every shell write route regardless), so a
+`guard-readonly-bash.mjs`, blocks shell commands outside a read-only allowlist), so a
 scratchpad handoff is never an option here. If the diff touches many
 exports, keep the whole report within roughly 8,000 characters (~2,000
 tokens — the sub-agent output band Anthropic documents): the one-line
