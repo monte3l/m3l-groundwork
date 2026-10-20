@@ -66,7 +66,7 @@ paths:
   (`plugin-map.ts`) recommends which locally-installed, built-in
   `claude-plugins-official` marketplace plugin(s) to enable -- both pure
   functions of the interview answers (plus, for `plugin-map.ts`, which
-  packs were chosen, whether the project authors its own skills, and which
-  packages it depends on), each
+  packs were chosen, whether the project authors its own skills, which
+  packages it depends on, and whether it already has a design system), each
   with its own unit-tested table so a recommendation's evidence is never
   invented fresh at `/customize` run time.

@@ -171,7 +171,22 @@ describe("step-3-round-1.md -- plugin offer split capacity", () => {
     "plugin",
   ];
 
-  it("offers at most eleven entries (the plugin kind), within the three-question capacity", () => {
+  it.each(["plugin", "frontend"] as const)(
+    "offers eleven entries for the %s kind, within the three-question capacity",
+    (kind) => {
+      const count = recommendPlugins({
+        kind,
+        runtime: "node",
+        testsMandatory: true,
+        ciDepth: "standard",
+        keepAgents: [],
+      }).length;
+      expect(count).toBe(11);
+      expect(count).toBeLessThanOrEqual(4 + 3 + 4);
+    },
+  );
+
+  it("offers at most eleven entries across every kind", () => {
     const counts = kinds.map(
       (kind) =>
         recommendPlugins({
@@ -182,9 +197,7 @@ describe("step-3-round-1.md -- plugin offer split capacity", () => {
           keepAgents: [],
         }).length,
     );
-    const max = Math.max(...counts);
-    expect(max).toBe(11);
-    expect(max).toBeLessThanOrEqual(4 + 3 + 4);
+    expect(Math.max(...counts)).toBe(11);
   });
 
   it("states the 1-4, 5-7, 8-to-last split including 8-11 and no longer says all ten", () => {
@@ -194,5 +207,40 @@ describe("step-3-round-1.md -- plugin offer split capacity", () => {
     expect(step3).toContain("for any entry.");
     expect(step3).not.toContain("all ten");
     expect(step3).not.toContain("for any of the ten");
+  });
+
+  it("names the frontend-design entry and defines the hasDesignSystem context field", () => {
+    expect(step3).toContain("frontend-design");
+    expect(step3).toContain("hasDesignSystem");
+  });
+});
+
+describe("SKILL.md Step 7 -- follow-ups the project's files cannot carry", () => {
+  const step7Start = skill.indexOf("## Step 7");
+  expect(step7Start).toBeGreaterThan(-1);
+  const step7 = skill.slice(step7Start);
+  it("names the notification settings and the permissions command", () => {
+    for (const text of [
+      "preferredNotifChannel",
+      "terminal_bell",
+      "~/.claude/settings.json",
+      "/fewer-permission-prompts",
+    ]) {
+      expect(step7).toContain(text);
+    }
+  });
+
+  it("names the notification trigger accurately", () => {
+    expect(step7).toContain("waiting for input");
+  });
+
+  it("explains the baseline ships no allowlist because it cannot know the commands", () => {
+    expect(step7).toContain("cannot know the project's commands in advance");
+  });
+
+  it("names Ghostty, Kitty and iTerm2 as the terminals that notify by default", () => {
+    for (const terminal of ["Ghostty", "Kitty", "iTerm2"]) {
+      expect(step7).toContain(terminal);
+    }
   });
 });

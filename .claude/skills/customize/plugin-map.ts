@@ -10,11 +10,13 @@
  * module rather than a judgment made afresh each run, so the same interview
  * answers and context always produce the same recommendation.
  *
- * `plugin-dev` is offered only for the `plugin` kind (a repo that authors a
- * Claude Code plugin) and is then appended last; for every other kind it is
- * absent rather than listed as not recommended, so the ten-entry list
- * `/customize` offers in fixed batches keeps its order. m3l-groundwork itself
- * enables it, since it authors the `/customize` plugin.
+ * Two plugins are offered for one kind only and are then appended last as an
+ * eleventh entry: `plugin-dev` for the `plugin` kind (a repo that authors a
+ * Claude Code plugin), and `frontend-design` for the `frontend` kind. For
+ * every other kind each is absent rather than listed as not recommended, so
+ * the first ten entries `/customize` offers in fixed batches keep their
+ * order. m3l-groundwork itself enables `plugin-dev`, since it authors the
+ * `/customize` plugin.
  *
  * Evaluated and deliberately not offered, recorded so they are not proposed
  * again:
@@ -72,6 +74,14 @@ export interface PluginRecommendationContext {
    * `devDependencies` combined. Absent reads as none.
    */
   readonly dependencies?: readonly string[];
+  /**
+   * True when the project already carries its own design system: a
+   * design-token file, a CSS file with a Tailwind `@theme` block, or an
+   * in-house design-system package in its dependencies. A bare Tailwind
+   * config does not count, and a fresh bootstrap is false. Absent reads as
+   * false.
+   */
+  readonly hasDesignSystem?: boolean;
 }
 
 function pluginId(name: string): string {
@@ -349,16 +359,50 @@ function recommendPluginDev(): PluginRecommendation {
 }
 
 /**
+ * `frontend-design` is a single skill of visual design guidance -- palette,
+ * type, layout, a list of "generated look" traits to avoid, and a
+ * plan-then-build process -- with no hooks, commands or agents. It follows a
+ * brief that pins down a visual direction, but by default its first pass
+ * proposes its own palette and token system, which competes with a design
+ * system the project already has. So it is pre-selected for the `frontend`
+ * kind only when no existing design system was found.
+ */
+function recommendFrontendDesign(
+  context: PluginRecommendationContext | undefined,
+): PluginRecommendation {
+  const recommended = !(context?.hasDesignSystem ?? false);
+  return {
+    id: pluginId("frontend-design"),
+    recommended,
+    because: recommended
+      ? "it is one design-guidance skill -- palette, type, layout, " +
+        "generated-look traits to avoid and a plan-then-build process -- " +
+        "with no hooks or agents, and a frontend project has UI work to " +
+        "apply it to. Pre-selected because no existing design system was " +
+        "found in the project."
+      : "not pre-selected because the project already has a design " +
+        "system: by default this skill proposes its own palette and token " +
+        "system, which competes with the project's existing one (it still " +
+        "follows a brief that pins down a visual direction). It stays on " +
+        "offer if that design system is only partial.",
+  };
+}
+
+/**
  * Every built-in marketplace plugin's recommendation for the given interview
  * answers and context: always the same ten in the same order, plus an
- * eleventh, `plugin-dev`, appended last for the `plugin` kind only.
+ * eleventh appended last for two kinds only -- `plugin-dev` for the `plugin`
+ * kind, `frontend-design` for the `frontend` kind.
  * Pre-selected unconditionally: `context7`, `typescript-lsp`,
- * `claude-md-management` and `claude-security`. Conditionally: `github` when the `github` pack was
+ * `claude-md-management` and `claude-security`, plus `plugin-dev` whenever it
+ * is present. Conditionally: `github` when the `github` pack was
  * chosen; `security-guidance` for a `service` or a `thorough` CI depth;
  * `skill-creator` when the project has its own skills; `agent-sdk-dev` and
  * `mcp-server-dev` when the project depends on the Claude Agent SDK or the
- * MCP SDK respectively. Never: `claude-code-setup`. A pure function --
- * identical inputs always produce an equal result.
+ * MCP SDK respectively; `frontend-design`, when present, unless the project
+ * already has a design system (`hasDesignSystem`). Never:
+ * `claude-code-setup`. A pure function -- identical inputs always produce an
+ * equal result.
  *
  * @example
  * ```ts
@@ -393,5 +437,9 @@ export function recommendPlugins(
     recommendAgentSdkDev(context),
     recommendMcpServerDev(context),
   ];
-  return answers.kind === "plugin" ? [...fixed, recommendPluginDev()] : fixed;
+  if (answers.kind === "plugin") return [...fixed, recommendPluginDev()];
+  if (answers.kind === "frontend") {
+    return [...fixed, recommendFrontendDesign(context)];
+  }
+  return fixed;
 }

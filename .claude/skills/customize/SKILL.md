@@ -259,6 +259,17 @@ declined, plus any prerequisite named against an enabled plugin
 plugin's `prerequisites` names) as a follow-up the
 user still has to satisfy.
 
+Close with two follow-ups the project's own files cannot carry, because both
+are per-user. **Notifications:** Claude Code sends a desktop notification by
+itself only in Ghostty, Kitty and iTerm2; in another terminal, set
+`"preferredNotifChannel": "terminal_bell"` in `~/.claude/settings.json` (or
+add a `Notification` hook) to be alerted when Claude needs a permission or is
+waiting for input. **Fewer permission prompts:** after a few sessions, run
+`/fewer-permission-prompts`, which scans the transcripts for common read-only
+Bash and MCP calls and proposes an allowlist for the project's
+`.claude/settings.json`; the baseline ships none because it cannot know the
+project's commands in advance.
+
 **Write the report to a file as well (adopt mode only).** Save the same report
 to `.groundwork/customization-report.md`, so a reviewer can read it without
 asking for the chat. Include which conflicts were resolved and which packs
