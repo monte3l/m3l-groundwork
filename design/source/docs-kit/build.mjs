@@ -194,11 +194,27 @@ function generatedPageProblems(page, rendered, allPages) {
   return problems;
 }
 
+/**
+ * The text content of an HTML fragment: everything outside `<...>`. A `<` always
+ * opens a tag and only a `>` closes it, so no `<` can reach the output and a
+ * nested or unclosed tag cannot leave markup behind.
+ */
+function textOfHtml(html) {
+  let out = "";
+  let inTag = false;
+  for (const ch of html) {
+    if (ch === "<") inTag = true;
+    else if (ch === ">") inTag = false;
+    else if (!inTag) out += ch;
+  }
+  return out;
+}
+
 function headingsOfHtml(html) {
   return [...html.matchAll(/<h([1-3])[^>]*\sid="([^"]+)"[^>]*>(.*?)<\/h\1>/g)].map((m) => ({
     level: Number(m[1]),
     slug: m[2],
-    text: m[3].replace(/<[^>]+>/g, ""),
+    text: textOfHtml(m[3]),
   }));
 }
 
