@@ -44,3 +44,12 @@ than widening the release workflow's own App -- see
 `docs/environment-janitor.md` for the App's exact permissions and one-time
 setup. Runs weekly (applying the plan) and on manual dispatch (defaulting
 to `--dry-run`).
+
+**Other repositories consume this code.** Every monte3l repository with a
+deployment environment runs the weekly cleanup from the org workflow template
+(`monte3l/.github`, `workflow-templates/environments.yml`), which checks out
+this repo's `bin/` at a pinned commit. Treat the script's contract as an
+interface: the policy path (`.github/environments.json`) and format, the
+`--dry-run` flag, and the `GH_TOKEN`/`GITHUB_REPOSITORY` variables. A change to
+any of them breaks those repositories until their pin is moved and their
+policy updated.
