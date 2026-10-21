@@ -133,10 +133,9 @@ triage issues, merge PRs, and cut a release within about a week. What that
 depends on, concretely:
 
 - **GitHub org ownership** -- controls the `main` branch ruleset, repo
-  secrets (repo: `APP_CLIENT_ID`, `APP_PRIVATE_KEY`; `env-janitor`
-  environment: `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY`; `docs-cloudflare`
+  secrets (repo: `APP_CLIENT_ID`, `APP_PRIVATE_KEY`; `docs-cloudflare`
   environment: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`; org:
-  `GITLEAKS_LICENSE`), the `npm-publish`
+  `GITLEAKS_LICENSE`, `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY`), the `npm-publish`
   environment's reviewer list, and the two GitHub App installations
   (the release workflow's `version` job, and the environment-cleanup
   workflow -- see `docs/environment-janitor.md`). A second org owner

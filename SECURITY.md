@@ -190,7 +190,7 @@ secret names and dates, never values):
 | Secret                                             | What it is                                                                                                                       | Stored at                                                                    | Used by                                              | Scope and expiry                                                                                                                                                                                              |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `APP_CLIENT_ID`, `APP_PRIVATE_KEY`                 | Client ID and private key of the `m3l-groundwork-release` GitHub App                                                             | Repository secrets                                                           | `release.yml`, `version` job, to open the version PR | App installed on this repository only, with `contents: write` and `pull-requests: write`. The token it mints lasts an hour and is revoked when the job ends. The private key does not expire.                 |
-| `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY` | Client ID and private key of the `monte3l-env-janitor` GitHub App                                                                | Secrets of the `env-janitor` environment, which only deploys from `main`     | `environments.yml`, the weekly cleanup               | Token limited to this repository: `administration: write`, `deployments: write`, `environments: read`, never repository secrets. The private key does not expire.                                             |
+| `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY` | Client ID and private key of the `monte3l-env-janitor` GitHub App                                                                | Organization secrets, visible to six repositories (since 2026-10-21)         | `environments.yml`, the weekly cleanup               | Token limited to the repository running the job: `administration: write`, `deployments: write`, `environments: read`, never repository secrets. The private key does not expire.                              |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`    | A Cloudflare API token (Workers Scripts: Edit on the account, Workers Routes: Edit on the `monte3l.com` zone) and the account id | Secrets of the `docs-cloudflare` environment, which only deploys from `main` | `docs.yml`, `deploy` job                             | Its setup guide ([`docs/cloudflare-docs.md`](docs/cloudflare-docs.md)) calls for a one-year expiry. It cannot be limited to one Worker, which is why it is an environment secret and not a repository secret. |
 | `GITLEAKS_LICENSE`                                 | The license key the gitleaks action needs for an organization-owned repository                                                   | Organization secret, visible to four repositories                            | `gitleaks.yml`                                       | It licenses a scanner and authenticates to nothing else.                                                                                                                                                      |
 | `GITHUB_TOKEN`                                     | GitHub's automatic per-run token                                                                                                 | Created for each run                                                         | Every workflow                                       | Each job sets its own `permissions:` block, and the repository default is read-only.                                                                                                                          |
@@ -214,7 +214,11 @@ no secret for them is listed or needed.
   replace or delete a secret. GitHub never shows a stored value back. The
   organization requires two-factor authentication, by authenticator app or
   hardware key (see [`CONTRIBUTING.md`](CONTRIBUTING.md#account-security)).
-- Environment secrets reach only jobs running on `main`. Publishing needs an
+- Environment secrets reach only jobs running on `main`. An organization
+  secret reaches every workflow of the repositories it is shared with, so the
+  `JANITOR_APP_*` pair is named only in `environments.yml`, and
+  `apply-repo-baseline.sh` reports any other workflow that names it.
+  Publishing needs an
   approval at the `npm-publish` environment, and `npm stage approve` takes a
   live 2FA code.
 
@@ -227,7 +231,9 @@ no secret for them is listed or needed.
 3. **A credential that cannot expire is replaced at least once a year.** That is
    the two GitHub App private keys: generate a new key in the App's settings,
    update the secret, delete the old key, then run the workflow that uses it to
-   prove the new one works.
+   prove the new one works. The janitor key is one organization secret
+   (`gh secret set JANITOR_APP_PRIVATE_KEY --org monte3l`), so one update covers
+   every repository that uses it.
 4. **`GITLEAKS_LICENSE`** is replaced when the license changes, or on exposure.
    It authenticates to a vendor, not to GitHub, so it has no fixed interval.
 5. A rotation is recorded in the PR or issue that makes it, never with the

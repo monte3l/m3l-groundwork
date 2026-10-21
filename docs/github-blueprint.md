@@ -88,11 +88,11 @@ id instead.
 
 ### Environments (L3)
 
-| Environment       | Protection                                                                                                       | Holds                                              |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `npm-publish`     | Two required reviewers, `main` only, read it with `gh api repos/monte3l/m3l-groundwork/environments/npm-publish` | No secrets (npm trusted publishing uses OIDC)      |
-| `docs-cloudflare` | `main` only                                                                                                      | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`    |
-| `env-janitor`     | `main` only                                                                                                      | `JANITOR_APP_CLIENT_ID`, `JANITOR_APP_PRIVATE_KEY` |
+| Environment       | Protection                                                                                                       | Holds                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `npm-publish`     | Two required reviewers, `main` only, read it with `gh api repos/monte3l/m3l-groundwork/environments/npm-publish` | No secrets (npm trusted publishing uses OIDC)         |
+| `docs-cloudflare` | `main` only                                                                                                      | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`       |
+| `env-janitor`     | `main` only                                                                                                      | No secrets (`JANITOR_APP_*` are organization secrets) |
 
 ### Actions and security (L3, L4)
 
