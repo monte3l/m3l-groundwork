@@ -113,9 +113,11 @@ jobs:
         with:
           # Both created as repo secrets (`gh secret set`), not vars: the
           # client ID isn't sensitive on its own, but keeping both next to
-          # each other avoids a second place to remember to update.
-          client-id: ${{ secrets.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # each other avoids a second place to remember to update. The
+          # `RELEASE_` prefix ties them to the `m3l-groundwork-release` App,
+          # so they are not mistaken for generic leftovers and deleted.
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           # Without these the token inherits every permission the App holds
           # (zizmor `github-app`); these are the two the App needs.
           permission-contents: write
