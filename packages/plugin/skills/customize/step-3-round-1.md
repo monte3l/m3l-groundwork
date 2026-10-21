@@ -56,7 +56,15 @@
   supported-ecosystems page lists pnpm only up to v10 and the baseline pins a
   newer pnpm, so when the project uses pnpm, support for its pnpm version is
   **unconfirmed**: say so in Step 7 and tell the owner to check the first
-  Dependabot PR. **At any other CI depth in a fresh bootstrap** this is not
+  Dependabot PR. Upstream, `dependabot-core` is adding pnpm 12 support in stages and
+  GitHub's docs lag behind it: Part 1 (#16513) and Part 2 (#16517) merged on
+  2026-10-09, Part 3 (#16521) is still open, and #15904 (a pnpm 12 environment
+  lockfile read as an empty dependency graph) is still open. A
+  `minimumReleaseAge` failure on pnpm 12.3 or newer was fixed (#16375), but
+  projects that use `catalogs` or workspace `overrides` still hit open issues
+  (grouped updates leave overrides stale). If the project uses `catalog:`
+  entries or workspace `overrides`, tell the owner to expect failed
+  or partial updates until those issues close. **At any other CI depth in a fresh bootstrap** this is not
   offered as a question (the plugin offer's question counts are fixed); it is
   only a Step 7 follow-up.
 
