@@ -57,7 +57,9 @@ that carries plugin changes, do step 2.
 
 **Packs have no release of their own.** `templates/packs/<name>/` ships
 inside the CLI tarball, so a user-visible change to one pack is a CLI change
-and takes a `patch` changeset like any other. Start its summary with `pack(<name>):`
+and takes a changeset like any other: `patch` for a change to an existing pack,
+`minor` for a new pack, because pack names are public API (the README's
+versioning policy, item 4) and a new one is new functionality. Start its summary with `pack(<name>):`
 (`pack(worktrees): ...`) so the CLI changelog can be read per pack. It is a
 naming convention only: no `version` field in `pack.json` (`packs.ts` would
 accept an unknown key, but nothing reads it), and no per-pack
