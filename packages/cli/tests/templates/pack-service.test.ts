@@ -165,6 +165,42 @@ describe("performance-analyzer agent", () => {
     expect(body).toMatch(/load test/i);
   });
 
+  describe("describes cost by what grows, never by speed words", () => {
+    const flat = body.replace(/\s+/gu, " ");
+
+    it("forbids describing a cost as slow, fast or large in one sentence", () => {
+      expect(flat).toMatch(
+        /never describe[^.]*\bslow\b[^.]*\bfast\b[^.]*\blarge\b|never describe[^.]*\b(slow|fast|large)\b(?=[^.]*\bslow\b)(?=[^.]*\bfast\b)(?=[^.]*\blarge\b)/i,
+      );
+    });
+
+    it("forbids latency formulas and estimates", () => {
+      expect(flat).toMatch(/latency (formula|estimate)/i);
+    });
+
+    it.each([/round trips/i, /bytes buffered/i, /event loop is blocked/i])(
+      "says what grows instead: %s",
+      (pattern) => {
+        expect(flat).toMatch(pattern);
+      },
+    );
+
+    it.each([
+      /tag (each|every) finding[^.]*\[heuristic\]/i,
+      /at any severity/i,
+      /never[^.]*as proven/i,
+    ])(
+      "tags heuristic findings and never presents them as proven: %s",
+      (pattern) => {
+        expect(flat).toMatch(pattern);
+      },
+    );
+
+    it("leaves how much to NOT CHECKED", () => {
+      expect(flat).toMatch(/how much[^.]*NOT CHECKED/i);
+    });
+  });
+
   it("bounds its inline digest at about 8,000 characters and never writes a file", () => {
     expect(body).toContain("at most about 8,000 characters");
     expect(body).toMatch(/never write a file/i);

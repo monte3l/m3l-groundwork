@@ -15,13 +15,14 @@ import {
   readFileSync,
   readdirSync,
   writeFileSync,
+  statSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 const SKILL_NAME = /^[\w-]+$/;
 
-/** The four `claude plugin eval` suites `bin/eval.mjs` knows how to run. */
-export const SUITES = ["plugin", "harness", "packs", "toolchain"];
+/** The five `claude plugin eval` suites `bin/eval.mjs` knows how to run. */
+export const SUITES = ["plugin", "harness", "packs", "toolchain", "agents"];
 
 /**
  * Parses `bin/eval.mjs`'s argv into a validated options object. Pure and
@@ -446,6 +447,162 @@ export function writeToolchainPlugin({ skillsDir, casesDir, outDir, cliPath }) {
       );
     }
     writeFileSync(fixture, source.replaceAll(CLI_PLACEHOLDER, cliPath));
+  }
+  return cases.length;
+}
+
+/**
+ * The per-suite options `bin/eval.mjs` hands to `evalArgs`, kept pure so the
+ * grants are testable instead of scraped from the driver's source. `plugin`
+ * and `toolchain` scaffold a project and are granted `Write` and `Edit`
+ * because the workspace is throwaway (their graders forbid touching anything
+ * they should not). `agents` scaffolds read-only fixtures, grants nothing and
+ * forces `ablation: "none"`: the no-plugin arm cannot dispatch a plugin agent,
+ * so it could only fail with "Agent type not found" while doubling the cost.
+ * @param {string} name
+ */
+export function suiteExtras(name) {
+  if (name === "plugin" || name === "toolchain") {
+    return { scaffold: true, allowTools: ["Write", "Edit"] };
+  }
+  if (name === "agents") return { scaffold: true, ablation: "none" };
+  return {};
+}
+
+/**
+ * The pack agents the `agents` suite grades, and where its authored cases
+ * live. Explicit rather than "every pack agent": each agent named here needs a
+ * seeded, a clean and a no-files case, so adding one is a deliberate act.
+ * @param {string} root
+ */
+export function packAgentsParams(root) {
+  return {
+    agentFiles: [
+      join(
+        root,
+        "templates",
+        "packs",
+        "frontend",
+        "files",
+        ".claude",
+        "agents",
+        "ui-reviewer.md",
+      ),
+      join(
+        root,
+        "templates",
+        "packs",
+        "service",
+        "files",
+        ".claude",
+        "agents",
+        "performance-analyzer.md",
+      ),
+    ],
+    casesDir: join(root, "evals", "pack-agents"),
+  };
+}
+
+/**
+ * Wraps pack agents as a throwaway plugin and installs the AUTHORED cases
+ * under `casesDir` (each a directory holding `case.yaml`, `prompt.md`,
+ * `fixture.sh` and a non-empty `graders/`), so an agent can be evaluated by
+ * dispatching it against a scaffolded fixture. Everything is validated before
+ * anything is written, so a thrown error never leaves `outDir` half-built, and
+ * a malformed case throws instead of being skipped: a dropped case is a hole
+ * in the measurement nobody would see. Unlike `writeToolchainPlugin`, the
+ * fixtures need no built CLI, so `fixture.sh` is copied byte for byte.
+ * @param {{ agentFiles: readonly string[], casesDir: string, outDir: string, name?: string }} params
+ * @returns {number} how many cases were installed
+ */
+export function writeAgentPlugin({
+  agentFiles,
+  casesDir,
+  outDir,
+  name = "m3l-pack-agents",
+}) {
+  const owners = new Map();
+  for (const file of agentFiles) {
+    if (!file.endsWith(".md")) {
+      throw new Error(`agent file must be a .md file: ${file}`);
+    }
+    if (!existsSync(file)) {
+      throw new Error(`agent file does not exist: ${file}`);
+    }
+    const base = basename(file);
+    // The dispatch target is `<plugin>:<frontmatter name>`, so a file whose
+    // `name:` differs from its basename makes every prompt dispatch to an
+    // agent that does not exist -- and nothing else fails until the paid run.
+    const declared = /^---\n[\s\S]*?^name:\s*([^\s#]+)/m.exec(
+      readFileSync(file, "utf8"),
+    )?.[1];
+    if (declared !== base.slice(0, -".md".length)) {
+      throw new Error(
+        `agent file ${base} declares name "${declared ?? "(none)"}" in its frontmatter; they must match`,
+      );
+    }
+    const prior = owners.get(base);
+    if (prior !== undefined) {
+      throw new Error(`duplicate agent "${base}" in both ${prior} and ${file}`);
+    }
+    owners.set(base, file);
+  }
+  if (!existsSync(casesDir)) {
+    throw new Error(`cases directory does not exist: ${casesDir}`);
+  }
+  const cases = readdirSync(casesDir, { withFileTypes: true }).filter((e) =>
+    e.isDirectory(),
+  );
+  if (cases.length === 0) {
+    throw new Error(`no cases found under ${casesDir}`);
+  }
+  for (const { name: caseName } of cases) {
+    for (const required of ["case.yaml", "prompt.md", "fixture.sh"]) {
+      if (!existsSync(join(casesDir, caseName, required))) {
+        throw new Error(`case "${caseName}" is missing ${required}`);
+      }
+    }
+    const gradersDir = join(casesDir, caseName, "graders");
+    if (
+      !existsSync(gradersDir) ||
+      !statSync(gradersDir).isDirectory() ||
+      readdirSync(gradersDir).filter((f) => f.endsWith(".md")).length === 0
+    ) {
+      throw new Error(`case "${caseName}" has no grader under graders/`);
+    }
+    const declaredCase = /^name:\s*([^\s#]+)/m.exec(
+      readFileSync(join(casesDir, caseName, "case.yaml"), "utf8"),
+    )?.[1];
+    if (declaredCase !== caseName) {
+      throw new Error(
+        `case directory "${caseName}" declares name "${declaredCase ?? "(none)"}" in case.yaml; they must match`,
+      );
+    }
+  }
+
+  mkdirSync(join(outDir, ".claude-plugin"), { recursive: true });
+  writeFileSync(
+    join(outDir, ".claude-plugin", "plugin.json"),
+    `${JSON.stringify(
+      {
+        name,
+        version: "0.0.0",
+        description:
+          "Throwaway wrapper over the pack agents, generated to evaluate their reviews against seeded and clean fixtures.",
+        author: { name: "m3l-groundwork" },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  mkdirSync(join(outDir, "agents"), { recursive: true });
+  for (const [base, file] of owners) {
+    cpSync(file, join(outDir, "agents", base));
+  }
+  for (const { name: caseName } of cases) {
+    cpSync(join(casesDir, caseName), join(outDir, "evals", caseName), {
+      recursive: true,
+    });
   }
   return cases.length;
 }

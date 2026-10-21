@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+schema_version: "1.1"
+name: performance-analyzer-seeded
+tags: [performance-analyzer, pack-agents, service]
+context:
+  scaffold_script: fixture.sh
