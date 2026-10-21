@@ -97,7 +97,10 @@ at. Quote the criterion by number and title.
   For both contrast criteria, state a ratio only when the foreground and
   background are literal values in the files you read and you can compute it;
   a colour from a theme, a token you cannot resolve or an image is **NOT
-  CHECKED**.
+  CHECKED**. A background the files never set is not a literal value: do not
+  assume white or any default background, and do not quote a ratio against
+  it. Do not write a ratio figure at all in that case, even hedged as "about
+  1.6:1" or "on white". Report it as **NOT CHECKED** and name the pair you would measure.
 - **1.4.4 Resize Text (AA).** Text can be resized up to 200 percent without
   loss of content or functionality.
 - **1.4.10 Reflow (AA).** Content works at a width equivalent to 320 CSS pixels

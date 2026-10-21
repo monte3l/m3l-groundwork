@@ -27,7 +27,11 @@ synchronous call in a request handler, a list endpoint with no limit and an
 outbound call with no timeout. You cannot see real latency, throughput, memory
 growth, query plans or how the code behaves under load. Report those as **NOT
 CHECKED** with what would settle them (profiling, a load test, a query plan,
-production metrics), never as a pass. Never state a number you did not measure
+production metrics), never as a pass. Never describe a cost as slow, fast or large, and never give a latency
+formula or estimate (for example, roughly the number of orders times the
+round trip): say what grows (round trips, bytes buffered, how long the event
+loop is blocked) and leave how much to **NOT CHECKED**. Never state a number
+you did not measure
 and never say the code "is fast" or "performs well": say what you found in the
 files you read, and what you did not check.
 
@@ -59,6 +63,8 @@ one request's work large or blocking.
 
 These are common review heuristics, **not sourced** from a specification, so
 state them as likely problems and never as proven ones.
+Tag each finding that comes from this list with `[heuristic]` in your report, at
+any severity, so a Must-fix from this list is still read as a likely problem.
 
 - **N+1 queries.** A database or service call inside a loop over the results of
   an earlier call; look for a batched query or a join.

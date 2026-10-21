@@ -199,6 +199,29 @@ describe("ui-reviewer agent", () => {
     expect(body).toContain("NOT CHECKED");
   });
 
+  it.each([
+    [
+      "never assumes a default background or white",
+      /never assume (a|any) (default )?(background|white)|do not assume white/i,
+    ],
+    [
+      "never quotes a ratio against an unset background",
+      /not quote a (contrast )?ratio against/i,
+    ],
+    [
+      "reports NOT CHECKED naming the pair to measure",
+      /name the (colour )?pair/i,
+    ],
+    [
+      "writes no ratio figure at all against it",
+      /do not write a ratio figure at all/i,
+    ],
+    ["not even a hedged one", /even hedged/i],
+  ])("treats an unset background as unknown: %s", (_label, pattern) => {
+    const flat = body.replace(/\s+/gu, " ");
+    expect(flat).toMatch(pattern);
+  });
+
   it.each(["Must-fix", "Should-fix", "Nit"])(
     "uses the %s severity tier",
     (tier) => {
