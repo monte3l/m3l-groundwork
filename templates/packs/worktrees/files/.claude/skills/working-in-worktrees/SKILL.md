@@ -45,11 +45,24 @@ Hub-only. Never dispatched as a spoke's own tool.
    a work tree", the manual fix is `git config --local core.bare false`. Prefer
    the `path:` and `keep` forms used in this skill; `EnterWorktree(name: ...)` and
    `ExitWorktree(remove)` are the calls the upstream reports tie to it.
-4. Copy any of `.env`, `.env.local`, `.env.*.local` that exist in the main
-   checkout into the new worktree (the same list as `.worktreeinclude`). `.worktreeinclude` (this pack ships one) only fires for a
-   worktree Claude Code itself creates -- since this skill creates the
-   directory with plain `git worktree add`, that processing never runs here,
-   so the copy is done by hand.
+4. Copy each of `.env`, `.env.local` and the `.env.*.local` files that exist
+   in the main checkout into the new worktree (the same list as
+   `.worktreeinclude`; copy each file that exists by name, never pass an
+   unmatched glob to `cp`). The session's working directory is now the
+   worktree, so give both ends: `cp -n <main-checkout>/<file> .`, with
+   `<main-checkout>` as the first path that
+   `git worktree list --porcelain` prints. `-n` never overwrites an existing file; a skipped existing
+   file (a non-zero exit or a warning on some GNU versions) is not a denial.
+   `.worktreeinclude` (this pack ships one) only fires for a worktree Claude
+   Code itself creates -- since this skill creates the directory with plain
+   `git worktree add`, that processing never runs here, so the copy is done by
+   hand. Never read or print a file's contents to do it. The baseline's
+   `permissions.deny` rules block reading `.env*`, and Claude Code documents
+   that block for file commands it recognizes in Bash (`cat`, `head`, `tail`,
+   `sed`, `tee`, redirects) without listing `cp`, so the copy may or may not be
+   denied. If it is denied, stop, list the files, and ask the owner to copy
+   them themselves: never work around the block with a script, a different
+   command or a read.
 5. `pnpm install --frozen-lockfile --prefer-offline` inside the worktree.
    `ensure-worktree-deps.mjs`'s own `SessionStart` hook is a backstop for
    `claude --worktree`/a resumed session, not a substitute for this step --

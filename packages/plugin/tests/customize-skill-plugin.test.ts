@@ -378,6 +378,32 @@ describe("step-3-round-1.md -- npm Dependabot grouping", () => {
     );
   });
 
+  it("cites the upstream evidence: dependabot-core, pnpm 12, #15904, #16513, #16521 and #16375", () => {
+    expect(step3).toContain("dependabot-core");
+    expect(step3).toContain("pnpm 12");
+    expect(step3).toContain("#15904");
+    expect(step3).toContain("#16521");
+    expect(step3).toContain("#16375");
+    expect(step3).toContain("#16513");
+  });
+
+  it("says pnpm 12 support is staged or partial", () => {
+    expect(step3).toMatch(/(Part 3|still open|not yet complete)/i);
+  });
+
+  it("names the known open problems as literal words", () => {
+    expect(step3).toContain("catalogs");
+    expect(step3).toContain("overrides");
+    expect(step3).toContain("minimumReleaseAge");
+  });
+
+  it("tells the owner to expect failures when the project uses catalog: entries or workspace overrides", () => {
+    expect(step3).toContain("catalog:");
+    expect(step3).toMatch(
+      /owner[^.]*expect[^.]*fail|expect[^.]*fail[^.]*owner/i,
+    );
+  });
+
   it("makes fresh mode at any other CI depth a Step 7 follow-up, not a question", () => {
     expect(step3).toMatch(/Step 7 follow-up/i);
     expect(step3).toMatch(/not (offered as )?a question/i);
@@ -396,6 +422,11 @@ describe("SKILL.md Step 7 -- npm Dependabot grouping follow-up", () => {
 
   it("flags pnpm support as unconfirmed", () => {
     expect(step7).toContain("unconfirmed");
+  });
+
+  it("names the known pnpm catalogs and overrides problems", () => {
+    expect(step7).toContain("catalogs");
+    expect(step7).toContain("overrides");
   });
 
   it("does not hedge the follow-up with 'or on request'", () => {
