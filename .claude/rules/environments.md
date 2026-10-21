@@ -53,3 +53,15 @@ interface: the policy path (`.github/environments.json`) and format, the
 `--dry-run` flag, and the `GH_TOKEN`/`GITHUB_REPOSITORY` variables. A change to
 any of them breaks those repositories until their pin is moved and their
 policy updated.
+
+**The planner's import graph is mirrored in `monte3l/.github`.** Its
+`bin/apply-repo-baseline.sh` lists `bin/cleanup-environments.mjs`,
+`bin/lib/environment-cleanup.mjs`, `bin/lib/report.mjs` and
+`bin/lib/term.mjs` as `janitor_files` and reports a consumer whose pin
+predates the newest commit touching any of them. If the planner imports
+another file, add it there in the same change.
+
+**The two App secrets are organization secrets**, shared with selected
+repositories, not secrets of the `env-janitor` environment. An environment
+secret of the same name would override them. Only `environments.yml` may name
+them.

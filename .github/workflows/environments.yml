@@ -24,10 +24,14 @@ name: Environments
 #
 # Deleting an ENVIRONMENT needs Administration: write, which the default
 # GITHUB_TOKEN cannot hold -- so this job mints a token from a dedicated,
-# narrowly-scoped GitHub App (installed on this repo only) rather than
-# widening the release workflow's own App. Deactivating/deleting
+# narrowly-scoped GitHub App (installed on selected repositories only) rather
+# than widening the release workflow's own App. Deactivating/deleting
 # DEPLOYMENTS only needs Deployments: write, which the same App token also
 # carries so one mint covers the whole job.
+#
+# The App's two secrets are organization secrets shared with those
+# repositories. Do not also set them on the `env-janitor` environment: an
+# environment secret overrides the org one. Only this workflow may name them.
 on:
   schedule:
     # Weekly. This is cleanup, not anything time-sensitive -- a stale
@@ -56,7 +60,7 @@ jobs:
       # This job never creates a deployment of its own -- it only reads
       # and deletes other environments' deployments -- so it uses this
       # environment purely to scope its secrets to `main`, not as a
-      # deployment target.
+      # deployment target. The branch policy restricts the job to `main`.
     permissions:
       contents: read
     steps:
