@@ -32,8 +32,8 @@ states.
 - The published npm tarball (`@monte3l/groundwork`) and its supply chain --
   the lockfile, the GitHub Actions that build and publish it, the npm
   trusted-publishing OIDC exchange.
-- Secrets and access: the only repository secrets are `APP_CLIENT_ID` and
-  `APP_PRIVATE_KEY` (the version-PR GitHub App).
+- Secrets and access: the only repository secrets are `RELEASE_APP_CLIENT_ID` and
+  `RELEASE_APP_PRIVATE_KEY` (the version-PR GitHub App).
   `JANITOR_APP_CLIENT_ID`/`JANITOR_APP_PRIVATE_KEY` (the environment-cleanup
   GitHub App, see [`docs/environment-janitor.md`](environment-janitor.md))
   are, like `GITLEAKS_LICENSE`, organization secrets shared with selected

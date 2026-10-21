@@ -122,8 +122,8 @@ empty bypass list -- including this one. A PR opened with the default
 anti-recursion rule), so those four checks would never post and the PR could
 never merge. `release.yml`'s `version` job instead mints a one-hour
 installation token from a GitHub App installed on just this repo
-(`actions/create-github-app-token@v3`, reading the `APP_CLIENT_ID` /
-`APP_PRIVATE_KEY` repo secrets) and passes it as `changesets/action/version`'s
+(`actions/create-github-app-token@v3`, reading the `RELEASE_APP_CLIENT_ID` /
+`RELEASE_APP_PRIVATE_KEY` repo secrets) and passes it as `changesets/action/version`'s
 `github-token`. That makes the PR behave like any human-opened one: the same
 four checks run and satisfy the ruleset through its normal path, and the
 `version` job's own `permissions:` stays `contents: read` -- the App token
