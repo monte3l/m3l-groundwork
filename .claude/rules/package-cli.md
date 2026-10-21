@@ -34,11 +34,11 @@ paths:
 - **Tests whose subject is a template file** belong in `tests/templates/`,
   not beside the tests of `src/` modules (see `tests.md`).
 
-| Change                                         | Proof required                                                    |
-| ---------------------------------------------- | ----------------------------------------------------------------- |
-| Anything in `src/`                             | `pnpm verify`, then `pnpm test:e2e`                               |
-| What the tarball ships, or how it locates data | `pack.e2e.test.ts`, never a run from the checkout                 |
-| A user-visible change                          | A changeset: `pnpm changeset`, `patch` only while `rc` mode is on |
+| Change                                         | Proof required                                                                                                                                 |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anything in `src/`                             | `pnpm verify`, then `pnpm test:e2e`                                                                                                            |
+| What the tarball ships, or how it locates data | `pack.e2e.test.ts`, never a run from the checkout                                                                                              |
+| A user-visible change                          | A changeset: `pnpm changeset`. `patch` for a fix or a change to existing behaviour, `minor` for new public surface (a pack name, flag or mode) |
 
 ## Design record
 
