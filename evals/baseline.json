@@ -52,6 +52,14 @@
       "watching-pr-checks-quiet-2": 1,
       "working-in-worktrees-fires-1": 1,
       "working-in-worktrees-quiet-1": 1
+    },
+    "agents": {
+      "performance-analyzer-clean": 1,
+      "performance-analyzer-no-files": 1,
+      "performance-analyzer-seeded": 1,
+      "ui-reviewer-clean": 1,
+      "ui-reviewer-no-files": 1,
+      "ui-reviewer-seeded": 1
     }
   }
 }
