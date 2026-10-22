@@ -3,7 +3,6 @@ paths:
   - ".github/workflows/release.yml"
   - "release-please-config.json"
   - ".release-please-manifest.json"
-  - ".claude-plugin/**"
   - "packages/plugin/.claude-plugin/**"
   - "packages/*/package.json"
   - "bin/npm-stage-publish.mjs"

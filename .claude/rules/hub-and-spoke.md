@@ -61,22 +61,21 @@ managed file lives outside any project's working tree, at an OS-level path
 to check and this is a documented limit, not a gate. Run `/status` before
 trusting hub-and-spoke enforcement on a machine you don't control: its
 "Setting sources" line lists each settings file loaded and marks
-the managed one, and if
-`guard-hub-src-writes.mjs`/`guard-branch-isolation.mjs` aren't among what's
-actually running, treat this section as an unenforced checklist rather than
-an enforced gate until confirmed otherwise.
+the managed one, and if `guard-hub-src-writes.mjs`/`guard-branch-isolation.mjs`
+aren't among what's actually running, treat this section as an unenforced
+checklist rather than an enforced gate until confirmed otherwise.
 
 **An installed Claude Code mod is a second silent override, below managed
 settings.** Mods (plugin-shipped TypeScript handlers) are on by default from
 Claude Code 2.1.286 (the upstream mods admin page documents no terminal or
 desktop split). Per the
-[mods events guide](https://code.claude.com/docs/en/plugins/mods/events), a mod
-that handles `tool.check` can approve a call that a `PreToolUse` hook outside
-managed settings blocked, and project `PreToolUse` hooks run
-only after the last mod calls `next`, so a mod that answers `tool.call`
-without it keeps them from running at all (same page).
-Only managed-settings hooks outrank a mod. Same limit as above: nothing in
-the repo can detect it. Run `/plugin` alongside `/status` before trusting the
+[mods events guide](https://code.claude.com/docs/en/plugins/mods/events),
+project `PreToolUse` hooks run only after the last mod calls `next`, so a mod
+that answers `tool.call` without it keeps them from running at all. A mod's
+`tool.check` answers after the hooks: with managed settings or a Team or
+Enterprise `/login` a call a `PreToolUse` hook blocked stays blocked, and with
+neither the mod can approve it ([permissions](https://code.claude.com/docs/en/permissions#precedence-among-rules-hooks-and-mods)).
+Same limit as above: nothing in the repo can detect it. Run `/plugin` alongside `/status` before trusting the
 guards on a machine you don't control: upstream says a terminal session shows a
 dim `N mods active` line there naming the mods it loaded, and lists built-in
 mods separately under the Installed tab's **Built-in** heading. Upstream's
@@ -100,7 +99,7 @@ spoke's `tools` list also omits `Agent`.
 
 **Fork subagents are on by default in every surface since Claude Code 2.1.302**
 (`CLAUDE_CODE_FORK_SUBAGENT=0` turns them off). A fork inherits the hub's
-conversation and cannot spawn further agents. The docs don't say what its hook
+conversation; at the depth limit its `Agent` tool returns an error. The docs don't say what its hook
 payload carries; the guard treats it as the hub unless the payload reports a
 writer `agent_type` together with an `agent_id` (a hub started with
 `--agent code-implementer` could produce that), and the hub is blocked from

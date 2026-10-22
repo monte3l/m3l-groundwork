@@ -42,6 +42,7 @@ Sources: [hooks](https://code.claude.com/docs/en/hooks),
 [hooks guide](https://code.claude.com/docs/en/hooks-guide),
 [managed settings](https://code.claude.com/docs/en/managed-settings),
 [mods events](https://code.claude.com/docs/en/plugins/mods/events),
+[permissions](https://code.claude.com/docs/en/permissions#precedence-among-rules-hooks-and-mods),
 [sub-agents](https://code.claude.com/docs/en/sub-agents) and
 [agent teams](https://code.claude.com/docs/en/agent-teams).
 
@@ -63,16 +64,17 @@ Sources: [hooks](https://code.claude.com/docs/en/hooks),
   machine you don't control, run `/status` and read its "Setting sources"
   line: if `guard-hub-src-writes.mjs` and `guard-branch-isolation.mjs` aren't
   running, treat hub-and-spoke as an unenforced checklist.
-- **An installed mod sits below managed settings and above project hooks.** A
-  mod that handles `tool.check` can approve a call a non-managed `PreToolUse`
-  hook blocked, and project `PreToolUse` hooks run only after the last mod
-  calls `next`. Only managed hooks outrank a mod. Check `/plugin` alongside
-  `/status`.
+- **An installed mod sits below managed settings and above project hooks.**
+  Project `PreToolUse` hooks run only after the last mod calls `next`, so a mod
+  that answers `tool.call` without it stops them running. A mod's `tool.check`
+  answers after the hooks: with managed settings or a Team or Enterprise
+  `/login` a call a `PreToolUse` hook blocked stays blocked, and with neither
+  the mod can approve it. Check `/plugin` alongside `/status`.
 - **Who counts as a writer.** The guard needs a writer-spoke `agent_type` and a
   non-empty `agent_id`. A fork subagent (on by default in every surface since
   Claude Code 2.1.302) is not a writer spoke, so unless its payload reports a
   writer `agent_type` it is treated as the hub (the docs don't say what a
-  fork's payload carries). A fork cannot spawn further agents. With agent teams on, an in-process
+  fork's payload carries). At the depth limit a fork's `Agent` tool returns an error. With agent teams on, an in-process
   teammate has a documented `agent_id`; one built from a writer definition that
   also reports that `agent_type` passes as a writer. A split-pane teammate does
   not get `disallowedTools` (only an in-process one does), so every spoke's
