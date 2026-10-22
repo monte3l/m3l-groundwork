@@ -10,8 +10,9 @@
 - [ ] Every commit is signed off (DCO, `git commit -s`) and GPG-signed
 - [ ] New functionality has tests; a bug fix includes a regression test
       that fails without the fix
-- [ ] A changeset is included (`pnpm changeset`), if this is a user-visible
-      change to `@monte3l/groundwork` -- the plugin never takes one
+- [ ] The title and commits are Conventional Commits whose type matches the
+      change (`feat`, `fix`, `!` for breaking): the release version and
+      changelog come from them
 - [ ] Baseline caps still hold (checked by `pnpm test`, via tests around
       `packages/cli/src/caps.ts` -- not `pnpm check:harness`/
       `pnpm check:toolchain`, which grade a rubric instead), if a `.claude/`

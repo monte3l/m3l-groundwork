@@ -44,9 +44,6 @@ packages/plugin/        Phase B: the /customize skill
                          Operating Model". worktrees/ is unrelated -- see
                          "Known gaps".
 
-.changeset/             Changesets config and any pending changesets.
-                         See "Releases".
-
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
                          verify lanes + e2e + e2e-macos + node-current + the `verify`
                          aggregator; the e2e trio skips its work on a

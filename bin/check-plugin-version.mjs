@@ -6,7 +6,7 @@
  * Fails when the plugin's Claude Code identity has drifted from the CLI's
  * release, or when the plugin package has quietly grown npm-publish shape
  * again -- the plugin is listed by the central `monte3l/m3l-plugins`
- * marketplace, pinned to a release tag, never published to npm. The sync half is `sync-plugin-version.mjs`; see lib/plugin-version.mjs.
+ * marketplace, pinned to a release tag, never published to npm. release-please writes both versions (`extra-files` in release-please-config.json); see lib/plugin-version.mjs.
  */
 import process from "node:process";
 import { createReporter, parseJsonFlag, repoRoot } from "./lib/report.mjs";
@@ -20,7 +20,7 @@ if (v.manifest.version === expected) {
   reporter.ok(`plugin.json version is ${expected}`);
 } else {
   reporter.fail(
-    `plugin.json version is ${v.manifest.version ?? "missing"}, but ${v.cliPackage.name} is ${expected} -- run \`node bin/sync-plugin-version.mjs\``,
+    `plugin.json version is ${v.manifest.version ?? "missing"}, but ${v.cliPackage.name} is ${expected} -- release-please writes both from \`extra-files\` in release-please-config.json, so check that entry and do not edit either version by hand`,
   );
 }
 

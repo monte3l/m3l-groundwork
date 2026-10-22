@@ -11,8 +11,8 @@ and the GitHub Releases.
 
 The public API has been frozen since the first `1.0.0-rc`
 (see the README's ["Versioning policy"](README.md#versioning-policy)), and
-`1.0.0` shipped it unchanged. The series is at `1.0.4`. Only `patch`
-[changesets](docs/glossary.md#changeset) land in it, so anything that adds a
+`1.0.0` shipped it unchanged. Only `fix` commits (patch releases) land in the
+1.0 series, so anything that adds a
 CLI flag or mode waits for a `1.1` release (see
 [`.claude/rules/releases.md`](.claude/rules/releases.md), which
 [`CLAUDE.md`](CLAUDE.md#releases) summarises).

@@ -85,9 +85,9 @@ dependency -- there isn't one (`packages/cli/package.json`'s
     returns `{ checked: 0 }` rather than guessing.
 
 [^pack-publish]:
-    `publish` runs no repository code beyond the changesets
-    CLI and a thin `pnpm`→`libnpmpublish` staged-publish shim, and installs with
-    `--ignore-scripts`.
+    `publish` runs no repository code beyond the
+    `libnpmpublish` staged-publish script (`bin/npm-stage-publish.mjs`), and
+    installs with `--ignore-scripts`.
 
 ## Secure design principles applied (Saltzer & Schroeder)
 

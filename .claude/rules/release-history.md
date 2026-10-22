@@ -1,6 +1,6 @@
 ---
 paths:
-  - ".changeset/**"
+  - "release-please-config.json"
   - "bin/deprecate-superseded.mjs"
   - "bin/lib/deprecation-plan.mjs"
 ---
@@ -11,25 +11,21 @@ paths:
 
 **Prerelease mode is over.** The CLI shipped one `0.x` line
 (`0.1.0-next.N`, on the `next` dist-tag), then `1.0.0-rc.N` on the `rc`
-dist-tag, and left `rc` mode with `pnpm changeset pre exit` in the PR that
-made `1.0.0`; the version PR deleted `.changeset/pre.json`. `1.0.0` is the
+dist-tag, and left `rc` mode in the PR that made `1.0.0` (Changesets, which
+drove releases until 1.0.5, was in `pre` mode until then). `1.0.0` is the
 same code as `1.0.0-rc.8`, published on `latest` (which had pointed at the
 `0.0.0` placeholder). The public API (see the README's "Versioning policy")
-has been frozen since the first `rc`: only `patch` changesets land in the
-1.0 series, by convention, and any further API change waits for `1.1`. To
-use prerelease mode again, run `pnpm changeset pre exit` and
-`pnpm changeset pre enter <tag>` in one commit when switching tags:
-splitting them lets `changeset version` run in the intervening `exit` state
-and skip the prerelease suffix. Changesets' prerelease counter does not reset
-across a tag switch, and it warns against sitting in pre mode on the default
-branch indefinitely.
+has been frozen since the first `rc`. Releases are now cut by release-please
+from Conventional Commits, so there is no prerelease mode to enter or exit. A
+prerelease would need release-please's `prerelease` options and a `--tag` for
+`bin/npm-stage-publish.mjs`, which refuses a prerelease without one.
 
 **GA promotion checklist** (kept as the record of how `1.0.0` was gated, and
 the template for the next major). Every item was true when `rc` was left; each
 one has a command or a file that proves it.
 
 1. **The public API is unchanged since the first `rc`.** No `minor` or
-   `major` changeset has landed (`.changeset/` and `git log` since the first
+   `feat` or breaking commit has landed (`git log` since the first
    `1.0.0-rc.N` tag), and every surface in the README's "Versioning policy"
    still matches the code.
 2. **`main` is green and the last `rc` works from the registry.** The
@@ -48,7 +44,7 @@ one has a command or a file that proves it.
    `docs` step included), and the read-only `gh api` commands in
    `docs/github-blueprint.md` still return the values that file states.
 
-The exit was: `pnpm changeset pre exit` and a `patch` changeset in one PR,
+The exit was: leaving Changesets' `pre` mode and a `patch` changeset in one PR,
 the version PR, the `npm-publish` environment approval and `npm stage
 approve`. Once `latest` pointed at `1.0.0`, a docs PR dropped `@rc` from the
 README. Read the dist-tags with `npm view @monte3l/groundwork dist-tags` (on
@@ -101,9 +97,8 @@ temporary token (`@monte3l/groundwork-plugin` needs none of this -- it never
 touches npm). That is also why `latest` points at `0.0.0` until the first
 stable release. **The trusted publisher is bound to the workflow filename
 `release.yml` (the bare name, not a path): renaming or moving that file
-breaks publishing** until it is reconfigured on npmjs.com. The version job's
-PR is opened with a GitHub App installation token, not the default
-`GITHUB_TOKEN` (see "The version PR authenticates as a GitHub App" below),
+breaks publishing** until it is reconfigured on npmjs.com. The release PR is opened with a GitHub App installation token, not the default
+`GITHUB_TOKEN` (see "The release PR authenticates as a GitHub App" below),
 so despite an earlier version of this doc, the repo's own
 **Allow GitHub Actions to create and approve pull requests** toggle
 (`can_approve_pull_request_reviews`) is not actually needed for that step --
@@ -114,23 +109,20 @@ see CLAUDE.md's "Known gaps" for turning it off. The trusted publisher's
 "staged, not direct" below for what that costs and why it was kept rather
 than switched off.
 
-**The version PR authenticates as a GitHub App, not the default
+**The release PR authenticates as a GitHub App, not the default
 `GITHUB_TOKEN`.** `main`'s branch ruleset (see CLAUDE.md's "Git Workflow")
 requires `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` on every PR, with an
 empty bypass list -- including this one. A PR opened with the default
 `GITHUB_TOKEN` never triggers `pull_request`-event workflows (GitHub's own
-anti-recursion rule), so those four checks would never post and the PR could
-never merge. `release.yml`'s `version` job instead mints a one-hour
-installation token from a GitHub App installed on just this repo
-(`actions/create-github-app-token@v3`, reading the `RELEASE_APP_CLIENT_ID` /
-`RELEASE_APP_PRIVATE_KEY` repo secrets) and passes it as `changesets/action/version`'s
-`github-token`. That makes the PR behave like any human-opened one: the same
-four checks run and satisfy the ruleset through its normal path, and the
-`version` job's own `permissions:` stays `contents: read` -- the App token
-does the actual writing, scoped to exactly `contents: write` +
-`pull-requests: write` on the App itself. This is what both GitHub's own docs
-("GITHUB_TOKEN") and changesets' own automating guide recommend for this
-exact situation -- an App token over a PAT (shorter-lived, not tied to a
-person) or a ruleset bypass (which would skip the checks rather than
-satisfy them, undermining the empty `bypass_actors` list "Git Workflow"
-describes).
+anti-recursion rule), so those checks would never post and the PR could
+never merge. The shared `release-prepare.yml` in `monte3l/.github` instead
+mints a one-hour installation token from the organisation's `monte3l-release`
+GitHub App (`actions/create-github-app-token@v3`, reading the
+`RELEASE_APP_CLIENT_ID` / `RELEASE_APP_PRIVATE_KEY` organisation secrets shared
+with this repository), scoped to this repository with `contents: write` and
+`pull-requests: write`. That makes the PR behave like any human-opened one, and
+GitHub signs commits made through the API as the App, so the signed-commits
+rule holds with no bypass actor. release-please signs the commit off as the
+App (`signoff` in `release-please-config.json`), which the `dco` lane needs.
+This replaced a repository-specific `m3l-groundwork-release` App that served
+the Changesets version PR.

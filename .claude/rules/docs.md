@@ -1,7 +1,6 @@
 ---
 paths:
   - "*.md"
-  - ".changeset/**/*.md"
   - ".claude/**/*.md"
   - ".github/**/*.md"
   - "design/README.md"

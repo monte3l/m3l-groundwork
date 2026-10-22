@@ -385,7 +385,7 @@ the choice to you.
 
 `@monte3l/groundwork` follows [Semantic Versioning](https://semver.org/).
 Until 1.0.0, breaking changes ship in a `minor` release, as SemVer allows
-for major version zero -- see the changesets in this repo's history for
+for major version zero -- see the changelog for
 examples. From 1.0.0, the public API is:
 
 1. **CLI flags, modes, and exit codes** -- `--help` lists every flag; exit

@@ -19,10 +19,13 @@ now the `licensing` pack (`pack-licensing.md`); do not add them back.
 - **Fresh mode only, on purpose.** It encodes registry, trusted-publisher
   and GitHub App decisions too project-specific to automate in adopt mode.
   Do not add `adopt` to `modes`.
-- **It drifts from `.github/workflows/release.yml` by construction.** When
-  the root release flow changes (see `releases.md`), decide explicitly
-  whether the pack's copy follows, and say so in the PR (convention only; no
-  gate diffs them).
+- **It is the Changesets flow this repo used before release-please.** The root
+  `.github/workflows/release.yml` now calls the organisation's shared release
+  workflows (see `releases.md`), and the pack deliberately keeps the Changesets
+  version PR, because a pack cannot wire release-please's config into someone
+  else's repository. When the root flow changes, decide explicitly whether the
+  pack's copy follows, and say so in the PR (convention only; no gate diffs
+  them).
 - **It cannot wire `@changesets/cli`,** because a pack never edits
   dependencies. `adoptNotes` and `setupSteps` carry the one-time
   `pnpm add -D @changesets/cli`. Keep them true.

@@ -116,8 +116,8 @@ of these advisories by id and has no other cause, so it closes only when they do
 
 The commands the release flow runs against npm are `npm ci --ignore-scripts`
 (installing the pinned npm), `npm stage publish <tarball> --provenance` (through
-the pnpm shim) and `npm stage list`. The tarball is packed earlier, in the `pack`
-job, by `changesets/action/pack` through pnpm; npm never packs it.
+`bin/npm-stage-publish.mjs`) and `npm stage list`. The tarball is packed earlier,
+in the `pack` job, by `pnpm pack`; npm never packs it.
 
 **Why this cannot be fixed in the repo.** The vulnerable copies are bundled
 inside the npm tarball (`inBundle` in the lockfile). npm's `overrides` and
