@@ -30,7 +30,7 @@ TypeScript, `strict: true`, ESM only, `tsc` (no bundler), `pnpm`. Node 24+
 (`.node-version` is the authority; `check:node-version` gates drift). Two
 workspace packages (`packages/cli`, `packages/plugin`), each with a tooling
 `tsconfig.json` (src + tests, no emit) and a build-only `tsconfig.build.json`
-(src only, emits `dist/`; declarations only for the CLI).
+(src only, emits `dist/`, CLI declarations only).
 
 ## Repository Layout
 
@@ -63,8 +63,6 @@ Run any task with `pnpm <script>`.
 | `pnpm eval`                    | **Paid, never in `verify`.** Runs Anthropic's `claude plugin eval` on `/customize`, on a generated wrapper over `templates/core`'s skills (triggering accuracy), on that same wrapper widened with every `templates/packs/*/files/.claude/skills` merged in (cross-pack triggering), on `typescript-guidance` against a deliberately degraded project, and on the `frontend` and `service` pack agents dispatched against seeded and clean fixtures; needs `claude`, credentials, network. Skips cleanly without `claude`. See `.claude/rules/evals.md` |
 | `pnpm verify`                  | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file                                                                                                                                                                                                                                                                          |
 
-Run `pnpm verify` (or push: `lefthook`'s `pre-push` runs it) before calling a task done.
-
 ## Architecture notes
 
 The design record is split by area; each file loads when you edit the files it
@@ -84,10 +82,10 @@ behavioural evals in `.claude/rules/evals.md`.
 ## Git Workflow
 
 Single-maintainer project on GitHub (`monte3l/m3l-groundwork`, public).
-Conventional Commits, enforced by the `commit-msg` hook
-(`bin/lint-commit.mjs`); every commit needs a DCO `Signed-off-by:` trailer
-(`git commit -s`), a GPG signature, and a `Co-Authored-By:` trailer when Claude
-authored or substantially assisted it. Nobody can push to `main`: every change
+Conventional Commits, enforced by the `commit-msg` hook (`bin/lint-commit.mjs`);
+every commit needs a DCO `Signed-off-by:` trailer (`git commit -s`), a GPG
+signature, and a `Co-Authored-By:` trailer when Claude authored or substantially
+assisted it. Nobody can push to `main`: every change
 lands through a pull request with green `verify`, `Dependency Review`,
 `CodeQL` and `Gitleaks` checks, one approval from a code owner other than its
 author, resolved threads and signed commits (no rebase-merge; the branch must
@@ -98,10 +96,9 @@ writes on `main`. Full policy: `.claude/rules/git-workflow.md`.
 
 ## Agent Operating Model
 
-This repo runs on `templates/core`'s own harness -- installed onto its own
-root by adopting itself (`docs/known-gaps.md` says how), same shape as every
-project it bootstraps, with one adaptation: `packages/*/src/**` and
-`packages/*/tests/**` in every path-shape rule, not a flat `src/`/`tests/`.
+This repo runs on `templates/core`'s own harness, installed by adopting itself
+(`docs/known-gaps.md`), with `packages/*/src/**` and `packages/*/tests/**` in
+every path-shape rule instead of a flat `src/`/`tests/`.
 
 **Hub-and-spoke is mandatory and hook-enforced, deliberately, with no
 project-level opt-out.** The hub plans and dispatches to spokes, and never
