@@ -47,5 +47,8 @@ imports the other.
 | Setup-step order      | `main-setup-steps.test.ts`                       |
 | Manifest contract     | `packs.test.ts`, `caps.test.ts`                  |
 
-A change to this pack alone takes a changeset whose summary starts with
-`pack(licensing):`.
+A change to this pack alone is released by its Conventional Commit type
+(`fix(packs): ...` for a fix or a change to existing behaviour,
+`feat(packs): ...` for new public surface),
+because packs ship inside the CLI tarball and have no release of their own.
+There is no changeset.

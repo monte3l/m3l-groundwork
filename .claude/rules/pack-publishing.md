@@ -47,5 +47,9 @@ now the `licensing` pack (`pack-licensing.md`); do not add them back.
 | Installs and verifies | `packages/cli/tests/packs-publishing.e2e.test.ts` |
 | With `supply-chain`   | `packs-publishing-supply-chain.e2e.test.ts`       |
 
-A change to this pack alone takes a changeset whose summary starts with
-`pack(publishing):`.
+A change to this pack alone is released by its Conventional Commit type
+(`fix(packs): ...` for a fix or a change to existing behaviour,
+`feat(packs): ...` for new public surface),
+because packs ship inside the CLI tarball and have no release of their own.
+There is no changeset in this repo; the pack itself still ships the Changesets
+flow to the projects it is installed into.

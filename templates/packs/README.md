@@ -17,8 +17,9 @@ templates/packs/<name>/
 ```
 
 A pack has no release of its own: it ships inside the CLI tarball, so a change
-to one that is user-visible takes a CLI changeset whose summary starts with
-`pack(<name>):`. The checklist for working on a pack lives in the source
+to one that is user-visible is released by its Conventional Commit type
+(`fix(packs): ...` for a fix or a change to existing behaviour,
+`feat(packs): ...` for new public surface; there is no changeset). The checklist for working on a pack lives in the source
 repository's own `.claude/rules/pack-<name>.md` (m3l-groundwork, not shipped),
 not in the pack, since a pack cannot ship a rule (see below).
 

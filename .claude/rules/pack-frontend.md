@@ -41,5 +41,8 @@ scripts or gate. Recommended only for the `frontend` project kind
 | Budget                    | `caps.test.ts` (checks every pack generically)       |
 | Kind-gated recommendation | `packages/plugin/tests/pack-map.test.ts`             |
 
-A change to this pack alone takes a changeset whose summary starts with
-`pack(frontend):`.
+A change to this pack alone is released by its Conventional Commit type
+(`fix(packs): ...` for a fix or a change to existing behaviour,
+`feat(packs): ...` for new public surface),
+because packs ship inside the CLI tarball and have no release of their own.
+There is no changeset.
