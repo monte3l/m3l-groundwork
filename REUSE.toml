@@ -124,3 +124,19 @@ SPDX-License-Identifier = "MIT"
 path = ["design/SHA256SUMS", "design/source/LICENSE"]
 SPDX-FileCopyrightText = "2026 Enrico Lionello (enri3l), Giulia Montevecchi (giulmonte), monte3l"
 SPDX-License-Identifier = "MIT"
+
+# The MONTE3L logo and the files made from it arrive with design/source/brand/.
+# They are the organisation's identity, not MIT: all rights reserved apart from
+# the permissions in design/source/brand/LICENSE.md. This table comes last and
+# overrides the MIT table for design/source/** above. The folder's README.md and
+# LICENSE.md are documentation and stay MIT.
+[[annotations]]
+path = [
+  "design/source/brand/logo/**",
+  "design/source/brand/favicon/**",
+  "design/source/brand/github/**",
+  "design/source/brand/social/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Enrico Lionello (enri3l), Giulia Montevecchi (giulmonte), monte3l"
+SPDX-License-Identifier = "LicenseRef-MONTE3L-Brand"
