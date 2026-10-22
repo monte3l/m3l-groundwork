@@ -21,6 +21,12 @@ packs independent: neither may name the other as a requirement.
 - **`claude.yml` gates on `author_association`** (owner, member or
   collaborator) so an outside commenter cannot start a job that holds
   `contents: write`. Do not loosen it.
+- **`claude.yml` caps each run with `--max-turns 20`** in `claude_args`
+  (Anthropic's cost guidance recommends one; the job's `timeout-minutes: 30`
+  stays the hard stop). `claude-pr-review.yml` sets no turn cap: its `gate`
+  step fails the job when no structured review comes back, so a cap there
+  would surface as a red check, not a quiet pass. Add one only if review cost
+  becomes a problem. If a cap trips, raise it rather than removing it.
 - **`claude-pr-review.yml` is a separate implementation,** not a copy of the
   root workflow removed over a silent no-post bug (see `ci.md`): two jobs, a
   read-only `review` with `--json-schema` and a `gh`/`jq` `post`, written to
@@ -36,6 +42,8 @@ packs independent: neither may name the other as a requirement.
 | Installs and verifies        | `packages/cli/tests/packs-claude-github.e2e.test.ts` |
 | Manifest and wiring contract | `packs.test.ts`, `caps.test.ts`                      |
 
-A change to this pack alone takes a changeset whose summary starts with
-`pack(claude-github):`, because packs ship inside the CLI tarball and have no
-release of their own.
+A change to this pack alone is released by its Conventional Commit type
+(`fix(packs): ...` for a fix or a change to existing behaviour,
+`feat(packs): ...` for new public surface),
+because packs ship inside the CLI tarball and have no release of their own.
+There is no changeset.
