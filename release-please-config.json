@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "signoff": "monte3l-release[bot] <333264726+monte3l-release[bot]@users.noreply.github.com>",
-  "bootstrap-sha": "76f5846eff5513b583a73f6fcfd13a718a288b3d",
+  "bootstrap-sha": "8f808619d6ca299859e12ae6962959faf0eee20f",
   "packages": {
     ".": {
       "release-type": "simple",
