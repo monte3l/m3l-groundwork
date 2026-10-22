@@ -31,8 +31,8 @@ you only need the marketplace install if the project did not come from that
 CLI. The plugin's version (`.claude-plugin/plugin.json`) tracks the CLI's for
 display. The marketplace pins this plugin to a CLI release tag
 (`@monte3l/groundwork@X.Y.Z`), so a change here does not reach marketplace
-users when it lands on `main`: it ships after the CLI's next Changesets
-release and a pin-bump PR in `monte3l/m3l-plugins`.
+users when it lands on `main`: it ships after the next release
+and a pin-bump PR in `monte3l/m3l-plugins`.
 
 There's no separate changelog for the plugin -- it has no release of its
 own. See [`packages/cli/CHANGELOG.md`](../cli/CHANGELOG.md) for what changed

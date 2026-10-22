@@ -3,15 +3,14 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Parses the one `pnpm publish` invocation changesets makes for a packed
- * tarball, for `pnpm-publish-shim.mjs` and `npm-stage-publish.mjs`.
+ * Parses the arguments of a staged publish of a packed tarball, for
+ * `npm-stage-publish.mjs`:
+ *   <tarball> --access <a> --tag <t> [--otp <c>]
  *
- * Changesets runs (see its `lib/pnpm.ts`):
- *   pnpm publish <tarball> [--json] --access <a> --tag <t> --no-git-checks [--otp <c>]
- *
- * `--json` and `--no-git-checks` are pnpm-only and dropped. Anything not listed
- * is refused rather than guessed at: if changesets ever starts passing a flag
- * this does not understand, publishing must stop, not silently do something else.
+ * `--json` and `--no-git-checks` are accepted and dropped: they are the flags
+ * `pnpm publish` took when Changesets drove the publish. Anything not listed is
+ * refused rather than guessed at, so a mistyped flag stops the publish instead
+ * of silently doing something else.
  *
  * Staged, not direct: `@monte3l/groundwork`'s trusted publisher only allows a
  * staged publish -- a maintainer must separately run `npm stage approve <id>`
@@ -22,10 +21,10 @@ const DROPPED = new Set(["--json", "--no-git-checks"]);
 const WITH_VALUE = new Set(["--access", "--tag", "--otp"]);
 
 /**
- * Splits the arguments after `pnpm publish` into the tarball and the
- * `[flag, value]` pairs changesets passes, refusing anything else.
+ * Splits the arguments into the tarball and the `[flag, value]` pairs,
+ * refusing anything else.
  *
- * @param {string[]} args the arguments following `pnpm publish`
+ * @param {string[]} args the arguments after the script name
  * @returns {{ tarball: string, pairs: [string, string][] }}
  */
 function scanPublishArgs(args) {
@@ -57,17 +56,17 @@ function scanPublishArgs(args) {
 
   if (tarball === undefined) {
     throw new Error(
-      "no tarball given: this shim only publishes packed tarballs (changesets' --from-pack-dir mode)",
+      "no tarball given: this script only publishes packed tarballs",
     );
   }
   return { tarball, pairs };
 }
 
 /**
- * Parses the one `pnpm publish` invocation changesets makes, as named values
+ * Parses the publish arguments as named values
  * for `npm-stage-publish.mjs` (which calls libnpmpublish instead of the npm CLI).
  *
- * @param {string[]} args the arguments following `pnpm publish`
+ * @param {string[]} args the arguments after the script name
  * @returns {{ tarball: string, access?: string, tag?: string, otp?: string }}
  */
 export function parsePublishArgs(args) {
@@ -75,20 +74,4 @@ export function parsePublishArgs(args) {
   const out = { tarball };
   for (const [flag, value] of pairs) out[flag.slice(2)] = value;
   return out;
-}
-
-/**
- * `PATH` with `dir` removed, so the shim can find the real `pnpm` behind it.
- * @param {string | undefined} pathValue
- * @param {string | undefined} dir
- * @param {string} separator
- */
-export function pathWithout(pathValue, dir, separator) {
-  if (pathValue === undefined || dir === undefined || dir === "") {
-    return pathValue ?? "";
-  }
-  return pathValue
-    .split(separator)
-    .filter((entry) => entry !== dir)
-    .join(separator);
 }

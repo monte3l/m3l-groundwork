@@ -3,31 +3,29 @@
 
 name: Release
 
-# What this does: on every push to `main`, this workflow either opens a PR
-# that bumps package versions and changelogs, or -- once that PR has merged
-# -- packs and publishes the CLI to npm. It runs
-# [Changesets](https://github.com/changesets/changesets), the tool this repo
-# uses to track pending releases (each PR that changes the CLI's user-facing
-# behavior adds a small Markdown file under `.changeset/` describing the
-# change and its version bump; this workflow reads those files to decide
-# what to do next).
+# What this does: on every push to `main`, this workflow either opens or
+# updates the release pull request, or -- once that pull request has merged --
+# packs the CLI, attests it, stages it on npm and publishes the GitHub
+# Release. The versioning is the organisation's shared release baseline
+# (monte3l/.github, blueprint/README.md, "Releases"): release-please reads the
+# Conventional Commits since the last tag, so there is no changeset to write.
 #
 # The flow, one job each:
-#   1. select-mode  reads the repo and decides: "version", "publish", or "none"
-#   2. version      opens or updates the "Version Packages" PR
-#   3. pack         builds, runs every gate, and packs the tarballs
-#   4. publish      uploads those tarballs to npm via trusted publishing
+#   1. prepare   shared: opens or updates the release PR, or on merge tags the
+#                commit and creates a DRAFT GitHub Release
+#   2. pack      builds, runs every gate and packs the tarball, with no secrets
+#   3. publish   attests the tarball and its SBOM, attaches them to the draft,
+#                and stages the package on npm through trusted publishing
+#   4. finalize  shared: publishes the draft last, then tells m3l-plugins
 #
 # "Trusted publishing" is npm's passwordless publish mechanism: instead of a
-# long-lived npm token stored as a secret, this workflow proves its identity
-# to npm via OIDC (OpenID Connect -- a short-lived, cryptographically signed
-# token GitHub Actions mints for the running job, which npm verifies against
-# the trusted-publisher config for this exact repo and workflow file). This
-# is the shape the changesets docs recommend for trusted publishing: the one
+# long-lived npm token stored as a secret, `publish` proves its identity to npm
+# via OIDC (OpenID Connect -- a short-lived, cryptographically signed token
+# GitHub Actions mints for the running job, which npm verifies against the
+# trusted-publisher config for this exact repository and workflow file). The
 # job that holds the OIDC token (`publish`, via `id-token: write`) never runs
-# build, test, or repo-script code -- it only runs the changesets CLI and the
-# pnpm shim below, with `--ignore-scripts`. `pack` holds nothing beyond
-# `contents: read`.
+# build, test, or repo-script code beyond the pinned publisher below; `pack`
+# holds nothing beyond `contents: read`.
 #
 # "Staged" publish (vs. a "direct" one) means a staged publish uploads the
 # tarball and creates the version, but it isn't installable yet until a
@@ -38,31 +36,49 @@ name: Release
 # exact commit and workflow run that built it.
 #
 # npm trusted publishers are configured per package, against this exact file
-# name (`release.yml`, not a path). See CLAUDE.md, "Releases", for the full
-# design rationale.
+# name (`release.yml`, not a path), and npm checks the CALLING workflow, so the
+# shared workflows below may live elsewhere. Never rename this file. See
+# CLAUDE.md, "Releases", for the full design rationale.
 on:
   push:
     branches: [main]
+  # A run that fails at startup (an Actions policy blocking an action, for
+  # example) cannot be re-run, and nothing else would start a new one before
+  # the next push. `prepare` below refuses any ref but the default branch.
+  workflow_dispatch:
 
 # Reset, then grant per job.
 permissions: {}
 
 # Releases must not be cancelled midway, so no cancel-in-progress here (unlike
-# ci.yml): a half-published release is worse than a queued one.
+# ci.yml): a half-published release is worse than a queued one. One group for
+# the repository also stops two pushes racing over one release pull request.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
-  select-mode:
-    name: Select mode
+  prepare:
+    name: Prepare
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    permissions:
+      contents: read
+    uses: monte3l/.github/.github/workflows/release-prepare.yml@4e2797a213e85b6dd24c3e729fe15385924fc091 # release-baseline
+    secrets:
+      RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+  pack:
+    name: Verify and pack
+    needs: [prepare]
+    if: needs.prepare.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      mode: ${{ steps.select-mode.outputs.mode }}
-      publish-plan-artifact-id: ${{ steps.select-mode.outputs.publish-plan-artifact-id }}
+    timeout-minutes: 45
     permissions:
       contents: read # actions/checkout
     steps:
+      # The commit the release PR merged as, which is also the one the draft's
+      # tag points at.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -70,81 +86,6 @@ jobs:
       # file must never carry a literal version (`pnpm check:node-version`).
       # No package-manager cache anywhere in this file: a restored cache is an
       # input an attacker can poison, and these jobs are the ones that publish.
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version-file: .node-version
-          package-manager-cache: false
-      - run: pnpm install --frozen-lockfile
-      - id: select-mode
-        uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
-
-  version:
-    name: Open version PR
-    needs: select-mode
-    if: needs.select-mode.outputs.mode == 'version'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read # actions/checkout; the app token below does the actual writing
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version-file: .node-version
-          package-manager-cache: false
-      - run: pnpm install --frozen-lockfile
-      # `main`'s branch ruleset requires `verify`, `Dependency Review` and
-      # `CodeQL` on every PR with no bypass actor (see CLAUDE.md, "Git
-      # Workflow") -- including this one. A PR opened with the default
-      # GITHUB_TOKEN would never trigger those `pull_request`-event workflows
-      # (GitHub's own anti-recursion rule) and could therefore never merge, so
-      # this mints a short-lived token from a GitHub App installed on this repo
-      # instead. The app-token approach, not a PAT or a ruleset bypass, is what
-      # both GitHub's own docs and changesets' own automating guide recommend
-      # for exactly this case -- see CLAUDE.md, "Releases". The App needs only
-      # `contents: write` and `pull-requests: write`; its token auto-expires in
-      # an hour and this action revokes it when the job ends.
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: app-token
-        with:
-          # Both created as repo secrets (`gh secret set`), not vars: the
-          # client ID isn't sensitive on its own, but keeping both next to
-          # each other avoids a second place to remember to update. The
-          # `RELEASE_` prefix ties them to the `m3l-groundwork-release` App,
-          # so they are not mistaken for generic leftovers and deleted.
-          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # Without these the token inherits every permission the App holds
-          # (zizmor `github-app`); these are the two the App needs.
-          permission-contents: write
-          permission-pull-requests: write
-      # `version:packages` syncs plugin.json to the new version and refreshes
-      # the lockfile (see package.json).
-      - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: pnpm version:packages
-          commit-message: "chore(release): version packages"
-          pr-title: "chore(release): version packages"
-
-  pack:
-    name: Verify and pack
-    needs: select-mode
-    if: needs.select-mode.outputs.mode == 'publish'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    outputs:
-      pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
-    permissions:
-      contents: read # actions/checkout
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -170,46 +111,100 @@ jobs:
       # published artifact works.
       - run: pnpm verify
       - run: pnpm test:e2e
-      - id: pack
-        uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
+      # `pnpm pack` runs prepack (vendors templates/ and the plugin in) and
+      # postpack, and needs `dist/`, so the build comes first. The tarball is
+      # packed once, here, and every later job takes this exact file.
+      - name: Pack the CLI
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          pnpm build
+          mkdir release-assets
+          pnpm --filter @monte3l/groundwork pack --pack-destination "$GITHUB_WORKSPACE/release-assets"
+          shopt -s nullglob
+          tarballs=(release-assets/*.tgz)
+          if [ "${#tarballs[@]}" -ne 1 ]; then
+            echo "expected one tarball, found ${#tarballs[@]}" >&2
+            exit 1
+          fi
+          # release-please writes the version into package.json in the release
+          # PR, so a mismatch means the PR and its release disagree.
+          if [ "$(basename "${tarballs[0]}")" != "monte3l-groundwork-${VERSION}.tgz" ]; then
+            echo "$(basename "${tarballs[0]}") is not monte3l-groundwork-${VERSION}.tgz" >&2
+            exit 1
+          fi
+      # The CycloneDX SBOM (OSPS Baseline OSPS-QA-02.02) is made here, where
+      # the lockfile is installed and no OIDC token exists; `publish` attests it.
+      - name: Generate a CycloneDX SBOM for the tarball
+        run: |
+          # `pnpm --filter <name> sbom`, never `-C <dir>` or a cd into the
+          # package: both silently describe the workspace root
+          # (m3l-groundwork@0.0.0) instead of the published package.
+          # --lockfile-only reads pnpm-lock.yaml and nothing else (no install,
+          # no network); --prod is the shipped dependency set, which is empty,
+          # so the SBOM holds the root component alone -- accurate, not a
+          # defect.
+          tarball="$(find release-assets -name '*.tgz' -print -quit)"
+          # Named <tarball>.cdx.json, the OSSF SBOM Everywhere convention.
+          pnpm --filter @monte3l/groundwork sbom \
+            --sbom-format cyclonedx --sbom-spec-version 1.6 \
+            --prod --lockfile-only \
+            --sbom-authors "Enrico Lionello" --sbom-supplier "monte3l" \
+            --out "${tarball}.cdx.json"
+          # pnpm sbom does not hash the artifact, and CISA's 2026 minimum
+          # elements ask for a component hash (algorithm and value) of the
+          # executable artifact. Record the tarball's SHA-256 on the root
+          # component here, before `publish` signs the file.
+          node -e '
+            const fs = require("node:fs");
+            const crypto = require("node:crypto");
+            const [sbomPath, tarballPath] = process.argv.slice(1);
+            const bom = JSON.parse(fs.readFileSync(sbomPath, "utf8"));
+            const digest = crypto
+              .createHash("sha256")
+              .update(fs.readFileSync(tarballPath))
+              .digest("hex");
+            bom.metadata.component.hashes = [{ alg: "SHA-256", content: digest }];
+            fs.writeFileSync(sbomPath, JSON.stringify(bom, null, 2) + "\n");
+          ' "${tarball}.cdx.json" "$tarball"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
+          name: release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
 
   publish:
     name: Publish to npm
-    needs: pack
+    needs: [prepare, pack]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Gates the git tag, the GitHub Release, and the staged publish behind a
-    # required reviewer (see CLAUDE.md, "Releases" -- "Not done, worth
-    # knowing"): without this, all three already exist by the time a
-    # maintainer even sees there's a staged version to approve with
-    # `npm stage approve`. The environment (created once, by hand, via
-    # `gh api`) has no branch restriction beyond `main` and no wait timer --
-    # it exists to require a person, not to add a delay.
+    # Gates the staged publish behind a required reviewer (see CLAUDE.md,
+    # "Releases"). The draft release and its tag already exist at this point,
+    # but a draft is visible to writers only, so nothing is public until
+    # `finalize`. The environment (created once, by hand, via `gh api`) has no
+    # branch restriction beyond `main` and no wait timer -- it exists to
+    # require a person, not to add a delay.
     environment: npm-publish
     permissions:
-      contents: write # changesets/action/publish pushes tags and creates GitHub Releases
-      id-token: write # npm trusted publishing (OIDC) and provenance
-      attestations: write # actions/attest-build-provenance on the packed tarball
+      contents: write # gh release upload to the draft
+      id-token: write # npm trusted publishing (OIDC), provenance and attestations
+      attestations: write # actions/attest on the tarball and its SBOM
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .node-version
           package-manager-cache: false
           # OpenSSF Scorecard's Packaging check only recognises an npm publish
           # job by this exact registry-url next to a step that runs `npm ...
-          # publish` (here, the shim's `npm-stage-publish.mjs`). Auth is not
-          # affected: bin/npm-stage-publish.mjs never reads .npmrc or
-          # NODE_AUTH_TOKEN, it exchanges the GitHub OIDC token itself and
-          # hands the result to libnpmpublish as an explicit option.
+          # publish` (here, `npm-stage-publish.mjs`). Auth is not affected:
+          # bin/npm-stage-publish.mjs never reads .npmrc or NODE_AUTH_TOKEN, it
+          # exchanges the GitHub OIDC token itself and hands the result to
+          # libnpmpublish as an explicit option.
           registry-url: https://registry.npmjs.org
-      # Only the changesets CLI is needed here, not any package's lifecycle scripts.
-      - run: pnpm install --frozen-lockfile --ignore-scripts
       # Staged publishing goes through libnpmpublish (npm's own publish
       # library, bin/npm-stage-publish.mjs), not the npm CLI: every advisory
       # that blocked the CLI sat in packages bundled inside its tarball, out
@@ -222,30 +217,85 @@ jobs:
       # sha512 integrity hash, and `npm ci` verifies the install against it.
       # Dependabot has an npm entry for this directory (see dependabot.yml).
       - run: npm ci --ignore-scripts --prefix tools/release
-      # changesets publishes through `pnpm publish` in a pnpm workspace. This
-      # puts a `pnpm` ahead of the real one that forwards everything except
-      # `publish`, which goes to a staged publish (see
-      # bin/pnpm-publish-shim.mjs -- the trusted publisher only allows staged
-      # publishing, npm's default since 2026-09-03).
-      - name: Route publish through the staged publisher
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release-assets
+      # The draft's tag is made at the commit the release PR merged as. The
+      # attestations name this run's commit, so a tag anywhere else means the
+      # release and the build disagree, and nothing is attested or staged.
+      # The tags ruleset blocks moving or deleting a tag, so the fix is a
+      # maintainer's, see .claude/rules/releases.md.
+      - name: Check that the release tag points at the commit that was built
+        env:
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag_name }}
+          BUILT_SHA: ${{ github.sha }}
         run: |
-          shim_dir="$RUNNER_TEMP/pnpm-shim"
-          mkdir -p "$shim_dir"
-          printf '#!/bin/sh\nexport PNPM_SHIM_DIR=%s\nexec node "%s/bin/pnpm-publish-shim.mjs" "$@"\n' \
-            "$shim_dir" "$GITHUB_WORKSPACE" > "$shim_dir/pnpm"
-          chmod +x "$shim_dir/pnpm"
-          echo "$shim_dir" >> "$GITHUB_PATH"
-      - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
-        id: publish
+          # An annotated tag lists its peeled commit last; a lightweight tag has
+          # one line. Anonymous read: the repository is public.
+          tagged="$(git ls-remote "https://github.com/${REPOSITORY}.git" \
+            "refs/tags/${TAG}" "refs/tags/${TAG}^{}" | awk 'END { print $1 }')"
+          if [ -n "$tagged" ] && [ "$tagged" = "$BUILT_SHA" ]; then
+            echo "tag ${TAG} points at the built commit ${BUILT_SHA}"
+            exit 0
+          fi
+          echo "::error title=Release tag does not match the build::${TAG} points at '${tagged:-nothing}' but the tarball was built from ${BUILT_SHA}. See .claude/rules/releases.md."
+          exit 1
+      # OpenSSF Best Practices' `signed_releases` criterion is met by npm
+      # provenance alone (a Sigstore-backed, OIDC-issued attestation with no
+      # long-lived key -- see SECURITY.md, "Verifying releases"). These two
+      # steps add a second, independent proof on the GitHub Release itself.
+      # Nothing irreversible has happened yet, so they fail the job rather
+      # than continue: a release with no attestation is not published.
+      - name: Attest build provenance for the tarball
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          # actions/attest-build-provenance's own glob support (not the
+          # shell's), so `**` resolves correctly regardless of `globstar`.
+          subject-path: release-assets/**/*.tgz
+      - name: Attest the SBOM against the tarball
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release-assets/**/*.tgz
+          sbom-path: release-assets/*.cdx.json
+      # The assets go on the draft BEFORE it is published, because an immutable
+      # release locks them at publish. The Sigstore bundle is an asset because
+      # OpenSSF Scorecard's Signed-Releases check only looks at release assets
+      # (`*.sigstore.json` scores 8), never at GitHub's attestation store.
+      # Verify it with `gh attestation verify <tgz> --bundle <tgz>.sigstore.json
+      # -R <repo>`. The SBOM attestation's own bundle is deliberately not
+      # uploaded: it would sit beside the provenance `.sigstore.json` and blur
+      # what that name means to Scorecard. Verify the SBOM with
+      # `gh attestation verify <tgz> -R <repo> --predicate-type
+      # https://cyclonedx.org/bom`.
+      - name: Attach the attested assets to the draft and read them back
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag_name }}
+          ATTEST_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          tarball="$(find release-assets -name '*.tgz' -print -quit)"
+          cp "$ATTEST_BUNDLE" "${tarball}.sigstore.json"
+          assets=("$tarball" "${tarball}.sigstore.json" "${tarball}.cdx.json")
+          gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          mkdir uploaded
+          gh release download "$TAG" --dir uploaded --repo "$GITHUB_REPOSITORY"
+          for asset in "${assets[@]}"; do
+            cmp -- "$asset" "uploaded/$(basename -- "$asset")"
+          done
+      # Last, because it is the step that cannot be taken back: the version
+      # exists on npm, staged, until a maintainer approves it.
+      - name: Stage the package on npm
         env:
           RELEASE_TOOLS_DIR: ${{ github.workspace }}/tools/release
           STAGED_IDS_FILE: ${{ runner.temp }}/staged-ids.txt
-        with:
-          pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
-      # changesets swallows the publisher's stdout, so the stage id to approve
-      # would never reach this log. The publisher records it in a file; print
-      # it here, plus an annotation on the run page, whether or not an earlier
-      # step failed. `npm stage approve <id>` (2FA) is still a maintainer step.
+        run: |
+          tarball="$(find release-assets -name '*.tgz' -print -quit)"
+          node bin/npm-stage-publish.mjs "$tarball" --access public --tag latest
+      # The stage id to approve is printed here, plus an annotation on the run
+      # page. `npm stage approve <id>` (2FA) is still a maintainer step.
       - name: Show the staged ids to approve
         if: always()
         env:
@@ -272,164 +322,23 @@ jobs:
           else
             echo "no staged version was recorded by this run"
           fi
-      # OpenSSF Best Practices' `signed_releases` criterion is met by npm
-      # provenance alone (a Sigstore-backed, OIDC-issued attestation with no
-      # long-lived key -- see SECURITY.md, "Verifying releases"). These
-      # steps add a second, independent proof on the GitHub Release itself:
-      # the exact tarball `pack` already built and tested, fetched back out
-      # of its own artifact (never rebuilt), attested, and attached, plus a
-      # CycloneDX SBOM for it (OSPS Baseline OSPS-QA-02.02) generated and
-      # attested the same way. `if:` guards every one on `publish` actually
-      # having published -- `select-mode` only decides the job should run,
-      # not that a version was new.
-      # `continue-on-error: true` on all of them: the staged publish has
-      # already succeeded by this point, so a failure here (a transient
-      # download error, say) must never fail the whole job and leave a
-      # staged, tagged, unreleased version behind -- this block is
-      # best-effort supplementary evidence. (The stage id to approve is
-      # printed, and added to the job summary, by the publish step itself.)
-      - name: Fetch the packed tarball back out of the pack job's artifact
-        if: steps.publish.outputs.published == 'true'
-        continue-on-error: true
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          artifact-ids: ${{ needs.pack.outputs.pack-dir-artifact-id }}
-          path: .release-artifacts
-          merge-multiple: true
-      - name: Attest build provenance for the published tarball
-        id: attest
-        if: steps.publish.outputs.published == 'true'
-        continue-on-error: true
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          # actions/attest-build-provenance's own glob support (not the
-          # shell's), so `**` resolves correctly regardless of `globstar`.
-          subject-path: .release-artifacts/**/*.tgz
-      - name: Generate a CycloneDX SBOM for the published tarball
-        id: sbom
-        if: steps.publish.outputs.published == 'true'
-        continue-on-error: true
-        run: |
-          # `pnpm --filter <name> sbom`, never `-C <dir>` or a cd into the
-          # package: both silently describe the workspace root
-          # (m3l-groundwork@0.0.0) instead of the published package. The
-          # `pnpm` on PATH is bin/pnpm-publish-shim.mjs, which only
-          # intercepts `publish`; `sbom` goes straight through. --lockfile-only
-          # reads pnpm-lock.yaml and nothing else (no install, no network);
-          # --prod is the shipped dependency set, which is empty, so the SBOM
-          # holds the root component alone -- accurate, not a defect.
-          tarball="$(find .release-artifacts -name '*.tgz' -print -quit)"
-          if [ -z "$tarball" ]; then
-            echo "no packed tarball found under .release-artifacts/ -- skipping the SBOM" >&2
-            exit 0
-          fi
-          version="$(node -p "require('./packages/cli/package.json').version")"
-          case "$(basename "$tarball")" in
-            *"-${version}.tgz") ;;
-            *)
-              echo "tarball $(basename "$tarball") does not match package version ${version} -- refusing to generate an SBOM for the wrong release" >&2
-              exit 1
-              ;;
-          esac
-          # Named <tarball>.cdx.json, the OSSF SBOM Everywhere convention.
-          pnpm --filter @monte3l/groundwork sbom \
-            --sbom-format cyclonedx --sbom-spec-version 1.6 \
-            --prod --lockfile-only \
-            --sbom-authors "Enrico Lionello" --sbom-supplier "monte3l" \
-            --out "${tarball}.cdx.json"
-          # pnpm sbom does not hash the artifact, and CISA's 2026 minimum
-          # elements ask for a component hash (algorithm and value) of the
-          # executable artifact. Record the tarball's SHA-256 on the root
-          # component here, before the attest step signs the file.
-          node -e '
-            const fs = require("node:fs");
-            const crypto = require("node:crypto");
-            const [sbomPath, tarballPath] = process.argv.slice(1);
-            const bom = JSON.parse(fs.readFileSync(sbomPath, "utf8"));
-            const digest = crypto
-              .createHash("sha256")
-              .update(fs.readFileSync(tarballPath))
-              .digest("hex");
-            bom.metadata.component.hashes = [{ alg: "SHA-256", content: digest }];
-            fs.writeFileSync(sbomPath, JSON.stringify(bom, null, 2) + "\n");
-          ' "${tarball}.cdx.json" "$tarball"
-          echo "path=${tarball}.cdx.json" >> "$GITHUB_OUTPUT"
-      - name: Attest the SBOM against the published tarball
-        id: attest-sbom
-        if: steps.publish.outputs.published == 'true' && steps.sbom.outputs.path != ''
-        continue-on-error: true
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: .release-artifacts/**/*.tgz
-          sbom-path: ${{ steps.sbom.outputs.path }}
-      - name: Attach the attested tarball to the GitHub Release
-        if: steps.publish.outputs.published == 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # Set only when the SBOM was generated AND attested, so an
-          # unattested SBOM is never published. The SBOM attestation's own
-          # bundle is deliberately not uploaded: it would sit beside the
-          # provenance `.sigstore.json` and blur what that name means to
-          # Scorecard's Signed-Releases check. Verify the SBOM with
-          # `gh attestation verify <tgz> -R <repo> --predicate-type
-          # https://cyclonedx.org/bom`.
-          SBOM_PATH: ${{ steps.attest-sbom.outcome == 'success' && steps.sbom.outputs.path || '' }}
-          # The Sigstore bundle the attest step wrote. OpenSSF Scorecard's
-          # Signed-Releases check only looks at release assets (`*.sigstore.json`
-          # scores 8), never at GitHub's attestation store, so the bundle is
-          # uploaded beside the tarball. Verify it with `gh attestation verify
-          # <tgz> --bundle <tgz>.sigstore.json -R <repo>`.
-          ATTEST_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
-        run: |
-          # `changeset pack` writes into <outDir>/packages/*.tgz, not
-          # <outDir>/*.tgz -- found by path, not a bare shell glob the
-          # default (non-globstar) bash would pass through unexpanded on
-          # no match.
-          tarball="$(find .release-artifacts -name '*.tgz' -print -quit)"
-          if [ -z "$tarball" ]; then
-            echo "no packed tarball found under .release-artifacts/ -- skipping the release-asset upload" >&2
-            exit 0
-          fi
-          version="$(node -p "require('./packages/cli/package.json').version")"
-          assets=("$tarball")
-          if [ -n "${ATTEST_BUNDLE:-}" ] && [ -f "$ATTEST_BUNDLE" ]; then
-            cp "$ATTEST_BUNDLE" "${tarball}.sigstore.json"
-            assets+=("${tarball}.sigstore.json")
-          else
-            echo "no attestation bundle from the attest step -- uploading the tarball alone" >&2
-          fi
-          if [ -n "${SBOM_PATH:-}" ] && [ -f "$SBOM_PATH" ]; then
-            assets+=("$SBOM_PATH")
-          else
-            echo "no attested SBOM to attach" >&2
-          fi
-          gh release upload "@monte3l/groundwork@${version}" \
-            "${assets[@]}" --clobber --repo "${{ github.repository }}"
-      # changesets/action/publish creates the tag with the git refs API at this
-      # run's commit and, when that call fails, only logs a warning (1.0.3: a 403,
-      # "Resource not accessible by integration"). The GitHub Release it creates
-      # next then makes the missing tag at the head of `main`, which is not the
-      # commit the tarball and its attestations were built from whenever `main`
-      # moved while this job waited at the `npm-publish` gate. Nothing else
-      # notices, so compare the two here. Deliberately not `continue-on-error`:
-      # a mismatch should turn the run red. The tags ruleset blocks moving or
-      # deleting a tag, so the fix is a maintainer's, see .claude/rules/releases.md.
-      - name: Check that the release tag points at the commit that was built
-        if: steps.publish.outputs.published == 'true'
-        env:
-          REPOSITORY: ${{ github.repository }}
-          BUILT_SHA: ${{ github.sha }}
-        run: |
-          version="$(node -p "require('./packages/cli/package.json').version")"
-          tag="@monte3l/groundwork@${version}"
-          # An annotated tag lists its peeled commit last; a lightweight tag has
-          # one line. Anonymous read: the repository is public.
-          tagged="$(git ls-remote "https://github.com/${REPOSITORY}.git" \
-            "refs/tags/${tag}" "refs/tags/${tag}^{}" | awk 'END { print $1 }')"
-          if [ -n "$tagged" ] && [ "$tagged" = "$BUILT_SHA" ]; then
-            echo "tag ${tag} points at the built commit ${BUILT_SHA}"
-            exit 0
-          fi
-          echo "::error title=Release tag does not match the build::${tag} points at '${tagged:-nothing}' but the tarball was built from ${BUILT_SHA}. The attestations name ${BUILT_SHA}. See .claude/rules/releases.md."
-          exit 1
+
+  # Publishes the draft last, then dispatches to m3l-plugins so it opens the
+  # pin pull request. The tarball and SBOM were attested by `publish`, so the
+  # shared workflow only publishes.
+  finalize:
+    name: Finalize
+    needs: [prepare, publish]
+    if: needs.prepare.outputs.releases_created == 'true'
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: monte3l/.github/.github/workflows/release-finalize.yml@4e2797a213e85b6dd24c3e729fe15385924fc091 # release-baseline
+    with:
+      tag: ${{ needs.prepare.outputs.tag_name }}
+      attest: false
+      notify: '["m3l-plugins"]'
+    secrets:
+      RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

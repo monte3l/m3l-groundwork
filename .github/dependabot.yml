@@ -47,10 +47,9 @@ updates:
   # project it is installed into. Dependabot scans that copy as a manifest in
   # this repo anyway (it raises alerts for it), so it gets the same entry:
   # a patched npm then arrives as a PR here instead of only as an alert. A
-  # merge touches shipped template files, so it needs a patch changeset for
-  # `@monte3l/groundwork` added to the PR by hand -- the bot cannot add one.
-  # The commit prefix is `fix(deps)`, not `ci`: unlike the root entry, a bump
-  # here changes shipped output.
+  # merge touches shipped template files. The commit prefix is `fix(deps)`,
+  # not `ci`: unlike the root entry, a bump here changes shipped output, and
+  # release-please turns a `fix` into a patch release.
   - package-ecosystem: "npm"
     directory: "/templates/packs/publishing/files/tools/release"
     schedule:

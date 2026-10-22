@@ -61,9 +61,12 @@ below lists where each kind of test runs and what triggers it.
   `Signed-off-by: Your Name <you@example.com>` yourself. The `commit-msg`
   hook rejects a commit without one; see "Developer Certificate of Origin"
   below.
-- **A changeset** (`pnpm changeset`) for any user-visible change to
-  `@monte3l/groundwork` (the CLI). The plugin never takes one -- it has no
-  release of its own; see ["Releasing"](#releasing) below.
+- **A Conventional Commit type that matches the change.** The type is the
+  release: `feat` is a minor release, `fix` a patch, `!` or a
+  `BREAKING CHANGE:` footer a major one, and `docs`, `test`, `chore`, `ci`
+  and `refactor` release nothing. A user-visible change to the CLI, a
+  template or the plugin needs `feat` or `fix`; see
+  ["Releasing"](#releasing) below.
 - **Add a `Co-Authored-By:` trailer** if an AI assistant substantially
   helped write the commit.
 
@@ -133,7 +136,7 @@ CI enforces it too, so skipping the hook does not skip the check. The `dco`
 job (a lane the required `verify` check waits on) fails a pull request when
 any commit it adds lacks a `Signed-off-by: Name <email>` trailer whose email
 is that commit's author or committer email. Merge commits are skipped, and so
-are the commits of `dependabot[bot]` and `m3l-groundwork-release[bot]`, but only
+are the commits of `dependabot[bot]`, but only
 in a pull request that bot itself opened. To fix a failure, run `git commit --amend -s --no-edit` for the
 last commit, or `git rebase --signoff <base>` for several, and force-push your
 own branch. The job reads the commits a PR adds, not the commit GitHub writes
@@ -199,7 +202,7 @@ Claude Code Action's silent no-post bug. What review checks:
   secret written to disk.
 - **Documentation drift**: `CLAUDE.md`, `README.md`, and any other doc the
   change touches stay in sync with the code in the same PR.
-- **Process**: a changeset for a user-visible CLI change, DCO sign-off, and
+- **Process**: a commit type that matches the change, DCO sign-off, and
   a signed commit (see "Before opening a PR" above).
 
 A PR merges once every required CI check is green and every review thread is
@@ -244,24 +247,32 @@ can open the PR yourself. What an owner checks before granting access is in
 
 ## Releasing
 
-`@monte3l/groundwork` is released with [Changesets](https://github.com/changesets/changesets)
-and published to npm through trusted publishing (no stored token). A PR
-that changes the CLI's user-visible behavior adds a changeset with
-`pnpm changeset`. Merging to `main` opens a "Version Packages" PR; merging
-that runs the full gate, stages the package with provenance, and creates a
-git tag and a GitHub Release -- a maintainer still has to approve the
-staged version (2FA, via `npm stage approve`) before it's actually
-installable, npm's own recommended flow for trusted publishers.
+`@monte3l/groundwork` follows the organisation's release baseline
+([`monte3l/.github`](https://github.com/monte3l/.github/blob/main/blueprint/README.md#releases))
+and is published to npm through trusted publishing (no stored token).
+release-please reads the Conventional Commits that landed on `main` and keeps
+one release pull request open with the version bump and the changelog.
+Merging it tags the commit and creates a draft GitHub Release. The workflow
+then runs the full gate, attests the tarball and its SBOM, attaches both to
+the draft, stages the package on npm with provenance and publishes the
+release. A maintainer still has to approve the staged version (2FA, via
+`npm stage approve`) before it's actually installable, npm's own recommended
+flow for trusted publishers.
+
+A commit counts toward a release when it changes a file that ships (the CLI,
+the templates or the plugin), so the commit type decides the version. A
+`feat` or `fix` that touches only files outside the package, such as `docs/`
+or `.github/`, releases nothing; `release-please-config.json` lists those
+directories under `exclude-paths`.
 
 `@monte3l/groundwork-plugin` is never published to npm, and this repo ships
 no marketplace manifest. The central `monte3l/m3l-plugins` marketplace lists
 it, pinned to a CLI release tag and its commit, so a plugin-only change is
 **not** live when it lands on `main`. It reaches marketplace users after the
-CLI's next Changesets release (tag `@monte3l/groundwork@X.Y.Z`) **and** a
-pin-bump PR in `monte3l/m3l-plugins`. A daily `pins` workflow there opens an
-issue when the pin is stale; a maintainer runs
-`node bin/bump-pins.mjs --apply` in that repo. The plugin's `plugin.json`
-version just tracks the CLI's, for display.
+next release (tag `@monte3l/groundwork@X.Y.Z`) **and** a pin-bump PR in
+`monte3l/m3l-plugins`, which a published release opens by itself. The plugin's
+`plugin.json` version is written by release-please together with the CLI's,
+for display.
 
 The full design -- why staging is a separate gate from npm's own 2FA step,
 the one-time setup it depends on, and the GitHub App used for the version

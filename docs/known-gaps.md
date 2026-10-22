@@ -13,8 +13,8 @@
   `type-design-analyzer` agent and the `check-file-budget` ratchet. `claude-github`:
   `claude-action` in mention-mode and an automated PR-review workflow, which
   need an auth secret the pack cannot create. `github`: three `gh` skills.
-  `publishing`: the release pipeline adapted from this repo's own
-  (see "Releases"); **fresh mode only**, since it encodes registry and GitHub
+  `publishing`: the release pipeline adapted from the Changesets one this
+  repo used before release-please (see "Releases"); **fresh mode only**, since it encodes registry and GitHub
   App decisions too project-specific to automate in adopt mode, and it cannot
   wire `@changesets/cli` because a pack never edits dependencies. `supply-chain`:
   `gitleaks.yml` and `scorecard.yml`, adopt-capable for every project kind (the
@@ -113,8 +113,10 @@
   holds the exact `gh api` commands; the repo-scope ones are also scripted in
   `monte3l/.github` (`bin/apply-repo-baseline.sh`, `--check` first). The
   SHA-pinning allowlist must cover sub-path actions, so allow
-  `changesets/action/*` as well as `changesets/action@*`. Immutable releases
-  are deliberately off: `release.yml` uploads assets after the Release exists.
+  `googleapis/release-please-action@*` for the shared release workflow. Immutable
+  releases are off until the first release through the draft-first `release.yml`
+  has been published and checked with `gh release verify`; the flow attaches
+  every asset before publishing, so it is compatible with them.
 
   This repository's Advanced Security settings come from the organization's
   `monte3l-default` code security configuration, enforced on the repository;

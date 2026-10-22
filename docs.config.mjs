@@ -88,10 +88,6 @@ export default {
       reason: "agent rules, agents and skills, not reader-facing",
     },
     {
-      glob: ".changeset/**",
-      reason: "changeset tooling note, not reader-facing",
-    },
-    {
       glob: ".github/**",
       reason: "GitHub pull request template, not reader-facing",
     },

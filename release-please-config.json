@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "signoff": "monte3l-release[bot] <333264726+monte3l-release[bot]@users.noreply.github.com>",
+  "bootstrap-sha": "76f5846eff5513b583a73f6fcfd13a718a288b3d",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "component": "@monte3l/groundwork",
+      "include-component-in-tag": true,
+      "tag-separator": "@",
+      "include-v-in-tag": false,
+      "changelog-path": "packages/cli/CHANGELOG.md",
+      "draft": true,
+      "force-tag-creation": true,
+      "exclude-paths": [
+        ".claude",
+        ".github",
+        "LICENSES",
+        "bin",
+        "design",
+        "docs",
+        "evals",
+        "tools"
+      ],
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "packages/cli/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/plugin/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}

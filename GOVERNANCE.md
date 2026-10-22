@@ -203,7 +203,7 @@ matter how the project is otherwise run. Each is recorded as **Unmet** in
   which is the bus-factor question below.
 
 `version_tags_signed` (SUGGESTED, not a MUST) is also recorded as **Unmet**:
-changesets creates the release tags and they are unsigned, though the
+release-please creates the release tags and they are unsigned, though the
 commits they point at are GPG-signed.
 
 Every other Gold-level criterion is met or is not applicable to this

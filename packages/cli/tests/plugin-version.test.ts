@@ -3,13 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -23,38 +17,11 @@ interface PluginVersionLib {
     manifest: { name: string; version: string };
     pluginPackagePrivate: boolean;
   };
-  setVersion(text: string, version: string): string;
 }
 
 const lib = (await import(
   pathToFileURL(join(binDir, "lib", "plugin-version.mjs")).href
 )) as PluginVersionLib;
-
-describe("setVersion", () => {
-  it("replaces the value and leaves every other byte alone", () => {
-    const before =
-      '{\n  "name": "x",\n  "version": "1.2.3",\n  "tags": ["a", "b"]\n}\n';
-
-    expect(lib.setVersion(before, "2.0.0-next.1")).toBe(
-      '{\n  "name": "x",\n  "version": "2.0.0-next.1",\n  "tags": ["a", "b"]\n}\n',
-    );
-  });
-
-  it("refuses a file with no version key", () => {
-    expect(() => lib.setVersion('{"name":"x"}', "1.0.0")).toThrow(
-      /exactly one "version" key, found 0/,
-    );
-  });
-
-  it("refuses a file where the version would be ambiguous", () => {
-    expect(() =>
-      lib.setVersion(
-        '{"version":"1.0.0","source":{"version":"1.0.0"}}',
-        "2.0.0",
-      ),
-    ).toThrow(/exactly one "version" key, found 2/);
-  });
-});
 
 describe("the plugin-version gate", () => {
   let root: string;
@@ -140,34 +107,5 @@ describe("the plugin-version gate", () => {
     expect(result.status).toBe(1);
     expect(result.output).toContain("is not private");
     expect(result.output).toContain("not npm");
-  });
-
-  it("sync copies the CLI's version into plugin.json only", () => {
-    writeFixture({ cli: "2.0.0-next.0", manifest: "1.0.0" });
-    expect(run("check-plugin-version.mjs").status).toBe(1);
-
-    const synced = run("sync-plugin-version.mjs");
-
-    expect(synced.status).toBe(0);
-    expect(run("check-plugin-version.mjs").status).toBe(0);
-    expect(
-      readFileSync(
-        join(root, "packages/plugin/.claude-plugin/plugin.json"),
-        "utf8",
-      ),
-    ).toContain('"version": "2.0.0-next.0"');
-    // Untouched: the plugin package's own version.
-    expect(
-      readFileSync(join(root, "packages/plugin/package.json"), "utf8"),
-    ).toContain('"version": "0.0.0"');
-  });
-
-  it("sync is a no-op, and silent, when already in step", () => {
-    writeFixture({});
-
-    const result = run("sync-plugin-version.mjs");
-
-    expect(result.status).toBe(0);
-    expect(result.output).toBe("");
   });
 });

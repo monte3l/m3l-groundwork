@@ -4,7 +4,7 @@
 
 /**
  * Stages a packed tarball on npm through trusted publishing (GitHub OIDC), for
- * `pnpm-publish-shim.mjs`. Replaces `npm stage publish`.
+ * `release.yml`'s `publish` job. Replaces `npm stage publish`.
  *
  * ## Why not the npm CLI
  *
@@ -32,7 +32,7 @@
  * `RELEASE_TOOLS_DIR` names the directory holding the `npm ci`-installed
  * libnpmpublish and npm-registry-fetch (the release-tools lockfile).
  * `STAGED_IDS_FILE`, when set, receives one `<name>@<version> <stage id>` line per
- * staged version, because the caller (changesets) swallows this script's stdout.
+ * staged version, so the workflow can print the id to approve after this step.
  * `NPM_CONFIG_REGISTRY` overrides the registry (as in npm; the tests point it at a
  * local server; default npmjs.org).
  */
@@ -181,7 +181,7 @@ try {
     [authKey]: npmToken,
     stage: true,
     provenance: true,
-    // publishConfig in the manifest is not merged as npm does: changesets
+    // publishConfig in the manifest is not merged as npm does: the caller
     // passes --access/--tag explicitly and provenance is always on.
     access: parsed.access ?? null,
     defaultTag: parsed.tag ?? "latest",
@@ -202,7 +202,7 @@ console.log(`+ ${id} (staged with id ${stageId})`);
 console.log(`approve with: npm stage approve ${stageId}`);
 if (process.env.GITHUB_STEP_SUMMARY) {
   // Best effort: the version is already staged, so a summary write failure
-  // must not turn this run red and leave changesets without its tag.
+  // must not turn this run red and leave the release without its evidence.
   try {
     appendFileSync(
       process.env.GITHUB_STEP_SUMMARY,
@@ -215,8 +215,8 @@ if (process.env.GITHUB_STEP_SUMMARY) {
   }
 }
 if (process.env.STAGED_IDS_FILE) {
-  // changesets captures this process's stdout, so nothing printed above reaches
-  // the job log. Leave the id in a file the workflow prints in a later step.
+  // Leave the id in a file the workflow prints in a later step, with an
+  // annotation on the run page.
   // Best effort, like the summary: the version is already staged.
   try {
     appendFileSync(process.env.STAGED_IDS_FILE, `${id} ${stageId}\n`);

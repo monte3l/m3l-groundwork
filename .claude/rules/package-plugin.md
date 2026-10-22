@@ -18,9 +18,10 @@ paths:
   re-scoped needs both tables and their tests updated, plus
   `packages/cli/src/packs.ts` if the contract moved.
 - **The plugin version tracks the CLI's.** `bin/check-plugin-version.mjs`
-  fails the `verify` run on drift, and `bin/sync-plugin-version.mjs` fixes
-  it. `packages/plugin/package.json` stays `private`.
-- **A plugin-only change takes no changeset, and is not live on merge.** The
+  fails the `verify` run on drift, and release-please writes both from
+  `extra-files` in `release-please-config.json`. `packages/plugin/package.json`
+  stays `private`.
+- **A plugin-only change is a `feat` or `fix` commit, and is not live on merge.** The
   central `monte3l/m3l-plugins` catalog pins a CLI release tag and commit, so
   it ships after the next CLI release and a pin-bump PR there (see
   `releases.md`). This repo carries no `marketplace.json`; develop locally

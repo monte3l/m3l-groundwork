@@ -50,7 +50,9 @@ In this repo: `packages/cli/src/caps.ts`.
 A small file describing a user-visible change and its semver bump, added to
 a pull request and later consumed to write the changelog and bump the
 version.
-In this repo: `.changeset/`; run with `pnpm changeset`.
+In this repo: none since the CLI moved to release-please, which reads
+Conventional Commits instead. The `publishing` pack still ships Changesets to
+the projects it is installed into.
 
 ### Claude Code
 

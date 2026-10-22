@@ -274,13 +274,14 @@ jobs:
   # one included, and on a push to `main` it passes without checking: there
   # is no PR range there, and `verify` needs an explicit `success` from every
   # lane. Merge commits are skipped (this repository merges with merge
-  # commits, and GitHub writes those). Two first-party automation identities
-  # are exempt, but only when BOTH the pull request was opened by that bot
-  # (`pull_request.user.login`, which GitHub sets and a commit author field
-  # cannot forge) AND the commit's author name is the same bot, so naming a
-  # commit author `dependabot[bot]` inside a human's PR skips nothing.
-  # `m3l-groundwork-release[bot]` never signs off, and Dependabot signs off
-  # as support@github.com, which is not its author email. The range and
+  # commits, and GitHub writes those). Dependabot is exempt, but only when
+  # BOTH the pull request was opened by that bot (`pull_request.user.login`,
+  # which GitHub sets and a commit author field cannot forge) AND the commit's
+  # author name is the same bot, so naming a commit author `dependabot[bot]`
+  # inside a human's PR skips nothing. It signs off as support@github.com,
+  # which is not its author email. The release PR needs no exemption:
+  # release-please signs its commits off as `monte3l-release[bot]`
+  # (`signoff` in release-please-config.json), the author's own address. The range and
   # author arrive through env, never inline in the script. `--no-divider` matters: a Dependabot body holds a `---`
   # line, which `git interpret-trailers` otherwise reads as the end of the
   # message and so finds no trailers at all.
@@ -314,7 +315,7 @@ jobs:
             author="$(git log -1 --format=%an "$sha")"
             short="$(git log -1 --format='%h %s' "$sha")"
             case "${PR_AUTHOR}|${author}" in
-              "m3l-groundwork-release[bot]|m3l-groundwork-release[bot]" | "dependabot[bot]|dependabot[bot]")
+              "dependabot[bot]|dependabot[bot]")
                 echo "skip   $short (first-party automation: $author)"
                 continue
                 ;;
