@@ -193,9 +193,8 @@ comment:*)` in `--allowedTools`, and a `Verify Claude posted` step failing
   is what lets a pack register a gate (appended to the
   emitted project's `bin/lib/verify-steps.packs.json`, a plain JSON array,
   source `templates/core/bin/lib/verify-steps.packs.json`) without either
-  YAML file changing. The same pattern applies in the emitted baseline
-  (`templates/core/bin/lib/verify-steps.mjs`, which adds `CORE_STEPS` and the
-  pack-contributed steps this repo's own list has no use for). Add a new
+  YAML file changing. The emitted baseline does the same
+  (`templates/core/bin/lib/verify-steps.mjs` adds `CORE_STEPS` plus pack steps). Add a new
   gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
   bespoke script invocation in either YAML file. (The `e2e` lane calls
   `pnpm test:e2e` directly; `gate-lane-parity` only checks verify groups.)

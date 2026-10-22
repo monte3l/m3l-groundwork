@@ -278,9 +278,10 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   table above).
 - **The hub-and-spoke and branch guards can be overridden by an installed
   Claude Code mod, or by managed settings.** A mod that handles `tool.check`
-  can approve a call a project `PreToolUse` hook blocked, unless that hook is
-  in managed settings (see the
-  [hooks guide](https://code.claude.com/docs/en/hooks-guide) and the
+  can approve a call a project `PreToolUse` hook blocked, unless managed
+  settings or a Team or Enterprise `/login` is in use (see the
+  [permissions page](https://code.claude.com/docs/en/permissions#precedence-among-rules-hooks-and-mods),
+  the [hooks guide](https://code.claude.com/docs/en/hooks-guide) and the
   [mods events reference](https://code.claude.com/docs/en/plugins/mods/events)).
   Nothing in this repository can detect an installed mod or a managed
   policy, so hub-and-spoke is a convention backed by a guard that raises the

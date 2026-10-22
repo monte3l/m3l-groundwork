@@ -101,7 +101,7 @@ prompt, or edit the hook's registration in `.claude/settings.json`.
 deployment (`managed-settings.json`, MDM, a console policy) outranks every file
 here, and `allowManagedHooksOnly` runs only managed hooks. An installed mod
 that handles `tool.check` can approve a call a project `PreToolUse` hook
-blocked, and only managed hooks outrank a mod. Nothing in the repo can detect
+blocked, unless managed settings or a Team or Enterprise `/login` is in use. Nothing in the repo can detect
 either: on a machine you don't control, check `/status` ("Setting sources") and
 `/plugin` before trusting `guard-hub-src-writes.mjs` and
 `guard-branch-isolation.mjs`. Detail and sources:

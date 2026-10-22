@@ -42,8 +42,8 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-hub-src-writes.mjs\"",
-            "onFailure": "block",
-            "timeout": 30
+            "timeout": 30,
+            "onFailure": "block"
           },
           {
             "type": "command",
@@ -68,26 +68,26 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-protected-paths.mjs\"",
-            "onFailure": "block",
-            "timeout": 30
+            "timeout": 30,
+            "onFailure": "block"
           },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-branch-isolation.mjs\"",
-            "onFailure": "block",
-            "timeout": 30
+            "timeout": 30,
+            "onFailure": "block"
           },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-hub-src-writes.mjs\"",
-            "onFailure": "block",
-            "timeout": 30
+            "timeout": 30,
+            "onFailure": "block"
           },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-secret-writes.mjs\"",
-            "onFailure": "block",
-            "timeout": 30
+            "timeout": 30,
+            "onFailure": "block"
           }
         ]
       }
