@@ -304,6 +304,33 @@ treated as canonical when the two disagree.
 - Icons are decorative (`aria-hidden="true"`) whenever a text label next to
   them says the same thing.
 
+## Logo — Built (signed off 2026-10-22)
+
+**MONTE3L** is `giulmonte` (Giulia Montevecchi) and `enri3l` (Enrico Lionello)
+joined: monte + 3l. The E that ends "monte" and the 3 that opens "3l" sit at
+the join, so the mark is built from those two letters.
+
+- **Symbol:** two rounded tiles, an E in ink and a 3 in wine, the 3 tipped
+  about 7 degrees and parted by a gap. The gap and both letters are cut out
+  of the tiles, so the symbol has no background colour and works on any
+  ground. Chosen over three other takes (mirror join, fused stroke, M3
+  monogram) because it is the one that stays recognisable as an avatar and
+  at 24 px.
+- **Letters:** Atkinson Hyperlegible Next Bold, outlined. The OFL FAQ (1.1,
+  1.13) says artwork made from a font's outlines is not subject to the OFL.
+- **Wordmark:** MONTE3L in capitals, tracked +0.09em (the system's rule for
+  weight 700), the 3 in wine. Capitals are for the logo only. In running text
+  the name stays **monte3l**, as in the organisation and every repository.
+- **Colour:** only tokens. Ink is `color-text-primary`, wine is
+  `color-accent-default`, so the dark theme gets `#d1789e` for free. Wine on
+  the light ground is 10.39:1, on the dark ground 6.29:1.
+- **Small cut:** below 64 px the symbol uses larger tiles, a wider gap, a
+  bigger letter and less tilt. At 16 px the two letters blur into one shape.
+  That is accepted for a two-letter mark.
+- **Licence:** the logo files are all rights reserved, unlike the MIT code.
+  See `brand/LICENSE.md`. The files, spec sizes and rebuild commands are in
+  **Brand assets**.
+
 ---
 
 ## Surfaces this system must cover
@@ -385,4 +412,8 @@ Dyslexia Association Style Guide (2023); a 2026 meta-analysis on
 dyslexia-friendly fonts and reading performance; PMC-indexed studies on
 OpenDyslexic reading rate/accuracy; Vercel Geist's public design-language
 documentation; shadcn/ui vs. Radix positioning (Vercel); WCAG 2.2/3.0 status
-writeups current as of September 2026.
+writeups current as of September 2026. For the logo: the OFL FAQ
+(openfontlicense.org), GitHub's documentation on repository social preview
+images and profile pictures, web.dev (adaptive favicon, install criteria,
+maskable icons), the W3C Web App Manifest, MDN (SVG `title`, `img` role) and
+ogp.me.
