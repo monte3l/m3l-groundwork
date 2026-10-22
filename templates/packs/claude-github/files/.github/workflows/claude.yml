@@ -97,7 +97,11 @@ jobs:
           # Optional: customize the trigger phrase (default: @claude)
           # trigger_phrase: "/claude"
 
-          # Optional: configure Claude's behavior with CLI arguments
-          # claude_args: |
-          #   --max-turns 10
+          # Cap each run at 20 turns so a runaway loop stops well before the
+          # 30-minute job timeout (Anthropic's cost guidance recommends
+          # setting one). Raise it if larger tasks hit the cap.
+          claude_args: |
+            --max-turns 20
+          # Further CLI arguments go in the same block, for example, at the
+          # same indentation as `--max-turns 20`:
           #   --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*)"

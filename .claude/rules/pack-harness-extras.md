@@ -28,5 +28,8 @@ removed.
 | Hook behaviour | `packages/cli/tests/templates/{compact-handoff,guard-readonly-bash}.test.ts` |
 | Budget         | `caps.test.ts`                                                               |
 
-A change to this pack alone takes a changeset whose summary starts with
-`pack(harness-extras):`.
+A change to this pack alone is released by its Conventional Commit type
+(`fix(packs): ...` for a fix or a change to existing behaviour,
+`feat(packs): ...` for new public surface),
+because packs ship inside the CLI tarball and have no release of their own.
+There is no changeset.

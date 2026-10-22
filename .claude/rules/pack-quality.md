@@ -37,5 +37,8 @@ and adopt. Budget: 1 agent. Requires `bin/lib/report.mjs` from the baseline.
 | Combined              | `packs-combined.e2e.test.ts`                   |
 | Budget and manifest   | `caps.test.ts`, `packs.test.ts`                |
 
-A change to this pack alone takes a changeset whose summary starts with
-`pack(quality):`.
+A change to this pack alone is released by its Conventional Commit type
+(`fix(packs): ...` for a fix or a change to existing behaviour,
+`feat(packs): ...` for new public surface),
+because packs ship inside the CLI tarball and have no release of their own.
+There is no changeset.
