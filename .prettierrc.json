@@ -1,4 +1,10 @@
 {
   "trailingComma": "all",
-  "printWidth": 80
+  "printWidth": 80,
+  "overrides": [
+    {
+      "files": "packages/plugin/.claude-plugin/plugin.json",
+      "options": { "parser": "json-stringify" }
+    }
+  ]
 }
