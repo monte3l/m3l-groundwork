@@ -8,10 +8,10 @@ may be used only as follows:
 
 1. They may be copied unchanged, together with this notice and
    source/brand/LICENSE.md, with m3l-design into a repository that belongs to
-   the monte3l organisation.
+   the monte3l organization.
 2. They may be shown unchanged to refer to monte3l and its projects.
 
-Every other use, including use for another project or organisation, modification
+Every other use, including use for another project or organization, modification
 and any use that suggests the work of a third party comes from monte3l, needs
 written permission from the copyright holders.
 

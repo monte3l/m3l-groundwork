@@ -311,7 +311,7 @@ joined: monte + 3l. The two people matter equally, and the name was chosen for
 that reason, so the mark has to show it.
 
 The first mark paired an E and a 3. Both come from `enri3l`, and the E is also
-Enrico's initial, so it read as one founder's logo, not the organisation's.
+Enrico's initial, so it read as one founder's logo, not the organization's.
 It was replaced before it was used anywhere that mattered.
 
 - **Symbol:** two identical rounded peaks side by side, parted by a gap, one in
@@ -325,7 +325,7 @@ It was replaced before it was used anywhere that mattered.
   Enrico's half again. The letters are Atkinson Hyperlegible Next Bold,
   outlined, and the OFL FAQ (1.1, 1.13) says artwork made from a font's
   outlines is not subject to the OFL. Capitals are for the logo only. In
-  running text the name stays **monte3l**, as in the organisation and every
+  running text the name stays **monte3l**, as in the organization and every
   repository.
 - **Colour:** only tokens. Ink is `color-text-primary`, wine is
   `color-accent-default`, so the dark theme gets `#d1789e` for free. Wine on
