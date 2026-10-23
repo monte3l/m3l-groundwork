@@ -227,6 +227,43 @@ function pageHref(page, target) {
   return page.absolute ? `/${target}` : path.posix.relative(path.posix.dirname(page.out), target);
 }
 
+/** The files `brand: true` copies from `<designDir>/source/brand/` into the site's `assets/brand/`. */
+const BRAND_FILES = [
+  "favicon/favicon.ico",
+  "favicon/favicon.svg",
+  "favicon/apple-touch-icon.png",
+  "logo/symbol-light.svg",
+  "logo/symbol-dark.svg",
+];
+
+/** One message per brand file the design directory lacks, for a config with `brand: true`. */
+function brandProblems(config) {
+  if (!config.brand) return [];
+  const dir = path.join(config.root, config.designDir, "source/brand");
+  return BRAND_FILES.filter((rel) => !existsSync(path.join(dir, rel))).map(
+    (rel) => `"brand" is true but ${config.designDir}/source/brand/${rel} is missing (sync m3l-design v1.2.0 or later)`,
+  );
+}
+
+/** The favicon links: the ICO first with sizes="any", then the adaptive SVG, as web.dev recommends. */
+function renderBrandHead(assetPrefix) {
+  return `
+<link rel="icon" href="${assetPrefix}/brand/favicon/favicon.ico" sizes="any">
+<link rel="icon" href="${assetPrefix}/brand/favicon/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="${assetPrefix}/brand/favicon/apple-touch-icon.png">`;
+}
+
+/**
+ * The MONTE3L symbol, linking to the home page. Both themes are in the markup
+ * and the stylesheet shows one, because an `<img>` cannot follow `data-theme`;
+ * the hidden image is out of the accessibility tree, so the link has one name.
+ */
+function renderBrandLogo(page, assetPrefix) {
+  const img = (theme) =>
+    `<img class="m3l-site-brand__img m3l-site-brand__img--${theme}" src="${assetPrefix}/brand/logo/symbol-${theme}.svg" alt="MONTE3L" width="40" height="40">`;
+  return `<a class="m3l-site-brand" href="${escapeHtml(pageHref(page, "index.html"))}">${img("light")}${img("dark")}</a>\n`;
+}
+
 function renderTopNav(config, page) {
   const items = config.nav ?? [
     { href: "index.html", label: "Docs" },
@@ -295,11 +332,11 @@ function renderPage(config, allPages, localCss, page, rendered) {
 <title>${escapeHtml(title)} · ${escapeHtml(config.title)}</title>
 <link rel="stylesheet" href="${assetPrefix}/tokens.css">
 <link rel="stylesheet" href="${assetPrefix}/source/components/bundle.css">
-<link rel="stylesheet" href="${assetPrefix}/kit/site.css">${locals}
+<link rel="stylesheet" href="${assetPrefix}/kit/site.css">${locals}${config.brand ? renderBrandHead(assetPrefix) : ""}
 </head>
 <body>
 <header class="m3l-site-header">
-${renderTopNav(config, page)}
+${config.brand ? renderBrandLogo(page, assetPrefix) : ""}${renderTopNav(config, page)}
 <button type="button" id="m3l-theme-toggle" class="m3l-button label" data-variant="ghost">Toggle theme</button>
 </header>
 <div class="m3l-site-layout">
@@ -351,6 +388,12 @@ async function copyAssets(config, outDir, localCss) {
   for (const name of localCss) {
     await copyFile(path.join(design, "local", name), path.join(assets, "local", name));
   }
+  if (config.brand) {
+    for (const rel of BRAND_FILES) {
+      await mkdir(path.dirname(path.join(assets, "brand", rel)), { recursive: true });
+      await copyFile(path.join(design, "source/brand", rel), path.join(assets, "brand", rel));
+    }
+  }
 }
 
 async function writeSite(config, allPages, outDir, rendered) {
@@ -362,6 +405,10 @@ async function writeSite(config, allPages, outDir, rendered) {
     const target = path.join(outDir, page.out);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, renderPage(config, allPages, localCss, page, rendered), "utf8");
+  }
+  // Clients that ignore <link rel="icon"> (feed readers, crawlers) ask for /favicon.ico at the root.
+  if (config.brand) {
+    await copyFile(path.join(config.root, config.designDir, "source/brand/favicon/favicon.ico"), path.join(outDir, "favicon.ico"));
   }
   await writeFile(path.join(outDir, NOT_FOUND_PAGE.out), renderNotFoundPage(config, allPages, localCss), "utf8");
   const htmlPages = [...rendered.values()].map((page) => page.html);
@@ -395,7 +442,7 @@ async function repoProblems(config, sources) {
   const { root } = config;
   const designAbs = path.join(root, config.designDir);
   const isSourceRepo = config.designDir === ".";
-  const problems = [];
+  const problems = [...brandProblems(config)];
 
   const exclude = [...(config.exclude ?? [])];
   const tracked = trackedFiles(root);
@@ -481,6 +528,8 @@ async function main() {
   const allPages = [...mdPages, ...generated];
 
   if (!check) {
+    const missing = brandProblems(config);
+    if (missing.length > 0) return usage(missing.join("\n"));
     const outDir = path.resolve(config.root, requestedOut);
     await writeSite(config, allPages, outDir, rendered);
     const rel = path.relative(config.root, outDir);

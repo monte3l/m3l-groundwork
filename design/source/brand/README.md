@@ -9,7 +9,9 @@ The brand is the system's own: Atkinson Hyperlegible Next Bold, the wine accent 
 
 ### The mark
 
-Two tiles, one for each half of the name. The **E** ends monte and is ink. The **3** starts 3l and is wine, tipped. A gap is cut between them, and the letters are cut out of the tiles, so the symbol has no background of its own and works on any ground.
+Two identical rounded peaks, one for each of the two people behind monte3l. The left is ink and the right is wine, with a gap between them. There is no letter in the symbol, so no initial can lead, and the two peaks are the same size and shape. The symbol has no background of its own and works on any ground.
+
+The wordmark is in one colour. The 3 is not picked out, because that would single out one half of the name.
 
 The name is set in capitals in the logo only. In running text, write **monte3l**, as in the GitHub organisation and every repository name.
 
@@ -22,7 +24,7 @@ The name is set in capitals in the logo only. In running text, write **monte3l**
 | `github/` | `avatar.png` (500 × 500) | The organisation avatar. Upload it in the organisation settings |
 | `social/` | `social-preview` (1280 × 640) and `og-image` (1200 × 630), each as SVG and PNG | The organisation card. `bin/build-brand.mjs --social <dir>` renders one per repository |
 
-The symbol has two cuts. Use `symbol-*` at 64 px and above. Below that, use the small cut in `favicon.svg`: larger tiles, a wider gap, a bigger letter and less tilt.
+There is one symbol at every size. `favicon.svg` is the same two peaks with its colours switched by `prefers-color-scheme`.
 
 ### Colours
 
@@ -30,8 +32,8 @@ All colours are design tokens, resolved by the build.
 
 | Role | Token | Light | Dark |
 | --- | --- | --- | --- |
-| E tile and wordmark | `color-text-primary` | `#1a1617` | `#faf5f7` |
-| 3 tile and the 3 in the wordmark | `color-accent-default` | `#692746` | `#d1789e` |
+| Left peak and wordmark | `color-text-primary` | `#1a1617` | `#faf5f7` |
+| Right peak | `color-accent-default` | `#692746` | `#d1789e` |
 | Icon and avatar ground | `color-accent-default`, light | `#692746` | `#692746` |
 
 | Pairing | Ratio |
@@ -40,19 +42,19 @@ All colours are design tokens, resolved by the build.
 | Wine on the light ground | 10.39:1 |
 | Ink on the dark ground (`#120e10`) | 17.76:1 |
 | Wine on the dark ground | 6.29:1 |
-| Pink 3 on the wine icon ground | 3.48:1 |
-| White E on the wine icon ground | 10.39:1 |
+| Pink right peak on the wine icon ground | 3.48:1 |
+| White left peak on the wine icon ground | 10.39:1 |
 
 The logo is exempt from the WCAG text contrast rule. These ratios are recorded because the mark is meant to clear 3:1 against every ground it sits on.
 
 ### Clear space and size
 
-- **Clear space:** keep one letter height of the E (about 0.43 of a tile) free on every side.
-- **Minimum size:** 24 px wide for the symbol, 96 px wide for the wordmark. Below 24 px, use the favicon cut only for a favicon.
+- **Clear space:** keep a quarter of the symbol's width free on every side.
+- **Minimum size:** 16 px wide for the symbol, 96 px wide for the wordmark.
 
 ### Do not
 
-- Recolour the tiles, swap the two colours or use a colour that is not a token.
+- Recolour the peaks, swap the two colours, make one peak larger or use a colour that is not a token.
 - Stretch, rotate, outline, add a shadow or put the mark on a busy image.
 - Set the wordmark in another typeface or change its tracking.
 - Redraw the symbol. Change `bin/lib/brand-geometry.mjs` and rebuild.
@@ -71,8 +73,8 @@ List `favicon.ico` first with `sizes="any"`, then the SVG, as web.dev recommends
 
 ```sh
 node bin/build-brand.mjs            # write every file; needs Chrome or Chromium for the PNGs and the ICO
-node bin/build-brand.mjs --check    # fail if an SVG or the manifest is stale, or a raster is missing
+node bin/build-brand.mjs --check    # fail if an SVG or the manifest is stale, a raster is missing, or the rasters' inputs changed
 node bin/build-design-tokens.mjs    # refresh SHA256SUMS, which covers this folder
 ```
 
-Set `CHROME` to a browser binary if none is found. The PNGs and the ICO are pinned by `SHA256SUMS` and are not reproducible byte for byte.
+Set `CHROME` to a browser binary if none is found. The PNGs and the ICO are not reproducible byte for byte, so `--check` compares a digest of everything fed to Chrome with `bin/brand-rasters.sha256`, which a full build rewrites. A change to the icon layout then fails `--check` until the rasters are rebuilt. `SHA256SUMS` pins the files themselves.

@@ -81,6 +81,9 @@ export function configProblems(config) {
   for (const key of ["generators", "parity", "nav"]) {
     if (c[key] !== undefined && !Array.isArray(c[key])) problems.push(`"${key}" must be an array`);
   }
+  if (c.brand !== undefined && typeof c.brand !== "boolean") {
+    problems.push(`"brand" must be true or false`);
+  }
   if (c.manifest !== undefined && typeof c.manifest !== "string") {
     problems.push(`"manifest" must be a path string`);
   }

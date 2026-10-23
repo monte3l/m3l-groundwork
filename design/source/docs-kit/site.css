@@ -22,6 +22,52 @@
   border-bottom: var(--border-width-default) solid var(--color-border-subtle);
 }
 
+/* The MONTE3L symbol, when docs.config.mjs sets brand: true. Both themes are in the markup; one shows. */
+.m3l-site-brand {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.m3l-site-brand:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* With the symbol present the header has three children; keep the nav beside it, not centred. */
+.m3l-site-brand + .m3l-nav {
+  margin-inline-end: auto;
+}
+
+.m3l-site-brand__img {
+  display: block;
+  width: auto;
+  height: var(--space-10);
+}
+
+.m3l-site-brand__img--dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .m3l-site-brand__img--light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .m3l-site-brand__img--dark {
+    display: block;
+  }
+}
+
+:root[data-theme="dark"] .m3l-site-brand__img--light {
+  display: none;
+}
+
+:root[data-theme="dark"] .m3l-site-brand__img--dark {
+  display: block;
+}
+
 .m3l-site-layout {
   display: flex;
   align-items: flex-start;

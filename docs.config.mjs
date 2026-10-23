@@ -10,6 +10,7 @@ export default {
   repo: "https://github.com/monte3l/m3l-groundwork",
   siteUrl: "https://groundwork.monte3l.com",
   designDir: "design",
+  brand: true,
   manifest: "packages/cli/package.json",
   navGroups: ["Start", "Project", "Security", "Internals"],
   nav: [

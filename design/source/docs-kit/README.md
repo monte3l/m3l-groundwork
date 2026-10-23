@@ -44,6 +44,7 @@ named by `--config`. The directory that holds the config is the repository root.
 | `exclude` | no | `{ glob, reason }` for tracked Markdown that is deliberately not a page |
 | `generators` | no | Modules that return pages that cannot come from Markdown |
 | `parity` | no | Modules that compare the documentation with the code |
+| `brand` | no | `true` to add the MONTE3L favicon links, a copy of `favicon.ico` at the site root, and the symbol, linked to the home page, in the header. Needs `<designDir>/source/brand/` from m3l-design v1.2.0 or later, and `--check` fails if a file is missing. Default `false` |
 | `manifest` | no | The `package.json` or `plugin.json` that `--metadata` and the homepage gate read |
 
 A generator default-exports `async ({ root, config }) => [{ out, group, label, html }]`.
