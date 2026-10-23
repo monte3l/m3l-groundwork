@@ -96,15 +96,15 @@ id instead.
 
 ### Actions and security (L3, L4)
 
-| Area                                                                                                      | Read it with                                                                                                | Target                                          |
-| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Workflow token default, workflows approving PRs                                                           | `gh api repos/monte3l/m3l-groundwork/actions/permissions/workflow`                                          | Read-only token, PR approval off                |
-| Fork PR approval                                                                                          | `gh api repos/monte3l/m3l-groundwork/actions/permissions/fork-pr-contributor-approval`                      | All external contributors                       |
-| Allowed actions, SHA pinning                                                                              | `gh api repos/monte3l/m3l-groundwork/actions/permissions`                                                   | Selected, SHA pinning required                  |
-| Secret scanning, push protection, Dependabot alerts and security updates, private vulnerability reporting | `gh api repos/monte3l/m3l-groundwork --jq .security_and_analysis`                                           | On                                              |
-| Code scanning                                                                                             | CodeQL default setup, so no `codeql.yml`; `gh api repos/monte3l/m3l-groundwork/code-scanning/default-setup` | Same                                            |
-| Immutable releases                                                                                        | `gh api repos/monte3l/m3l-groundwork/immutable-releases`                                                    | On, once the release flow allows it (see below) |
-| Tag protection                                                                                            | `gh api repos/monte3l/m3l-groundwork/rulesets` (the `tags` ruleset)                                         | Tag ruleset                                     |
+| Area                                                                                                      | Read it with                                                                                                | Target                           |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| Workflow token default, workflows approving PRs                                                           | `gh api repos/monte3l/m3l-groundwork/actions/permissions/workflow`                                          | Read-only token, PR approval off |
+| Fork PR approval                                                                                          | `gh api repos/monte3l/m3l-groundwork/actions/permissions/fork-pr-contributor-approval`                      | All external contributors        |
+| Allowed actions, SHA pinning                                                                              | `gh api repos/monte3l/m3l-groundwork/actions/permissions`                                                   | Selected, SHA pinning required   |
+| Secret scanning, push protection, Dependabot alerts and security updates, private vulnerability reporting | `gh api repos/monte3l/m3l-groundwork --jq .security_and_analysis`                                           | On                               |
+| Code scanning                                                                                             | CodeQL default setup, so no `codeql.yml`; `gh api repos/monte3l/m3l-groundwork/code-scanning/default-setup` | Same                             |
+| Immutable releases                                                                                        | `gh api repos/monte3l/m3l-groundwork/immutable-releases`                                                    | On (see below)                   |
+| Tag protection                                                                                            | `gh api repos/monte3l/m3l-groundwork/rulesets` (the `tags` ruleset)                                         | Tag ruleset                      |
 
 ### Files that ship in the repository (L1)
 
@@ -152,13 +152,14 @@ this repository and organization and confirmed on 2026-10-04.
 **An organization owner runs them.**
 Replace `REPO` with the repository name.
 
-> [!WARNING]
-> Do not enable immutable releases yet. `release.yml` creates the GitHub
-> Release first and then attaches assets with `gh release upload`. GitHub
-> locks a release's assets when it is published as immutable
+> [!NOTE]
+> Immutable releases are on. GitHub locks a release's assets when it is
+> published as immutable
 > ([announcement](https://github.blog/changelog/2025-10-28-immutable-releases-are-now-generally-available/)),
-> so the upload step would fail. Change the flow to attach assets to a
-> draft release before publishing, then enable the setting.
+> so `release.yml` attaches every asset to a draft release first and publishes
+> last. `@monte3l/groundwork@1.1.1` was published that way and passes
+> `gh release verify`. A workflow that uploads an asset after publishing would
+> fail.
 
 ### Organization (L4)
 

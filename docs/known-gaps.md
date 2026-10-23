@@ -114,9 +114,8 @@
   `monte3l/.github` (`bin/apply-repo-baseline.sh`, `--check` first). The
   SHA-pinning allowlist must cover sub-path actions, so allow
   `googleapis/release-please-action@*` for the shared release workflow. Immutable
-  releases are off until the first release through the draft-first `release.yml`
-  has been published and checked with `gh release verify`; the flow attaches
-  every asset before publishing, so it is compatible with them.
+  releases are on: the draft-first `release.yml` attaches every asset before
+  publishing, and `@monte3l/groundwork@1.1.1` passes `gh release verify`.
 
   This repository's Advanced Security settings come from the organization's
   `monte3l-default` code security configuration, enforced on the repository;
