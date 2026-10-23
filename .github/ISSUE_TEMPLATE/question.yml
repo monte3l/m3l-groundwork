@@ -5,6 +5,10 @@ name: Question
 description: Ask how the CLI, the /customize plugin, or an emitted baseline works
 labels: ["question"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions are welcome. Say what you are trying to do and what you have tried, and the answer will come sooner.
   - type: textarea
     id: question
     attributes:
