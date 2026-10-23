@@ -1,5 +1,16 @@
 # @monte3l/groundwork
 
+## [1.1.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.1.0...@monte3l/groundwork@1.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **baseline:** correct mod and fork wording in guard notes ([2ad9935](https://github.com/monte3l/m3l-groundwork/commit/2ad9935a60a5e33bec31f3764c7aede4ea49c3c8))
+* **baseline:** correct the mod and fork wording in the emitted guard notes ([896a712](https://github.com/monte3l/m3l-groundwork/commit/896a7126305d1826ab2f64ffa33326652d69332d))
+* **deps:** bump vitest to 5.0.5 for @vitest/mocker advisories ([e9cb0fd](https://github.com/monte3l/m3l-groundwork/commit/e9cb0fdd43893762ad541f1fbbd1a6246879ebec))
+* **packs:** cap claude.yml at 20 turns, fix stale changeset rules ([#270](https://github.com/monte3l/m3l-groundwork/issues/270)) ([c8e4d07](https://github.com/monte3l/m3l-groundwork/commit/c8e4d071f2ceee16119c12b8f8f2ae76ab03b673))
+* **packs:** pin claude-code-action to v1.0.258 in the claude-github pack ([1bab275](https://github.com/monte3l/m3l-groundwork/commit/1bab2756610d00d44bd073ab321b8ca4cd7eafa9))
+
 ## 1.1.0
 
 ### Minor Changes
