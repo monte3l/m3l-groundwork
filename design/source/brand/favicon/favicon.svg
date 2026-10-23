@@ -5,11 +5,6 @@
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-labelledby="m3l-favicon-t">
 <title id="m3l-favicon-t">MONTE3L</title>
-<style>.e{fill:#1a1617}.w{fill:#692746}@media (prefers-color-scheme:dark){.e{fill:#faf5f7}.w{fill:#d1789e}}</style>
-<defs>
-<mask id="m3l-favicon-e" maskUnits="userSpaceOnUse" x="-200" y="-200" width="1400" height="1400"><rect x="-200" y="-200" width="1400" height="1400" fill="#fff"/><g transform="translate(715 500) rotate(-6) scale(1)"><rect x="-294" y="-294" width="588" height="588" rx="144" fill="#000"/></g><g transform="translate(285 500) rotate(0) scale(1)"><path transform="translate(-224.28 240.48) scale(0.72 -0.72)" d="M60 0V668H559V540H206V408H432V279H206V128H563V0Z" fill="#000"/></g></mask>
-<mask id="m3l-favicon-w" maskUnits="userSpaceOnUse" x="-200" y="-200" width="1400" height="1400"><rect x="-200" y="-200" width="1400" height="1400" fill="#fff"/><g transform="translate(715 500) rotate(-6) scale(1)"><path transform="translate(-209.51999999999998 240.48) scale(0.72 -0.72)" d="M288 -12Q200 -12 131.5 26.5Q63 65 35 142L163 187Q175 138 210.5 115.5Q246 93 291 93Q342 93 373.0 119.0Q404 145 404 192Q404 231 382.0 253.5Q360 276 322.5 285.5Q285 295 238 295H213V396H238Q309 396 351.5 421.5Q394 447 394 492Q394 533 361.0 554.0Q328 575 285 575Q243 575 211.0 554.5Q179 534 169 487L43 533Q61 583 98.5 615.5Q136 648 186.0 664.0Q236 680 292 680Q353 680 408.5 661.5Q464 643 499.0 604.0Q534 565 534 504Q534 447 503.0 408.5Q472 370 423 351Q486 330 516.5 287.0Q547 244 547 194Q547 125 510.5 79.0Q474 33 414.5 10.5Q355 -12 288 -12Z" fill="#000"/></g></mask>
-</defs>
-<g mask="url(#m3l-favicon-e)"><g transform="translate(285 500) rotate(0) scale(1)"><rect x="-250" y="-250" width="500" height="500" rx="100" class="e"/></g></g>
-<g mask="url(#m3l-favicon-w)"><g transform="translate(715 500) rotate(-6) scale(1)"><rect x="-250" y="-250" width="500" height="500" rx="100" class="w"/></g></g>
+<style>.l{fill:#1a1617}.r{fill:#692746}@media (prefers-color-scheme:dark){.l{fill:#faf5f7}.r{fill:#d1789e}}</style>
+<g transform="translate(0 5) scale(1)"><path class="l" d="M311.79 286.77L485.79 664.77A46 46 0 0 1 444 730L444 730L96 730A46 46 0 0 1 54.21 664.77L54.21 664.77L228.21 286.77A46 46 0 0 1 311.79 286.77Z"/><path class="r" d="M771.79 286.77L945.79 664.77A46 46 0 0 1 904 730L904 730L556 730A46 46 0 0 1 514.21 664.77L514.21 664.77L688.21 286.77A46 46 0 0 1 771.79 286.77Z"/></g>
 </svg>

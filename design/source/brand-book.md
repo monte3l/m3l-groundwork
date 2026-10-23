@@ -304,29 +304,34 @@ treated as canonical when the two disagree.
 - Icons are decorative (`aria-hidden="true"`) whenever a text label next to
   them says the same thing.
 
-## Logo — Built (signed off 2026-10-22)
+## Logo — Built (signed off 2026-10-23, replaces the 2026-10-22 mark)
 
 **MONTE3L** is `giulmonte` (Giulia Montevecchi) and `enri3l` (Enrico Lionello)
-joined: monte + 3l. The E that ends "monte" and the 3 that opens "3l" sit at
-the join, so the mark is built from those two letters.
+joined: monte + 3l. The two people matter equally, and the name was chosen for
+that reason, so the mark has to show it.
 
-- **Symbol:** two rounded tiles, an E in ink and a 3 in wine, the 3 tipped
-  about 7 degrees and parted by a gap. The gap and both letters are cut out
-  of the tiles, so the symbol has no background colour and works on any
-  ground. Chosen over three other takes (mirror join, fused stroke, M3
-  monogram) because it is the one that stays recognisable as an avatar and
-  at 24 px.
-- **Letters:** Atkinson Hyperlegible Next Bold, outlined. The OFL FAQ (1.1,
-  1.13) says artwork made from a font's outlines is not subject to the OFL.
+The first mark paired an E and a 3. Both come from `enri3l`, and the E is also
+Enrico's initial, so it read as one founder's logo, not the organisation's.
+It was replaced before it was used anywhere that mattered.
+
+- **Symbol:** two identical rounded peaks side by side, parted by a gap, one in
+  ink and one in wine. It has no letter, so no initial can lead. The two peaks
+  are the two people, equal in size, shape and colour area. They also read as
+  an M, and monte is Italian for mountain. Chosen over three other takes (M3L
+  tiles, an overlap, an m3l monogram) because it holds up as an avatar and at
+  16 px, and stays readable in one colour.
 - **Wordmark:** MONTE3L in capitals, tracked +0.09em (the system's rule for
-  weight 700), the 3 in wine. Capitals are for the logo only. In running text
-  the name stays **monte3l**, as in the organisation and every repository.
+  weight 700), in one colour. The 3 is not picked out: that would single out
+  Enrico's half again. The letters are Atkinson Hyperlegible Next Bold,
+  outlined, and the OFL FAQ (1.1, 1.13) says artwork made from a font's
+  outlines is not subject to the OFL. Capitals are for the logo only. In
+  running text the name stays **monte3l**, as in the organisation and every
+  repository.
 - **Colour:** only tokens. Ink is `color-text-primary`, wine is
   `color-accent-default`, so the dark theme gets `#d1789e` for free. Wine on
-  the light ground is 10.39:1, on the dark ground 6.29:1.
-- **Small cut:** below 64 px the symbol uses larger tiles, a wider gap, a
-  bigger letter and less tilt. At 16 px the two letters blur into one shape.
-  That is accepted for a two-letter mark.
+  the light ground is 10.39:1, on the dark ground 6.29:1. The left peak is ink
+  and the right is wine. Neither colour is "the main one": both cover the same
+  area.
 - **Licence:** the logo files are all rights reserved, unlike the MIT code.
   See `brand/LICENSE.md`. The files, spec sizes and rebuild commands are in
   **Brand assets**.
