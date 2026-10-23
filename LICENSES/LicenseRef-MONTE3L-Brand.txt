@@ -3,7 +3,8 @@ MONTE3L brand licence
 Copyright (c) 2026 Enrico Lionello (enri3l), Giulia Montevecchi (giulmonte), monte3l. All rights reserved.
 
 The MONTE3L logo, wordmark and the brand files made from them (everything under
-source/brand/ except its README.md and LICENSE.md, and bin/lib/brand-glyphs.mjs)
+source/brand/ except its README.md and LICENSE.md, the avatar files in
+avatars/, and bin/lib/brand-glyphs.mjs)
 may be used only as follows:
 
 1. They may be copied unchanged, together with this notice and

@@ -33,7 +33,7 @@ named by `--config`. The directory that holds the config is the repository root.
 
 | Key | Required | Meaning |
 | --- | --- | --- |
-| `title` | yes | Site name, shown in every page title |
+| `title` | yes | Site name, shown in every page title. A page whose own title is the site name shows it once |
 | `repo` | yes | `https://github.com/<owner>/<name>`, the base of links to files that are not pages |
 | `siteUrl` | yes | The site origin, with no path and no trailing slash |
 | `designDir` | yes | `design` in a consumer, `.` in m3l-design itself |
