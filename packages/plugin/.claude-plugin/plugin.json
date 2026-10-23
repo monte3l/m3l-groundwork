@@ -9,5 +9,10 @@
   "homepage": "https://github.com/monte3l/m3l-groundwork#readme",
   "repository": "https://github.com/monte3l/m3l-groundwork",
   "license": "MIT",
-  "keywords": ["typescript", "claude-code", "bootstrap", "scaffold"]
+  "keywords": [
+    "typescript",
+    "claude-code",
+    "bootstrap",
+    "scaffold"
+  ]
 }
