@@ -222,6 +222,11 @@ function pageTitle(page, headings) {
   return headings[0]?.level === 1 ? headings[0].text : page.label;
 }
 
+/** The `<title>`: the page title and the site name, or the name alone when they are the same (the home page). */
+function documentTitle(title, siteTitle) {
+  return title === siteTitle ? title : `${title} · ${siteTitle}`;
+}
+
 /** Href from `page` to site-relative `target`; the 404 page links from the root. */
 function pageHref(page, target) {
   return page.absolute ? `/${target}` : path.posix.relative(path.posix.dirname(page.out), target);
@@ -329,7 +334,7 @@ function renderPage(config, allPages, localCss, page, rendered) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)} · ${escapeHtml(config.title)}</title>
+<title>${escapeHtml(documentTitle(title, config.title))}</title>
 <link rel="stylesheet" href="${assetPrefix}/tokens.css">
 <link rel="stylesheet" href="${assetPrefix}/source/components/bundle.css">
 <link rel="stylesheet" href="${assetPrefix}/kit/site.css">${locals}${config.brand ? renderBrandHead(assetPrefix) : ""}

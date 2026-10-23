@@ -316,10 +316,11 @@ It was replaced before it was used anywhere that mattered.
 
 - **Symbol:** two identical rounded peaks side by side, parted by a gap, one in
   ink and one in wine. It has no letter, so no initial can lead. The two peaks
-  are the two people, equal in size, shape and colour area. They also read as
-  an M, and monte is Italian for mountain. Chosen over three other takes (M3L
-  tiles, an overlap, an m3l monogram) because it holds up as an avatar and at
-  16 px, and stays readable in one colour.
+  are the two people, equal in size, shape and colour area. They are not
+  meant to read as a letter: an M would favour monte, one founder's half, the
+  same mistake the E made. Chosen over three other takes (M3L tiles, an
+  overlap, an m3l monogram) because it holds up as an avatar and at 16 px, and
+  stays readable in one colour.
 - **Wordmark:** MONTE3L in capitals, tracked +0.09em (the system's rule for
   weight 700), in one colour. The 3 is not picked out: that would single out
   Enrico's half again. The letters are Atkinson Hyperlegible Next Bold,
