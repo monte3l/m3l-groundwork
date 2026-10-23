@@ -161,9 +161,50 @@ commit (`gh api -X PATCH repos/monte3l/m3l-groundwork/git/refs/tags/<tag>
 -f sha=<built commit> -F force=true`), and set it back to `active`. It was used
 once, on 2026-10-19, to move the 1.0.3 tag from `73af011` to `2850f8e`.
 
-**Immutable releases.** The draft-first flow attaches every asset before the
-release is published, so immutable releases (which lock the tag and assets at
-publish) are compatible with it. They stay off until the first release through
-this workflow has been published and checked with `gh release verify`.
+**Immutable releases are on.** The draft-first flow attaches every asset before
+the release is published, so immutable releases (which lock the tag and assets at
+publish) are compatible with it. `@monte3l/groundwork@1.1.1` was the first
+release published this way, and `gh release verify` passes on it.
+
+**A release run that fails before the staged publish cannot be re-run with the
+fix.** A re-run uses the workflow file of the original commit. release-please has
+already tagged the release and marked its pull request `autorelease: tagged`, so a
+new run creates no release and `publish` is skipped. Nothing irreversible has
+happened up to the staging step: npm holds nothing, and a draft is visible to
+writers only. This happened to 1.1.1 (run 39974728711, the SBOM attestation took a
+glob where it needs one file). To recover:
+
+1. Before merging the fix, delete the draft and its tag, and mark the release
+   pull request pending again. The `tags` ruleset blocks deleting a tag with no
+   bypass, so set its `enforcement` to `disabled` first and back to `active`
+   straight after. List releases through the API to find the draft's id:
+   `gh release view` cannot see a draft.
+   ```sh
+   gh api -X DELETE repos/monte3l/m3l-groundwork/releases/<draft id>
+   gh api -X DELETE repos/monte3l/m3l-groundwork/git/refs/tags/<tag>
+   gh pr edit <release pr> --remove-label "autorelease: tagged" --add-label "autorelease: pending"
+   ```
+2. Merge the fix with a merge commit. The new run recreates the draft and the tag,
+   both on the **release pull request's** merge commit, then packs.
+3. While `publish` waits at the `npm-publish` gate, move the tag to the merge
+   commit of the fix, which is the commit this run builds, again with the ruleset
+   disabled for the moment it takes. The tag check in `publish` refuses to attest
+   or stage anything while the tag is anywhere else.
+   ```sh
+   gh api -X PATCH repos/monte3l/m3l-groundwork/git/refs/tags/<tag> -f sha=<fix merge commit> -F force=true
+   ```
+4. Approve the gate, then `npm stage approve`.
+
+> [!WARNING]
+> Check that the `tags` ruleset is `active` again afterwards, with its three rules
+> (`deletion`, `non_fast_forward`, `update`) and no bypass actor. When a script
+> asks whether a tag exists, test the exit status of `gh api`, not its output: a
+> 404 prints its error body to stdout.
+
+The alternative is to leave that version unpublished and ship its changes in the
+next patch. That leaves a tag with no matching npm version, and the daily pin
+check in `m3l-plugins` reports `m3l-groundwork-customize` stale until the next
+release. The ruleset has no `creation` rule, so release-please can create a tag
+while it is active.
 
 Split-out detail: `.claude/rules/release-supply-chain.md` (Scorecard signals, SBOM, audit, OpenVEX) and `.claude/rules/release-history.md` (GA record, one-time setup, superseding versions).
