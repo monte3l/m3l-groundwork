@@ -13,7 +13,7 @@ Two identical rounded peaks, one for each of the two people behind monte3l. The 
 
 The wordmark is in one colour. The 3 is not picked out, because that would single out one half of the name.
 
-The name is set in capitals in the logo only. In running text, write **monte3l**, as in the GitHub organisation and every repository name.
+The name is set in capitals in the logo only. In running text, write **monte3l**, as in the GitHub organization and every repository name.
 
 ### Files
 
@@ -21,8 +21,8 @@ The name is set in capitals in the logo only. In running text, write **monte3l**
 | --- | --- | --- |
 | `logo/` | `symbol`, `wordmark` and `lockup`, each in `light`, `dark` and `mono` (nine SVGs) | Light is for light grounds, dark for dark grounds. Mono uses `currentColor`, so it takes the colour of the text around it |
 | `favicon/` | `favicon.svg`, `favicon.ico`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `icon-monochrome.svg`, `site.webmanifest` | A website or web app |
-| `github/` | `avatar.png` (500 × 500) | The organisation avatar. Upload it in the organisation settings |
-| `social/` | `social-preview` (1280 × 640) and `og-image` (1200 × 630), each as SVG and PNG | The organisation card. `bin/build-brand.mjs --social <dir>` renders one per repository |
+| `github/` | `avatar.png` (500 × 500) | The organization avatar. Upload it in the organization settings |
+| `social/` | `social-preview` (1280 × 640) and `og-image` (1200 × 630), each as SVG and PNG | The organization card. `bin/build-brand.mjs --social <dir>` renders one per repository, with the card line from the `.github` blueprint's `projects.json` |
 
 There is one symbol at every size. `favicon.svg` is the same two peaks with its colours switched by `prefers-color-scheme`.
 
