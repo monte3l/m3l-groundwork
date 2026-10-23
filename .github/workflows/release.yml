@@ -259,7 +259,8 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: release-assets/**/*.tgz
-          sbom-path: release-assets/*.cdx.json
+          # One literal path: unlike `subject-path`, `sbom-path` takes no glob.
+          sbom-path: release-assets/monte3l-groundwork-${{ needs.prepare.outputs.version }}.tgz.cdx.json
       # The assets go on the draft BEFORE it is published, because an immutable
       # release locks them at publish. The Sigstore bundle is an asset because
       # OpenSSF Scorecard's Signed-Releases check only looks at release assets
