@@ -16,15 +16,53 @@ TypeScript and Anthropic sources.
 This package is never published to npm -- it's a private workspace package,
 built and typechecked like any other, but distributed only through the
 central `monte3l/m3l-plugins` Claude Code marketplace (this repository ships no
-marketplace of its own):
+marketplace of its own).
 
+## Install
+
+From your shell:
+
+```bash
+claude plugin marketplace add monte3l/m3l-plugins
+claude plugin install m3l-groundwork-customize@monte3l
 ```
+
+Or inside a Claude Code session:
+
+```text
 /plugin marketplace add monte3l/m3l-plugins
 /plugin install m3l-groundwork-customize@monte3l
 ```
 
-To try a local change, run `claude --plugin-dir packages/plugin` from the
-repository root.
+To add the marketplace and install in one step, use
+`claude plugin install m3l-groundwork-customize --marketplace monte3l/m3l-plugins`
+(Claude Code 2.1.292 or newer) or
+`/plugin install m3l-groundwork-customize --marketplace monte3l/m3l-plugins`
+(2.1.275 or newer).
+
+The shell form installs at user scope unless you pass `--scope project` or
+`--scope local`. The session form opens the plugin's details and asks you to
+pick a scope. Then open a project and run `/customize`.
+
+## Settings
+
+This plugin declares no options, so there is nothing to configure at install.
+`/customize` asks what it needs in its interview.
+
+## Manage the plugin
+
+| Task                               | From your shell                                                                                                        | Inside a session                                                                                           |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Update                             | `claude plugin update m3l-groundwork-customize@monte3l`                                                                | `/plugin`, then **Installed**, the plugin, **Update now**                                                  |
+| Update automatically               | Not available                                                                                                          | `/plugin`, then **Marketplaces**, `monte3l`, **Enable auto-update**                                        |
+| Turn off or on                     | `claude plugin disable m3l-groundwork-customize@monte3l`, then `claude plugin enable m3l-groundwork-customize@monte3l` | `/plugin disable m3l-groundwork-customize@monte3l`, then `/plugin enable m3l-groundwork-customize@monte3l` |
+| Uninstall                          | `claude plugin uninstall m3l-groundwork-customize@monte3l`                                                             | `/plugin uninstall m3l-groundwork-customize@monte3l`                                                       |
+| Try a local change for one session | `claude --plugin-dir packages/plugin`, from the repository root                                                        | Not available                                                                                              |
+| Run an older release               | Check out its tag, `@monte3l/groundwork@X.Y.Z`, then use `--plugin-dir`                                                | Not available                                                                                              |
+
+`monte3l` is not an official Anthropic marketplace, so Claude Code does not
+update its plugins automatically unless you turn auto-update on. After a change
+inside a session, run `/reload-plugins` to apply it.
 
 `@monte3l/groundwork` copies the same skill into a project it bootstraps, so
 you only need the marketplace install if the project did not come from that

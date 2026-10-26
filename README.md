@@ -201,10 +201,19 @@ node packages/cli/bin/m3l-groundwork.mjs ../my-new-project
 The `/customize` skill is also available as a Claude Code plugin, for use in
 a project that was not bootstrapped by this CLI:
 
+```bash
+claude plugin marketplace add monte3l/m3l-plugins
+claude plugin install m3l-groundwork-customize@monte3l
 ```
+
+```text
 /plugin marketplace add monte3l/m3l-plugins
 /plugin install m3l-groundwork-customize@monte3l
 ```
+
+The first pair runs in your shell, the second inside a Claude Code session.
+Settings and management are in the
+[plugin README](packages/plugin/README.md).
 
 `npx` leaves nothing installed globally -- it only populates its own
 download cache (`npm cache clean` clears it, if you want that back too).
