@@ -26,3 +26,7 @@ ignored_patterns:
   - "templates/core/.github/workflows/dependency-review.yml"
   - "templates/packs/licensing/files/*"
   - "templates/packs/publishing/files/*"
+  # This page says the dependency-review allowlist permits the LGPL libvips
+  # binaries by package name. ScanCode reads the bare word LGPL as a license
+  # clue. The page is prose and is not licensed under it.
+  - "docs/cloudflare-docs.md"
