@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # ScanCode license policy: the licenses this repository is allowed to contain.
-# compliance_alert '' means approved. A license detected in a file but not
+# compliance_alert "" means approved. A license detected in a file but not
 # listed here is MISSING, and the ScanCode check fails on it. Keys are
 # ScanCode license keys (lowercase) or SPDX ids.
 license_policies:
@@ -11,4 +11,14 @@ license_policies:
     compliance_alert: ""
   - license_key: ofl-1.1
     label: Approved License
+    compliance_alert: ""
+  # A pointer such as "See LICENSE" or "a free license". It names no license,
+  # so it grants and allows nothing, but READMEs and SECURITY.md carry it.
+  - license_key: LicenseRef-scancode-unknown-license-reference
+    label: Reference without a license
+    compliance_alert: ""
+  # The Developer Certificate of Origin quoted in CONTRIBUTING.md. It is a
+  # sign-off the DCO check enforces, not a license on the code.
+  - license_key: LicenseRef-scancode-dco-1.1
+    label: Developer Certificate of Origin
     compliance_alert: ""
