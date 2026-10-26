@@ -1,5 +1,12 @@
 # @monte3l/groundwork
 
+## [1.1.2](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.1.1...@monte3l/groundwork@1.1.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **deps:** bump transitive zod to 4.6.7 for GHSA-mrhx-c7xc-m3w5 ([c65c739](https://github.com/monte3l/m3l-groundwork/commit/c65c739d8f9ce074def4086b912dcd350d531254))
+
 ## [1.1.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.1.0...@monte3l/groundwork@1.1.1) (2026-10-23)
 
 
