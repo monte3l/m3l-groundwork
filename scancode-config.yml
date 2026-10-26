@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+# ScanCode project settings. Paths are matched with shell-style wildcards.
+# Ignore only files that name a license without being licensed under it, or
+# whose license ScanCode cannot know. Never ignore a path to hide a finding.
+ignored_patterns:
+  # The license texts themselves.
+  - "LICENSES/*"
+  # License ids as data: REUSE.toml records them, and dependency-review.yml
+  # lists the allowed ones.
+  - "REUSE.toml"
+  - ".github/workflows/dependency-review.yml"
+  - "workflow-templates/dependency-review.yml"
+  # m3l-design's brand assets declare LicenseRef-MONTE3L-Brand, a custom
+  # license ScanCode reports as unknown. `reuse lint` already checks that each
+  # file declares it. A repository that does not vendor m3l-design can drop
+  # this line.
+  - "design/source/brand/*"

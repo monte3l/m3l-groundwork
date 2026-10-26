@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+name: ScanCode
+
+# Scans file contents for license text and fails on any license that
+# scancode-config.yml does not list. REUSE only trusts what a file declares:
+# a copied third-party file that carries just a license notice passes
+# `reuse lint` under REUSE.toml's catch-all MIT entry. ScanCode reads the
+# text itself, so it catches that case. Runs aboutcode-org/scancode-action,
+# which pins its ScanCode.io image by digest; nothing is installed or built.
+# The action is in beta, so keep this out of the required checks.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scancode:
+    name: ScanCode
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # The action reads its inputs from this folder, including
+          # scancode-config.yml (the license policy and ignored paths).
+          path: scancode-inputs
+      - uses: aboutcode-org/scancode-action@76777db8400d719de67ba3e465c5881037b45cb9 # v0.1
+        with:
+          pipelines: scan_codebase
+          output-formats: json spdx
+          check-compliance: true
+          # MISSING also fails a license the policy does not mention, which
+          # makes the policy an allowlist.
+          compliance-fail-level: MISSING

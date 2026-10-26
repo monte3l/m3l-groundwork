@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
+# ScanCode license policy: the licenses this repository is allowed to contain.
+# compliance_alert '' means approved. A license detected in a file but not
+# listed here is MISSING, and the ScanCode check fails on it. Keys are
+# ScanCode license keys (lowercase) or SPDX ids.
+license_policies:
+  - license_key: mit
+    label: Approved License
+    compliance_alert: ""
+  - license_key: ofl-1.1
+    label: Approved License
+    compliance_alert: ""

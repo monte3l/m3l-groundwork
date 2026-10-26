@@ -11,7 +11,7 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14937/badge)](https://www.bestpractices.dev/projects/14937)
 [![OpenSSF Baseline](https://www.bestpractices.dev/projects/14937/baseline)](https://www.bestpractices.dev/projects/14937)
 [![Socket](https://badge.socket.dev/npm/package/@monte3l/groundwork)](https://socket.dev/npm/package/@monte3l/groundwork/overview)
-[![REUSE status](https://api.reuse.software/badge/github.com/monte3l/m3l-groundwork)](https://api.reuse.software/info/github.com/monte3l/m3l-groundwork)
+[![REUSE](https://github.com/monte3l/m3l-groundwork/actions/workflows/reuse.yml/badge.svg?branch=main)](https://github.com/monte3l/m3l-groundwork/actions/workflows/reuse.yml)
 
 m3l-groundwork is a command-line tool that sets up (or reports on) a
 TypeScript project's toolchain and [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
