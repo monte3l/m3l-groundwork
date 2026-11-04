@@ -47,7 +47,8 @@ Sources: [hooks](https://code.claude.com/docs/en/hooks),
 [sub-agents](https://code.claude.com/docs/en/sub-agents) and
 [agent teams](https://code.claude.com/docs/en/agent-teams).
 
-- **The `Bash` screen is conservative.** `guard-hub-src-writes.mjs` blocks
+- **The `Bash` screen is conservative.** A Monitor command reaches the hook as
+  `Bash` (probed on Claude Code 2.1.318). `guard-hub-src-writes.mjs` blocks
   redirects, `tee`, `sed -i`, `cp`/`mv` into a guarded path, an interpreter
   snippet that writes there, and a copy, move or removal of a parent
   (`rsync -a /tmp/x/ ./`, `rm -rf .`). It cannot see an interpreter running a

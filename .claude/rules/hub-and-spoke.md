@@ -13,8 +13,8 @@ paths:
 
 **The guard covers `Bash` as well as `Write|Edit`, but it raises the bar
 rather than proving anything.** `guard-hub-src-writes.mjs` also runs on every
-`Bash` call (registered under the `Bash` matcher too -- same file, no extra
-hook, so the baseline's 10-hook cap is untouched) and applies the same
+`Bash` call, Monitor commands included (registered under the `Bash` matcher too
+-- same file, no extra hook, so the baseline's 10-hook cap is untouched) and applies the same
 writer-spoke allowlist to a conservative scan of `tool_input.command`: it
 blocks output redirects, `tee`, `sed -i`/`perl -i`, `cp`/`mv`/`install`/
 `rsync`/`ln` into a guarded path, `rm`/`unlink`/`touch`/`truncate`, `dd of=`,

@@ -126,3 +126,46 @@ rule holds with no bypass actor. release-please signs the commit off as the
 App (`signoff` in `release-please-config.json`), which the `dco` lane needs.
 This replaced a repository-specific `m3l-groundwork-release` App that served
 the Changesets version PR.
+
+## Recovering from a release run that fails before the staged publish
+
+**A release run that fails before the staged publish cannot be re-run with the
+fix.** A re-run uses the workflow file of the original commit. release-please has
+already tagged the release and marked its pull request `autorelease: tagged`, so a
+new run creates no release and `publish` is skipped. Nothing irreversible has
+happened up to the staging step: npm holds nothing, and a draft is visible to
+writers only. This happened to 1.1.1 (run 39974728711, the SBOM attestation took a
+glob where it needs one file). To recover:
+
+1. Before merging the fix, delete the draft and its tag, and mark the release
+   pull request pending again. The `tags` ruleset blocks deleting a tag with no
+   bypass, so set its `enforcement` to `disabled` first and back to `active`
+   straight after. List releases through the API to find the draft's id:
+   `gh release view` cannot see a draft.
+   ```sh
+   gh api -X DELETE repos/monte3l/m3l-groundwork/releases/<draft id>
+   gh api -X DELETE repos/monte3l/m3l-groundwork/git/refs/tags/<tag>
+   gh pr edit <release pr> --remove-label "autorelease: tagged" --add-label "autorelease: pending"
+   ```
+2. Merge the fix with a merge commit. The new run recreates the draft and the tag,
+   both on the **release pull request's** merge commit, then packs.
+3. While `publish` waits at the `npm-publish` gate, move the tag to the merge
+   commit of the fix, which is the commit this run builds, again with the ruleset
+   disabled for the moment it takes. The tag check in `publish` refuses to attest
+   or stage anything while the tag is anywhere else.
+   ```sh
+   gh api -X PATCH repos/monte3l/m3l-groundwork/git/refs/tags/<tag> -f sha=<fix merge commit> -F force=true
+   ```
+4. Approve the gate, then `npm stage approve`.
+
+> [!WARNING]
+> Check that the `tags` ruleset is `active` again afterwards, with its three rules
+> (`deletion`, `non_fast_forward`, `update`) and no bypass actor. When a script
+> asks whether a tag exists, test the exit status of `gh api`, not its output: a
+> 404 prints its error body to stdout.
+
+The alternative is to leave that version unpublished and ship its changes in the
+next patch. That leaves a tag with no matching npm version, and the daily pin
+check in `m3l-plugins` reports `m3l-groundwork-customize` stale until the next
+release. The ruleset has no `creation` rule, so release-please can create a tag
+while it is active.
