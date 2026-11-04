@@ -230,9 +230,14 @@ jobs:
   # as a matrix to gate-lane-parity's own scraper (see the comment at the
   # top of this file) if it ever touched `--group`, and keeping this job
   # static keeps the same guarantee for the Node version itself. This job
-  # intentionally does NOT read `.node-version`: `current` tracks whatever
-  # Node.js currently calls its Current release line, which is exactly what
-  # this job exists to catch drift against.
+  # intentionally does NOT read `.node-version`: it takes the newest stable
+  # Node release at or above the one this repo moved to, which is exactly
+  # what this job exists to catch drift against. Not `current`, `latest` or
+  # `node`: setup-node resolves all three to the first entry of Node's
+  # dist/index.json, and that index lists pre-release placeholders
+  # (v27.0.0-alpha.0.0.0 on 2026-10-29), which broke every PR. A range never
+  # matches a pre-release, so it picks 27.x once 27.0.0 ships, with nothing
+  # to bump. Keep the quotes: an unquoted `>=26` is a YAML parse error.
   node-current:
     name: Verify (Node current)
     runs-on: ubuntu-latest
@@ -255,7 +260,7 @@ jobs:
       - if: steps.scope.outputs.docs_only != 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: current
+          node-version: ">=26"
           cache: pnpm
       - if: steps.scope.outputs.docs_only != 'true'
         run: pnpm install --frozen-lockfile
