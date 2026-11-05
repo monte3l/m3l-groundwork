@@ -3,8 +3,8 @@
 
 /**
  * Decides whether a pull request changes documentation and nothing else, so
- * `ci.yml`'s three heavy jobs (`e2e`, `e2e-macos`, `node-current`) can skip
- * their work. Every question here resolves toward "run everything": a wrong
+ * `ci.yml`'s four heavy jobs (`e2e`, `e2e-macos`, `node-current`,
+ * `node-previous-lts`) can skip their work. Every question here resolves toward "run everything": a wrong
  * `false` only costs minutes, a wrong `true` skips the only proof that the
  * emitted baseline works.
  */
