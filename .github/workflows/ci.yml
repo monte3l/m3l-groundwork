@@ -132,8 +132,8 @@ jobs:
   # free.
   #
   # The one exception is a pull request that changes only documentation
-  # (`docs/**` and root-level markdown): `e2e`, `e2e-macos` and `node-current`
-  # then skip their pnpm and Node setup, install, build and test steps. The
+  # (`docs/**` and root-level markdown): `e2e`, `e2e-macos`, `node-current`
+  # and `node-previous-lts` then skip their pnpm and Node setup, install, build and test steps. The
   # skip lives inside each job, never in a job-level `if:` or a `paths:`
   # filter, so the job still ends in `success` and `verify` keeps getting the
   # explicit success it demands from every lane. The setup is skipped too,
@@ -271,6 +271,48 @@ jobs:
       - if: steps.scope.outputs.docs_only == 'true'
         run: echo "documentation-only change, Node current verify skipped"
 
+  # Proves the published `engines.node` floor (`>=24`) still works now that
+  # every other lane runs on the pinned Node 26: `lts/-1` is the previous LTS
+  # release line (24.22.2 on 2026-11-05). A separate job, never a matrix, and
+  # like `node-current` it deliberately does NOT read `.node-version` (the
+  # repo's own gate only rejects a leading digit, and `lts/-1` has none).
+  # Two limits to know: `lts/*` aliases need setup-node's actions/node-versions
+  # manifest and have no fallback, so a manifest outage fails this lane; and
+  # `lts/-1` stops being the floor when Node 28 becomes LTS (about October
+  # 2027), so revisit this lane, or the `engines` floor, then.
+  node-previous-lts:
+    name: Verify (Node previous LTS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # Before pnpm and Node are set up, on the runner's own Node: see the
+      # comment above `e2e`. If it cannot decide, its output stays empty and
+      # every step below runs.
+      - id: scope
+        continue-on-error: true
+        run: node bin/ci-docs-only.mjs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      - if: steps.scope.outputs.docs_only != 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - if: steps.scope.outputs.docs_only != 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: lts/-1
+          cache: pnpm
+      - if: steps.scope.outputs.docs_only != 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.scope.outputs.docs_only != 'true'
+        run: pnpm verify
+      - if: steps.scope.outputs.docs_only != 'true'
+        run: pnpm test:e2e
+      - if: steps.scope.outputs.docs_only == 'true'
+        run: echo "documentation-only change, Node previous LTS verify skipped"
+
   # The DCO, enforced by the server and not only by the local commit-msg
   # hook (OSPS Baseline OSPS-LE-01.01 asks for a status check). Every commit
   # a pull request adds must carry a `Signed-off-by: Name <email>` trailer
@@ -352,7 +394,18 @@ jobs:
     name: verify
     runs-on: ubuntu-latest
     needs:
-      [format, lint, typecheck, build, test, e2e, e2e-macos, node-current, dco]
+      [
+        format,
+        lint,
+        typecheck,
+        build,
+        test,
+        e2e,
+        e2e-macos,
+        node-current,
+        node-previous-lts,
+        dco,
+      ]
     if: always()
     timeout-minutes: 5
     steps:

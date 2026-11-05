@@ -45,8 +45,8 @@ packages/plugin/        Phase B: the /customize skill
                          "Known gaps".
 
 .github/                THIS repo's own CI (not the baseline's): ci.yml (five
-                         verify lanes + e2e + e2e-macos + node-current + the `verify`
-                         aggregator; the e2e trio skips its work on a
+                         verify lanes + e2e + e2e-macos + node-current + node-previous-lts
+                         + the `verify` aggregator; the four heavy jobs skip their work on a
                          documentation-only PR, see .claude/rules/ci.md),
                          labeler.yml (area labels from .github/labeler.yml),
                          release.yml (see "Releases"), docs.yml
