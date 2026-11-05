@@ -1,5 +1,20 @@
 # @monte3l/groundwork
 
+## [1.2.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.1.1...@monte3l/groundwork@1.2.0) (2026-11-05)
+
+
+### Features
+
+* **core:** move the pinned Node to 26 ([2a7dde1](https://github.com/monte3l/m3l-groundwork/commit/2a7dde1e3fd8465bdb78b08b9b3c37555af18f74))
+* **core:** move the pinned Node to 26 ([f0682d4](https://github.com/monte3l/m3l-groundwork/commit/f0682d4db95c67cd876cb8cbc1042dd8b69105db))
+
+
+### Bug Fixes
+
+* **deps:** bump transitive zod to 4.6.7 for GHSA-mrhx-c7xc-m3w5 ([c65c739](https://github.com/monte3l/m3l-groundwork/commit/c65c739d8f9ce074def4086b912dcd350d531254))
+* **packs:** pin claude-code-action to v1.0.268 and record the 2026-11-04 guidance refresh ([cc28704](https://github.com/monte3l/m3l-groundwork/commit/cc28704003416c5461b7497da90270add114e5c8))
+* **packs:** pin claude-code-action to v1.0.268 and record the 2026-11-04 guidance refresh ([d7b9287](https://github.com/monte3l/m3l-groundwork/commit/d7b9287a4dbe952c13a49a121c26f8a2d7645dde))
+
 ## [1.1.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.1.0...@monte3l/groundwork@1.1.1) (2026-10-23)
 
 
