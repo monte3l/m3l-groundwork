@@ -4,7 +4,8 @@
 
 /**
  * Prints `docs_only=true|false` and appends it to `$GITHUB_OUTPUT`, for the
- * `scope` step of `ci.yml`'s `e2e`, `e2e-macos` and `node-current` jobs. Reads
+ * `scope` step of `ci.yml`'s `e2e`, `e2e-macos`, `node-current` and
+ * `node-previous-lts` jobs. Reads
  * `EVENT_NAME` and `BASE_SHA` from the environment, never from the command
  * line. A failure to decide is `docs_only=false`, which makes the job run in
  * full, and the reason goes to stderr. It exits 0 unless the answer cannot be

@@ -22,7 +22,8 @@ paths:
   stable Node.js release, `node-version: ">=26"`, never `current`, which can
   resolve to a pre-release, so drift surfaces before that line becomes the next LTS --
   a separate job, never a matrix, for the same `gate-lane-parity` reason as
-  below), and a `verify` aggregator (which `needs` all of them) -- the check the `main` ruleset gates on
+  below), a `node-previous-lts` job (the same on `lts/-1`, the previous LTS, so the
+  published `engines` floor `>=24` stays tested), and a `verify` aggregator (which `needs` all of them) -- the check the `main` ruleset gates on
   (see CLAUDE.md's "Git Workflow"). The aggregator demands an explicit
   `success` from every lane, since testing only for `failure` reports green
   over a cancelled or skipped one.
@@ -40,8 +41,8 @@ paths:
   `git interpret-trailers` call: a Dependabot body holds a `---` line that the
   default reads as the end of the message. Pass the range through `env:`, as
   the step does, never inline in the script.
-- **A documentation-only pull request skips the work of `e2e`, `e2e-macos`
-  and `node-current`, and nothing else.** Docs-only means every changed path
+- **A documentation-only pull request skips the work of `e2e`, `e2e-macos`,
+  `node-current` and `node-previous-lts`, and nothing else.** Docs-only means every changed path
   is under `docs/` or is a root-level `*.md`. Each of the three jobs runs
   `bin/ci-docs-only.mjs` as a `scope` step straight after checkout, with
   `continue-on-error: true`, and gates everything after it (pnpm and Node
@@ -81,9 +82,8 @@ paths:
   collides with default setup.
 - `bin/check-node-version.mjs` is live here now: every lane that runs the
   pinned toolchain takes Node from `node-version-file: .node-version`;
-  `node-current` is the one deliberate, documented exception, and the
-  gate's own regex (which only rejects a hardcoded **digit**) already allows
-  it. `release.yml` follows the same two rules and adds a third: **it never
+  `node-current` and `node-previous-lts` are the two deliberate, documented exceptions,
+  and the gate's own regex (which only rejects a hardcoded **digit**) allows them. `release.yml` follows the same two rules and adds a third: **it never
   writes the text `verify.mjs`**. The grader reads a workflow as text, so a
   bare or dynamic invocation there switches `gate-lane-parity` off for
   `ci.yml` too -- measured, not assumed: the structural check count drops 48
