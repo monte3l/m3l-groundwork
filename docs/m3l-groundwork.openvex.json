@@ -4,7 +4,7 @@
   "author": "monte3l (Enrico Lionello)",
   "role": "Maintainer",
   "timestamp": "2026-10-16T14:16:58Z",
-  "version": 4,
+  "version": 8,
   "tooling": "Assembled from docs/security-review.md, GitHub's advisory records and an inspection of the published tarballs; see SECURITY.md, \"Dependency and code-scanning findings\".",
   "statements": [
     {
@@ -43,6 +43,30 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
           }
         }
       ],
@@ -87,6 +111,30 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
+          }
         }
       ],
       "status": "not_affected",
@@ -129,6 +177,30 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
           }
         }
       ],
@@ -173,6 +245,30 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
+          }
         }
       ],
       "status": "not_affected",
@@ -215,6 +311,30 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
           }
         }
       ],
@@ -259,6 +379,30 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
+          }
         }
       ],
       "status": "not_affected",
@@ -301,6 +445,30 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
           }
         }
       ],
@@ -345,6 +513,30 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
+          }
         }
       ],
       "status": "not_affected",
@@ -387,6 +579,30 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
           }
         }
       ],
@@ -431,6 +647,30 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
+          }
         }
       ],
       "status": "not_affected",
@@ -473,6 +713,30 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
           }
         }
       ],
@@ -517,6 +781,30 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
+          }
         }
       ],
       "status": "not_affected",
@@ -558,6 +846,30 @@
           "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
           }
         }
       ],
@@ -602,6 +914,30 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
+          }
         }
       ],
       "status": "not_affected",
@@ -645,6 +981,30 @@
           "identifiers": {
             "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
           }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.5",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.5"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.1.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.1.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.2.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.2.0"
+          }
         }
       ],
       "status": "not_affected",
@@ -652,5 +1012,5 @@
       "impact_statement": "`minimatch` is not part of the published package. The advisory was raised against the repository's release-tools lockfiles (`tools/release` and the `publishing` pack's copy) and, for minimatch, the root `pnpm-lock.yaml` (development tooling), recorded in docs/security-review.md under \"Advisories in glob and minimatch\", none of which is published. The package declares no dependencies, bundles none, and ships no lockfile or node_modules directory (checked against the 1.0.0, 1.0.1 and 1.0.2 tarballs), so it contains no copy of `minimatch`. Projects the CLI generates install their own dependency trees, which this statement does not cover."
     }
   ],
-  "last_updated": "2026-11-05T16:02:01Z"
+  "last_updated": "2026-11-06T01:52:51Z"
 }
