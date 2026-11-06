@@ -209,6 +209,43 @@ requires sharp >= 0.35.5.
 even with the fix: a change that adds an Images binding to `wrangler.jsonc`, or runs `wrangler dev`
 in CI, changes the reachability answer and needs this entry revisited.
 
+## Advisories in glob and minimatch (release-tools and root lockfiles)
+
+**Dated 2026-11-05.** Dependabot opened five alerts against two advisories,
+both published 2026-10-30 and fixed only in the new majors (no backport to the
+lines in use).
+
+| Advisory            | Package          | Severity | Vulnerable range    | Patched | Alerts                                                                         |
+| ------------------- | ---------------- | -------- | ------------------- | ------- | ------------------------------------------------------------------------------ |
+| GHSA-3g3m-2fjr-6pw4 | glob 13.0.6      | medium   | >= 9.0.0, <= 14.0.1 | 14.0.2  | #39 (`tools/release`), #37 (the `publishing` pack's copy)                      |
+| GHSA-g3hv-75wg-m249 | minimatch 10.2.6 | medium   | >= 7.0.0, < 11.0.1  | 11.0.1  | #43 (`tools/release`), #42 (the pack's copy), #41 (`pnpm-lock.yaml`, dev-only) |
+
+**Reachability.** No for all five. In both release-tools lockfiles glob arrives
+through `cacache` (via `make-fetch-happen`), which calls it only in `rm` and
+`verify`; the release flow stages a tarball and never clears or verifies an
+npm cache, and no pattern or abort signal comes from outside. In
+`pnpm-lock.yaml` minimatch is dev tooling (ESLint and typescript-eslint) fed
+our own config; nothing ships in the CLI tarball.
+
+**Fixed: release-tools (#37, #39, #42, #43).** Every parent is at its latest
+release, so no in-range bump exists. Both `package.json` files now carry
+`overrides` for `glob ^14.0.3` and `minimatch ^11.0.4` (an override works here
+because nothing is bundled). cacache passes only `silent`, `nosort`, `follow`
+and `nodir` to glob, all still accepted by glob 14. Checked on 2026-11-05: a
+clean `npm ci --ignore-scripts` installs, `npm audit` reports 0 in both
+directories, and `cacache.verify` and `rm.all` run against a temporary cache.
+Drop the overrides once `cacache` requires glob >= 14.0.2.
+
+**Open: root lockfile (#41).** minimatch 11 removes `makeRe`, and
+`eslint-plugin-import-x` 4.17.1 (the latest) imports it at module load, so an
+override to 11 stops the plugin from loading and breaks `pnpm lint`. Upstream
+fixes exist but are unreleased on 2026-11-05: un-ts/eslint-plugin-import-x#570
+(requires minimatch 11) and eslint/eslint#21463; a 10.x backport is discussed
+in isaacs/minimatch#333. Nothing is dismissed. Act when either an
+`eslint-plugin-import-x` release accepts minimatch 11 or a minimatch 10.x fix
+ships: refresh the lockfile, or add a `pnpm` override if the parent ranges
+still block it.
+
 ## Next review
 
 Done at GA (leaving the `rc` prerelease series, 2026-10-14): `pnpm audit` and

@@ -4,7 +4,7 @@
   "author": "monte3l (Enrico Lionello)",
   "role": "Maintainer",
   "timestamp": "2026-10-16T14:16:58Z",
-  "version": 3,
+  "version": 4,
   "tooling": "Assembled from docs/security-review.md, GitHub's advisory records and an inspection of the published tarballs; see SECURITY.md, \"Dependency and code-scanning findings\".",
   "statements": [
     {
@@ -564,7 +564,93 @@
       "status": "not_affected",
       "justification": "component_not_present",
       "impact_statement": "`sharp` is not part of the published package. The advisory was raised against the docs deploy tooling lockfile (`tools/deploy`), recorded in docs/security-review.md under \"Advisory in the docs deploy tooling\", which are not published. The package declares no dependencies, bundles none, and ships no lockfile or node_modules directory (checked against the 1.0.0, 1.0.1 and 1.0.2 tarballs), so it contains no copy of `sharp`. Projects the CLI generates install their own dependency trees, which this statement does not cover."
+    },
+    {
+      "vulnerability": {
+        "@id": "https://github.com/advisories/GHSA-3g3m-2fjr-6pw4",
+        "name": "GHSA-3g3m-2fjr-6pw4",
+        "description": "Glob: AbortSignal cancellation bypass allows post-timeout filesystem traversal",
+        "aliases": ["CVE-2026-118773"]
+      },
+      "products": [
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.2",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.2"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.3",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "`glob` is not part of the published package. The advisory was raised against the repository's release-tools lockfiles (`tools/release` and the `publishing` pack's copy) and, for minimatch, the root `pnpm-lock.yaml` (development tooling), recorded in docs/security-review.md under \"Advisories in glob and minimatch\", none of which is published. The package declares no dependencies, bundles none, and ships no lockfile or node_modules directory (checked against the 1.0.0, 1.0.1 and 1.0.2 tarballs), so it contains no copy of `glob`. Projects the CLI generates install their own dependency trees, which this statement does not cover."
+    },
+    {
+      "vulnerability": {
+        "@id": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+        "name": "GHSA-g3hv-75wg-m249",
+        "description": "minimatch has potential denial of service via globparts amplification",
+        "aliases": ["CVE-2026-118764"]
+      },
+      "products": [
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.0",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.0"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.1",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.1"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.2",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.2"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.3",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.3"
+          }
+        },
+        {
+          "@id": "pkg:npm/%40monte3l/groundwork@1.0.4",
+          "identifiers": {
+            "purl": "pkg:npm/%40monte3l/groundwork@1.0.4"
+          }
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "`minimatch` is not part of the published package. The advisory was raised against the repository's release-tools lockfiles (`tools/release` and the `publishing` pack's copy) and, for minimatch, the root `pnpm-lock.yaml` (development tooling), recorded in docs/security-review.md under \"Advisories in glob and minimatch\", none of which is published. The package declares no dependencies, bundles none, and ships no lockfile or node_modules directory (checked against the 1.0.0, 1.0.1 and 1.0.2 tarballs), so it contains no copy of `minimatch`. Projects the CLI generates install their own dependency trees, which this statement does not cover."
     }
   ],
-  "last_updated": "2026-10-19T09:03:42Z"
+  "last_updated": "2026-11-05T16:02:01Z"
 }
