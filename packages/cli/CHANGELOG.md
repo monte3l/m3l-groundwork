@@ -1,5 +1,13 @@
 # @monte3l/groundwork
 
+## [1.2.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.2.0...@monte3l/groundwork@1.2.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **deps:** override glob and minimatch in the publishing pack's release tools ([8f95822](https://github.com/monte3l/m3l-groundwork/commit/8f95822778270972c5fd5d2fe2d966aa2e5dad0c))
+* **deps:** override glob and minimatch in the release tools ([bc9f413](https://github.com/monte3l/m3l-groundwork/commit/bc9f4130670a92d53e6e63a2b79b28ee5dbfbc2f))
+
 ## [1.2.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.1.1...@monte3l/groundwork@1.2.0) (2026-11-05)
 
 
