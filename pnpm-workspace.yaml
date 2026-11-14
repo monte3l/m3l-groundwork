@@ -18,3 +18,9 @@ allowBuilds:
 # relying on pnpm's default so a future default change cannot silently
 # weaken the gate.
 minimumReleaseAge: 1440
+
+# minimatch < 11.0.1 has a denial-of-service advisory (GHSA-g3hv-75wg-m249) and no
+# patched 10.x exists. ESLint and typescript-estree still pin ^10, so force 11;
+# eslint-plugin-import-x >= 4.18 is the first release that supports it.
+overrides:
+  minimatch: ^11.0.1
