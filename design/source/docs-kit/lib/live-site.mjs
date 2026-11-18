@@ -154,7 +154,7 @@ export function diffHeaders(expected, actual) {
  * @returns {string}
  */
 export function pageUrlPath(outPath) {
-  let urlPath = "/" + outPath.replaceAll("\\", "/").replace(/^\/+/, "");
+  let urlPath = `/${outPath.replaceAll("\\", "/").replace(/^\/+/, "")}`;
   if (urlPath.endsWith(".html")) {
     urlPath = urlPath.slice(0, -".html".length);
     if (urlPath === "/index") urlPath = "/";
@@ -164,7 +164,7 @@ export function pageUrlPath(outPath) {
 
 function clip(text) {
   return text.length > MAX_LINE_TEXT
-    ? text.slice(0, MAX_LINE_TEXT) + "..."
+    ? `${text.slice(0, MAX_LINE_TEXT)}...`
     : text;
 }
 

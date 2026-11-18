@@ -327,7 +327,7 @@ function renderPage(config, allPages, localCss, page, rendered) {
   const { html, headings } = rendered.get(page.src);
   const title = pageTitle(page, headings);
   const depth = page.out.split("/").length - 1;
-  const assetPrefix = page.absolute ? "/assets" : depth === 0 ? "assets" : "../".repeat(depth) + "assets";
+  const assetPrefix = page.absolute ? "/assets" : depth === 0 ? "assets" : `${"../".repeat(depth)}assets`;
   const locals = localCss.map((name) => `\n<link rel="stylesheet" href="${assetPrefix}/local/${name}">`).join("");
   return `<!doctype html>
 <html lang="en">
@@ -494,17 +494,17 @@ function usage(message) {
 async function main() {
   const args = process.argv.slice(2);
   const check = args.includes("--check");
-  const valueOf = (name) => {
+  const optionValue = (name) => {
     const i = args.indexOf(name);
     return i === -1 ? null : (args[i + 1] ?? "");
   };
-  const requestedOut = valueOf("--out");
+  const requestedOut = optionValue("--out");
   if (!check && !requestedOut) return usage("pass --out <dir>, or --check to validate without writing");
   if (check && requestedOut) return usage("--check and --out are exclusive");
 
   let config;
   try {
-    config = await loadConfig(valueOf("--config") || "docs.config.mjs");
+    config = await loadConfig(optionValue("--config") || "docs.config.mjs");
   } catch (error) {
     if (error instanceof ConfigError) return usage(error.message);
     throw error;
