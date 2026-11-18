@@ -5,8 +5,8 @@ system for everything Enrico Lionello (`enri3l`) builds personally and
 everything published under the `monte3l` GitHub org.
 
 - **Source:** [github.com/monte3l/m3l-design](https://github.com/monte3l/m3l-design), release tag `v1.1.0`
-- **Version copied:** `v1.3.2`
-- **Last re-synced:** 2026-10-23
+- **Version copied:** `v1.3.3`
+- **Last re-synced:** 2026-11-18
 - **Date vendored into this repo:** 2026-09-26
 
 ## Governance: copy-based, not a live dependency

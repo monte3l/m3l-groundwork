@@ -178,7 +178,7 @@ export function buildHeadersFile({ scriptHash, imageHosts }) {
     "/assets/source/fonts/*",
     "  Cache-Control: public, max-age=31536000, immutable",
   ];
-  const text = lines.join("\n") + "\n";
+  const text = `${lines.join("\n")}\n`;
   assertHeadersLimits(text);
   return text;
 }
