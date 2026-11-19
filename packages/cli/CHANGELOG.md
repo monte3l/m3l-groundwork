@@ -1,5 +1,13 @@
 # @monte3l/groundwork
 
+## [1.3.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.2.1...@monte3l/groundwork@1.3.0) (2026-11-19)
+
+
+### Features
+
+* **templates:** read the dependency-review exemptions from a config file ([8189ec4](https://github.com/monte3l/m3l-groundwork/commit/8189ec47216999902640dadc64f95d11b0b0b3be))
+* **templates:** read the dependency-review exemptions from a config file ([299f148](https://github.com/monte3l/m3l-groundwork/commit/299f1481a16a4243c2e909567639645f28319b73))
+
 ## [1.2.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.2.0...@monte3l/groundwork@1.2.1) (2026-11-16)
 
 
