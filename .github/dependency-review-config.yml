@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+# SPDX-License-Identifier: MIT
+
 # Packages this repository exempts from the license check by package URL,
 # read by .github/workflows/dependency-review.yml (the `config-file` input).
 # The allowed licenses are in the workflow. See blueprint/files/dependency-review-config.yml in monte3l/.github.
