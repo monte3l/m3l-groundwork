@@ -686,3 +686,63 @@ export function renderMarkdown(rawSource, options = {}) {
   }
   return { html: bodyHtml + footnotesHtml, headings, italics: ctx.italics };
 }
+
+// The renderer's FENCE_RE, but at any indentation: a fence inside a nested list item is indented
+// further than FENCE_RE allows, and the renderer sees it after dedenting.
+const FENCE_LINE_RE = /^\s*(`{3,}|~{3,})\s*([^\s`~]*)\s*$/;
+// What a line starts with before its inline text: blockquote markers, then a list marker. The
+// renderer strips these first, so a bullet `*` never pairs with the `**` of a bold link.
+const LINE_PREFIX_RE = /^\s*(?:>\s?)*\s*(?:[-*+]\s+|\d+\.\s+)?/;
+
+/**
+ * Rewrites the targets inside one line of inline markdown. It walks the same
+ * tokens as `renderInline`, so a link or image is found exactly where the
+ * renderer would find it: a code span is left alone, a link or image target
+ * goes through `mapHref`, and the text of a link and the inside of bold or
+ * italic are searched in turn, since a link can sit inside either.
+ */
+function rewriteInline(text, mapHref) {
+  return text.replace(INLINE_TOKEN_RE, (...args) => {
+    const [code, imageLink, imageLinkHref, alt, src, footnote, linkText, href, boldStars, boldUnderscores, italicStar, italicUnderscore] =
+      args.slice(1, 13);
+    if (code !== undefined || footnote !== undefined) return args[0];
+    if (imageLink !== undefined) return `[${rewriteInline(imageLink, mapHref)}](${mapHref(imageLinkHref)})`;
+    if (alt !== undefined) return `![${alt}](${mapHref(src)})`;
+    if (linkText !== undefined) return `[${rewriteInline(linkText, mapHref)}](${mapHref(href)})`;
+    if (boldStars !== undefined) return `**${rewriteInline(boldStars, mapHref)}**`;
+    if (boldUnderscores !== undefined) return `__${rewriteInline(boldUnderscores, mapHref)}__`;
+    if (italicStar !== undefined) return `*${rewriteInline(italicStar, mapHref)}*`;
+    if (italicUnderscore !== undefined) return `_${rewriteInline(italicUnderscore, mapHref)}_`;
+    return args[0];
+  });
+}
+
+/**
+ * The document as markdown again, with every link and image target passed
+ * through `mapHref(href) => string`. Frontmatter and HTML comments are dropped,
+ * as `renderMarkdown` drops them, and fenced code is copied untouched. This is
+ * how a page becomes its agent-readable `.md` copy: the same text, with links
+ * that still work from where the copy is served.
+ *
+ * It works line by line, so a link whose text or target spans lines is not
+ * found. `--check` catches that: it renders each copy again and fails on any
+ * link that is not external, an anchor or a page of the site.
+ *
+ * @param {string} rawSource
+ * @param {(href: string) => string} mapHref
+ * @returns {string}
+ */
+export function rewriteLinks(rawSource, mapHref) {
+  const source = stripHtmlComments(stripFrontmatter(rawSource));
+  let inFence = false;
+  const lines = source.split("\n").map((line) => {
+    if (FENCE_LINE_RE.test(line)) {
+      inFence = !inFence;
+      return line;
+    }
+    if (inFence) return line;
+    const prefix = LINE_PREFIX_RE.exec(line)[0];
+    return prefix + rewriteInline(line.slice(prefix.length), mapHref);
+  });
+  return lines.join("\n");
+}

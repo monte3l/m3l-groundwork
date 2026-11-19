@@ -39,16 +39,20 @@ named by `--config`. The directory that holds the config is the repository root.
 | `designDir` | yes | `design` in a consumer, `.` in m3l-design itself |
 | `marker` | no | The adoption marker, default `<designDir>/README.md` |
 | `navGroups` | yes | Sidebar section names, in order |
-| `pages` | yes | `{ src, out, group, label }` per page. `src` is a repository path, `out` is the site path, and one page must have `out` `index.html` |
+| `pages` | yes | `{ src, out, group, label, summary }` per page. `src` is a repository path, `out` is the site path, and one page must have `out` `index.html`. `summary` is optional, one line, and `llms.txt` prints it after the page's link |
 | `nav` | no | Top navigation, `{ href, label }`. An `href` is a page `out` or an `https` URL |
 | `exclude` | no | `{ glob, reason }` for tracked Markdown that is deliberately not a page |
 | `generators` | no | Modules that return pages that cannot come from Markdown |
 | `parity` | no | Modules that compare the documentation with the code |
 | `brand` | no | `true` to add the MONTE3L favicon links, a copy of `favicon.ico` at the site root, and the symbol, linked to the home page, in the header. Needs `<designDir>/source/brand/` from m3l-design v1.2.0 or later, and `--check` fails if a file is missing. Default `false` |
+| `llms` | no | `{ description, optionalGroups, full }`. Adds a markdown copy of every page, `llms.txt`, and the head links that point to them. See [For agents](#for-agents). Default off |
+| `sitemap` | no | `true` to write `sitemap.xml`. Default `false` |
 | `manifest` | no | The `package.json` or `plugin.json` that `--metadata` and the homepage gate read |
 
 A generator default-exports `async ({ root, config }) => [{ out, group, label, html }]`.
 The `html` is the body of the page. The kit still checks its links and anchors.
+A generated page may also return `summary` and `markdown`, which matter only
+when `llms` is set. See [For agents](#for-agents).
 
 A parity module default-exports `async ({ root, config }) => string[]`, one
 message per drift. The helpers in `lib/parity.mjs` cover the common cases:
@@ -67,8 +71,39 @@ Every problem is listed in one run.
 | Design integrity | A file does not match `SHA256SUMS`, a file under `source/` is not listed in it, or the marker is not the vendored tier |
 | Local CSS | A stylesheet in `<designDir>/local/` holds a colour or length literal instead of a `var(--token)` |
 | Alerts | A page source has more than two GitHub alerts in a row |
+| Agent copies | A link in a `.md` copy is not external, an anchor or a page of the site. This is how a link split across lines shows up, because the rewrite works line by line |
 | Homepage | The manifest `homepage` is not `siteUrl` |
 | Parity | A parity module reports a message |
+
+## For agents
+
+Setting `llms` or `sitemap` adds files for readers that are not browsers. Both
+are off by default, and a site that sets neither builds exactly as it did
+before.
+
+| Option | Adds |
+| --- | --- |
+| `llms: { description, optionalGroups, full }` | A markdown copy of every Markdown page (and of a generated page that returns `markdown`) at the same path with `.md`, `llms.txt`, a `rel="describedby"` link to `llms.txt` in every page head, and a `rel="alternate"` link to the copy in the head of each page that has one. `description` is the one-line summary under the title. `optionalGroups` names nav groups that go under a final `## Optional`, which tells an agent it may skip them. `full: true` also writes `llms-full.txt`, every copy in one file |
+| `sitemap: true` | `sitemap.xml`, every page by its public URL |
+
+- A copy is the page source with its links rewritten so they work from the
+  copy's URL. A link to another page goes to that page's copy, a repository
+  file goes to GitHub, and an external link or an anchor is untouched.
+  Frontmatter and HTML comments are dropped, as they are on the site.
+- With `llms` set, every page `out`, generated or not, must end in `.html` so
+  its copy can be named, and must be unique. A page may not be called
+  `llms.txt`, `llms-full.txt` or `sitemap.xml`, and a nav group may not be
+  called `Optional` unless it is listed in `optionalGroups`.
+- Copies use LF line endings, so the bytes do not depend on the checkout.
+  Paths in `llms.txt` and the sitemap are percent-encoded.
+- `llms.txt` follows [llmstxt.org](https://llmstxt.org/): the site name, a
+  summary, then one list of links per nav group, with absolute URLs.
+  `llms-full.txt` is a convention of docs platforms and is not part of that
+  proposal, so it has its own switch.
+- A generated page is linked to its page unless it returns `markdown`, which is
+  then served as its copy exactly as returned, so it must use final links.
+- The kit sets no content type for these files. The host picks one from the
+  extension.
 
 ## Rules for the site
 
