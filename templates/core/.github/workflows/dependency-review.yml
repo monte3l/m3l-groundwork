@@ -24,3 +24,8 @@ jobs:
         with:
           fail-on-severity: high
           allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0
+          # Packages exempted from the license check by package URL live in the
+          # file below, never in this one, so an exemption never makes this
+          # workflow differ from the org template. The file must exist and hold
+          # at least one key: the action fails on a missing or an empty one.
+          config-file: ./.github/dependency-review-config.yml

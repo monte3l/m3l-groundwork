@@ -1,0 +1,13 @@
+# Packages this project exempts from the license check by package URL, read by
+# .github/workflows/dependency-review.yml (the action's `config-file` input).
+# The allowed licenses are in the workflow.
+#
+# Exempt a tool the project runs but never ships (a deploy CLI and its platform
+# binaries), by package URL, after checking that the project can accept its
+# terms. Do not add a license to the workflow for it. Example:
+#
+#   allow-dependencies-licenses:
+#     - pkg:npm/%40img/sharp-libvips-linux-x64
+#
+# Keep at least one key: the action fails on an empty file.
+allow-dependencies-licenses: []
