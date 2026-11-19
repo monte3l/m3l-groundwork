@@ -16,8 +16,9 @@
  * limits, tracked Markdown that is neither a page nor excluded, a stale
  * `pages`/`exclude` entry, a `SHA256SUMS` mismatch, a design marker that is
  * not the vendored tier, a literal in a local stylesheet, more than two
- * alerts in a row, a manifest `homepage` that is not the site URL, or any
- * message from a project parity module. Exit 2 is a bad command line or
+ * alerts in a row, a manifest `homepage` that is not the site URL, a link in
+ * an agent-readable `.md` copy that is not external, an anchor or a page, or
+ * any message from a project parity module. Exit 2 is a bad command line or
  * config. The contract is in `README.md` next to this file.
  */
 import { execFileSync } from "node:child_process";
@@ -35,8 +36,17 @@ import {
   pageCoverageProblems,
   shaSumsProblems,
 } from "./lib/checks.mjs";
+import {
+  LLMS_FILE,
+  LLMS_FULL_FILE,
+  SITEMAP_FILE,
+  buildLlmsFull,
+  buildLlmsTxt,
+  buildSitemap,
+  markdownOutPath,
+} from "./lib/agent-docs.mjs";
 import { ConfigError, loadConfig } from "./lib/config.mjs";
-import { MarkdownError, escapeHtml, extractHeadings, renderMarkdown } from "./lib/markdown.mjs";
+import { MarkdownError, escapeHtml, extractHeadings, renderMarkdown, rewriteLinks } from "./lib/markdown.mjs";
 import { buildHeadersFile, externalImageHosts, hashInlineScript } from "./lib/site-headers.mjs";
 
 const KIT_DIR = import.meta.dirname;
@@ -304,6 +314,109 @@ function renderSidebar(config, allPages, page) {
   return `<nav class="m3l-nav m3l-site-sidebar" aria-label="Docs">${groups}</nav>`;
 }
 
+/**
+ * A page's link, as it must read in the `.md` copy: a link to another page of
+ * the site goes to that page's copy, and everything else (an external URL, an
+ * anchor, a repository file already turned into a GitHub URL, a generated page
+ * that has no copy) is left as `resolveHref` made it.
+ */
+function toCopyHref(href, page, copyTargets) {
+  if (EXTERNAL_HREF_RE.test(href)) return href;
+  const [rawPath, frag] = splitFragment(href);
+  const target = path.posix.normalize(path.posix.join(path.posix.dirname(page.out), rawPath));
+  if (!copyTargets.has(target)) return href;
+  const rel = path.posix.relative(path.posix.dirname(page.out), markdownOutPath(target));
+  return frag ? `${rel}#${frag}` : rel;
+}
+
+/**
+ * The agent-readable files of a site, for a config with `llms` or `sitemap`:
+ * the `.md` copy of every Markdown page (and of a generated page that returns
+ * `markdown`), the pages with `markdownOut` set, and the text of `llms.txt`,
+ * `llms-full.txt` and `sitemap.xml`. Returns null when the config asks for none.
+ */
+function buildAgentFiles(config, mdPages, generated, sources) {
+  if (!config.llms && !config.sitemap) return null;
+  const allPages = [...mdPages, ...generated];
+  if (!config.llms) {
+    return { pages: allPages, copies: [], files: new Map([[SITEMAP_FILE, buildSitemap({ siteUrl: config.siteUrl, pages: allPages })]]) };
+  }
+  const taken = new Map();
+  const reserved = new Set([LLMS_FILE, ...(config.llms.full ? [LLMS_FULL_FILE] : []), ...(config.sitemap ? [SITEMAP_FILE] : [])]);
+  for (const page of allPages) {
+    for (const name of [page.out, ...(page.out.endsWith(".html") ? [markdownOutPath(page.out)] : [])]) {
+      if (reserved.has(name)) throw new ConfigError(`"${page.out}" clashes with "${name}", a file the kit writes for "llms" or "sitemap"`);
+    }
+    if (taken.has(page.out)) throw new ConfigError(`"${page.out}" is the output of two pages (${taken.get(page.out)} and ${page.src})`);
+    taken.set(page.out, page.src);
+    if (!page.out.endsWith(".html")) throw new ConfigError(`${page.src}: "out" must end in .html when "llms" is set, so its markdown copy can be named`);
+  }
+  for (const page of generated) {
+    if (page.markdown !== undefined && typeof page.markdown !== "string") {
+      throw new ConfigError(`generated page "${page.out}": "markdown" must be a string`);
+    }
+    if (page.summary !== undefined && (typeof page.summary !== "string" || /[\r\n]/.test(page.summary))) {
+      throw new ConfigError(`generated page "${page.out}": "summary" must be a single-line string`);
+    }
+  }
+  const copyTargets = new Set([...mdPages, ...generated.filter((page) => page.markdown !== undefined)].map((page) => page.out));
+  const resolveCtx = { config, mdPages, headingIndex: new Map(), nonPageHeadingCache: new Map(), problems: [], check: false };
+  const copies = [];
+  const pages = allPages.map((page) => {
+    if (!copyTargets.has(page.out)) return page;
+    const markdownOut = markdownOutPath(page.out);
+    const source = page.generated
+      ? page.markdown
+      : rewriteLinks(sources.get(page.src), (href) => toCopyHref(resolveHref(href, page, resolveCtx), page, copyTargets));
+    // LF only, so the bytes do not depend on the checkout's line endings: check-live compares them.
+    const text = source.replace(/\r\n/g, "\n");
+    copies.push({ markdownOut, htmlOut: page.out, text: text.endsWith("\n") ? text : `${text}\n` });
+    return { ...page, markdownOut };
+  });
+  const files = new Map([
+    [LLMS_FILE, buildLlmsTxt({ title: config.title, siteUrl: config.siteUrl, navGroups: config.navGroups, llms: config.llms, pages })],
+  ]);
+  if (config.llms.full) {
+    files.set(LLMS_FULL_FILE, buildLlmsFull({ title: config.title, siteUrl: config.siteUrl, llms: config.llms, copies }));
+  }
+  if (config.sitemap) files.set(SITEMAP_FILE, buildSitemap({ siteUrl: config.siteUrl, pages }));
+  return { pages, copies, files };
+}
+
+/**
+ * Renders each `.md` copy once more and reports every link that is not
+ * external, an anchor or a page of the site. `rewriteLinks` works line by line,
+ * so a link split across lines would stay as the repository wrote it and point
+ * nowhere from the copy's URL: this is the gate that finds it.
+ */
+function agentCopyProblems(agent, allPages) {
+  const problems = [];
+  const known = new Set([...agent.copies.map((copy) => copy.markdownOut), ...allPages.map((page) => page.out)]);
+  for (const copy of agent.copies) {
+    const hrefs = [];
+    try {
+      renderMarkdown(copy.text, {
+        resolveLink: (href) => {
+          hrefs.push(href);
+          return href;
+        },
+      });
+    } catch (error) {
+      problems.push(`${copy.markdownOut}: the copy does not render: ${error.message}`);
+      continue;
+    }
+    for (const href of hrefs) {
+      if (EXTERNAL_HREF_RE.test(href)) continue;
+      const [rawPath] = splitFragment(href);
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(copy.markdownOut), rawPath));
+      if (!known.has(target)) {
+        problems.push(`${copy.markdownOut}: link "${href}" is not external, an anchor or a page of the site (the rewrite did not find it, for example a link split across lines)`);
+      }
+    }
+  }
+  return problems;
+}
+
 const THEME_TOGGLE_SCRIPT = `(function () {
   var root = document.documentElement;
   try {
@@ -329,12 +442,17 @@ function renderPage(config, allPages, localCss, page, rendered) {
   const depth = page.out.split("/").length - 1;
   const assetPrefix = page.absolute ? "/assets" : depth === 0 ? "assets" : `${"../".repeat(depth)}assets`;
   const locals = localCss.map((name) => `\n<link rel="stylesheet" href="${assetPrefix}/local/${name}">`).join("");
+  // For agents: the page's markdown copy, and the llms.txt that describes the site.
+  const rootPrefix = page.absolute ? "/" : "../".repeat(depth);
+  const agentLinks = config.llms
+    ? `\n<link rel="describedby" href="${rootPrefix}${LLMS_FILE}">${page.markdownOut ? `\n<link rel="alternate" type="text/markdown" href="${escapeHtml(path.posix.basename(page.markdownOut))}">` : ""}`
+    : "";
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(documentTitle(title, config.title))}</title>
+<title>${escapeHtml(documentTitle(title, config.title))}</title>${agentLinks}
 <link rel="stylesheet" href="${assetPrefix}/tokens.css">
 <link rel="stylesheet" href="${assetPrefix}/source/components/bundle.css">
 <link rel="stylesheet" href="${assetPrefix}/kit/site.css">${locals}${config.brand ? renderBrandHead(assetPrefix) : ""}
@@ -401,7 +519,7 @@ async function copyAssets(config, outDir, localCss) {
   }
 }
 
-async function writeSite(config, allPages, outDir, rendered) {
+async function writeSite(config, allPages, outDir, rendered, agent = null) {
   const localCss = await localCssFiles(config);
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
@@ -416,6 +534,11 @@ async function writeSite(config, allPages, outDir, rendered) {
     await copyFile(path.join(config.root, config.designDir, "source/brand/favicon/favicon.ico"), path.join(outDir, "favicon.ico"));
   }
   await writeFile(path.join(outDir, NOT_FOUND_PAGE.out), renderNotFoundPage(config, allPages, localCss), "utf8");
+  for (const copy of agent?.copies ?? []) {
+    await mkdir(path.dirname(path.join(outDir, copy.markdownOut)), { recursive: true });
+    await writeFile(path.join(outDir, copy.markdownOut), copy.text, "utf8");
+  }
+  for (const [name, text] of agent?.files ?? []) await writeFile(path.join(outDir, name), text, "utf8");
   const htmlPages = [...rendered.values()].map((page) => page.html);
   const headersText = buildHeadersFile({
     scriptHash: hashInlineScript(THEME_TOGGLE_SCRIPT),
@@ -530,19 +653,27 @@ async function main() {
   for (const page of generated) {
     rendered.set(page.src, { html: page.html, headings: headingsOfHtml(page.html), italics: [] });
   }
-  const allPages = [...mdPages, ...generated];
+  let agent;
+  try {
+    agent = buildAgentFiles(config, mdPages, generated, sources);
+  } catch (error) {
+    if (error instanceof ConfigError || error instanceof MarkdownError) return usage(error.message);
+    throw error;
+  }
+  const allPages = agent ? agent.pages : [...mdPages, ...generated];
 
   if (!check) {
     const missing = brandProblems(config);
     if (missing.length > 0) return usage(missing.join("\n"));
     const outDir = path.resolve(config.root, requestedOut);
-    await writeSite(config, allPages, outDir, rendered);
+    await writeSite(config, allPages, outDir, rendered, agent);
     const rel = path.relative(config.root, outDir);
     console.log(`wrote ${rel.startsWith("..") ? outDir : `${rel}/`}`);
     return;
   }
 
   for (const page of generated) problems.push(...generatedPageProblems(page, rendered, allPages));
+  if (agent) problems.push(...agentCopyProblems(agent, allPages));
   const gate = await repoProblems(config, sources);
   let failed = false;
   const report = (heading, list) => {
@@ -557,7 +688,7 @@ async function main() {
   if (!failed) {
     const tmpDir = await mkdtemp(path.join(tmpdir(), "m3l-docs-check-"));
     try {
-      await writeSite(config, allPages, tmpDir, rendered);
+      await writeSite(config, allPages, tmpDir, rendered, agent);
     } catch (error) {
       console.error("fail  the site does not build:");
       console.error(`      ${error.message}`);
