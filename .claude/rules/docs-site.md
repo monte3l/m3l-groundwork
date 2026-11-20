@@ -55,7 +55,14 @@ directory and fails on a broken link or anchor, an italic span (the same
 bold-not-italic rule `.claude/rules/docs.md` states), a `_headers` file over
 Cloudflare's limits, uncovered or stale Markdown, a `design/SHA256SUMS`
 mismatch, a literal in `design/local/`, more than two alerts in a row, and a
-manifest `homepage` that is not the site URL. `--out <dir>` writes the real
+manifest `homepage` that is not the site URL, and on any message from the
+config's `parity` module, `bin/doc-parity.mjs`: the README's packs table (and
+`templates/packs/README.md`'s) against the pack directories and the modes they
+claim, its flags table against the flags `packages/cli/src/main.ts` declares in
+its `*_FLAGS` sets, the
+Node and pnpm versions it names against `engines` and `packageManager`, and the
+`/customize` skill against `packages/plugin/skills`. Add a pack or a flag and the
+README row in the same change, or this step fails. `--out <dir>` writes the real
 site. `docs.yml`'s `build` job runs it with no `pnpm install`, since the kit
 uses Node builtins only.
 

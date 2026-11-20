@@ -81,7 +81,9 @@ tools/                  Pinned CI tooling, kept out of `.github/` because
                          lockfile.
 
 bin/                    This repo's own gate scripts: verify.mjs, check-*.mjs,
-                         eval.mjs, ci-docs-only.mjs, soak.sh. The docs
+                         eval.mjs, ci-docs-only.mjs, soak.sh, and
+                         doc-parity.mjs (the docs kit's parity module,
+                         run by its --check). The docs
                          site builder is not here: it is the vendored kit,
                          design/source/docs-kit/.
                          The step list they all read from is
