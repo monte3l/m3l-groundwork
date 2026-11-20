@@ -134,6 +134,11 @@ function baseInventory(
       suffix: ".staged",
       files: [],
     },
+    stagedDivergent: {
+      dir: ".groundwork/baseline-divergent",
+      suffix: ".staged",
+      files: [],
+    },
     stagedPacks: [],
     ...overrides,
   };
@@ -524,9 +529,20 @@ describe("renderReport", () => {
             relPath: "package.json",
             status: "divergent",
             keyDiffs: ["type", "scripts"],
+            targetSha256: null,
           },
-          { relPath: "README.md", status: "absent", keyDiffs: undefined },
-          { relPath: "tsconfig.json", status: "identical", keyDiffs: [] },
+          {
+            relPath: "README.md",
+            status: "absent",
+            keyDiffs: undefined,
+            targetSha256: null,
+          },
+          {
+            relPath: "tsconfig.json",
+            status: "identical",
+            keyDiffs: [],
+            targetSha256: null,
+          },
         ],
       }),
     );
@@ -545,18 +561,30 @@ describe("renderReport", () => {
     const report = renderReport(
       baseInventory(templateRoot, {
         conflicts: [
-          { relPath: "README.md", status: "absent", keyDiffs: undefined },
+          {
+            relPath: "README.md",
+            status: "absent",
+            keyDiffs: undefined,
+            targetSha256: null,
+          },
           {
             relPath: "eslint.config.js",
             status: "absent",
             keyDiffs: undefined,
+            targetSha256: null,
           },
           {
             relPath: "docs/architecture.md",
             status: "absent",
             keyDiffs: undefined,
+            targetSha256: null,
           },
-          { relPath: "package.json", status: "identical", keyDiffs: [] },
+          {
+            relPath: "package.json",
+            status: "identical",
+            keyDiffs: [],
+            targetSha256: null,
+          },
         ],
         // Only 3 of the 3 absent conflicts actually staged (this fixture
         // intentionally keeps the counts equal in SHAPE but distinguishes
@@ -585,11 +613,17 @@ describe("renderReport", () => {
     const report = renderReport(
       baseInventory(templateRoot, {
         conflicts: [
-          { relPath: "README.md", status: "absent", keyDiffs: undefined },
+          {
+            relPath: "README.md",
+            status: "absent",
+            keyDiffs: undefined,
+            targetSha256: null,
+          },
           {
             relPath: "eslint.config.js",
             status: "absent",
             keyDiffs: undefined,
+            targetSha256: null,
           },
         ],
         stagedBaseline: {
@@ -610,11 +644,17 @@ describe("renderReport", () => {
     const report = renderReport(
       baseInventory(templateRoot, {
         conflicts: [
-          { relPath: "README.md", status: "absent", keyDiffs: undefined },
+          {
+            relPath: "README.md",
+            status: "absent",
+            keyDiffs: undefined,
+            targetSha256: null,
+          },
           {
             relPath: "eslint.config.js",
             status: "absent",
             keyDiffs: undefined,
+            targetSha256: null,
           },
         ],
         stagedBaseline: {
@@ -860,6 +900,7 @@ describe("renderReport", () => {
                 relPath: "bin/file-budget-baseline.json",
                 status: "divergent",
                 keyDiffs: undefined,
+                targetSha256: null,
               },
             ],
           }),

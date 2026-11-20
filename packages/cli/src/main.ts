@@ -60,9 +60,12 @@ import { surveyProject } from "./survey/survey.js";
 import { planConflicts } from "./conflicts.js";
 import {
   STAGED_BASELINE_DIR,
+  STAGED_DIVERGENT_DIR,
   STAGED_SUFFIX,
   planBaselineStaging,
+  planDivergentStaging,
   stageBaselineAdditions,
+  stageDivergentBaseline,
 } from "./baseline-stage.js";
 import {
   assertDirectoryComponent,
@@ -1006,10 +1009,13 @@ function writePendingDocument(
  * files as `files/<path>.staged` -- all packs written to a temporary
  * sibling directory and swapped in by rename, so `packs/` is never
  * half-written (`stagePacks`); absent baseline files are staged the same
- * way as inert `<path>.staged` copies at `.groundwork/baseline/`. With a
+ * way as inert `<path>.staged` copies at `.groundwork/baseline/`, and
+ * divergent ones -- as the token-substituted bytes the comparison used -- at
+ * `.groundwork/baseline-divergent/`. With a
  * previous staging in place each swap is two renames (park the old
  * directory, then move the new one in); a kill between them leaves that
- * directory absent with the old copy under its `.packs-*`/`.baseline-*`
+ * directory absent with the old copy under its
+ * `.packs-*`/`.baseline-*`/`.baseline-divergent-*`
  * work directory's `previous/` -- safe, because `inventory.json` was
  * already deleted, so nothing reads the gap as a completed run.
  *
@@ -1017,12 +1023,14 @@ function writePendingDocument(
  * this order: the four stale-file paths are scope-checked against
  * {@link assertAdoptWriteScope}; every surveyed pack is loaded and validated by
  * `loadPack` and surveyed (`planConflicts`, `observeWiring`); the pack
- * staging plan (`planPackStaging`) and the baseline staging plan
- * (`planBaselineStaging`) are each computed once, validated, and every path
+ * staging plan (`planPackStaging`) and the absent and divergent baseline
+ * staging plans (`planBaselineStaging`, `planDivergentStaging`) are each
+ * computed once, validated, and every path
  * they would write scope-checked; the `/customize` skill's planned install
  * paths (`plannedCustomizeSkillPaths`, a lexical check of its path
- * constants) are scope-checked; then `.groundwork/`, `.groundwork/packs`
- * and `.groundwork/baseline` are each refused if they are a symlink. So an
+ * constants) are scope-checked; then `.groundwork/`, `.groundwork/packs`,
+ * `.groundwork/baseline` and `.groundwork/baseline-divergent` are each
+ * refused if they are a symlink. So an
  * invalid pack (a malformed manifest, a prototype-sensitive key in its
  * wiring, an unstageable file tree), an invalid baseline plan, an
  * out-of-scope staging or skill-install path, or a symlinked staging
@@ -1035,8 +1043,8 @@ function writePendingDocument(
  * recorded just before. A previous `.groundwork/headless/pending.json` is
  * deleted right after them, with or without `--json`, and
  * `.groundwork/headless/` too when that leaves it empty (it is scope-checked
- * and refused if a symlink with the others). After the deletions, packs and the baseline are
- * staged from the plans already computed (their trees are not walked
+ * and refused if a symlink with the others). After the deletions, packs, the
+ * absent baseline files and the divergent ones are staged from the plans already computed (their trees are not walked
  * again), the harness and toolchain are graded, the `/customize` skill is
  * installed and its writes scope-checked, `adoption-report.md` is written
  * (its `## Next step` leading with the same sentence the console prints
@@ -1087,6 +1095,7 @@ function runAdopt(
 
   const groundworkDir = join(options.targetDir, ".groundwork");
   const stagedBaselineDir = `.groundwork/${STAGED_BASELINE_DIR}`;
+  const stagedDivergentDir = `.groundwork/${STAGED_DIVERGENT_DIR}`;
   const stalePaths = STALE_FILE_NAMES.map((name) => ({
     name,
     path: join(groundworkDir, name),
@@ -1104,8 +1113,9 @@ function runAdopt(
   ]);
 
   // Every surveyed pack must pass loadPack's validation (including its
-  // prototype-sensitive wiring-key check), and both staging plans (packs and
-  // baseline) must be computed and scope-checked, before anything under
+  // prototype-sensitive wiring-key check), and every staging plan (packs,
+  // absent and divergent baseline) must be computed and scope-checked,
+  // before anything under
   // .groundwork/ is touched, so an invalid pack or plan fails the run with
   // the previous inventory/report still intact rather than half-cleared.
   const packNames = options.packs.length > 0 ? options.packs : listPackNames();
@@ -1139,6 +1149,13 @@ function runAdopt(
     tokens,
   );
   assertAdoptWriteScope(options.targetDir, baselinePlan.paths);
+  const divergentPlan = planDivergentStaging(
+    templateRoot,
+    conflicts,
+    groundworkDir,
+    tokens,
+  );
+  assertAdoptWriteScope(options.targetDir, divergentPlan.paths);
   // A constant drift guard only: it lexically checks paths built from
   // customize-paths.ts's constants, so it can catch one of those constants
   // being edited to escape the project, and nothing else -- it reads no
@@ -1155,6 +1172,7 @@ function runAdopt(
   assertNotSymlink(groundworkDir);
   assertNotSymlink(join(options.targetDir, STAGED_PACKS_DIR));
   assertNotSymlink(join(groundworkDir, STAGED_BASELINE_DIR));
+  assertNotSymlink(join(groundworkDir, STAGED_DIVERGENT_DIR));
   // .groundwork/headless/ must be a real directory (or absent), and the
   // pending paths files: a directory at pending.json or its temp path would
   // fail the run only after the deletions below. A symlink at either is
@@ -1207,6 +1225,13 @@ function runAdopt(
       tokens,
       baselinePlan,
     );
+    const stagedDivergentFiles = stageDivergentBaseline(
+      templateRoot,
+      conflicts,
+      groundworkDir,
+      tokens,
+      divergentPlan,
+    );
 
     inventory = buildInventory({
       detection,
@@ -1221,6 +1246,11 @@ function runAdopt(
         dir: stagedBaselineDir,
         suffix: STAGED_SUFFIX,
         files: stagedBaselineFiles,
+      },
+      stagedDivergent: {
+        dir: stagedDivergentDir,
+        suffix: STAGED_SUFFIX,
+        files: stagedDivergentFiles,
       },
       stagedPacks,
     });

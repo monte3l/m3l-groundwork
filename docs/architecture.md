@@ -201,20 +201,33 @@ maintainer checklist.
 ## Inventory schema
 
 Adopt mode writes `.groundwork/inventory.json`, the machine-readable handoff
-`/customize`'s Step 0 reads. The current `schemaVersion` is **6**
+`/customize`'s Step 0 reads. The current `schemaVersion` is **7**
 (`INVENTORY_SCHEMA_VERSION` in `packages/cli/src/inventory.ts`). The survey is
 an index, not an interpretation: it records facts the CLI can establish
 offline and never a verdict. Anything it could not parse goes into
 `survey.undetermined`. `/customize` tolerates an older inventory: below 3 there
 is no harness grade, below 4 no toolchain grade, below 5 no `stagedBaseline`,
-and below 6 no `survey.harness.pluginLayout`. The file is written atomically,
+below 6 no `survey.harness.pluginLayout`, and below 7 no
+`conflicts[].targetSha256` or `stagedDivergent`. The file is written atomically,
 so its presence means the run completed.
+
+`conflicts[].targetSha256` is `null` in two cases a consumer must tell apart
+by `status`. On an `absent` conflict, `null` means nothing is there, so a
+write is safe. On a `divergent` conflict, `null` means the comparison could
+not read the file: the drift is undetermined, so `--apply` must refuse to
+`take` that file and must never treat `null` as "no drift". `--apply` trusts
+only the files `stagedDivergent` lists and ignores any other
+`.groundwork/baseline-divergent/` directory (an older CLI run after a v7 run
+leaves one behind). A staged divergent copy is the UTF-8 decode and re-encode
+of the token-substituted template, which would change a binary template's
+bytes; `templates/core` has none today, and `--apply take` must keep that in
+mind if one is added.
 
 ### Top level
 
 | Field                  | Type   | Meaning                                                                            |
 | ---------------------- | ------ | ---------------------------------------------------------------------------------- |
-| `schemaVersion`        | number | The schema version, currently 6.                                                   |
+| `schemaVersion`        | number | The schema version, currently 7.                                                   |
 | `cliVersion`           | string | The CLI's own `package.json` version, or `"unknown"` when it cannot be read.       |
 | `generatedAt`          | string | ISO 8601 timestamp of when the inventory was built.                                |
 | `modeSignal`           | string | The fact that selected the mode, such as `found package.json` or `--adopt forced`. |
@@ -228,25 +241,28 @@ so its presence means the run completed.
 | `toolchainGrade`       | object | Wiring integrity and rubric quality of the TypeScript toolchain.                   |
 | `toolchainConformance` | object | How far the toolchain files have drifted from the baseline's.                      |
 | `stagedBaseline`       | object | The absent baseline files, staged as inert copies.                                 |
+| `stagedDivergent`      | object | The divergent baseline files, staged as inert token-substituted copies.            |
 | `stagedPacks`          | array  | Every surveyed pack, staged as inert copies.                                       |
 
 Every `relPath` in `conflicts` and `packs[].fileConflicts`, and every path in
-`stagedBaseline` and `stagedPacks`, uses `/` on every platform.
+`stagedBaseline`, `stagedDivergent` and `stagedPacks`, uses `/` on every platform.
 
 ### Conflicts, grades and staging
 
-| Field                                        | Type     | Meaning                                                                                                            |
-| -------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `conflicts[].relPath`                        | string   | The baseline file's path relative to the project root.                                                             |
-| `conflicts[].status`                         | string   | `absent`, `identical` or `divergent`.                                                                              |
-| `conflicts[].keyDiffs`                       | string[] | For `package.json` and `tsconfig*.json` only, the top-level keys that differ.                                      |
-| `harnessGrade`, `toolchainGrade`             | object   | `findings`, `structural` and `rubric` tallies, and `rubricScore` (1 minus failed over checked).                    |
-| `harnessConformance`, `toolchainConformance` | object   | `identical`, `divergent` and `absent` counts plus `divergentFiles` and `absentFiles`. Information, never a defect. |
-| `stagedBaseline.dir`                         | string   | Project-relative staging directory, `.groundwork/baseline`.                                                        |
-| `stagedBaseline.suffix`                      | string   | The suffix every staged file carries, `.staged`.                                                                   |
-| `stagedBaseline.files[]`                     | array    | Each file's `path` (install path), `staged` (name inside `dir`) and `sha256` of the staged bytes.                  |
-| `stagedPacks[].name`, `dir`, `suffix`        | string   | A pack's manifest name, its staging directory `.groundwork/packs/<name>`, and `.staged`.                           |
-| `stagedPacks[].manifest`, `files[]`          | object   | The staged `pack.json` and the pack's `files/` tree, each as `path`, `staged` and `sha256`.                        |
+| Field                                        | Type           | Meaning                                                                                                            |
+| -------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `conflicts[].relPath`                        | string         | The baseline file's path relative to the project root.                                                             |
+| `conflicts[].status`                         | string         | `absent`, `identical` or `divergent`.                                                                              |
+| `conflicts[].keyDiffs`                       | string[]       | For `package.json` and `tsconfig*.json` only, the top-level keys that differ.                                      |
+| `conflicts[].targetSha256`                   | string \| null | sha256 of the project file's bytes the comparison read; `null` when absent or unreadable.                          |
+| `harnessGrade`, `toolchainGrade`             | object         | `findings`, `structural` and `rubric` tallies, and `rubricScore` (1 minus failed over checked).                    |
+| `harnessConformance`, `toolchainConformance` | object         | `identical`, `divergent` and `absent` counts plus `divergentFiles` and `absentFiles`. Information, never a defect. |
+| `stagedBaseline.dir`                         | string         | Project-relative staging directory, `.groundwork/baseline`.                                                        |
+| `stagedBaseline.suffix`                      | string         | The suffix every staged file carries, `.staged`.                                                                   |
+| `stagedBaseline.files[]`                     | array          | Each file's `path` (install path), `staged` (name inside `dir`) and `sha256` of the staged bytes.                  |
+| `stagedDivergent`                            | object         | Same shape as `stagedBaseline`, `dir` `.groundwork/baseline-divergent`; feeds the headless `--apply` step.         |
+| `stagedPacks[].name`, `dir`, `suffix`        | string         | A pack's manifest name, its staging directory `.groundwork/packs/<name>`, and `.staged`.                           |
+| `stagedPacks[].manifest`, `files[]`          | object         | The staged `pack.json` and the pack's `files/` tree, each as `path`, `staged` and `sha256`.                        |
 
 ### Survey
 

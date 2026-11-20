@@ -266,6 +266,9 @@ file outside `templates/**`; see `bin/check-license-headers.mjs`.
 Adopt mode's inert copy of the baseline additions, written under
 `.groundwork/baseline/` with a `.staged` suffix so no project tool can
 discover the files as live source; `/customize` strips the suffix on install.
+The baseline files the project already has in a different form are staged the
+same way, with tokens substituted, under `.groundwork/baseline-divergent/`
+(`inventory.stagedDivergent`), for the headless `--apply` step.
 In this repo: [`CLAUDE.md`](../CLAUDE.md#architecture-notes), the adopt mode
 contract; `inventory.stagedBaseline` in `.groundwork/inventory.json`.
 

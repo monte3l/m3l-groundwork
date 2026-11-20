@@ -35,16 +35,19 @@ const absent = (relPath: string): FileConflict => ({
   relPath,
   status: "absent",
   keyDiffs: undefined,
+  targetSha256: null,
 });
 const identical = (relPath: string): FileConflict => ({
   relPath,
   status: "identical",
   keyDiffs: undefined,
+  targetSha256: null,
 });
 const divergent = (relPath: string, keyDiffs?: string[]): FileConflict => ({
   relPath,
   status: "divergent",
   keyDiffs,
+  targetSha256: null,
 });
 
 describe("buildAdoptPending", () => {

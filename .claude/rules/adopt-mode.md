@@ -26,8 +26,9 @@ paths:
   silently dropped -- a survey that looks complete but isn't is worse than
   one that admits a gap. Adopt mode writes two report files
   (`.groundwork/inventory.json`, `.groundwork/adoption-report.md`), the
-  inert staged copies of the baseline additions and the packs
-  (`.groundwork/baseline/`, `.groundwork/packs/`), plus one
+  inert staged copies of the baseline additions, the divergent baseline
+  files and the packs (`.groundwork/baseline/`,
+  `.groundwork/baseline-divergent/`, `.groundwork/packs/`), plus one
   guarded, purely-additive copy of the `/customize` skill
   (`installCustomizeSkillGuarded` in `plugin.ts`; `customize-paths.ts` owns
   where it writes). It decides presence by `lstat`, never overwrites or

@@ -26,6 +26,12 @@
  * (`null`, or the `.claude-plugin/plugin.json` manifest plus which root
  * plugin components exist) -- `/customize` then has no plugin-layout
  * evidence and asks the project kind without pre-selecting one.
+ * `schemaVersion` below 7 predates `conflicts[].targetSha256` (the sha256 of
+ * the project file's bytes the comparison read, `null` when there was no
+ * such read) and `stagedDivergent` (the "divergent" baseline files staged as
+ * inert token-substituted copies under `.groundwork/baseline-divergent/`);
+ * both are informational for `/customize` and feed the headless `--apply`
+ * step.
  */
 import {
   existsSync,
@@ -52,11 +58,23 @@ import { summarizeToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainConformance } from "./toolchain/conformance.js";
 import type { ToolchainGrade } from "./toolchain/types.js";
 
-export const INVENTORY_SCHEMA_VERSION = 6;
+/**
+ * The schema version every inventory this CLI writes carries.
+ *
+ * @example
+ * ```ts
+ * if (inventory.schemaVersion > INVENTORY_SCHEMA_VERSION) {
+ *   // written by a newer CLI
+ * }
+ * ```
+ */
+export const INVENTORY_SCHEMA_VERSION = 7;
 
 /**
- * Where adopt mode staged the baseline files the project lacks entirely
- * (`baseline-stage.ts`), and how each staged copy is named.
+ * Where adopt mode staged a set of baseline files (`baseline-stage.ts`) --
+ * the ones the project lacks entirely (`stagedBaseline`), or the ones it has
+ * in a different form (`stagedDivergent`) -- and how each staged copy is
+ * named.
  *
  * @example
  * ```ts
@@ -114,6 +132,8 @@ export interface Inventory {
   toolchainConformance: ToolchainConformance;
   /** The "absent" baseline files, copied verbatim as inert `<path>.staged` copies for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative, and `dir` and every `files[].path`/`files[].staged` use `/` on every platform. */
   stagedBaseline: StagedBaseline;
+  /** The "divergent" baseline files, staged as inert `<path>.staged` copies of the token-substituted bytes the comparison used, in their own directory (`.groundwork/baseline-divergent`) so `stagedBaseline` stays absent-only; informational for `/customize`, they feed the headless `--apply` step. Absent when schemaVersion is below 7; `dir` and every `files[].path`/`files[].staged` use `/` on every platform. */
+  stagedDivergent: StagedBaseline;
   /** Every surveyed pack (all of them, or those named with `--pack`), staged as inert `.staged` copies (manifest included) under `.groundwork/packs/<name>/` for `/customize` to install from after confirmation; one entry per surveyed pack, `dir` project-relative, and `dir` and every `path`/`staged` use `/` on every platform. Absent from inventories written before pack staging became inert (see the module header). */
   stagedPacks: StagedPack[];
 }
@@ -156,6 +176,7 @@ export interface BuildInventoryParams {
   harnessGrade: HarnessGrade;
   toolchainGrade: ToolchainGrade;
   stagedBaseline: StagedBaseline;
+  stagedDivergent: StagedBaseline;
   stagedPacks: StagedPack[];
 }
 
@@ -176,7 +197,8 @@ function toPosixConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
  * {@link toPosixPath}, plus `stagedBaseline.dir` (built by the caller as a
  * `/`-joined literal) and each `stagedBaseline.files[].path`/`.staged`
  * (already normalized by `stageBaselineAdditions` with the same
- * {@link toPosixPath}, so the conflict and staged paths agree), and
+ * {@link toPosixPath}, so the conflict and staged paths agree), the same
+ * for `stagedDivergent` (`stageDivergentBaseline`), and
  * `stagedPacks` (passed through verbatim: `stagePacks` builds each `dir` as
  * a `/`-joined literal and normalizes every `path`/`staged` the same way).
  * The harness/toolchain conformance
@@ -188,7 +210,8 @@ function toPosixConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
  * @example
  * ```ts
  * const inventory = buildInventory({ detection, templateRoot, targetDir, survey,
- *   conflicts, packs, harnessGrade, toolchainGrade, stagedBaseline, stagedPacks });
+ *   conflicts, packs, harnessGrade, toolchainGrade, stagedBaseline, stagedDivergent,
+ *   stagedPacks });
  * inventory.conflicts[0]?.relPath; // "src/index.ts", even on Windows
  * ```
  */
@@ -213,6 +236,7 @@ export function buildInventory(params: BuildInventoryParams): Inventory {
     toolchainGrade: params.toolchainGrade,
     toolchainConformance: summarizeToolchainConformance(conflicts),
     stagedBaseline: params.stagedBaseline,
+    stagedDivergent: params.stagedDivergent,
     stagedPacks: params.stagedPacks,
   };
 }

@@ -116,6 +116,12 @@ const EMPTY_STAGED_BASELINE: StagedBaseline = {
   files: [],
 };
 
+const EMPTY_STAGED_DIVERGENT: StagedBaseline = {
+  dir: ".groundwork/baseline-divergent",
+  suffix: ".staged",
+  files: [],
+};
+
 function makeInventory(signal: string): ReturnType<typeof buildInventory> {
   return buildInventory({
     detection: { mode: "adopt", signal },
@@ -127,6 +133,7 @@ function makeInventory(signal: string): ReturnType<typeof buildInventory> {
     harnessGrade: EMPTY_GRADE,
     toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
     stagedBaseline: EMPTY_STAGED_BASELINE,
+    stagedDivergent: EMPTY_STAGED_DIVERGENT,
     stagedPacks: [],
   });
 }
