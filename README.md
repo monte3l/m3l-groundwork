@@ -221,11 +221,33 @@ for you.
 | `--fresh`               | Force fresh mode, even if the target looks like an existing project.                                                              |
 | `--pack <name>`         | Install an opt-in pack from `templates/packs/` in fresh mode, or narrow the survey to the named packs in adopt mode (repeatable). |
 | `--list-packs`          | Print every available pack and exit.                                                                                              |
+| `--json`                | Write one machine-readable JSON document to stdout and every human-readable line to stderr (see below).                           |
 | `--help`, `--version`   | Print usage, or the CLI's version.                                                                                                |
 
 An unexpected failure (anything that is not a bad invocation) prints its
 error name before the message, for example `TypeError: ...`. Set `M3L_DEBUG`
 to any non-empty value to also print its stack trace.
+
+### Machine-readable output
+
+For scripts and CI, the `--json` flag keeps stdout to exactly one line of JSON. Every
+status line, warning and error message goes to stderr instead, and `git init`
+and `pnpm install` have their output redirected to stderr too.
+
+- A fresh run or an adopt survey writes a `groundwork.report` document
+  (`schemaVersion: 1`) with `status: "ok"`, `exitCode: 0`, `mode`, `phase`
+  (`apply` for fresh, `survey` for adopt), `target`, `artifacts.inventory`
+  (`.groundwork/inventory.json` in adopt mode), the packs' `setupSteps`,
+  `warnings` and adopt mode's `nextStep`.
+- A failure still exits `1` or `2` (see
+  [Exit codes](#exit-codes-and-failure-behaviour)) and writes the same document
+  with `status` `error` or `usage`, the matching `exitCode`, and
+  `error.message` plus `error.chain` (the message, then each underlying cause).
+  A bad flag gets this envelope too.
+- `--version --json` writes `{"schema":"groundwork.version","schemaVersion":1,"cliVersion":...}`
+  and `--list-packs --json` writes a `groundwork.packs` document listing each
+  pack's `name`, `modes` and `description`. `--help` always prints the usage
+  text.
 
 ## Requirements
 
@@ -376,7 +398,9 @@ table, conventions, and known gaps.
 ### Exit codes and failure behaviour
 
 Exit `2` is a bad invocation, raised before anything is written. Exit `1` is
-everything else that goes wrong at run time.
+everything else that goes wrong at run time. With `--json` the exit codes are
+the same, and stdout also carries the error document described under
+[Machine-readable output](#machine-readable-output).
 
 | Situation                                                                                  | Exit | What happens / what to do                                                                                                                                                                         |
 | ------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

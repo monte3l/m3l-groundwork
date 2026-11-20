@@ -27,6 +27,7 @@ import {
 import assert from "node:assert/strict";
 import { join, relative, resolve, basename } from "node:path";
 import process from "node:process";
+import type { StdioOptions } from "node:child_process";
 import { resolveAsset, toPosixPath } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
@@ -92,7 +93,6 @@ import { renderReport } from "./report.js";
 import type { TokenTable } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
 import { gradeToolchain } from "./toolchain/grade.js";
-import { paint } from "./term.js";
 
 export interface CliOptions {
   targetDir: string;
@@ -105,6 +105,7 @@ export interface CliOptions {
   version: boolean;
   listPacks: boolean;
   packs: string[];
+  json: boolean;
 }
 
 const USAGE = [
@@ -118,6 +119,8 @@ const USAGE = [
   "  --pack <name>           Install a pack from templates/packs/ (fresh mode), or narrow",
   "                          the survey to the named packs (adopt mode); repeatable",
   "  --list-packs            Print every available pack and exit",
+  "  --json                  Write one machine-readable JSON report to stdout and",
+  "                          every human-readable line to stderr",
   "  --help, -h              Print this message",
   "  --version, -v           Print the CLI's version",
   "",
@@ -138,6 +141,7 @@ const REPEATABLE_VALUE_FLAGS = new Set(["--pack"]);
 const HELP_FLAGS = new Set(["--help", "-h"]);
 const VERSION_FLAGS = new Set(["--version", "-v"]);
 const LIST_PACKS_FLAGS = new Set(["--list-packs"]);
+const JSON_FLAGS = new Set(["--json"]);
 // A --pack value is a bare directory name under templates/packs/ --
 // PACK_NAME_PATTERN (owned by packs.ts, shared with loadPack and the
 // manifest's `packs` check) keeps it from
@@ -153,6 +157,7 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--force",
   "--adopt",
   "--fresh",
+  ...JSON_FLAGS,
   ...LIST_PACKS_FLAGS,
   ...HELP_FLAGS,
   ...VERSION_FLAGS,
@@ -238,6 +243,7 @@ export function parseArgs(argv: string[]): CliOptions {
   const help = [...HELP_FLAGS].some((flag) => flags.has(flag));
   const version = [...VERSION_FLAGS].some((flag) => flags.has(flag));
   const listPacks = [...LIST_PACKS_FLAGS].some((flag) => flags.has(flag));
+  const json = [...JSON_FLAGS].some((flag) => flags.has(flag));
 
   if (help || version || listPacks) {
     return {
@@ -251,6 +257,7 @@ export function parseArgs(argv: string[]): CliOptions {
       version,
       listPacks,
       packs: [],
+      json,
     };
   }
 
@@ -301,6 +308,7 @@ export function parseArgs(argv: string[]): CliOptions {
     version: false,
     listPacks: false,
     packs,
+    json,
   };
 }
 
@@ -448,6 +456,13 @@ function assertSafeManifestDestination(targetDir: string): void {
   );
 }
 
+/**
+ * The stdio a `--json` run hands `git init` and `pnpm install`: no stdin,
+ * and the child's stdout redirected to stderr, so stdout carries only the
+ * report (`.claude/rules/headless-mode.md`).
+ */
+const JSON_CHILD_STDIO: StdioOptions = ["ignore", 2, 2];
+
 function runFresh(
   options: CliOptions,
   platform: NodeJS.Platform,
@@ -509,14 +524,14 @@ function runFresh(
       countBaselineCaps(templatesCoreDir()),
       installedPacks,
     );
-    if (summary.overCap) warnings.push(summary.text);
-    // Painted here rather than via out.warn: the over-cap summary has always
-    // gone to stdout.
-    out.info(
-      summary.overCap
-        ? paint(process.stdout, "warning", summary.text)
-        : summary.text,
-    );
+    if (summary.overCap) {
+      warnings.push(summary.text);
+      // out.notice, not out.warn: the over-cap summary has always gone to
+      // stdout in human mode.
+      out.notice(summary.text);
+    } else {
+      out.info(summary.text);
+    }
   }
 
   const { targetDir, skipInstall, projectName } = options;
@@ -531,9 +546,9 @@ function runFresh(
   const setupBlock = formatSetupBlock(targetDir, setupSteps);
   const printSetupBlock = (): void => {
     if (setupBlock !== undefined) {
-      // Painted here rather than via out.warn: the block has always gone to
-      // stdout.
-      out.info(paint(process.stdout, "warning", setupBlock));
+      // out.notice, not out.warn: the block has always gone to stdout in
+      // human mode.
+      out.notice(setupBlock);
     }
   };
 
@@ -581,8 +596,12 @@ function runFresh(
   }
   out.info(`wrote ${MANIFEST_RELATIVE_PATH}`);
 
+  // Human mode keeps the one-argument calls (the children inherit stdio);
+  // --json redirects their stdout to stderr.
+  const json = options.json;
   try {
-    gitInit(targetDir);
+    if (json) gitInit(targetDir, JSON_CHILD_STDIO);
+    else gitInit(targetDir);
   } catch (error) {
     printSetupBlock();
     throw new Error(
@@ -594,14 +613,11 @@ function runFresh(
 
   if (!skipInstall) {
     try {
-      runInstall(targetDir);
+      if (json) runInstall(targetDir, JSON_CHILD_STDIO);
+      else runInstall(targetDir);
     } catch (error) {
-      out.info(
-        paint(
-          process.stdout,
-          "warning",
-          `\n${projectName} written to ${targetDir}, but dependencies are not installed`,
-        ),
+      out.notice(
+        `\n${projectName} written to ${targetDir}, but dependencies are not installed`,
       );
       printSetupBlock();
       throw new Error(
@@ -1190,9 +1206,14 @@ function runAdopt(
  * (a runtime error, exit 1, raised before anything is written) is
  * unit-testable on any OS; it defaults to `process.platform`. Adopt mode and
  * `--help`/`--version`/`--list-packs` run on every platform. `out` receives
- * every fresh/adopt status line (human-mode console output by default).
- * Returns the run's {@link RunResult}, or `undefined` for
- * `--help`/`--version`/`--list-packs`.
+ * every fresh/adopt status line; by default it is `createOut` in human mode,
+ * or in json mode when `--json` is given (every line on stderr). Returns the
+ * run's {@link RunResult}, or `undefined` for
+ * `--help`/`--version`/`--list-packs`. Under `--json`, a fresh/adopt run
+ * prints no report itself -- the bin script builds it from the returned
+ * result -- while `--version` and `--list-packs` print one single-line JSON
+ * document each (`groundwork.version`, `groundwork.packs`); `--help` always
+ * prints the usage text.
  *
  * @example
  * ```ts
@@ -1204,7 +1225,7 @@ function runAdopt(
 export function main(
   argv: string[],
   platform: NodeJS.Platform = process.platform,
-  out: Out = createOut({ json: false }),
+  out?: Out,
 ): RunResult | undefined {
   const options = parseArgs(argv);
 
@@ -1213,12 +1234,32 @@ export function main(
     return;
   }
   if (options.version) {
-    console.log(resolveCliVersion());
+    console.log(
+      options.json
+        ? JSON.stringify({
+            schema: "groundwork.version",
+            schemaVersion: 1,
+            cliVersion: resolveCliVersion(),
+          })
+        : resolveCliVersion(),
+    );
     return;
   }
   if (options.listPacks) {
     const names = listPackNames();
-    if (names.length === 0) {
+    if (options.json) {
+      const packs = names.map((name) => {
+        const { manifest } = loadPack(name);
+        return {
+          name,
+          modes: manifest.modes,
+          description: manifest.description,
+        };
+      });
+      console.log(
+        JSON.stringify({ schema: "groundwork.packs", schemaVersion: 1, packs }),
+      );
+    } else if (names.length === 0) {
       console.log("no packs available");
     } else {
       for (const name of names) {
@@ -1237,9 +1278,10 @@ export function main(
     fresh: options.fresh,
   });
 
+  const sink = out ?? createOut({ json: options.json });
   if (resolved.mode === "adopt") {
     assertAdoptUsage(options);
-    return runAdopt(options, resolved, out);
+    return runAdopt(options, resolved, sink);
   }
-  return runFresh(options, platform, out);
+  return runFresh(options, platform, sink);
 }
