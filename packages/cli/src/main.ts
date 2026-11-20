@@ -636,6 +636,7 @@ function runFresh(
     warnings,
     setupSteps,
     nextStep: null,
+    manifest: MANIFEST_RELATIVE_PATH,
   };
 }
 
@@ -1198,6 +1199,7 @@ function runAdopt(
     warnings: [],
     setupSteps: [],
     nextStep,
+    manifest: null,
   };
 }
 

@@ -237,8 +237,9 @@ and `pnpm install` have their output redirected to stderr too.
 - A fresh run or an adopt survey writes a `groundwork.report` document
   (`schemaVersion: 1`) with `status: "ok"`, `exitCode: 0`, `mode`, `phase`
   (`apply` for fresh, `survey` for adopt), `target`, `artifacts.inventory`
-  (`.groundwork/inventory.json` in adopt mode), the packs' `setupSteps`,
-  `warnings` and adopt mode's `nextStep`.
+  (`.groundwork/inventory.json` in adopt mode), `artifacts.manifest`
+  (`.groundwork/manifest.json` in fresh mode, `null` in adopt mode), the packs'
+  `setupSteps`, `warnings` and adopt mode's `nextStep`.
 - A failure still exits `1` or `2` (see
   [Exit codes](#exit-codes-and-failure-behaviour)) and writes the same document
   with `status` `error` or `usage`, the matching `exitCode`, and
