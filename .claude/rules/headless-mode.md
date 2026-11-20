@@ -1,0 +1,120 @@
+---
+paths:
+  - "packages/cli/src/headless/**"
+  - "packages/cli/src/output.ts"
+  - "packages/cli/src/run-result.ts"
+  - "packages/cli/src/exit-codes.ts"
+  - "packages/cli/src/fatal.ts"
+  - "packages/cli/src/main.ts"
+  - "packages/cli/schemas/**"
+  - "packages/cli/tests/headless*.test.ts"
+  - "packages/plugin/skills/customize/**"
+  - "packages/plugin/skills/upgrade/**"
+---
+
+# Headless mode (design record, not yet built)
+
+Unattended runs of all three modes -- fresh, adopt and upgrade -- for `claude -p`
+agents, fleet scripts, local scripts and CI. This file is the contract the CLI,
+the `/customize` skill and the `/upgrade` skill share. None of it exists in
+`packages/` yet; the paths above are where it will land. Update this file as
+each piece ships, and drop this line when the last one does.
+
+- **Fail closed, never guess.** A decision nobody supplied stops the run with
+  exit 3 and a pending document in the answers schema. The caller fills it in
+  and re-runs. `kind` and `runtime` have no default (the interview gives none),
+  so a run without them is always pending.
+- **Plan, then apply.** The `--adopt` survey and the `--upgrade` plan stay
+  read-only: they write only under `.groundwork/`. A new
+  `--apply <answers.json>` is the only step that writes project files. It reads
+  `inventory.json` or `plan.json`, checks every recorded hash against the tree,
+  and refuses with exit 4 on drift. Fresh mode validates the answers before its
+  first `mkdir`, then bootstraps and applies in one run. `mode` in the answers
+  is required and never inferred from the directory.
+- **Exit codes** (checked in this order: usage, load the plan, drift,
+  completeness, apply). Only these are part of the contract:
+
+  | Code | Meaning                                                               |
+  | ---- | --------------------------------------------------------------------- |
+  | 0    | Done, or nothing to do (`status` is `ok` or `noop`)                   |
+  | 1    | Runtime error                                                         |
+  | 2    | Usage error, or an answers/inventory/CLI schema-version mismatch      |
+  | 3    | Decisions pending; the pending document was written                   |
+  | 4    | Drift: the tree changed since the survey or plan, nothing was written |
+
+- **`--json` keeps stdout pure.** One report document on stdout, human text on
+  stderr, and child processes (`git init`, `pnpm install`) get
+  `["ignore", 2, 2]`. `bin/m3l-groundwork.mjs` looks for `--json` before
+  `parseArgs`, so a usage error also produces a JSON envelope. `--dry-run`
+  writes nothing, not even under `.groundwork/`.
+- **`answers` v1** (`schema: "groundwork.answers"`, `schemaVersion: 1`). One
+  file for every mode; the pending document uses the same schema under a
+  `partial` profile that allows `null`. Sections: `mode`, `basis`
+  (`inventorySha256` or `planSha256`; a mismatch is exit 4), `fresh`
+  (`name`, `skipInstall`), `interview` (the field names of `InterviewAnswers`
+  in `packages/plugin/src/kind-facet-map.ts`), `adopt` (`additions`,
+  `conflicts`, `missedNotes`; the field names of `adoption-decisions.json`
+  `step0`), `upgrade` (`applySafe`, `removals`, `conflicts`), `packs`,
+  `plugins`, `guidance` and `pending` (`pointer`, `reason`, `choices`,
+  `evidence`). Collections are arrays of `{path, ...}`, never path-keyed
+  objects, so a path can never land on a prototype key; reuse
+  `isPrototypeSensitiveKey` (`merge-json.ts`). Conflict resolutions are `keep`,
+  `take` or `delegate`; adopt adds `merge-keys` for key-level JSON.
+  `upgrade.conflicts` has the same shape as `.groundwork/upgrade/decisions.json`:
+  one record, not two.
+- **`report` v1** (`schema: "groundwork.report"`, `schemaVersion: 1`):
+  `cliVersion`, `mode`, `phase` (`survey`, `plan`, `apply` or `stamp`),
+  `dryRun`, `status` (`ok`, `noop`, `pending`, `drift`, `error` or `usage`),
+  `exitCode`, `target`, `artifacts`, `changes` (`path`, `action`, `class`,
+  `sha256Before`, `sha256After`), `pending`, `handoff`, `drift`, `setupSteps`,
+  `warnings` and `error`.
+- **Pending location.** Adopt and upgrade write
+  `.groundwork/headless/pending.json`. Fresh must leave the target untouched,
+  so its pending document goes only in the report, plus `--pending-out <path>`.
+- **What the CLI applies, with no Claude.** Per-file `keep`, `take`, `add` and
+  `remove` decisions, staged packs, agent removal, tests warn-only, CI depth
+  and the Dependabot block. Explore, `test-author` and `code-implementer` are
+  never removable: asking to drop one is exit 2. Everything that needs judgment
+  (merges, wiring merges, retargeting prose, the `kind` other than library
+  `check:exports` change, plugins) becomes a `handoff` entry for the skill's
+  headless branch.
+- **No YAML parsing, so tests warn-only and CI depth live in JSON.**
+  `templates/core` gains a policy JSON that the emitted `bin/verify.mjs`
+  reads, the pattern of `verify-steps.packs.json`; `ci.yml` and `lefthook.yml`
+  stay as they are. `dependabot.yml` is a whole-file swap, allowed only when
+  its hash still matches what the baseline emitted; any other state is a
+  handoff. A change to `templates/core` also needs the harness and toolchain
+  graders to agree (`.claude/rules/harness-graders.md`).
+- **Apply is a journal, not a promise of atomicity.** Stage under
+  `.groundwork/headless/txn/`, back up, rename, roll back on failure, write
+  `applied.json` last, and recover a leftover `txn/` on the next run. An
+  O_EXCL lock at `.groundwork/headless/lock` keeps parallel fleet runs apart.
+- **PR files only.** `--apply` writes `.groundwork/headless/commit-msg.txt`, a
+  Conventional Commit that passes the emitted `bin/lint-commit.mjs`, and
+  `pr-body.md`. The caller does the branch, commit, push and `gh pr create`.
+- **The skills' headless branch is explicit.** `/customize --headless <file>`
+  (later `/upgrade --headless <file>`) and never because a file exists. It
+  never calls `AskUserQuestion`, refuses a schema or CLI version mismatch,
+  does only the report's `handoff` entries, writes anything undecidable to
+  `pending` and stops, and ends by calling the CLI to stamp (the skill never
+  hashes). Round 2 runs only when `guidance.enabled`, and in headless it only
+  reports: every finding is deferred. The documented `claude -p` recipe never
+  uses `--dangerously-skip-permissions` and adds `WebFetch` and `WebSearch`
+  only when guidance is on.
+- **The CLI and the plugin share no import.** Plugin `src` is copied verbatim
+  into the skill (`vendor-assets.mjs`), and the CLI has no dependencies.
+  The canonical types and validators are in
+  `packages/cli/src/headless/contract.ts`; a parity test in
+  `packages/plugin/tests/` imports both dynamically and compares the
+  `ProjectKind`, `RuntimeTarget` and `CiDepth` tuples.
+- **Inventory schema v7** adds `conflicts[].targetSha256` and stages divergent
+  baseline files, not only absent ones. Without it adopt cannot detect drift
+  and has no verified bytes to `take`. `/customize` Step 0.1 must accept 7 in
+  the same change.
+- **Version.** The CLI's own version decides the release: a new flag or output
+  format is `feat`, and the whole series targets the next minor.
+
+When the series ships, `adopt-mode.md` and `package-cli.md` change from "adopt
+mode never writes a project file" to "the survey never writes one; only
+`--apply` does", and `docs/assurance-case.md` records the new write path, in
+the change that adds `--apply`.
