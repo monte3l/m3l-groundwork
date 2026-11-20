@@ -76,13 +76,17 @@ each piece ships, and drop this line when the last one does.
   `cliVersion`, `mode` (`fresh`, `adopt`, `upgrade` or `null`), `phase`
   (`survey`, `plan`, `apply`, `stamp` or `null`; both are `null` in an error
   envelope), `dryRun`, `status` (`ok`, `noop`, `pending`, `drift`, `error`
-  or `usage`), `exitCode`, `target`, `artifacts`, `changes` (`path`,
-  `action`, `class`, `sha256Before`, `sha256After`), `pending`, `handoff`,
-  `drift`, `setupSteps`, `warnings`, `nextStep` and `error`, always in that
-  order with no field omitted. **Shipped:** `buildReport` (a fresh run is `phase: "apply"`, an
-  adopt survey `phase: "survey"` with `artifacts.inventory`
-  `.groundwork/inventory.json`) and `buildErrorReport` (`status` `error` for
-  exit 1, `usage` for exit 2, `mode`/`phase` `null`, `error.chain` the
+  or `usage`), `exitCode`, `target`, `artifacts` (`inventory`, `manifest`,
+  `plan`, `pending`, `commitMsg`, `prBody`, each a target-relative path or
+  `null`), `changes` (`path`, `action`, `class`, `sha256Before`,
+  `sha256After`), `pending`, `handoff`, `drift`, `setupSteps`, `warnings`,
+  `nextStep` and `error`, always in that order with no field omitted.
+  **Shipped:** `buildReport` (a fresh run is `phase: "apply"` with
+  `artifacts.manifest` `.groundwork/manifest.json`, copied from
+  `RunResult.manifest`; an adopt survey `phase: "survey"` with
+  `artifacts.inventory` `.groundwork/inventory.json` and `artifacts.manifest`
+  `null`) and `buildErrorReport` (`status` `error` for exit 1, `usage` for
+  exit 2, `mode`/`phase` and every `artifacts` path `null`, `error.chain` the
   message then each chained value's as strings, through `format-error.ts`'s
   `errorMessageChain`: cycle-safe, depth-capped, never throws). `dryRun` is
   always `false` and `changes`, `pending`, `handoff` and `drift` are always

@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   chmodSync,
   mkdtempSync,
+  existsSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -91,7 +92,11 @@ describe("--json through bin/m3l-groundwork.mjs", () => {
         status: "ok",
         exitCode: 0,
         target,
-        artifacts: { inventory: null, ...NO_ARTIFACTS },
+        artifacts: {
+          inventory: null,
+          manifest: ".groundwork/manifest.json",
+          ...NO_ARTIFACTS,
+        },
         changes: [],
         pending: [],
         handoff: [],
@@ -101,6 +106,9 @@ describe("--json through bin/m3l-groundwork.mjs", () => {
         nextStep: null,
         error: null,
       });
+      expect(existsSync(join(target, ".groundwork", "manifest.json"))).toBe(
+        true,
+      );
       expect(stderr).toContain("is ready at");
       expect(stderr).toContain("initialized git repository");
     });
@@ -178,7 +186,11 @@ describe("--json through bin/m3l-groundwork.mjs", () => {
         status: "ok",
         exitCode: 0,
         target: dir,
-        artifacts: { inventory: ".groundwork/inventory.json", ...NO_ARTIFACTS },
+        artifacts: {
+          inventory: ".groundwork/inventory.json",
+          manifest: null,
+          ...NO_ARTIFACTS,
+        },
         error: null,
       });
       expect(report.nextStep).toMatch(/^Next: /);
@@ -203,6 +215,7 @@ describe("--json through bin/m3l-groundwork.mjs", () => {
       status: "usage",
       exitCode: 2,
       target: null,
+      artifacts: { manifest: null },
     });
     expect(report.error.message).toContain("unrecognized option: --bogus");
     expect(report.error.chain[0]).toBe(report.error.message);
@@ -222,6 +235,7 @@ describe("--json through bin/m3l-groundwork.mjs", () => {
       expect(status).toBe(1);
       const report = onlyDocument(stdout) as {
         error: { message: string; chain: string[] };
+        artifacts: { manifest: string | null };
       };
       expect(report).toMatchObject({
         status: "error",
@@ -229,6 +243,7 @@ describe("--json through bin/m3l-groundwork.mjs", () => {
         mode: null,
         phase: null,
       });
+      expect(report.artifacts.manifest).toBeNull();
       expect(report.error.message.length).toBeGreaterThan(0);
       expect(stderr).toContain(report.error.message);
     });
