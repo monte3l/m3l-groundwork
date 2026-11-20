@@ -47,6 +47,8 @@ import {
   plannedCustomizeSkillPaths,
 } from "./customize-paths.js";
 import { gitInit, runInstall } from "./git.js";
+import { createOut, type Out } from "./output.js";
+import type { RunResult } from "./run-result.js";
 import { gradeHarness } from "./harness/grade.js";
 import { detectMode, resolveMode } from "./mode.js";
 import { surveyProject } from "./survey/survey.js";
@@ -369,22 +371,33 @@ export function formatCapsSummary(
 }
 
 /**
+ * Each pack that declares `setupSteps`, in `packs` order, paired with its
+ * commands. Packs with no steps are left out.
+ */
+function groupSetupSteps(packs: readonly Pack[]): RunResult["setupSteps"] {
+  return packs
+    .map(({ manifest }) => ({
+      pack: manifest.name,
+      steps: manifest.setupSteps ?? [],
+    }))
+    .filter(({ steps }) => steps.length > 0);
+}
+
+/**
  * Fresh mode's closing "setup required" block: one heading, then each pack
- * that declares `setupSteps` (in `packs` order) followed by its commands,
- * each indented two spaces. `undefined` when no pack declares any, so the
- * caller prints nothing extra.
+ * group (from {@link groupSetupSteps}) followed by its commands, each
+ * indented two spaces. `undefined` when there are no groups, so the caller
+ * prints nothing extra.
  */
 function formatSetupBlock(
   targetDir: string,
-  packs: readonly Pack[],
+  groups: RunResult["setupSteps"],
 ): string | undefined {
-  const lines: string[] = [];
-  for (const { manifest } of packs) {
-    const steps = manifest.setupSteps ?? [];
-    if (steps.length === 0) continue;
-    lines.push(`pack "${manifest.name}":`, ...steps.map((step) => `  ${step}`));
-  }
-  if (lines.length === 0) return undefined;
+  if (groups.length === 0) return undefined;
+  const lines = groups.flatMap(({ pack, steps }) => [
+    `pack "${pack}":`,
+    ...steps.map((step) => `  ${step}`),
+  ]);
   return [
     `\nthe installed pack(s) need setup before the first \`pnpm verify\` -- run these in ${targetDir}:`,
     ...lines,
@@ -411,7 +424,11 @@ function assertSafeSkillDestination(targetDir: string): void {
   }
 }
 
-function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
+function runFresh(
+  options: CliOptions,
+  platform: NodeJS.Platform,
+  out: Out,
+): RunResult {
   if (platform === "win32") {
     throw new Error("Windows is not supported yet (Linux and macOS only)");
   }
@@ -445,15 +462,14 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   mkdirSync(options.targetDir, { recursive: true });
 
   const result = emitTemplate(templatesCoreDir(), options.targetDir, tokens);
-  console.log(
-    `wrote ${result.filesWritten.length} files to ${options.targetDir}`,
-  );
+  out.info(`wrote ${result.filesWritten.length} files to ${options.targetDir}`);
 
+  const warnings: string[] = [];
   const installedPacks: { name: string; budget: CapCounts }[] = [];
   for (const pack of packs) {
     const name = pack.manifest.name;
     const packResult = installPack(pack, options.targetDir, tokens);
-    console.log(
+    out.info(
       `installed pack "${name}" (${packResult.filesWritten.length} files)`,
     );
     installedPacks.push({ name, budget: packResult.budget });
@@ -463,7 +479,10 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
       countBaselineCaps(templatesCoreDir()),
       installedPacks,
     );
-    console.log(
+    if (summary.overCap) warnings.push(summary.text);
+    // Painted here rather than via out.warn: the over-cap summary has always
+    // gone to stdout.
+    out.info(
       summary.overCap
         ? paint(process.stdout, "warning", summary.text)
         : summary.text,
@@ -478,10 +497,13 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   // non-empty target adopts it, and adopt mode never prints setupSteps. The
   // /customize-skill failure below deliberately does not print it: its
   // message says to re-run with --fresh --force, which prints it on success.
-  const setupBlock = formatSetupBlock(targetDir, packs);
+  const setupSteps = groupSetupSteps(packs);
+  const setupBlock = formatSetupBlock(targetDir, setupSteps);
   const printSetupBlock = (): void => {
     if (setupBlock !== undefined) {
-      console.log(paint(process.stdout, "warning", setupBlock));
+      // Painted here rather than via out.warn: the block has always gone to
+      // stdout.
+      out.info(paint(process.stdout, "warning", setupBlock));
     }
   };
 
@@ -499,7 +521,7 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
       { cause: error },
     );
   }
-  console.log(
+  out.info(
     pluginResult.filesWritten.length === 0
       ? "the /customize skill was already up to date"
       : `installed the /customize skill (${pluginResult.filesWritten.length} files)`,
@@ -514,13 +536,13 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
       { cause: error },
     );
   }
-  console.log("initialized git repository");
+  out.info("initialized git repository");
 
   if (!skipInstall) {
     try {
       runInstall(targetDir);
     } catch (error) {
-      console.log(
+      out.info(
         paint(
           process.stdout,
           "warning",
@@ -533,17 +555,18 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
         { cause: error },
       );
     }
-    console.log("installed dependencies");
+    out.info("installed dependencies");
   }
 
-  console.log(
-    paint(
-      process.stdout,
-      "success",
-      `\n✓ ${projectName} is ready at ${targetDir}`,
-    ),
-  );
+  out.success(`\n✓ ${projectName} is ready at ${targetDir}`);
   printSetupBlock();
+  return {
+    mode: "fresh",
+    target: targetDir,
+    warnings,
+    setupSteps,
+    nextStep: null,
+  };
 }
 
 /**
@@ -861,8 +884,12 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  * write failure). Only console output follows `inventory.json`, so its
  * presence means every step of the run completed.
  */
-function runAdopt(options: CliOptions, detection: ModeDetection): void {
-  console.log(`adopt mode: ${detection.signal}`);
+function runAdopt(
+  options: CliOptions,
+  detection: ModeDetection,
+  out: Out,
+): RunResult {
+  out.info(`adopt mode: ${detection.signal}`);
 
   const survey = surveyProject(options.targetDir);
   const templateRoot = templatesCoreDir();
@@ -1055,53 +1082,65 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
     rethrowAfterPointOfNoReturn(error, removed);
   }
 
-  console.log(`wrote ${relative(options.targetDir, inventoryPath)}`);
-  console.log(`wrote ${relative(options.targetDir, reportPath)}`);
+  out.info(`wrote ${relative(options.targetDir, inventoryPath)}`);
+  out.info(`wrote ${relative(options.targetDir, reportPath)}`);
   if (stagedBaselineFiles.length > 0) {
-    console.log(
+    out.info(
       `staged ${stagedBaselineFiles.length} baseline file(s) at ${stagedBaselineDir}/ for /customize`,
     );
   }
   if (stagedPacks.length > 0) {
-    console.log(
+    out.info(
       `staged ${stagedPacks.length} pack(s) at ${STAGED_PACKS_DIR}/ for /customize`,
     );
   }
   if (pluginResult.location === "already-present") {
-    console.log("the /customize skill was already up to date");
+    out.info("the /customize skill was already up to date");
   } else {
     const where =
       pluginResult.location === "claude"
         ? ".claude/skills/customize/"
         : ".groundwork/customize/";
-    console.log(
+    out.info(
       `installed the /customize skill into ${where} (${pluginResult.filesWritten.length} files)`,
     );
     if (pluginResult.fallbackReason !== undefined) {
-      console.log(`  ${pluginResult.fallbackReason}`);
+      out.info(`  ${pluginResult.fallbackReason}`);
     }
   }
 
-  console.log(
-    paint(
-      process.stdout,
-      "success",
-      `\n✓ adoption report ready at ${reportPath}`,
-    ),
-  );
-  console.log(nextStep);
+  out.success(`\n✓ adoption report ready at ${reportPath}`);
+  out.info(nextStep);
+  return {
+    mode: "adopt",
+    target: options.targetDir,
+    warnings: [],
+    setupSteps: [],
+    nextStep,
+  };
 }
 
 /**
  * Runs the CLI. `platform` is injectable so fresh mode's Windows refusal
  * (a runtime error, exit 1, raised before anything is written) is
  * unit-testable on any OS; it defaults to `process.platform`. Adopt mode and
- * `--help`/`--version`/`--list-packs` run on every platform.
+ * `--help`/`--version`/`--list-packs` run on every platform. `out` receives
+ * every fresh/adopt status line (human-mode console output by default).
+ * Returns the run's {@link RunResult}, or `undefined` for
+ * `--help`/`--version`/`--list-packs`.
+ *
+ * @example
+ * ```ts
+ * import { main } from "./main.js";
+ * const result = main(["my-app", "--skip-install"]);
+ * console.log(result?.mode); // "fresh"
+ * ```
  */
 export function main(
   argv: string[],
   platform: NodeJS.Platform = process.platform,
-): void {
+  out: Out = createOut({ json: false }),
+): RunResult | undefined {
   const options = parseArgs(argv);
 
   if (options.help) {
@@ -1135,8 +1174,7 @@ export function main(
 
   if (resolved.mode === "adopt") {
     assertAdoptUsage(options);
-    runAdopt(options, resolved);
-  } else {
-    runFresh(options, platform);
+    return runAdopt(options, resolved, out);
   }
+  return runFresh(options, platform, out);
 }
