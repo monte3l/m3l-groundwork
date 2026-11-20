@@ -20,6 +20,16 @@ path = ["templates/**"]
 SPDX-FileCopyrightText = "Copyright the m3l-groundwork contributors"
 SPDX-License-Identifier = "MIT"
 
+# .claude/hooks/guard-shared-checkout.mjs is a verbatim copy of the org's
+# worktree guard, the starter in monte3l/.github (blueprint/files/). The
+# template sync refreshes a copy only if it is byte-identical to an older
+# version of the starter, so it must not gain an inline SPDX header; it is
+# covered here instead, under the starter's own copyright line.
+[[annotations]]
+path = [".claude/hooks/guard-shared-checkout.mjs"]
+SPDX-FileCopyrightText = "Copyright (c) 2026 Enrico Lionello (enri3l) and Giulia Montevecchi (giulmonte), monte3l"
+SPDX-License-Identifier = "MIT"
+
 # design/**/*.json and design/**/*.md are already covered by the generic
 # json/md annotation below with the same values, so only CSS -- this repo's
 # first tracked CSS -- needs its own entry here. design/source/** is

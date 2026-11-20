@@ -92,7 +92,9 @@ author, resolved threads and signed commits (no rebase-merge; the branch must
 be up to date). Signing is machine-local: fix a missing `user.signingkey`,
 never `commit.gpgsign=false`. Branch first (`feat/<slug>` or `fix/<slug>`);
 `guard-branch-isolation.mjs` blocks `packages/*/src/` and `packages/*/tests/`
-writes on `main`. Full policy: `.claude/rules/git-workflow.md`.
+writes on `main`, and `guard-shared-checkout.mjs` blocks any edit, `git commit`
+or new branch in the main checkout itself, so work happens in a worktree off
+`origin/main`. Full policy: `.claude/rules/git-workflow.md`.
 
 ## Agent Operating Model
 
