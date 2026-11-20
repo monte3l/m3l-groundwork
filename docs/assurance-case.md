@@ -127,10 +127,11 @@ dependency -- there isn't one (`packages/cli/package.json`'s
 - **Least common mechanism.** Fresh mode and adopt mode don't share a
   generic "write into the target directory" facility. Adopt mode's only
   writes are `.groundwork/inventory.json`, `.groundwork/adoption-report.md`,
-  inert `.staged` copies under `.groundwork/baseline/`, and the staged pack
+  inert `.staged` copies under `.groundwork/baseline/` and
+  `.groundwork/baseline-divergent/`, and the staged pack
   files under `.groundwork/packs/` (inert `.staged` copies too, `pack.json`
-  included). Both staging directories are written to a temp sibling and
-  swapped in by rename, never half-written, and both refuse to run if
+  included). All three staging directories are written to a temp sibling and
+  swapped in by rename, never half-written, and each refuses to run if
   `.groundwork` or a staging directory is a symlink. The one other write is
   a guarded, additive `/customize` copy -- there is no code path by
   which surveying an arbitrary, untrusted project can reach the same

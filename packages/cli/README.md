@@ -125,10 +125,10 @@ They stay two separate phases on purpose, rather than one -- see
 The mode is auto-detected from the target directory; `--fresh` and `--adopt`
 override it.
 
-| Mode      | When                                    | What it does                                                                                                                                                                                                                                                                                                                    |
-| --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fresh** | The target is empty or missing          | Writes the full baseline, installs any `--pack`, installs the `/customize` skill, runs `git init`, then `pnpm install`.                                                                                                                                                                                                         |
-| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and of the packs (`.groundwork/packs/`). It writes only under `.groundwork/`, plus one guarded copy of the `/customize` skill, and never overwrites a project file. |
+| Mode      | When                                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fresh** | The target is empty or missing          | Writes the full baseline, installs any `--pack`, installs the `/customize` skill, runs `git init`, then `pnpm install`.                                                                                                                                                                                                                                                                                              |
+| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`), of the ones the project has in a different form (`.groundwork/baseline-divergent/`) and of the packs (`.groundwork/packs/`). It writes only under `.groundwork/`, plus one guarded copy of the `/customize` skill, and never overwrites a project file. |
 
 That copy lands at `.claude/skills/customize/`, or at `.groundwork/customize/`
 when something already there blocks it. It is where the real work happens: it reads the survey, confirms
@@ -159,7 +159,8 @@ the wiring contract.
 
 In fresh mode `--pack` installs a pack directly. In adopt mode the CLI only
 surveys which packs apply and stages them under `.groundwork/packs/` (and
-the baseline files it would add under `.groundwork/baseline/`);
+the baseline files it would add under `.groundwork/baseline/`, plus the ones
+your project has in a different form under `.groundwork/baseline-divergent/`);
 `/customize` installs from there after you confirm. With no `--pack`, adopt
 mode surveys and stages every pack. With one or more, it surveys and stages
 only the packs you name, so `npx @monte3l/groundwork . --pack harness-extras` on an
@@ -500,11 +501,13 @@ examples. From 1.0.0, the public API is:
    `/customize` can't read is a breaking change.
 3. **`.groundwork/adoption-report.md`'s section headings**, listed under
    [Report headings](#report-headings).
-4. **`.groundwork/packs/` and `.groundwork/baseline/` staging layouts**, and
-   pack names. Baseline files are staged as inert copies with a `.staged`
-   suffix appended to each name (so no project tool discovers them), listed
-   with their original path and a `sha256` in `inventory.json`'s
-   `stagedBaseline`. Packs follow the same convention:
+4. **`.groundwork/packs/`, `.groundwork/baseline/` and
+   `.groundwork/baseline-divergent/` staging layouts**, and pack names.
+   Baseline files are staged as inert copies with a `.staged` suffix appended
+   to each name (so no project tool discovers them), listed with their
+   original path and a `sha256` in `inventory.json`'s `stagedBaseline` (files
+   the project lacks) and `stagedDivergent` (files it has in a different
+   form, staged with tokens substituted). Packs follow the same convention:
    `.groundwork/packs/<name>/pack.json.staged` and
    `.groundwork/packs/<name>/files/<path>.staged`, listed with their original
    path and a `sha256` in `inventory.json`'s `stagedPacks`. All packs are
