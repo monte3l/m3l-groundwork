@@ -238,7 +238,8 @@ if (isEntryPoint()) {
           "with unknown worktree state.\n"
       : `guard-worktree-only: Blocked: refusing to write \`${filePath}\` outside a ` +
           "linked worktree under `.claude/worktrees/`. This project requires every " +
-          "src/tests change to happen inside a worktree -- run the " +
+          "src/tests change to happen inside a worktree there (a sibling " +
+          "worktree elsewhere does not count) -- run the " +
           "`working-in-worktrees` skill's start mode first.\n",
   );
   process.exit(2);
