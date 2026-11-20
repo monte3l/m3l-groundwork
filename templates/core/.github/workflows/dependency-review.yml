@@ -23,7 +23,10 @@ jobs:
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
           fail-on-severity: high
-          allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0
+          # BlueOak-1.0.0 is permissive and covers the scaffold's own lint
+          # toolchain (minimatch, lru-cache and others from ESLint's tree),
+          # which a new project's first lockfile adds all at once.
+          allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0, BlueOak-1.0.0
           # Packages exempted from the license check by package URL live in the
           # file below, never in this one, so an exemption never makes this
           # workflow differ from the org template. The file must exist and hold
