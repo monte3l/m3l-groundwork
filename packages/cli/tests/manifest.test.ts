@@ -26,6 +26,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -59,7 +60,9 @@ function validManifest(): Manifest {
       "a.txt": { sha256: HASH_A, origin: "emitted" },
       "dir/b.txt": { sha256: HASH_B, origin: "merged" },
     },
-    jsonKeys: { "package.json": { name: HASH_A, "scripts.verify": HASH_B } },
+    jsonKeys: {
+      "package.json": { "/name": HASH_A, "/scripts/verify": HASH_B },
+    },
   };
 }
 
@@ -82,6 +85,19 @@ function thrownBy(fn: () => unknown): unknown {
 }
 
 let dir: string;
+
+/** Whether this platform can create a FIFO with `mkfifo` (the FIFO test skips otherwise). */
+const canMakeFifo = ((): boolean => {
+  const probe = mkdtempSync(join(tmpdir(), "manifest-fifo-probe-"));
+  try {
+    execFileSync("mkfifo", [join(probe, "p")]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "manifest-"));
@@ -131,51 +147,108 @@ describe("flattenJsonKeys", () => {
 
   it("emits one entry per top-level scalar key, hashing the canonical value", () => {
     expect(flattenJsonKeys({ name: "x", n: 1, t: true, z: null })).toEqual({
-      name: h('"x"'),
-      n: h("1"),
-      t: h("true"),
-      z: h("null"),
+      "/name": h('"x"'),
+      "/n": h("1"),
+      "/t": h("true"),
+      "/z": h("null"),
     });
   });
 
-  it("emits depth-2 entries for a top-level plain object, not the object itself", () => {
+  it("emits JSON Pointer entries for a top-level plain object, not the object itself", () => {
     const result = flattenJsonKeys({
       scripts: { build: "tsc", test: "vitest" },
     });
     expect(result).toEqual({
-      "scripts.build": h('"tsc"'),
-      "scripts.test": h('"vitest"'),
+      "/scripts/build": h('"tsc"'),
+      "/scripts/test": h('"vitest"'),
     });
-    expect(Object.hasOwn(result, "scripts")).toBe(false);
+    expect(Object.hasOwn(result, "/scripts")).toBe(false);
   });
 
   it("does not descend below depth 2: a depth-2 object is hashed whole, keys sorted", () => {
     expect(flattenJsonKeys({ a: { b: { y: 1, x: 2 } } })).toEqual({
-      "a.b": h('{"x":2,"y":1}'),
+      "/a/b": h('{"x":2,"y":1}'),
     });
   });
 
   it("treats arrays as values hashed whole, at either depth", () => {
     expect(flattenJsonKeys({ files: ["a", "b"], o: { l: [1, 2] } })).toEqual({
-      files: h('["a","b"]'),
-      "o.l": h("[1,2]"),
+      "/files": h('["a","b"]'),
+      "/o/l": h("[1,2]"),
     });
   });
 
-  it("is invariant under key order", () => {
-    expect(flattenJsonKeys({ a: 1, b: { x: 1, y: 2 } })).toEqual(
-      flattenJsonKeys({ b: { y: 2, x: 1 }, a: 1 }),
+  it("keeps a top-level key named a.b distinct from object a's inner key b", () => {
+    const result = flattenJsonKeys({ "a.b": 1, a: { b: 2 } });
+    expect(result).toEqual({ "/a.b": h("1"), "/a/b": h("2") });
+  });
+
+  it("gives different key sets for {a.b:{c}} and {a:{b.c}}", () => {
+    expect(Object.keys(flattenJsonKeys({ "a.b": { c: 1 } }))).toEqual([
+      "/a.b/c",
+    ]);
+    expect(Object.keys(flattenJsonKeys({ a: { "b.c": 1 } }))).toEqual([
+      "/a/b.c",
+    ]);
+  });
+
+  it("escapes ~ as ~0 and / as ~1, in top-level and inner keys, keeping them distinct", () => {
+    expect(
+      flattenJsonKeys({ "a/b": 1, "a~b": 2, a: { "b/c": 3, "~": 4 } }),
+    ).toEqual({
+      "/a~1b": h("1"),
+      "/a~0b": h("2"),
+      "/a/b~1c": h("3"),
+      "/a/~0": h("4"),
+    });
+  });
+
+  it("escapes ~ before /, so a literal ~1 key and a / key do not collide", () => {
+    expect(flattenJsonKeys({ "~1": 1, "/": 2 })).toEqual({
+      "/~01": h("1"),
+      "/~1": h("2"),
+    });
+  });
+
+  it("skips a key whose value has no JSON form, at either depth", () => {
+    expect(flattenJsonKeys({ gone: undefined, kept: 1 })).toEqual({
+      "/kept": h("1"),
+    });
+    expect(flattenJsonKeys({ o: { gone: undefined, kept: 2 } })).toEqual({
+      "/o/kept": h("2"),
+    });
+  });
+
+  it("records an empty object as its own /x entry, unlike a missing x", () => {
+    expect(flattenJsonKeys({ x: {} })).toEqual({ "/x": h("{}") });
+    expect(flattenJsonKeys({})).toEqual({});
+  });
+
+  it("records a top-level __proto__ key as an own /__proto__ entry without polluting", () => {
+    const parsed: unknown = JSON.parse(
+      '{"__proto__": 1, "a": {"__proto__": 2}}',
     );
+    const result = flattenJsonKeys(parsed);
+    expect(Object.hasOwn(result, "/__proto__")).toBe(true);
+    expect(Object.hasOwn(result, "/a/__proto__")).toBe(true);
+    expect(result["/__proto__"]).toBe(h("1"));
+    expect(result["/a/__proto__"]).toBe(h("2"));
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+    expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+  });
+
+  it("is invariant under key order", () => {
+    const forward = flattenJsonKeys({ a: 1, b: { x: 1, y: 2 } });
+    expect(Object.keys(forward).sort()).toEqual(["/a", "/b/x", "/b/y"]);
+    expect(flattenJsonKeys({ b: { y: 2, x: 1 }, a: 1 })).toEqual(forward);
   });
 
   it("changes a hash when a value changes", () => {
-    expect(flattenJsonKeys({ a: 1 })["a"]).not.toBe(
-      flattenJsonKeys({ a: 2 })["a"],
-    );
-  });
-
-  it("emits nothing for an empty top-level object value", () => {
-    expect(flattenJsonKeys({ empty: {} })).toEqual({});
+    const one = flattenJsonKeys({ a: 1 })["/a"];
+    const two = flattenJsonKeys({ a: 2 })["/a"];
+    expect(one).toBe(nodeSha("1"));
+    expect(two).toBe(nodeSha("2"));
+    expect(one).not.toBe(two);
   });
 
   it.each([[[1, 2]], ["str"], [null], [42], [undefined]])(
@@ -287,14 +360,15 @@ describe("buildManifest", () => {
         "tsconfig.json",
       ].sort(),
     );
-    expect(manifest.jsonKeys["package.json"]).toEqual(
-      flattenJsonKeys({ name: "n", scripts: { a: "b" } }),
-    );
+    expect(manifest.jsonKeys["package.json"]).toEqual({
+      "/name": nodeSha('"n"'),
+      "/scripts/a": nodeSha('"b"'),
+    });
     expect(manifest.jsonKeys["tsconfig.json"]).toEqual({
-      "compilerOptions.strict": nodeSha("true"),
+      "/compilerOptions/strict": nodeSha("true"),
     });
     expect(manifest.jsonKeys[".claude/settings.json"]).toEqual({
-      "hooks.x": nodeSha("[]"),
+      "/hooks/x": nodeSha("[]"),
     });
     // The file hash covers the raw bytes, comments included.
     expect(manifest.files["tsconfig.json"]?.sha256).toBe(
@@ -313,13 +387,74 @@ describe("buildManifest", () => {
     ).toThrow(/missing\/gone\.txt/);
   });
 
+  it("wraps a read failure in a ManifestError carrying the read error as cause", () => {
+    const error = thrownBy(() =>
+      buildManifest({ targetDir: dir, ...base(), files: ["missing.txt"] }),
+    );
+    expect(error).toBeInstanceOf(ManifestError);
+    expect((error as ManifestError).cause).toBeInstanceOf(Error);
+    expect(((error as ManifestError).cause as NodeJS.ErrnoException).code).toBe(
+      "ENOENT",
+    );
+  });
+
+  it("records a __proto__ key of a package.json as an own /__proto__/x entry that survives write and read", () => {
+    put("package.json", '{"name":"n","__proto__":{"x":1}}');
+    const manifest = buildManifest({
+      targetDir: dir,
+      ...base(),
+      files: ["package.json"],
+    });
+    const keys = manifest.jsonKeys["package.json"] ?? {};
+    expect(Object.hasOwn(keys, "/__proto__/x")).toBe(true);
+    expect(keys["/__proto__/x"]).toBe(nodeSha("1"));
+    expect(Object.getPrototypeOf(keys)).toBe(Object.prototype);
+    expect(Object.hasOwn(Object.prototype, "x")).toBe(false);
+
+    writeManifest(dir, manifest);
+    const back = readManifest(dir);
+    expect(back).toEqual(manifest);
+    expect(
+      Object.hasOwn(back?.jsonKeys["package.json"] ?? {}, "/__proto__/x"),
+    ).toBe(true);
+  });
+
+  it("keeps a scalar top-level __proto__ as /__proto__ through write and read", () => {
+    put("package.json", '{"__proto__":5}');
+    const manifest = buildManifest({
+      targetDir: dir,
+      ...base(),
+      files: ["package.json"],
+    });
+    writeManifest(dir, manifest);
+    const keys = readManifest(dir)?.jsonKeys["package.json"] ?? {};
+    expect(Object.hasOwn(keys, "/__proto__")).toBe(true);
+    expect(keys["/__proto__"]).toBe(nodeSha("5"));
+  });
+
   it("throws an Error naming the path for a JSON file that cannot be parsed", () => {
     put("package.json", "{ not json");
     const error = thrownBy(() =>
       buildManifest({ targetDir: dir, ...base(), files: ["package.json"] }),
     );
-    expect(error).toBeInstanceOf(Error);
+    expect(error).toBeInstanceOf(ManifestError);
     expect((error as Error).message).toContain("package.json");
+  });
+
+  it("does not chain or quote the parser's view of a broken file (it may hold a secret)", () => {
+    // Assembled at runtime so no secret-shaped literal sits in the source.
+    const secret = ["sk-live-", "0123456789abcdef"].join("");
+    put("package.json", `{"token": "${secret}" "oops"`);
+    const error = thrownBy(() =>
+      buildManifest({ targetDir: dir, ...base(), files: ["package.json"] }),
+    );
+    expect(error).toBeInstanceOf(ManifestError);
+    expect((error as ManifestError).cause).toBeUndefined();
+    let current: unknown = error;
+    while (current instanceof Error) {
+      expect(current.message).not.toContain(secret);
+      current = current.cause;
+    }
   });
 });
 
@@ -355,6 +490,62 @@ describe("serializeManifest", () => {
     };
     expect(serializeManifest(b)).toBe(serializeManifest(a));
   });
+
+  it("wraps a packs array one element per line once its line exceeds 80 columns, and round-trips", () => {
+    const manifest: Manifest = {
+      schemaVersion: 1,
+      cliVersion: "1.2.3",
+      tokens: {},
+      packs: [
+        "frontend",
+        "harness-extras",
+        "licensing",
+        "quality",
+        "service",
+        "statusline",
+      ],
+      files: {},
+      jsonKeys: {},
+    };
+    const text = serializeManifest(manifest);
+    expect(text).toBe(
+      [
+        "{",
+        '  "cliVersion": "1.2.3",',
+        '  "files": {},',
+        '  "jsonKeys": {},',
+        '  "packs": [',
+        '    "frontend",',
+        '    "harness-extras",',
+        '    "licensing",',
+        '    "quality",',
+        '    "service",',
+        '    "statusline"',
+        "  ],",
+        '  "schemaVersion": 1,',
+        '  "tokens": {}',
+        "}",
+        "",
+      ].join("\n"),
+    );
+    expect(parseManifest(text)).toEqual(manifest);
+  });
+
+  it.each([
+    [64, true],
+    [65, false],
+  ])(
+    "keeps a one-name packs array on one line exactly while the line fits in 80 columns (name length %i, flat: %s)",
+    (length, flat) => {
+      const name = "a".repeat(length);
+      const text = serializeManifest({ ...validManifest(), packs: [name] });
+      // `  "packs": ["<name>"],` is length + 16 columns: 80 fits, 81 does not.
+      const flatLine = `  "packs": ["${name}"],`;
+      expect(flatLine.length).toBe(length + 16);
+      expect(text.includes(`${flatLine}\n`)).toBe(flat);
+      expect(text.includes(`  "packs": [\n    "${name}"\n  ],\n`)).toBe(!flat);
+    },
+  );
 
   it("round-trips through parseManifest", () => {
     const m = validManifest();
@@ -426,6 +617,16 @@ describe("parseManifest", () => {
     ["jsonKeys", undefined],
     ["jsonKeys", { "package.json": { a: 1 } }],
     ["jsonKeys", { "package.json": "x" }],
+    ["jsonKeys", { "package.json": { "scripts.verify": HASH_A } }],
+    ["jsonKeys", { "package.json": { name: HASH_A } }],
+    ["cliVersion", ""],
+    ["packs", ["../x"]],
+    ["packs", ["Foo"]],
+    ["packs", [""]],
+    ["packs", ["a/b"]],
+    ["packs", ["-a"]],
+    ["packs", ["1a"]],
+    ["packs", ["a_b"]],
   ])(
     "rejects an ill-typed or missing %s (%j) naming the field",
     (field, bad) => {
@@ -458,6 +659,28 @@ describe("parseManifest", () => {
       raw["files"] = { "a.txt": { sha256: HASH_A, origin } };
       expect(() => parseRaw(raw)).toThrow(ManifestError);
       expect(() => parseRaw(raw)).toThrow(/origin/);
+    },
+  );
+
+  it("rejects an unknown key inside a files entry, naming it", () => {
+    const raw = rawManifest();
+    raw["files"] = {
+      "a.txt": { sha256: HASH_A, origin: "emitted", extra: 1 },
+    };
+    const error = thrownBy(() => parseRaw(raw));
+    expect(error).toBeInstanceOf(ManifestError);
+    expect((error as Error).message).toContain("extra");
+  });
+
+  it.each([["nothex"], ["A".repeat(64)], ["a".repeat(63)], [""]])(
+    "rejects a jsonKeys hash that is a string but not a sha256 (%j)",
+    (hash) => {
+      const raw = rawManifest();
+      raw["jsonKeys"] = { "package.json": { "/a": hash } };
+      const error = thrownBy(() => parseRaw(raw));
+      expect(error).toBeInstanceOf(ManifestError);
+      expect((error as Error).message).toContain("jsonKeys");
+      expect((error as Error).message).toContain("64 lowercase hex");
     },
   );
 
@@ -514,12 +737,15 @@ describe("parseManifest", () => {
       expect(() => parseManifest(text)).toThrow(ManifestError);
     });
 
-    it("does not pollute Object.prototype when rejecting", () => {
-      expect(() => parseManifest(withInjected("top", "__proto__"))).toThrow(
-        ManifestError,
-      );
-      expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
-      expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    it("accepts a pointer key that merely ends in a sensitive name", () => {
+      const raw = rawManifest();
+      raw["jsonKeys"] = {
+        "package.json": { "/__proto__": HASH_A, "/constructor/x": HASH_B },
+      };
+      const parsed = parseRaw(raw);
+      expect(
+        Object.hasOwn(parsed.jsonKeys["package.json"] ?? {}, "/__proto__"),
+      ).toBe(true);
     });
   });
 
@@ -540,9 +766,18 @@ describe("parseManifest", () => {
     ["backslash", "a\\b"],
   ])("rejects a %s jsonKeys path", (_label, path) => {
     const raw = rawManifest();
-    raw["jsonKeys"] = { [path]: { a: HASH_A } };
+    raw["jsonKeys"] = { [path]: { "/a": HASH_A } };
     expect(() => parseRaw(raw)).toThrow(ManifestError);
   });
+
+  it.each([["generic-pack"], ["harness-extras"], ["a1"], ["a"]])(
+    "accepts the pack name %s",
+    (name) => {
+      const raw = rawManifest();
+      raw["packs"] = [name];
+      expect(parseRaw(raw).packs).toEqual([name]);
+    },
+  );
 
   it("accepts a path that merely contains dots in a segment", () => {
     const raw = rawManifest();
@@ -555,6 +790,20 @@ describe("parseManifest", () => {
 
 describe("writeManifest", () => {
   const manifestPath = (): string => join(dir, ".groundwork", "manifest.json");
+
+  it("rethrows the ManifestError of an invalid manifest unchanged, writing nothing", () => {
+    const invalid = {
+      ...validManifest(),
+      schemaVersion: 2,
+    } as unknown as Manifest;
+    const error = thrownBy(() => writeManifest(dir, invalid));
+    expect(error).toBeInstanceOf(ManifestError);
+    expect((error as ManifestError).message).toMatch(/schemaVersion.*2/);
+    // Not re-wrapped as "could not write": no cause, the parse error itself.
+    expect((error as ManifestError).cause).toBeUndefined();
+    expect((error as ManifestError).message).not.toContain("could not write");
+    expect(existsSync(join(dir, ".groundwork"))).toBe(false);
+  });
 
   it("creates .groundwork and writes the serialized manifest", () => {
     writeManifest(dir, validManifest());
@@ -580,7 +829,9 @@ describe("writeManifest", () => {
     const elsewhere = mkdtempSync(join(tmpdir(), "manifest-elsewhere-"));
     try {
       symlinkSync(elsewhere, join(dir, ".groundwork"));
-      expect(() => writeManifest(dir, validManifest())).toThrow(Error);
+      const error = thrownBy(() => writeManifest(dir, validManifest()));
+      expect(error).toBeInstanceOf(ManifestError);
+      expect((error as ManifestError).cause).toBeInstanceOf(Error);
       expect(readdirSync(elsewhere)).toEqual([]);
       expect(lstatSync(join(dir, ".groundwork")).isSymbolicLink()).toBe(true);
     } finally {
@@ -596,7 +847,9 @@ describe("writeManifest", () => {
       mkdirSync(join(dir, ".groundwork"));
       symlinkSync(victim, manifestPath());
 
-      expect(() => writeManifest(dir, validManifest())).toThrow(Error);
+      const error = thrownBy(() => writeManifest(dir, validManifest()));
+      expect(error).toBeInstanceOf(ManifestError);
+      expect((error as ManifestError).cause).toBeInstanceOf(Error);
 
       expect(readFileSync(victim, "utf8")).toBe("keep");
       expect(lstatSync(manifestPath()).isSymbolicLink()).toBe(true);
@@ -627,6 +880,65 @@ describe("readManifest", () => {
     mkdirSync(join(dir, ".groundwork"));
     writeFileSync(join(dir, ".groundwork", "manifest.json"), "{ nope");
     expect(() => readManifest(dir)).toThrow(ManifestError);
+  });
+
+  describe("is lstat-first: undefined only for a genuinely absent manifest", () => {
+    function validText(): string {
+      return serializeManifest(validManifest());
+    }
+
+    it("throws ManifestError when .groundwork is a regular file", () => {
+      writeFileSync(join(dir, ".groundwork"), "not a directory");
+      expect(() => readManifest(dir)).toThrow(ManifestError);
+    });
+
+    it("throws ManifestError when manifest.json is a dangling symlink", () => {
+      mkdirSync(join(dir, ".groundwork"));
+      symlinkSync(
+        join(dir, "nowhere.json"),
+        join(dir, ".groundwork", "manifest.json"),
+      );
+      expect(() => readManifest(dir)).toThrow(ManifestError);
+    });
+
+    it("throws ManifestError when manifest.json is a symlink to a valid manifest", () => {
+      mkdirSync(join(dir, ".groundwork"));
+      writeFileSync(join(dir, "real.json"), validText());
+      symlinkSync(
+        join(dir, "real.json"),
+        join(dir, ".groundwork", "manifest.json"),
+      );
+      expect(() => readManifest(dir)).toThrow(ManifestError);
+    });
+
+    it("throws ManifestError when .groundwork is a symlink to a directory holding a valid manifest", () => {
+      const elsewhere = mkdtempSync(join(tmpdir(), "manifest-elsewhere-"));
+      try {
+        writeFileSync(join(elsewhere, "manifest.json"), validText());
+        symlinkSync(elsewhere, join(dir, ".groundwork"));
+        expect(() => readManifest(dir)).toThrow(ManifestError);
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+    });
+
+    it.skipIf(!canMakeFifo)(
+      "throws ManifestError, without blocking, when manifest.json is a FIFO",
+      () => {
+        mkdirSync(join(dir, ".groundwork"));
+        execFileSync("mkfifo", [join(dir, ".groundwork", "manifest.json")]);
+        const error = thrownBy(() => readManifest(dir));
+        expect(error).toBeInstanceOf(ManifestError);
+        expect(((error as ManifestError).cause as Error).message).toContain(
+          "not a regular file",
+        );
+      },
+    );
+
+    it("throws ManifestError when manifest.json is a directory", () => {
+      mkdirSync(join(dir, ".groundwork", "manifest.json"), { recursive: true });
+      expect(() => readManifest(dir)).toThrow(ManifestError);
+    });
   });
 
   it("throws ManifestError naming the field for a structurally invalid file", () => {

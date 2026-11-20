@@ -55,15 +55,18 @@ function reorder(value: unknown): unknown {
 
 const hex64 = fc.stringMatching(/^[0-9a-f]{64}$/);
 const pathSegment = fc.stringMatching(/^[a-z][a-z0-9_-]{0,6}$/);
+const packName = fc.stringMatching(/^[a-z][a-z0-9-]{0,6}$/);
+/** A JSON Pointer key as the manifest records it: always starts with a slash. */
+const pointerKey = safeKey.map((k) => `/${k}`);
 const relPath = fc
   .array(pathSegment, { minLength: 1, maxLength: 3 })
   .map((parts) => parts.join("/"));
 
 const manifestArb: fc.Arbitrary<Manifest> = fc.record({
   schemaVersion: fc.constant(1 as const),
-  cliVersion: fc.string({ maxLength: 10 }),
+  cliVersion: fc.string({ minLength: 1, maxLength: 10 }),
   tokens: fc.dictionary(safeKey, fc.string({ maxLength: 8 }), { maxKeys: 3 }),
-  packs: fc.array(pathSegment, { maxLength: 3 }),
+  packs: fc.array(packName, { maxLength: 3 }),
   files: fc.dictionary(
     relPath,
     fc.record({
@@ -74,12 +77,51 @@ const manifestArb: fc.Arbitrary<Manifest> = fc.record({
   ),
   jsonKeys: fc.dictionary(
     relPath,
-    fc.dictionary(safeKey, hex64, { maxKeys: 3 }),
+    fc.dictionary(pointerKey, hex64, { maxKeys: 3 }),
     { maxKeys: 3 },
   ),
 });
 
+/** Keys over a small alphabet rich in the characters JSON Pointer escapes. */
+const pointerSegment = fc.stringMatching(/^[ab./~01]{1,4}$/);
+
+/** The pointer a top-level key, optionally with an inner key, must map to (hand-derived escape). */
+function expectedPointer(top: string, inner?: string): string {
+  const esc = (k: string): string => k.replace(/~/g, "~0").replace(/\//g, "~1");
+  return inner === undefined ? `/${esc(top)}` : `/${esc(top)}/${esc(inner)}`;
+}
+
 describe("manifest properties", () => {
+  it("pointer keys are injective over distinct (top, inner) pairs and scalar tops", () => {
+    const shape = fc.oneof(
+      fc.tuple(fc.constant("pair" as const), pointerSegment, pointerSegment),
+      fc.tuple(fc.constant("scalar" as const), pointerSegment, fc.constant("")),
+    );
+    fc.assert(
+      fc.property(shape, shape, (left, right) => {
+        const keysOf = ([kind, top, inner]: typeof left): string[] =>
+          Object.keys(
+            flattenJsonKeys(
+              kind === "pair"
+                ? Object.fromEntries([[top, Object.fromEntries([[inner, 1]])]])
+                : Object.fromEntries([[top, 1]]),
+            ),
+          );
+        const [leftKey] = keysOf(left);
+        const [rightKey] = keysOf(right);
+        expect(leftKey).toBe(
+          expectedPointer(left[1], left[0] === "pair" ? left[2] : undefined),
+        );
+        const sameTuple =
+          left[0] === right[0] &&
+          left[1] === right[1] &&
+          (left[0] === "scalar" || left[2] === right[2]);
+        expect(leftKey === rightKey).toBe(sameTuple);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
   it("flattenJsonKeys is invariant under key reordering", () => {
     fc.assert(
       fc.property(jsonObject, (value) => {

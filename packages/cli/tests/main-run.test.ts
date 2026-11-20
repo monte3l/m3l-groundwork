@@ -18,11 +18,13 @@ import {
   existsSync,
   symlinkSync,
   lstatSync,
+  readlinkSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ManifestError } from "../src/manifest.js";
 import type { Inventory } from "../src/inventory.js";
 import type * as InventoryModule from "../src/inventory.js";
 import type * as ReportModule from "../src/report.js";
@@ -685,9 +687,12 @@ describe("main", () => {
       expect(
         existsSync(join(target, ".claude", "skills", "customize", "SKILL.md")),
       ).toBe(true);
-      expect(readOnDisk(target).files).not.toHaveProperty(
-        ".claude/skills/customize/SKILL.md",
-      );
+      expect(
+        Object.hasOwn(
+          readOnDisk(target).files,
+          ".claude/skills/customize/SKILL.md",
+        ),
+      ).toBe(false);
     });
 
     it("records the installed packs and hashes pack-merged shared files in their final form", () => {
@@ -702,9 +707,12 @@ describe("main", () => {
         expect(entry.sha256).toBe(sha(join(target, rel)));
       }
       // Pinned by hand: the baseline declares a verify script.
-      expect(manifest.jsonKeys["package.json"]).toHaveProperty(
-        "scripts.verify",
-      );
+      expect(
+        Object.hasOwn(
+          manifest.jsonKeys["package.json"] ?? {},
+          "/scripts/verify",
+        ),
+      ).toBe(true);
     });
 
     it("writes the manifest after the packs and before git init", () => {
@@ -721,14 +729,15 @@ describe("main", () => {
       expect(manifestExistedAtGitInit).toBe(true);
     });
 
-    it("fails with the underlying error as cause, without git init, when the manifest cannot be written", () => {
+    it("fails with a ManifestError cause, without git init, when the manifest write fails after a successful emit", () => {
       const target = join(targetDir, "manifest-fails");
-      const elsewhere = join(targetDir, "elsewhere");
-      mkdirSync(target);
-      mkdirSync(elsewhere);
-      // A symlinked .groundwork is refused by writeManifest; it is not one of
-      // the paths the baseline emits, so the run reaches the manifest step.
-      symlinkSync(elsewhere, join(target, ".groundwork"));
+      mkdirSync(join(target, ".groundwork", "manifest.json.tmp"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(target, ".groundwork", "manifest.json.tmp", "keep"),
+        "x",
+      );
       vi.spyOn(console, "log").mockImplementation(() => undefined);
       let thrown: unknown;
       try {
@@ -740,9 +749,85 @@ describe("main", () => {
       }
 
       expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).cause).toBeInstanceOf(Error);
-      expect(readdirSync(elsewhere)).toEqual([]);
+      expect((thrown as Error).cause).toBeInstanceOf(ManifestError);
+      expect(existsSync(join(target, "package.json"))).toBe(true);
       expect(gitInitMock).not.toHaveBeenCalled();
+      expect(runInstallMock).not.toHaveBeenCalled();
+    });
+
+    describe("refuses before the first write when .groundwork or the manifest path is unusable", () => {
+      /** Every entry under `root` with its kind and, for a file, its bytes; symlinks are recorded, never followed. */
+      function snapshot(root: string): string[] {
+        const lines: string[] = [];
+        const walk = (current: string, rel: string): void => {
+          for (const entry of readdirSync(current, { withFileTypes: true })) {
+            const relPath = rel === "" ? entry.name : `${rel}/${entry.name}`;
+            const abs = join(current, entry.name);
+            if (entry.isSymbolicLink()) {
+              lines.push(`${relPath} -> ${readlinkSync(abs)}`);
+            } else if (entry.isDirectory()) {
+              lines.push(`${relPath}/`);
+              walk(abs, relPath);
+            } else {
+              lines.push(`${relPath} = ${readFileSync(abs, "utf8")}`);
+            }
+          }
+        };
+        walk(root, "");
+        return lines.sort();
+      }
+
+      function plant(kind: string, target: string): string {
+        mkdirSync(target, { recursive: true });
+        writeFileSync(join(target, "existing.txt"), "keep me");
+        const groundwork = join(target, ".groundwork");
+        if (kind === "file") {
+          writeFileSync(groundwork, "not a directory");
+          return groundwork;
+        }
+        if (kind === "symlink") {
+          const elsewhere = join(target, "..", `${basename(target)}-elsewhere`);
+          mkdirSync(elsewhere);
+          symlinkSync(elsewhere, groundwork);
+          return groundwork;
+        }
+        mkdirSync(join(groundwork, "manifest.json"), { recursive: true });
+        writeFileSync(join(groundwork, "manifest.json", "keep"), "inner");
+        return join(groundwork, "manifest.json");
+      }
+
+      it.each([["file"], ["symlink"], ["manifest-dir"]])(
+        "with .groundwork as a %s: nothing is written, no mock runs, the error names the path and the --fresh --force retry once",
+        (kind) => {
+          const target = join(targetDir, `preflight-${kind}`);
+          const offending = plant(kind, target);
+          const before = snapshot(target);
+          vi.spyOn(console, "log").mockImplementation(() => undefined);
+          let thrown: unknown;
+          try {
+            main([target, "--fresh", "--force", "--skip-install"]);
+          } catch (error) {
+            thrown = error;
+          } finally {
+            vi.restoreAllMocks();
+          }
+
+          expect(thrown).toBeInstanceOf(Error);
+          expect(thrown).not.toBeInstanceOf(CliUsageError);
+          expect((thrown as Error).message).toContain(offending);
+          let retryMarkers = 0;
+          for (let c: unknown = thrown; c instanceof Error; c = c.cause) {
+            retryMarkers += c.message.match(/--fresh --force/g)?.length ?? 0;
+          }
+          expect(retryMarkers).toBe(1);
+
+          expect(snapshot(target)).toEqual(before);
+          expect(existsSync(join(target, "package.json"))).toBe(false);
+          expect(installCustomizeSkillMock).not.toHaveBeenCalled();
+          expect(gitInitMock).not.toHaveBeenCalled();
+          expect(runInstallMock).not.toHaveBeenCalled();
+        },
+      );
     });
 
     it("is left byte-identical by a later adopt run on the same directory", () => {

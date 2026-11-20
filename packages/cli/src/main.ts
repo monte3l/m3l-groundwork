@@ -61,6 +61,7 @@ import {
 } from "./baseline-stage.js";
 import {
   assertDirectoryComponent,
+  assertFileDestination,
   assertNotDirectory,
   assertNotSymlink,
   endsWithRerunAdvice,
@@ -80,6 +81,7 @@ import {
 } from "./manifest.js";
 import type { Pack } from "./packs.js";
 import {
+  PACK_NAME_PATTERN,
   listPackNames,
   loadPack,
   installPack,
@@ -136,9 +138,10 @@ const REPEATABLE_VALUE_FLAGS = new Set(["--pack"]);
 const HELP_FLAGS = new Set(["--help", "-h"]);
 const VERSION_FLAGS = new Set(["--version", "-v"]);
 const LIST_PACKS_FLAGS = new Set(["--list-packs"]);
-// A --pack value is a bare directory name under templates/packs/ -- this
-// allowlist keeps it from ever reaching packs.ts's join() as a path.
-const PACK_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+// A --pack value is a bare directory name under templates/packs/ --
+// PACK_NAME_PATTERN (owned by packs.ts, shared with loadPack and the
+// manifest's `packs` check) keeps it from
+// ever reaching packs.ts's join() as a path.
 // A --name value is substituted verbatim into the emitted package.json, so it
 // must fit a conservative, ASCII-lowercase subset of npm's naming rules
 // (optional @scope/). Reserved names like `node_modules` are out of scope.
@@ -430,6 +433,21 @@ function assertSafeSkillDestination(targetDir: string): void {
   }
 }
 
+/**
+ * Fresh mode's pre-flight over the manifest's destination: `.groundwork`
+ * must be missing or a real directory, and `.groundwork/manifest.json`
+ * missing or a regular file (never a symlink or a directory). Nothing is
+ * written either way.
+ */
+function assertSafeManifestDestination(targetDir: string): void {
+  const groundworkDir = join(targetDir, ".groundwork");
+  assertDirectoryComponent(groundworkDir, FRESH_SYMLINK_ADVICE);
+  assertFileDestination(
+    join(groundworkDir, "manifest.json"),
+    FRESH_SYMLINK_ADVICE,
+  );
+}
+
 function runFresh(
   options: CliOptions,
   platform: NodeJS.Platform,
@@ -464,6 +482,10 @@ function runFresh(
   // runs only after the baseline is written -- too late to leave the target
   // untouched.
   assertSafeSkillDestination(options.targetDir);
+
+  // And the manifest's: writeManifest refuses the same shapes, but only
+  // after the baseline, the packs and the skill are written.
+  assertSafeManifestDestination(options.targetDir);
 
   mkdirSync(options.targetDir, { recursive: true });
 

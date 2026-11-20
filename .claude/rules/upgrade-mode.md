@@ -34,7 +34,11 @@ this line when the last one does.
   and must never be in `STALE_FILE_NAMES` (`main.ts`): an adopt re-run must not
   delete it. It stores `cliVersion`, `tokens`, `packs`, a sha256 per file with
   an `origin` of `emitted` or `merged`, and a sha256 per JSON key for
-  `package.json`, `tsconfig*.json` and `.claude/settings.json`. Hash the
+  `package.json`, `tsconfig*.json` and `.claude/settings.json`. A JSON key is
+  named by a JSON Pointer (RFC 6901): a top-level key is `/scripts`, an inner
+  key of a non-empty top-level object is `/scripts/verify`, `~` and `/` inside a
+  name are escaped as `~0` and `~1`, and an empty object is one `/x` entry. A
+  dotted name would collide (`a.b` as a key versus `b` inside `a`). Hash the
   post-pack output, since packs merge into shared files. Schema 1, written by
   fresh mode today, holds exactly those fields and `parseManifest` rejects any
   other top-level key. The change that makes `/customize` or `--apply` write

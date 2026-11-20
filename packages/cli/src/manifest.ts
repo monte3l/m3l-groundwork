@@ -14,7 +14,10 @@
  */
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -24,7 +27,7 @@ import { basename, join } from "node:path";
 import { assertDirectoryComponent, assertFileDestination } from "./fs-guard.js";
 import { parseJsonc } from "./jsonc.js";
 import { isPrototypeSensitiveKey } from "./merge-json.js";
-import { isAbsentError } from "./survey/internal/read-guard.js";
+import { PACK_NAME_PATTERN } from "./packs.js";
 
 /**
  * The manifest schema this CLI reads and writes. A manifest declaring any
@@ -148,12 +151,20 @@ function canonicalJson(value: unknown): string | undefined {
   return typeof text === "string" ? text : undefined;
 }
 
+/** One JSON Pointer reference token (RFC 6901): `~` becomes `~0` first, then `/` becomes `~1`. */
+function escapePointerToken(key: string): string {
+  return key.replaceAll("~", "~0").replaceAll("/", "~1");
+}
+
 /**
- * Flattens a parsed JSON document into per-key hashes: a top-level key whose
- * value is not a plain object is recorded as `"a"`; a top-level plain object
- * contributes one `"a.b"` entry per own key instead (and nothing when it is
- * empty). Each value -- an array or a deeper object included -- is hashed
- * whole, as the sha256 of its key-sorted JSON text, so the result is
+ * Flattens a parsed JSON document into per-key hashes keyed by JSON Pointer
+ * (RFC 6901): a top-level key whose value is a non-empty plain object
+ * contributes one `/a/b` entry per own key; any other value (a scalar, an
+ * array, `null` or an empty object) is one `/a` entry. Each token is
+ * escaped (`~` as `~0`, `/` as `~1`), so distinct keys never collide and a
+ * key containing `.` or `/` stays unambiguous. Each value -- an array or a
+ * deeper object included -- is hashed whole, as the sha256 of its JSON text
+ * with every object's keys in canonical (sorted) order, so the result is
  * independent of key order and source whitespace. A non-object input (an
  * array, a scalar, `null`, `undefined`) gives `{}`; a key whose value has no
  * JSON form (`undefined`) is omitted, as `JSON.stringify` omits it.
@@ -163,23 +174,25 @@ function canonicalJson(value: unknown): string | undefined {
  * import { flattenJsonKeys } from "./manifest.js";
  *
  * flattenJsonKeys({ name: "x", scripts: { build: "tsc" } });
- * // { name: sha256('"x"'), "scripts.build": sha256('"tsc"') }
+ * // { "/name": sha256('"x"'), "/scripts/build": sha256('"tsc"') }
  * ```
  */
 export function flattenJsonKeys(value: unknown): Record<string, string> {
   if (!isPlainObject(value)) return {};
   const entries: [string, string][] = [];
-  const record = (key: string, v: unknown): void => {
+  const record = (pointer: string, v: unknown): void => {
     const canonical = canonicalJson(v);
-    if (canonical !== undefined) entries.push([key, sha256Hex(canonical)]);
+    if (canonical !== undefined) entries.push([pointer, sha256Hex(canonical)]);
   };
   for (const [key, v] of Object.entries(value)) {
-    if (isPlainObject(v)) {
-      for (const [inner, innerValue] of Object.entries(v)) {
-        record(`${key}.${inner}`, innerValue);
-      }
-    } else {
-      record(key, v);
+    const top = `/${escapePointerToken(key)}`;
+    const inner = isPlainObject(v) ? Object.entries(v) : [];
+    if (inner.length === 0) {
+      record(top, v);
+      continue;
+    }
+    for (const [innerKey, innerValue] of inner) {
+      record(`${top}/${escapePointerToken(innerKey)}`, innerValue);
     }
   }
   // fromEntries defines own data properties, so even a `__proto__` key in the
@@ -406,10 +419,13 @@ function parseFileEntry(value: unknown, field: string): ManifestFileEntry {
  * a non-object document; a `schemaVersion` other than
  * {@link MANIFEST_SCHEMA_VERSION}; a missing or ill-typed field; an unknown
  * top-level or file-entry key; a `sha256` that is not 64 lowercase hex
- * characters; an `origin` other than `emitted`/`merged`; a
- * `__proto__`/`constructor`/`prototype` key anywhere; and a path key that is
- * absolute, has an empty, `.` or `..` segment, or contains a backslash. The
- * result is a fresh object built from the validated values only.
+ * characters; an `origin` other than `emitted`/`merged`; an empty
+ * `cliVersion`; a pack name not matching {@link PACK_NAME_PATTERN}; a
+ * `jsonKeys` key that is not a JSON Pointer (does not start with `/`); a
+ * `__proto__`/`constructor`/`prototype` key anywhere (a pointer such as
+ * `/__proto__` is an ordinary key); and a path key that is absolute, has an
+ * empty, `.` or `..` segment, or contains a backslash. The result is a fresh
+ * object built from the validated values only.
  *
  * @example
  * ```ts
@@ -448,8 +464,8 @@ export function parseManifest(text: string): Manifest {
   }
 
   const cliVersion = top.get("cliVersion");
-  if (typeof cliVersion !== "string") {
-    throw invalid("cliVersion must be a string");
+  if (typeof cliVersion !== "string" || cliVersion === "") {
+    throw invalid("cliVersion must be a non-empty string");
   }
 
   const tokens = stringRecord(top.get("tokens"), "tokens");
@@ -457,9 +473,13 @@ export function parseManifest(text: string): Manifest {
   const rawPacks = top.get("packs");
   if (
     !Array.isArray(rawPacks) ||
-    !rawPacks.every((p): p is string => typeof p === "string")
+    !rawPacks.every(
+      (p): p is string => typeof p === "string" && PACK_NAME_PATTERN.test(p),
+    )
   ) {
-    throw invalid("packs must be an array of strings");
+    throw invalid(
+      `packs must be an array of pack names matching ${PACK_NAME_PATTERN.source}`,
+    );
   }
 
   const files: Record<string, ManifestFileEntry> = {};
@@ -474,6 +494,11 @@ export function parseManifest(text: string): Manifest {
     const field = `jsonKeys[${JSON.stringify(path)}]`;
     const hashes = stringRecord(keys, field);
     for (const [key, hash] of Object.entries(hashes)) {
+      if (!key.startsWith("/")) {
+        throw invalid(
+          `${field} holds ${JSON.stringify(key)}, which is not a JSON Pointer (it must start with "/")`,
+        );
+      }
       if (!SHA256_PATTERN.test(hash)) {
         throw invalid(`${field}.${key} must be 64 lowercase hex characters`);
       }
@@ -495,14 +520,27 @@ export function parseManifest(text: string): Manifest {
 const MANIFEST_SYMLINK_ADVICE = "replace it with a real directory or file";
 
 /**
+ * Refuses (by `lstat`) a `.groundwork` that is a symlink or not a directory,
+ * and a manifest path that is a symlink (dangling or not) or a directory. A
+ * missing entry passes. Throws the fs-guard `Error`, unwrapped.
+ */
+function assertManifestPathSafe(dir: string, path: string): void {
+  assertDirectoryComponent(dir, MANIFEST_SYMLINK_ADVICE);
+  assertFileDestination(path, MANIFEST_SYMLINK_ADVICE);
+}
+
+/**
  * Writes `manifest` to `<targetDir>/.groundwork/manifest.json`, creating
  * `.groundwork/` if needed. The text is validated with
  * {@link parseManifest} first, so a manifest this CLI could not read back is
  * never written. Refuses (by `lstat`, before any write) a `.groundwork` that
  * is a symlink or not a directory, and a manifest path that is a symlink or a
  * directory, so nothing is written through a link. The write is atomic: the
- * text goes to a temp file in `.groundwork/` that is renamed over the
- * manifest, and the temp file is removed (best effort) on failure.
+ * text goes to `manifest.json.tmp` in `.groundwork/` (a stale one is cleared
+ * first, then the temp file is created exclusively), which is renamed over
+ * the manifest. On failure the temp file is removed only if this call
+ * created it; a failed removal warns, naming the leftover file, and the
+ * original failure is still what is thrown.
  *
  * @returns The absolute path written.
  * @throws {@link ManifestError} on any failure, the underlying error as
@@ -519,26 +557,37 @@ export function writeManifest(targetDir: string, manifest: Manifest): string {
   const dir = join(targetDir, ".groundwork");
   const path = join(dir, "manifest.json");
   const tmpPath = `${path}.tmp`;
+  // True only between this call's exclusive create of the temp file and its
+  // rename: a file this call never created (an EEXIST race on the "wx" open)
+  // is never removed.
   let tmpCreated = false;
   try {
     const text = serializeManifest(manifest);
     parseManifest(text);
-    assertDirectoryComponent(dir, MANIFEST_SYMLINK_ADVICE);
-    assertFileDestination(path, MANIFEST_SYMLINK_ADVICE);
+    assertManifestPathSafe(dir, path);
     mkdirSync(dir, { recursive: true });
     // Clear a crashed run's leftover (or a planted symlink), then create the
     // temp file exclusively: "wx" fails rather than following a link raced in.
     rmSync(tmpPath, { force: true });
+    const fd = openSync(tmpPath, "wx");
     tmpCreated = true;
-    writeFileSync(tmpPath, text, { flag: "wx" });
+    try {
+      writeFileSync(fd, text);
+    } finally {
+      closeSync(fd);
+    }
     renameSync(tmpPath, path);
     tmpCreated = false;
   } catch (cause) {
     if (tmpCreated) {
       try {
         rmSync(tmpPath, { force: true });
-      } catch {
-        // Best effort: the write failure below is the error worth reporting.
+      } catch (cleanupError) {
+        // Best effort: the write failure below is the error worth reporting,
+        // so a failed cleanup only warns, naming the leftover file.
+        console.warn(
+          `warning: could not remove the temporary file ${tmpPath} -- delete it by hand (${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)})`,
+        );
       }
     }
     if (cause instanceof ManifestError) throw cause;
@@ -548,13 +597,17 @@ export function writeManifest(targetDir: string, manifest: Manifest): string {
 }
 
 /**
- * Reads and parses `<targetDir>/.groundwork/manifest.json`.
+ * Reads and parses `<targetDir>/.groundwork/manifest.json`, `lstat` first:
+ * the same refusals {@link writeManifest} makes apply before anything is
+ * read, so a manifest is never read through a symlink.
  *
- * @returns The manifest, or `undefined` when no manifest file exists (a
- *   missing `.groundwork/` included).
- * @throws {@link ManifestError} when the file exists but cannot be read
- *   (the read failure as `cause`) or does not parse; never `undefined` for
- *   a present file.
+ * @returns The manifest, or `undefined` only when nothing is at the manifest
+ *   path (`ENOENT` on it or on `.groundwork`).
+ * @throws {@link ManifestError} when `.groundwork` is a symlink or not a
+ *   directory, when the manifest path is a symlink (dangling or not), a
+ *   directory or any other non-regular file, when it cannot be inspected or
+ *   read (an `ENOTDIR` included; the failure as `cause`), or when it does not
+ *   parse; never `undefined` for a present entry.
  *
  * @example
  * ```ts
@@ -565,12 +618,18 @@ export function writeManifest(targetDir: string, manifest: Manifest): string {
  * ```
  */
 export function readManifest(targetDir: string): Manifest | undefined {
-  const path = join(targetDir, ".groundwork", "manifest.json");
+  const dir = join(targetDir, ".groundwork");
+  const path = join(dir, "manifest.json");
   let text: string;
   try {
+    assertManifestPathSafe(dir, path);
+    // throwIfNoEntry covers ENOENT only: an ENOTDIR (an ancestor that is a
+    // file) throws and is reported, never read as "absent".
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (stat === undefined) return undefined;
+    if (!stat.isFile()) throw new Error(`${path} is not a regular file`);
     text = readFileSync(path, "utf8");
   } catch (cause) {
-    if (isAbsentError(cause)) return undefined;
     throw new ManifestError(`could not read ${path}`, { cause });
   }
   return parseManifest(text);
