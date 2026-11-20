@@ -5,8 +5,9 @@
 /**
  * The published CLI's entry point: `npx @monte3l/groundwork <target-dir>`
  * resolves here. Delegates straight to the built `main()` and turns a
- * `CliUsageError` into exit code 2 (a bad invocation), any other thrown
- * error into exit code 1 (a runtime failure) -- see `packages/cli/src/main.ts`.
+ * `CliUsageError` into exit code 2 (`EXIT_CODES.usage`, a bad invocation),
+ * any other thrown error into exit code 1 (`EXIT_CODES.runtime`, a runtime
+ * failure) -- see `packages/cli/src/main.ts` and `packages/cli/src/exit-codes.ts`.
  * The error is printed with its full `cause` chain (`formatErrorChain`), so
  * a wrapped failure never hides the underlying reason; `handleFatal` sets the
  * exit code before printing and never throws, even when reporting fails --
@@ -19,6 +20,7 @@
  */
 import process from "node:process";
 import { main, CliUsageError } from "../dist/main.js";
+import { EXIT_CODES } from "../dist/exit-codes.js";
 import { handleFatal } from "../dist/fatal.js";
 import { paint } from "../dist/term.js";
 
@@ -38,7 +40,7 @@ try {
         console.error(text);
       },
     },
-    (e) => e instanceof CliUsageError,
+    (e) => (e instanceof CliUsageError ? EXIT_CODES.usage : EXIT_CODES.runtime),
     (process.env["M3L_DEBUG"] ?? "") !== "",
   );
 }

@@ -9,12 +9,16 @@
 // without mocking away the thing genuinely under test: the assertion is on
 // the exact command/args/cwd passed to the subprocess boundary, not on a
 // stubbed-out git.ts function.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { execFileSyncMock } = vi.hoisted(() => ({ execFileSyncMock: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFileSync: execFileSyncMock }));
 
 const { gitInit, runInstall } = await import("../src/git.js");
+
+afterEach(() => {
+  execFileSyncMock.mockReset();
+});
 
 describe("gitInit", () => {
   it("runs `git init -q` in the given directory", () => {
@@ -36,6 +40,42 @@ describe("runInstall", () => {
       "pnpm",
       ["install"],
       expect.objectContaining({ cwd: "/tmp/some-project" }),
+    );
+  });
+});
+
+describe.each([
+  ["gitInit", gitInit],
+  ["runInstall", runInstall],
+])("%s stdio", (_name, run) => {
+  it("defaults stdio to 'inherit'", () => {
+    execFileSyncMock.mockReturnValue("");
+    run("/tmp/some-project");
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ stdio: "inherit" }),
+    );
+  });
+
+  it("passes a given string stdio value straight through to execFileSync", () => {
+    execFileSyncMock.mockReturnValue("");
+    run("/tmp/some-project", "pipe");
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ cwd: "/tmp/some-project", stdio: "pipe" }),
+    );
+  });
+
+  it("passes a given stdio tuple straight through to execFileSync", () => {
+    execFileSyncMock.mockReturnValue("");
+    const tuple: ("ignore" | number)[] = ["ignore", 2, 2];
+    run("/tmp/some-project", tuple);
+    expect(execFileSyncMock).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ stdio: tuple }),
     );
   });
 });
