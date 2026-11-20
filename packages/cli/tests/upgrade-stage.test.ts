@@ -11,14 +11,15 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import type * as NodeFs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "../src/manifest.js";
 import type { Manifest } from "../src/manifest.js";
 import { computePlan, renderRelease } from "../src/upgrade/plan.js";
 import type { RenderedRelease, UpgradePlan } from "../src/upgrade/plan.js";
-import { stageUpgrade } from "../src/upgrade/stage.js";
+import { inspectPreviousUpgrade, stageUpgrade } from "../src/upgrade/stage.js";
 import {
   buildProject,
   snapshotTree,
@@ -57,6 +58,13 @@ const NEW: FixtureRelease = {
   },
   packs: {},
 };
+
+// A passthrough wrapper, so one test can dictate readdirSync's order; every
+// other call runs the real function.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFs>();
+  return { ...actual, readdirSync: vi.fn(actual.readdirSync) };
+});
 
 const TOKENS = { PROJECT_NAME: "acme", YEAR: "1999" };
 
@@ -372,5 +380,29 @@ describe("stageUpgrade", () => {
       expect(() => stage()).toThrow(/c\.txt/);
       expect(existsSync(groundwork())).toBe(false);
     });
+  });
+});
+
+describe("inspectPreviousUpgrade", () => {
+  let base: string;
+
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), "upgrade-inspect-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  it("returns the foreign entries sorted, whatever order readdir lists them in", () => {
+    mkdirSync(join(base, ".groundwork", "upgrade"), { recursive: true });
+    vi.mocked(readdirSync).mockReturnValueOnce([
+      "z.json",
+      "decisions.json",
+      "plan.json",
+      "staged",
+    ] as unknown as ReturnType<typeof readdirSync>);
+
+    expect(inspectPreviousUpgrade(base)).toEqual(["decisions.json", "z.json"]);
   });
 });
