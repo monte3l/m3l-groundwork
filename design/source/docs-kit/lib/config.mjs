@@ -10,6 +10,7 @@
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { agentDocsConfigProblems } from "./agent-docs.mjs";
+import { freshnessConfigProblems } from "./freshness.mjs";
 
 /** A config the kit cannot run on: reported, exit 2. */
 export class ConfigError extends Error {
@@ -89,6 +90,7 @@ export function configProblems(config) {
     problems.push(`"manifest" must be a path string`);
   }
   problems.push(...agentDocsConfigProblems(c));
+  problems.push(...freshnessConfigProblems(c));
   return problems;
 }
 

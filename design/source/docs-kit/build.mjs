@@ -36,6 +36,7 @@ import {
   pageCoverageProblems,
   shaSumsProblems,
 } from "./lib/checks.mjs";
+import { FreshnessError, gitLastDates, reviewedOf } from "./lib/freshness.mjs";
 import {
   LLMS_FILE,
   LLMS_FULL_FILE,
@@ -330,6 +331,30 @@ function toCopyHref(href, page, copyTargets) {
 }
 
 /**
+ * The `<lastmod>` dates of the sitemap, for a config that sets `freshness.lastmod`:
+ * the date of the last commit that changed each page's file, by the page's `out`.
+ * A `reviewed` date does not move it, because reading a page again is not
+ * changing it, and a sitemap date is meant to say the content changed.
+ *
+ * A shallow clone fails the build instead of leaving the dates out. With the dates
+ * silently missing, two builds of the same commit, one shallow and one not, would
+ * write different sitemaps, and `check-live.mjs` compares the deployed bytes.
+ *
+ * @param {Record<string, any>} config
+ * @returns {Map<string, string> | undefined}
+ */
+function lastmodsFor(config) {
+  if (!config.freshness?.lastmod) return undefined;
+  try {
+    const dates = gitLastDates(config.root, config.pages.map((page) => page.src));
+    return new Map(config.pages.filter((page) => dates.has(page.src)).map((page) => [page.out, dates.get(page.src)]));
+  } catch (error) {
+    if (error instanceof FreshnessError) throw new ConfigError(`"freshness.lastmod": ${error.message}`);
+    throw error;
+  }
+}
+
+/**
  * The agent-readable files of a site, for a config with `llms` or `sitemap`:
  * the `.md` copy of every Markdown page (and of a generated page that returns
  * `markdown`), the pages with `markdownOut` set, and the text of `llms.txt`,
@@ -338,8 +363,9 @@ function toCopyHref(href, page, copyTargets) {
 function buildAgentFiles(config, mdPages, generated, sources) {
   if (!config.llms && !config.sitemap) return null;
   const allPages = [...mdPages, ...generated];
+  const lastmods = lastmodsFor(config);
   if (!config.llms) {
-    return { pages: allPages, copies: [], files: new Map([[SITEMAP_FILE, buildSitemap({ siteUrl: config.siteUrl, pages: allPages })]]) };
+    return { pages: allPages, copies: [], files: new Map([[SITEMAP_FILE, buildSitemap({ siteUrl: config.siteUrl, pages: allPages, lastmods })]]) };
   }
   const taken = new Map();
   const reserved = new Set([LLMS_FILE, ...(config.llms.full ? [LLMS_FULL_FILE] : []), ...(config.sitemap ? [SITEMAP_FILE] : [])]);
@@ -379,7 +405,7 @@ function buildAgentFiles(config, mdPages, generated, sources) {
   if (config.llms.full) {
     files.set(LLMS_FULL_FILE, buildLlmsFull({ title: config.title, siteUrl: config.siteUrl, llms: config.llms, copies }));
   }
-  if (config.sitemap) files.set(SITEMAP_FILE, buildSitemap({ siteUrl: config.siteUrl, pages }));
+  if (config.sitemap) files.set(SITEMAP_FILE, buildSitemap({ siteUrl: config.siteUrl, pages, lastmods }));
   return { pages, copies, files };
 }
 
@@ -591,6 +617,14 @@ async function repoProblems(config, sources) {
     problems.push(...localCssProblems(rel, await readFile(path.join(root, rel), "utf8")));
   }
   for (const [src, text] of sources) problems.push(...alertRunProblems(src, text));
+  // Only a malformed date fails the build, and only for a site that set `freshness`, so a site that did
+  // not ask for any of this checks exactly what it did before. An old page is a report, never a gate.
+  if (config.freshness !== undefined) {
+    for (const [src, text] of sources) {
+      const reviewed = reviewedOf(text);
+      if (reviewed.state === "invalid") problems.push(`${src}: the frontmatter key "reviewed" is "${reviewed.raw}", not a date written YYYY-MM-DD`);
+    }
+  }
 
   if (config.manifest) {
     problems.push(

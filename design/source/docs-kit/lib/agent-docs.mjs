@@ -116,15 +116,17 @@ const XML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'"
 
 /**
  * `sitemap.xml` (sitemaps.org) listing every page by its public URL. The 404
- * page and the agent files are not pages and are not listed.
+ * page and the agent files are not pages and are not listed. `lastmods` maps a
+ * page's `out` to a YYYY-MM-DD date; a page without one gets no `<lastmod>`.
  *
- * @param {{ siteUrl: string, pages: Array<{ out: string }> }} input
+ * @param {{ siteUrl: string, pages: Array<{ out: string }>, lastmods?: Map<string, string> }} input
  * @returns {string}
  */
-export function buildSitemap({ siteUrl, pages }) {
+export function buildSitemap({ siteUrl, pages, lastmods }) {
   const urls = pages.map((page) => {
     const loc = `${siteUrl}${encodePath(pageUrlPath(page.out))}`.replace(/[&<>"']/g, (ch) => XML_ESCAPES[ch]);
-    return `  <url><loc>${loc}</loc></url>`;
+    const date = lastmods?.get(page.out);
+    return `  <url><loc>${loc}</loc>${date === undefined ? "" : `<lastmod>${date}</lastmod>`}</url>`;
   });
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
