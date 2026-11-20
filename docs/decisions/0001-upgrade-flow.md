@@ -73,7 +73,8 @@ The third option.
   stays with the standalone mode tracked in
   [#318](https://github.com/monte3l/m3l-groundwork/issues/318). That issue's
   done-when needs no manifest, because adopt mode already stages every pack and
-  only rejects the flag, so it ships first and independently. The two touch the
+  only rejected the flag, so it shipped first and independently: adopt mode now
+  accepts `--pack` and narrows its survey to the named packs. The two touch the
   same code (`assertAdoptUsage` and the pack staging) but not each other's
   contract. Folding them together would hold a small, ready change behind the
   larger one.

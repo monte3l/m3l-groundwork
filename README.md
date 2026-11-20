@@ -154,7 +154,14 @@ the wiring contract.
 In fresh mode `--pack` installs a pack directly. In adopt mode the CLI only
 surveys which packs apply and stages them under `.groundwork/packs/` (and
 the baseline files it would add under `.groundwork/baseline/`);
-`/customize` installs from there after you confirm.
+`/customize` installs from there after you confirm. With no `--pack`, adopt
+mode surveys and stages every pack. With one or more, it surveys and stages
+only the packs you name, so `npx @monte3l/groundwork . --pack harness-extras` on an
+existing project offers `/customize` just that pack. This is how you add a pack
+to an already-bootstrapped project. A pack that lists only fresh mode (such as
+`licensing`) is staged the same way but never installed automatically; its
+`adoptNotes` say how to install it by hand. It still writes nothing outside
+`.groundwork/`, and an unknown name fails before anything is written.
 
 ## Upgrading to a new release
 
@@ -202,16 +209,16 @@ for you.
 
 ## Flags
 
-| Flag                    | Effect                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| `--name <project-name>` | Override the project name (default: the target directory's basename).         |
-| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                              |
-| `--force`               | Overwrite a non-empty target directory (fresh mode only).                     |
-| `--adopt`               | Force adopt mode, even if the target looks empty.                             |
-| `--fresh`               | Force fresh mode, even if the target looks like an existing project.          |
-| `--pack <name>`         | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable). |
-| `--list-packs`          | Print every available pack and exit.                                          |
-| `--help`, `--version`   | Print usage, or the CLI's version.                                            |
+| Flag                    | Effect                                                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `--name <project-name>` | Override the project name (default: the target directory's basename).                                                             |
+| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                                                                                  |
+| `--force`               | Overwrite a non-empty target directory (fresh mode only).                                                                         |
+| `--adopt`               | Force adopt mode, even if the target looks empty.                                                                                 |
+| `--fresh`               | Force fresh mode, even if the target looks like an existing project.                                                              |
+| `--pack <name>`         | Install an opt-in pack from `templates/packs/` in fresh mode, or narrow the survey to the named packs in adopt mode (repeatable). |
+| `--list-packs`          | Print every available pack and exit.                                                                                              |
+| `--help`, `--version`   | Print usage, or the CLI's version.                                                                                                |
 
 An unexpected failure (anything that is not a bad invocation) prints its
 error name before the message, for example `TypeError: ...`. Set `M3L_DEBUG`
@@ -374,7 +381,7 @@ everything else that goes wrong at run time.
 | `--name` is not a valid npm package name, or a `--pack` value is not a valid pack name     | 2    | Prints the rule it broke and the usage text.                                                                                                                                                      |
 | Unknown `--pack`                                                                           | 2    | Lists the available packs.                                                                                                                                                                        |
 | `--pack` for a pack without fresh mode                                                     | 2    | Says the pack does not support fresh mode and lists its modes.                                                                                                                                    |
-| Adopt mode with `--adopt` and a missing target directory, `--force` or `--pack`            | 2    | Adopt never writes project files and surveys every pack itself; run `/customize` to install a pack.                                                                                               |
+| Adopt mode with `--adopt` and a missing target directory or `--force`                      | 2    | Adopt never writes project files; run `/customize` to reconcile instead.                                                                                                                          |
 | Windows, fresh mode                                                                        | 1    | Refuses before writing anything: Linux and macOS only. Adopt mode, `--help`, `--version` and `--list-packs` still run.                                                                            |
 | Fresh target is not empty and `--force` is absent                                          | 1    | Refuses; pass `--force` to overwrite, or `--adopt` to survey it.                                                                                                                                  |
 | Fresh mode, `/customize` skill install fails                                               | 1    | The project is already written and `git init` and `pnpm install` did not run. Re-run with `--fresh --force` plus your original `--name`, `--pack` and `--skip-install`; a plain re-run adopts it. |

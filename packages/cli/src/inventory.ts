@@ -18,8 +18,8 @@
  * named `<path>` + `stagedBaseline.suffix` (`.staged`) and carries the sha256
  * of its staged bytes, so `/customize` can verify a copy before installing it.
  * Schema 5 also carries `stagedPacks`, added additively without a version
- * bump: every pack staged the same inert way under `.groundwork/packs/<name>/`
- * (`pack-stage.ts`), its manifest included. No published release has
+ * bump: every surveyed pack staged the same inert way under
+ * `.groundwork/packs/<name>/` (`pack-stage.ts`), its manifest included. No published release has
  * written schema 5 yet; an inventory without `stagedPacks` came only from an
  * unreleased development build, which staged packs unsuffixed at the same
  * location. `schemaVersion` below 6 predates `survey.harness.pluginLayout`
@@ -114,7 +114,7 @@ export interface Inventory {
   toolchainConformance: ToolchainConformance;
   /** The "absent" baseline files, copied verbatim as inert `<path>.staged` copies for `/customize` to install from. Absent when schemaVersion is below 5; `dir` is project-relative, and `dir` and every `files[].path`/`files[].staged` use `/` on every platform. */
   stagedBaseline: StagedBaseline;
-  /** Every pack, staged as inert `.staged` copies (manifest included) under `.groundwork/packs/<name>/` for `/customize` to install from after confirmation; one entry per pack, `dir` project-relative, and `dir` and every `path`/`staged` use `/` on every platform. Absent from inventories written before pack staging became inert (see the module header). */
+  /** Every surveyed pack (all of them, or those named with `--pack`), staged as inert `.staged` copies (manifest included) under `.groundwork/packs/<name>/` for `/customize` to install from after confirmation; one entry per surveyed pack, `dir` project-relative, and `dir` and every `path`/`staged` use `/` on every platform. Absent from inventories written before pack staging became inert (see the module header). */
   stagedPacks: StagedPack[];
 }
 

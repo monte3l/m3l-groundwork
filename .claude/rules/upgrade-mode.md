@@ -23,10 +23,10 @@ Update this file as each piece ships, and drop this line when the last one does.
   for adopt), a report and `.staged` copies. It never writes a project file.
   It rejects `--name`, `--force` and `--pack`, and combines with neither
   `--adopt` nor `--fresh`. The pack list comes from the manifest. Adding a pack
-  to an existing project is
-  [#318](https://github.com/monte3l/m3l-groundwork/issues/318), a separate
-  adopt-mode change that ships first and needs no manifest. After it lands, the
-  skill's stamp step records the new pack in the manifest like any other change.
+  to an existing project is `--pack <name>` in adopt mode
+  ([#318](https://github.com/monte3l/m3l-groundwork/issues/318)), which needs no
+  manifest. The skill's stamp step records the new pack in the manifest like any
+  other change.
 - **The manifest is the only record.** `.groundwork/manifest.json` is tracked
   and must never be in `STALE_FILE_NAMES` (`main.ts`): an adopt re-run must not
   delete it. It stores `cliVersion`, `tokens`, `packs`, a sha256 per file with

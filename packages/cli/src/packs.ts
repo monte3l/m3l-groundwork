@@ -8,7 +8,8 @@
  * (`observeWiring`; `pack-stage.ts`'s `stagePacks` stages them, inert) and
  * defers installation to `/customize`, which reads a project's real gate
  * runner before translating a pack's wiring (see inventory.ts). Both modes call `loadPack` for every
- * pack they handle (fresh mode: each `--pack`; adopt mode: every pack)
+ * pack they handle (fresh mode: each `--pack`; adopt mode: each `--pack`,
+ * or every pack when none is named)
  * before writing anything, and `loadPack` refuses a prototype-sensitive
  * key in `wiring.settings`, `wiring.settingsTopLevel` or
  * `wiring.packageScripts`, so such a pack is neither installed nor staged.
