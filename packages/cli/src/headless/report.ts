@@ -17,6 +17,7 @@ import type { RunResult } from "../run-result.js";
 /** Where a fresh/adopt run left its `.groundwork/` artifacts, relative to `target`; `null` when not written. */
 interface ReportArtifacts {
   readonly inventory: string | null;
+  readonly manifest: string | null;
   readonly plan: string | null;
   readonly pending: string | null;
   readonly commitMsg: string | null;
@@ -84,7 +85,7 @@ function baseReport(
     | "warnings"
     | "nextStep"
     | "error"
-  > & { readonly inventory: string | null },
+  > & { readonly inventory: string | null; readonly manifest: string | null },
 ): ReportV1 {
   return {
     schema: "groundwork.report",
@@ -98,6 +99,7 @@ function baseReport(
     target: fields.target,
     artifacts: {
       inventory: fields.inventory,
+      manifest: fields.manifest,
       plan: null,
       pending: null,
       commitMsg: null,
@@ -116,14 +118,23 @@ function baseReport(
 
 /**
  * The success report of a completed fresh or adopt run: `status: "ok"`,
- * exit code 0, and for adopt mode the inventory it wrote.
+ * exit code 0, for adopt mode the inventory it wrote, and the upgrade
+ * manifest path the run reported (`result.manifest`: fresh mode's
+ * `.groundwork/manifest.json`, `null` for adopt).
  *
  * @example
  * ```ts
  * import { buildReport } from "./headless/report.js";
  *
  * const report = buildReport(
- *   { mode: "fresh", target: "/work/acme", warnings: [], setupSteps: [], nextStep: null },
+ *   {
+ *     mode: "fresh",
+ *     target: "/work/acme",
+ *     warnings: [],
+ *     setupSteps: [],
+ *     nextStep: null,
+ *     manifest: ".groundwork/manifest.json",
+ *   },
  *   { cliVersion: "1.2.3" },
  * );
  * process.stdout.write(`${JSON.stringify(report)}\n`);
@@ -138,6 +149,7 @@ export function buildReport(result: RunResult, ctx: ReportContext): ReportV1 {
     exitCode: EXIT_CODES.ok,
     target: result.target,
     inventory: adopt ? INVENTORY_PATH : null,
+    manifest: result.manifest,
     setupSteps: result.setupSteps,
     warnings: result.warnings,
     nextStep: result.nextStep,
@@ -148,7 +160,8 @@ export function buildReport(result: RunResult, ctx: ReportContext): ReportV1 {
 /**
  * The error envelope of a failed run: `status: "usage"` for exit code 2,
  * `"error"` for any other fatal code, with the thrown value's message and
- * chain. `mode`, `phase` and `target` are always `null`. `error.chain` is
+ * chain. `mode`, `phase`, `target` and every `artifacts` path (including
+ * `manifest`) are always `null`. `error.chain` is
  * `errorMessageChain(error)` (`../format-error.ts`): every entry a string,
  * the first equal to `error.message`, an unreadable message rendered as
  * `[unprintable value]`, cycles cut and depth capped. Never throws, whatever
@@ -178,6 +191,7 @@ export function buildErrorReport(
     exitCode,
     target: null,
     inventory: null,
+    manifest: null,
     setupSteps: [],
     warnings: [],
     nextStep: null,

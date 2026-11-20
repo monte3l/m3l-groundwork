@@ -22,6 +22,7 @@ import type * as ReportModule from "../src/report.js";
 import type * as PacksModule from "../src/packs.js";
 import type { Out } from "../src/output.js";
 import type { RunResult } from "../src/run-result.js";
+import { MANIFEST_RELATIVE_PATH } from "../src/manifest.js";
 import type { InstallPluginResult } from "../src/plugin.js";
 
 const gitInitMock = vi.fn();
@@ -123,6 +124,7 @@ describe("main return value (RunResult)", () => {
       warnings: [],
       setupSteps: [],
       nextStep: null,
+      manifest: MANIFEST_RELATIVE_PATH,
     });
   });
 
@@ -141,6 +143,7 @@ describe("main return value (RunResult)", () => {
       target: project,
       warnings: [],
       setupSteps: [],
+      manifest: null,
     });
     expect(typeof result?.nextStep).toBe("string");
     expect(result?.nextStep).toMatch(/^Next: /);

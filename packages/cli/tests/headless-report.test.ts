@@ -14,6 +14,7 @@ import {
 } from "../src/headless/report.js";
 import type { ExitCode } from "../src/exit-codes.js";
 import type { RunResult } from "../src/run-result.js";
+import { MANIFEST_RELATIVE_PATH } from "../src/manifest.js";
 
 const ctx = { cliVersion: "9.9.9" };
 
@@ -64,6 +65,22 @@ describe("ReportV1 type", () => {
       RunResult["setupSteps"]
     >();
     expectTypeOf<ReportV1["warnings"]>().toEqualTypeOf<readonly string[]>();
+    expectTypeOf<ReportV1["artifacts"]["manifest"]>().toEqualTypeOf<
+      string | null
+    >();
+    expectTypeOf<RunResult["manifest"]>().toEqualTypeOf<string | null>();
+  });
+
+  it("places manifest right after inventory in artifacts key order", () => {
+    const report = buildErrorReport(new Error("x"), 1, ctx);
+    expect(Object.keys(report.artifacts)).toEqual([
+      "inventory",
+      "manifest",
+      "plan",
+      "pending",
+      "commitMsg",
+      "prBody",
+    ]);
   });
 });
 
@@ -74,6 +91,7 @@ describe("buildReport", () => {
     warnings: ["pack budget is over cap"],
     setupSteps: [{ pack: "publishing", steps: ["pnpm add -D x"] }],
     nextStep: null,
+    manifest: MANIFEST_RELATIVE_PATH,
   };
   const adopt: RunResult = {
     mode: "adopt",
@@ -81,9 +99,10 @@ describe("buildReport", () => {
     warnings: [],
     setupSteps: [],
     nextStep: "Next: run /customize",
+    manifest: null,
   };
 
-  it("reports a fresh run as an ok apply with no inventory", () => {
+  it("reports a fresh run as an ok apply with the manifest and no inventory", () => {
     expect(buildReport(fresh, ctx)).toEqual({
       schema: "groundwork.report",
       schemaVersion: 1,
@@ -96,6 +115,7 @@ describe("buildReport", () => {
       target: "/work/acme",
       artifacts: {
         inventory: null,
+        manifest: MANIFEST_RELATIVE_PATH,
         plan: null,
         pending: null,
         commitMsg: null,
@@ -129,6 +149,7 @@ describe("buildReport", () => {
     });
     expect(report.artifacts).toEqual({
       inventory: ".groundwork/inventory.json",
+      manifest: null,
       plan: null,
       pending: null,
       commitMsg: null,
@@ -165,6 +186,7 @@ describe("buildErrorReport", () => {
       target: null,
       artifacts: {
         inventory: null,
+        manifest: null,
         plan: null,
         pending: null,
         commitMsg: null,
