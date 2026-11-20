@@ -246,6 +246,14 @@ and `pnpm install` have their output redirected to stderr too.
   (`.groundwork/inventory.json` in adopt mode), `artifacts.manifest`
   (`.groundwork/manifest.json` in fresh mode, `null` in adopt mode), the packs'
   `setupSteps`, `warnings` and adopt mode's `nextStep`.
+- An adopt survey run with `--json` also writes
+  `.groundwork/headless/pending.json`: a `groundwork.answers` document with
+  safe defaults filled in and every decision the survey could not make
+  (project kind, runtime, how to resolve each baseline file that differs)
+  left `null` and listed in `pending`. The report's `artifacts.pending` names
+  that file and its `pending` holds the same entries; the run still exits
+  `0`. Without `--json` the file is never written, and any re-run of the
+  survey deletes a previous one.
 - A failure still exits `1` or `2` (see
   [Exit codes](#exit-codes-and-failure-behaviour)) and writes the same document
   with `status` `error` or `usage`, the matching `exitCode`, and

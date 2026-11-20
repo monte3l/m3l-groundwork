@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://groundwork.monte3l.com/schemas/report.v1.schema.json",
   "title": "groundwork.report v1",
-  "description": "The one JSON document a --json run of @monte3l/groundwork writes to stdout. Every field is always present, in this order. changes and pending are always empty, and handoff and drift have no defined entry shape yet, until --apply ships.",
+  "description": "The one JSON document a --json run of @monte3l/groundwork writes to stdout. Every field is always present, in this order. changes is always empty, and handoff and drift have no defined entry shape yet, until --apply ships. pending is empty except for an adopt survey run with --json, which lists the decisions it wrote to .groundwork/headless/pending.json (artifacts.pending).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -74,7 +74,7 @@
       }
     },
     "pending": {
-      "description": "The decisions still missing, the same entries as an answers document's pending list.",
+      "description": "The decisions still missing: the same PendingEntry objects as the pending list of the answers document named by artifacts.pending, in the same order. Empty when no pending document was written.",
       "type": "array",
       "items": {
         "type": "object",

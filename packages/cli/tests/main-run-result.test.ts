@@ -125,6 +125,8 @@ describe("main return value (RunResult)", () => {
       setupSteps: [],
       nextStep: null,
       manifest: MANIFEST_RELATIVE_PATH,
+      pending: [],
+      pendingPath: null,
     });
   });
 
@@ -144,6 +146,8 @@ describe("main return value (RunResult)", () => {
       warnings: [],
       setupSteps: [],
       manifest: null,
+      pending: [],
+      pendingPath: null,
     });
     expect(typeof result?.nextStep).toBe("string");
     expect(result?.nextStep).toMatch(/^Next: /);
