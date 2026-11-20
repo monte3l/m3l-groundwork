@@ -30,114 +30,114 @@ describe("classifyPath", () => {
       "add",
     ],
     [
-      "row 2: new file, project already matches",
+      "row 3: new file, project already matches",
       { recorded: undefined, current: H1, next: H1 },
       "current",
     ],
     [
-      "row 2: new file, project differs",
+      "row 4: new file, project differs",
       { recorded: undefined, current: H2, next: H1 },
       "conflict-2way",
     ],
     // row 3a
     [
-      "row 3a: user deleted (emitted)",
+      "row 5: user deleted (emitted)",
       { recorded: emitted(H1), current: undefined, next: H2 },
       "user-deleted",
     ],
     [
-      "row 3a: user deleted (merged)",
+      "row 5: user deleted (merged)",
       { recorded: merged(H1), current: undefined, next: H2 },
       "user-deleted",
     ],
     [
-      "row 3a: user deleted, next unchanged",
+      "row 5: user deleted, next unchanged",
       { recorded: emitted(H1), current: undefined, next: H1 },
       "user-deleted",
     ],
     // row 3b
     [
-      "row 3b: all equal (emitted)",
+      "row 6: all equal (emitted)",
       { recorded: emitted(H1), current: H1, next: H1 },
       "current",
     ],
     [
-      "row 3b: all equal (merged)",
+      "row 6: all equal (merged)",
       { recorded: merged(H1), current: H1, next: H1 },
       "current",
     ],
     [
-      "row 3b: current === next beats the emitted rows",
+      "row 6: current === next beats the emitted rows",
       { recorded: emitted(H1), current: H2, next: H2 },
       "current",
     ],
     [
-      "row 3b: current === next beats merged conflict",
+      "row 6: current === next beats merged conflict",
       { recorded: merged(H1), current: H2, next: H2 },
       "current",
     ],
     // row 3c
     [
-      "row 3c: merged, current === recorded, next differs",
+      "row 7: merged, current === recorded, next differs",
       { recorded: merged(H1), current: H1, next: H2 },
       "conflict-2way",
     ],
     [
-      "row 3c: merged, next === recorded, current differs",
+      "row 7: merged, next === recorded, current differs",
       { recorded: merged(H1), current: H2, next: H1 },
       "conflict-2way",
     ],
     [
-      "row 3c: merged, all three differ",
+      "row 7: merged, all three differ",
       { recorded: merged(H1), current: H2, next: H3 },
       "conflict-2way",
     ],
     // row 3d
     [
-      "row 3d: emitted, upstream unchanged, user edited",
+      "row 8: emitted, upstream unchanged, user edited",
       { recorded: emitted(H1), current: H2, next: H1 },
       "local-only",
     ],
     // row 3e
     [
-      "row 3e: emitted, user untouched, upstream changed",
+      "row 9: emitted, user untouched, upstream changed",
       { recorded: emitted(H1), current: H1, next: H2 },
       "safe-update",
     ],
     // row 3f
     [
-      "row 3f: emitted, all three differ",
+      "row 10: emitted, all three differ",
       { recorded: emitted(H1), current: H2, next: H3 },
       "conflict-3way",
     ],
     // row 4
     [
-      "row 4a: removed upstream, already absent (emitted)",
+      "row 11: removed upstream, already absent (emitted)",
       { recorded: emitted(H1), current: undefined, next: undefined },
-      "current",
+      "gone",
     ],
     [
-      "row 4a: removed upstream, already absent (merged)",
+      "row 11: removed upstream, already absent (merged)",
       { recorded: merged(H1), current: undefined, next: undefined },
-      "current",
+      "gone",
     ],
     [
-      "row 4b: removed upstream, merged, current === recorded",
+      "row 12: removed upstream, merged, current === recorded",
       { recorded: merged(H1), current: H1, next: undefined },
       "orphan-edited",
     ],
     [
-      "row 4b: removed upstream, merged, current differs",
+      "row 12: removed upstream, merged, current differs",
       { recorded: merged(H1), current: H2, next: undefined },
       "orphan-edited",
     ],
     [
-      "row 4c: removed upstream, emitted, untouched",
+      "row 13: removed upstream, emitted, untouched",
       { recorded: emitted(H1), current: H1, next: undefined },
       "remove",
     ],
     [
-      "row 4d: removed upstream, emitted, edited",
+      "row 14: removed upstream, emitted, edited",
       { recorded: emitted(H1), current: H2, next: undefined },
       "orphan-edited",
     ],
@@ -182,6 +182,7 @@ describe("classifyPath", () => {
       | "user-deleted"
       | "remove"
       | "orphan-edited"
+      | "gone"
     >();
     expectTypeOf<UpgradeEntry>().toEqualTypeOf<{
       readonly path: string;
@@ -221,6 +222,15 @@ describe("classifyAll", () => {
       next: new Map(),
     });
     expect(result).toEqual([]);
+  });
+
+  test("lists a path recorded, gone upstream and absent from the project as gone", () => {
+    const result = classifyAll({
+      recorded: new Map([["old.txt", emitted(H1)]]),
+      current: new Map(),
+      next: new Map(),
+    });
+    expect(result).toEqual([{ path: "old.txt", class: "gone" }]);
   });
 
   test("a path missing from current is looked up as absent", () => {

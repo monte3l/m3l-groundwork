@@ -62,22 +62,29 @@ this line when the last one does.
   rows are read **in order**, the first match wins, so a row never has to
   repeat an earlier row's exclusion:
 
-  | Row | Condition                               | Class           | Skill action         |
-  | --- | --------------------------------------- | --------------- | -------------------- |
-  | 1   | no `M` and no `N`                       | (error)         | not a baseline path  |
-  | 2   | no `M`, `C` absent                      | `add`           | apply in the batch   |
-  | 3   | no `M`, `C == N`                        | `current`       | none, re-stamp       |
-  | 4   | no `M`, `C != N`                        | `conflict-2way` | per-file proposal    |
-  | 5   | `M` and `N`, `C` absent                 | `user-deleted`  | respect, report only |
-  | 6   | `M` and `N`, `C == N`                   | `current`       | none, re-stamp       |
-  | 7   | `M` and `N`, `origin: merged`           | `conflict-2way` | per-file proposal    |
-  | 8   | `M` and `N`, `N == M`                   | `local-only`    | none                 |
-  | 9   | `M` and `N`, `C == M`                   | `safe-update`   | apply in the batch   |
-  | 10  | `M` and `N`, anything else              | `conflict-3way` | per-file proposal    |
-  | 11  | `M`, no `N` (gone upstream), `C` absent | `current`       | none                 |
-  | 12  | `M`, no `N`, `origin: merged`           | `orphan-edited` | report only          |
-  | 13  | `M`, no `N`, `C == M`                   | `remove`        | propose delete       |
-  | 14  | `M`, no `N`, `C != M`                   | `orphan-edited` | report only          |
+  | Row | Condition                               | Class           | Skill action          |
+  | --- | --------------------------------------- | --------------- | --------------------- |
+  | 1   | no `M` and no `N`                       | (error)         | not a baseline path   |
+  | 2   | no `M`, `C` absent                      | `add`           | apply in the batch    |
+  | 3   | no `M`, `C == N`                        | `current`       | none, re-stamp        |
+  | 4   | no `M`, `C != N`                        | `conflict-2way` | per-file proposal     |
+  | 5   | `M` and `N`, `C` absent                 | `user-deleted`  | respect, report only  |
+  | 6   | `M` and `N`, `C == N`                   | `current`       | none, re-stamp        |
+  | 7   | `M` and `N`, `origin: merged`           | `conflict-2way` | per-file proposal     |
+  | 8   | `M` and `N`, `N == M`                   | `local-only`    | none                  |
+  | 9   | `M` and `N`, `C == M`                   | `safe-update`   | apply in the batch    |
+  | 10  | `M` and `N`, anything else              | `conflict-3way` | per-file proposal     |
+  | 11  | `M`, no `N` (gone upstream), `C` absent | `gone`          | stamp drops the entry |
+  | 12  | `M`, no `N`, `origin: merged`           | `orphan-edited` | report only           |
+  | 13  | `M`, no `N`, `C == M`                   | `remove`        | propose delete        |
+  | 14  | `M`, no `N`, `C != M`                   | `orphan-edited` | report only           |
+
+  `current` (rows 3 and 6) and `gone` (row 11) are different on purpose.
+  `current` means the file exists and already matches the new release, so
+  `--upgrade --stamp` re-hashes it from disk. `gone` means the path is recorded
+  but is absent from both the new release and the project, so there is nothing
+  to hash: stamp must **drop** its manifest entry, or the entry would come back
+  as `gone` on every later upgrade.
 
   A `merged` origin means the recorded base is a hand-merged file that the old
   CLI cannot rebuild, so it is never a 3-way base: row 7 turns every

@@ -24,6 +24,7 @@ const CLASSES: readonly UpgradeClass[] = [
   "user-deleted",
   "remove",
   "orphan-edited",
+  "gone",
 ];
 
 const hash = fc.constantFrom("a", "b", "c", "d").map((c) => c.repeat(64));
@@ -85,16 +86,24 @@ describe("classifyPath properties", () => {
     );
   });
 
-  test("current iff the project matches the release or is correctly absent", () => {
+  test("current iff the project already matches the new release", () => {
     fc.assert(
       fc.property(classifiable, (input) => {
         const matches =
           input.current !== undefined && input.current === input.next;
-        const bothAbsent =
+        expect(classifyPath(input) === "current").toBe(matches);
+      }),
+    );
+  });
+
+  test("gone iff recorded is present and both next and current are absent", () => {
+    fc.assert(
+      fc.property(classifiable, (input) => {
+        const expectedGone =
           input.recorded !== undefined &&
-          input.current === undefined &&
-          input.next === undefined;
-        expect(classifyPath(input) === "current").toBe(matches || bothAbsent);
+          input.next === undefined &&
+          input.current === undefined;
+        expect(classifyPath(input) === "gone").toBe(expectedGone);
       }),
     );
   });

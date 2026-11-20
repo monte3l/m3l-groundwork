@@ -9,10 +9,26 @@
 import type { Manifest } from "../manifest.js";
 
 /**
- * What the upgrade plan does with one baseline path. `current` needs no
- * change; `add`, `safe-update` and `remove` are applied (or proposed) without
- * asking; `conflict-2way` and `conflict-3way` need a per-file decision;
- * `local-only`, `user-deleted` and `orphan-edited` are reported and left alone.
+ * What the upgrade plan does with one baseline path. Each class is the
+ * outcome of one or more rows of the decision table in
+ * `.claude/rules/upgrade-mode.md`:
+ *
+ * - `current`: the file exists and already matches the new release; stamp
+ *   re-hashes it (rows 3 and 6).
+ * - `add`: new in the release and absent from the project (row 2).
+ * - `conflict-2way`: no usable 3-way base, so the project file and the new
+ *   release are compared directly (rows 4 and 7).
+ * - `user-deleted`: the user deleted a file the release still ships (row 5).
+ * - `local-only`: the user edited a file the release did not change (row 8).
+ * - `safe-update`: an untouched `emitted` file the release changed (row 9).
+ * - `conflict-3way`: user and release both changed an `emitted` file
+ *   (row 10).
+ * - `gone`: recorded but absent from both the new release and the project;
+ *   stamp must drop its manifest entry, so it does not reappear on every later
+ *   upgrade (row 11).
+ * - `orphan-edited`: dropped by the release but merged or edited in the
+ *   project (rows 12 and 14).
+ * - `remove`: dropped by the release and untouched in the project (row 13).
  *
  * @example
  * ```ts
@@ -31,7 +47,8 @@ export type UpgradeClass =
   | "conflict-2way"
   | "user-deleted"
   | "remove"
-  | "orphan-edited";
+  | "orphan-edited"
+  | "gone";
 
 /**
  * One file's manifest record: the sha256 recorded at the last stamp and
@@ -70,26 +87,17 @@ export interface ClassifyInput {
 }
 
 /**
- * Classifies one path. The rules are read in order and the first match wins
- * (`M` recorded, `C` current, `N` next):
- *
- * 1. no `M` and no `N`: not a baseline path, throws;
- * 2. no `M`: `add` when `C` is absent, `current` when `C == N`, otherwise
- *    `conflict-2way`;
- * 3. `M` and `N`: `user-deleted` when `C` is absent, `current` when `C == N`,
- *    `conflict-2way` for a `merged` origin, `local-only` when `N == M`,
- *    `safe-update` when `C == M`, otherwise `conflict-3way`;
- * 4. `M`, no `N`: `current` when `C` is absent, `orphan-edited` for a
- *    `merged` origin, `remove` when `C == M`, otherwise `orphan-edited`.
- *
- * `safe-update` and `remove` are therefore only returned for an `emitted`
- * file whose current hash still equals its recorded hash.
+ * Classifies one path by the 14-row decision table in
+ * `.claude/rules/upgrade-mode.md` (`M` recorded, `C` current, `N` next). The
+ * rows are tested in order and the first match wins. `safe-update` and
+ * `remove` are therefore only returned for an `emitted` file whose current
+ * hash still equals its recorded hash.
  *
  * @param input - The recorded entry and the current and next hashes.
  * @returns The path's class.
- * @throws Error When both `recorded` and `next` are absent: such a path is
- * the project's own file, never a baseline path, and a caller passing one is
- * a bug.
+ * @throws Error When both `recorded` and `next` are absent (row 1): such a
+ * path is the project's own file, never a baseline path, and a caller passing
+ * one is a bug.
  *
  * @example
  * ```ts
@@ -105,25 +113,26 @@ export interface ClassifyInput {
 export function classifyPath(input: ClassifyInput): UpgradeClass {
   const { recorded, current, next } = input;
   if (recorded === undefined) {
+    // Row 1.
     if (next === undefined) {
       throw new Error(
         "cannot classify a path whose recorded entry and next release file are both absent",
       );
     }
-    if (current === undefined) return "add";
-    return current === next ? "current" : "conflict-2way";
+    if (current === undefined) return "add"; // Row 2.
+    return current === next ? "current" : "conflict-2way"; // Rows 3, 4.
   }
   if (next !== undefined) {
-    if (current === undefined) return "user-deleted";
-    if (current === next) return "current";
-    if (recorded.origin === "merged") return "conflict-2way";
-    if (next === recorded.sha256) return "local-only";
-    if (current === recorded.sha256) return "safe-update";
-    return "conflict-3way";
+    if (current === undefined) return "user-deleted"; // Row 5.
+    if (current === next) return "current"; // Row 6.
+    if (recorded.origin === "merged") return "conflict-2way"; // Row 7.
+    if (next === recorded.sha256) return "local-only"; // Row 8.
+    if (current === recorded.sha256) return "safe-update"; // Row 9.
+    return "conflict-3way"; // Row 10.
   }
-  if (current === undefined) return "current";
-  if (recorded.origin === "merged") return "orphan-edited";
-  return current === recorded.sha256 ? "remove" : "orphan-edited";
+  if (current === undefined) return "gone"; // Row 11.
+  if (recorded.origin === "merged") return "orphan-edited"; // Row 12.
+  return current === recorded.sha256 ? "remove" : "orphan-edited"; // Rows 13, 14.
 }
 
 /**
