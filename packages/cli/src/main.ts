@@ -27,7 +27,7 @@ import {
 import assert from "node:assert/strict";
 import { join, relative, resolve, basename } from "node:path";
 import process from "node:process";
-import { resolveAsset } from "./assets.js";
+import { resolveAsset, toPosixPath } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
 import {
@@ -73,6 +73,11 @@ import {
   writeInventory,
 } from "./inventory.js";
 import type { Inventory, PackSurvey } from "./inventory.js";
+import {
+  MANIFEST_RELATIVE_PATH,
+  buildManifest,
+  writeManifest,
+} from "./manifest.js";
 import type { Pack } from "./packs.js";
 import {
   listPackNames,
@@ -467,6 +472,7 @@ function runFresh(
 
   const warnings: string[] = [];
   const installedPacks: { name: string; budget: CapCounts }[] = [];
+  const emittedFiles = [...result.filesWritten];
   for (const pack of packs) {
     const name = pack.manifest.name;
     const packResult = installPack(pack, options.targetDir, tokens);
@@ -474,6 +480,7 @@ function runFresh(
       `installed pack "${name}" (${packResult.filesWritten.length} files)`,
     );
     installedPacks.push({ name, budget: packResult.budget });
+    emittedFiles.push(...packResult.filesWritten);
   }
   if (installedPacks.length > 0) {
     const summary = formatCapsSummary(
@@ -527,6 +534,30 @@ function runFresh(
       ? "the /customize skill was already up to date"
       : `installed the /customize skill (${pluginResult.filesWritten.length} files)`,
   );
+
+  // Recorded once every pack has merged into the shared files, and before
+  // git init so the first commit can carry it. Only the baseline's and the
+  // packs' files are listed: the /customize skill is not part of the
+  // emitted project.
+  try {
+    writeManifest(
+      targetDir,
+      buildManifest({
+        targetDir,
+        cliVersion: resolveCliVersion(),
+        tokens,
+        packs: installedPacks.map((pack) => pack.name),
+        files: emittedFiles.map(toPosixPath),
+      }),
+    );
+  } catch (error) {
+    const notRun = skipInstall ? "git init" : "git init / pnpm install";
+    throw new Error(
+      `the project was written to ${targetDir}, but writing ${MANIFEST_RELATIVE_PATH} failed and ${notRun} did not run -- fix the cause, then re-run with --fresh --force (plus your original --name/--pack/--skip-install); a plain re-run adopts it`,
+      { cause: error },
+    );
+  }
+  out.info(`wrote ${MANIFEST_RELATIVE_PATH}`);
 
   try {
     gitInit(targetDir);

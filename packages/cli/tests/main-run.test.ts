@@ -591,6 +591,186 @@ describe("main", () => {
     });
   });
 
+  describe("fresh mode install manifest", () => {
+    interface ManifestOnDisk {
+      schemaVersion: number;
+      cliVersion: string;
+      tokens: Record<string, string>;
+      packs: string[];
+      files: Record<string, { sha256: string; origin: string }>;
+      jsonKeys: Record<string, Record<string, string>>;
+    }
+
+    function readOnDisk(dir: string): ManifestOnDisk {
+      return JSON.parse(
+        readFileSync(join(dir, ".groundwork", "manifest.json"), "utf8"),
+      ) as ManifestOnDisk;
+    }
+
+    function sha(path: string): string {
+      return createHash("sha256").update(readFileSync(path)).digest("hex");
+    }
+
+    /** Every file under dir, relative, `/`-separated, skipping `.groundwork`. */
+    function listFiles(root: string): string[] {
+      const found: string[] = [];
+      const visit = (current: string, prefix: string): void => {
+        for (const entry of readdirSync(current, { withFileTypes: true })) {
+          const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+          if (rel === ".groundwork") continue;
+          if (entry.isDirectory()) visit(join(current, entry.name), rel);
+          else found.push(rel);
+        }
+      };
+      visit(root, "");
+      return found.sort();
+    }
+
+    it("writes .groundwork/manifest.json recording the baseline files, tokens and CLI version", () => {
+      const target = join(targetDir, "manifest-basic");
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      main([target, "--name", "widgets", "--skip-install"]);
+      const lines = logSpy.mock.calls.map(([line]) => String(line));
+      logSpy.mockRestore();
+
+      const manifest = readOnDisk(target);
+      const cliPackage = JSON.parse(
+        readFileSync(
+          join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
+          "utf8",
+        ),
+      ) as { version: string };
+      expect(manifest.schemaVersion).toBe(1);
+      expect(manifest.cliVersion).toBe(cliPackage.version);
+      expect(manifest.tokens["PROJECT_NAME"]).toBe("widgets");
+      expect(manifest.tokens["YEAR"]).toMatch(/^\d{4}$/);
+      expect(manifest.packs).toEqual([]);
+      expect(lines).toContain("wrote .groundwork/manifest.json");
+    });
+
+    it("lists exactly the files emitted, each emitted with the sha256 of the bytes on disk", () => {
+      const target = join(targetDir, "manifest-files");
+
+      main([target, "--skip-install"]);
+
+      const manifest = readOnDisk(target);
+      expect(Object.keys(manifest.files).sort()).toEqual(listFiles(target));
+      expect(Object.keys(manifest.files)).toContain("package.json");
+      for (const [rel, entry] of Object.entries(manifest.files)) {
+        expect(entry.origin).toBe("emitted");
+        expect(entry.sha256).toBe(sha(join(target, rel)));
+      }
+    });
+
+    it("excludes the /customize skill's own files from files", () => {
+      const target = join(targetDir, "manifest-skill");
+      installCustomizeSkillMock.mockImplementationOnce(
+        (): InstallPluginResult => {
+          mkdirSync(join(target, ".claude", "skills", "customize"), {
+            recursive: true,
+          });
+          writeFileSync(
+            join(target, ".claude", "skills", "customize", "SKILL.md"),
+            "skill",
+          );
+          return { filesWritten: [".claude/skills/customize/SKILL.md"] };
+        },
+      );
+
+      main([target, "--skip-install"]);
+
+      expect(
+        existsSync(join(target, ".claude", "skills", "customize", "SKILL.md")),
+      ).toBe(true);
+      expect(readOnDisk(target).files).not.toHaveProperty(
+        ".claude/skills/customize/SKILL.md",
+      );
+    });
+
+    it("records the installed packs and hashes pack-merged shared files in their final form", () => {
+      const target = join(targetDir, "manifest-packs");
+
+      main([target, "--skip-install", "--pack", "harness-extras"]);
+
+      const manifest = readOnDisk(target);
+      expect(manifest.packs).toEqual(["harness-extras"]);
+      expect(Object.keys(manifest.files).sort()).toEqual(listFiles(target));
+      for (const [rel, entry] of Object.entries(manifest.files)) {
+        expect(entry.sha256).toBe(sha(join(target, rel)));
+      }
+      // Pinned by hand: the baseline declares a verify script.
+      expect(manifest.jsonKeys["package.json"]).toHaveProperty(
+        "scripts.verify",
+      );
+    });
+
+    it("writes the manifest after the packs and before git init", () => {
+      const target = join(targetDir, "manifest-order");
+      let manifestExistedAtGitInit: boolean | undefined;
+      gitInitMock.mockImplementationOnce(() => {
+        manifestExistedAtGitInit = existsSync(
+          join(target, ".groundwork", "manifest.json"),
+        );
+      });
+
+      main([target, "--skip-install", "--pack", "harness-extras"]);
+
+      expect(manifestExistedAtGitInit).toBe(true);
+    });
+
+    it("fails with the underlying error as cause, without git init, when the manifest cannot be written", () => {
+      const target = join(targetDir, "manifest-fails");
+      const elsewhere = join(targetDir, "elsewhere");
+      mkdirSync(target);
+      mkdirSync(elsewhere);
+      // A symlinked .groundwork is refused by writeManifest; it is not one of
+      // the paths the baseline emits, so the run reaches the manifest step.
+      symlinkSync(elsewhere, join(target, ".groundwork"));
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+      let thrown: unknown;
+      try {
+        main([target, "--fresh", "--force", "--skip-install"]);
+      } catch (error) {
+        thrown = error;
+      } finally {
+        vi.restoreAllMocks();
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).cause).toBeInstanceOf(Error);
+      expect(readdirSync(elsewhere)).toEqual([]);
+      expect(gitInitMock).not.toHaveBeenCalled();
+    });
+
+    it("is left byte-identical by a later adopt run on the same directory", () => {
+      const target = join(targetDir, "manifest-adopt");
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+      try {
+        main([target, "--skip-install"]);
+        const before = readFileSync(
+          join(target, ".groundwork", "manifest.json"),
+        );
+
+        main([target, "--adopt"]);
+
+        expect(
+          readFileSync(join(target, ".groundwork", "manifest.json")).equals(
+            before,
+          ),
+        ).toBe(true);
+        // Adopt did run: it wrote its own inventory beside the manifest.
+        expect(existsSync(join(target, ".groundwork", "inventory.json"))).toBe(
+          true,
+        );
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+  });
+
   describe("adopt mode", () => {
     it("auto-detects adopt for a directory containing package.json and writes .groundwork/ only", () => {
       const projectDir = join(targetDir, "existing-project");
