@@ -123,7 +123,8 @@ They stay two separate phases on purpose, rather than one -- see
 ## Two modes
 
 The mode is auto-detected from the target directory; `--fresh` and `--adopt`
-override it.
+override it. A third mode, `--upgrade`, is never auto-detected: you ask for it
+(see [Upgrading to a new release](#upgrading-to-a-new-release)).
 
 | Mode      | When                                    | What it does                                                                                                                                                                                                                                                                                                                    |
 | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -172,13 +173,14 @@ to an already-bootstrapped project. A pack that lists only fresh mode (such as
 ## Upgrading to a new release
 
 > [!NOTE]
-> The upgrade flow is designed and only partly built: fresh mode already writes
-> the manifest (step 1 below), and `--upgrade` and `/upgrade` do not exist yet.
-> The design is in
+> The upgrade flow is designed and only partly built. Fresh mode writes the
+> manifest (step 1 below) and `--upgrade` (step 2) writes a plan, but
+> `/upgrade` and `--apply` (step 3) do not exist yet, so a plan is information
+> you apply by hand. The design is in
 > [`docs/decisions/0001-upgrade-flow.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/decisions/0001-upgrade-flow.md).
-> Until it ships, the way to take a new release is the one in
-> [`docs/known-gaps.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/known-gaps.md): re-run the CLI in the project
-> (it is detected as adopt mode) and then `/customize`.
+> Until the apply step ships, the supported way to take a new release is the
+> one in [`docs/known-gaps.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/known-gaps.md): re-run the CLI in the
+> project (it is detected as adopt mode) and then `/customize`.
 
 The planned flow has three parts:
 
@@ -188,8 +190,9 @@ The planned flow has three parts:
    adopt.
 2. **`npx @monte3l/groundwork@latest --upgrade .`** compares the manifest, your
    files and the new baseline, offline. It writes only under
-   `.groundwork/upgrade/`: a plan, a report and staged copies. It never
-   touches a project file.
+   `.groundwork/upgrade/`: `plan.json`, `upgrade-report.md` and staged copies of
+   the new files (`staged/`). It never touches a project file, and it refuses a
+   project that has no manifest.
 3. **`/upgrade`**, a skill the same command copies into the project, applies
    the plan. For scripted runs, a separate `--apply <answers.json>` step does
    the same without a conversation. It is the only step that writes project
@@ -211,24 +214,26 @@ the new release writes:
 `package.json` and the tsconfig files are compared key by key, so a bumped
 `typescript` version updates unless you changed that key.
 
-A project bootstrapped before the manifest existed has none. Its first upgrade
-is a two-way comparison that ends by writing one, and later upgrades are
-three-way. Upgrades run only when you ask. Nothing checks for a new release
+A project bootstrapped before the manifest existed has none, and `--upgrade`
+refuses it with advice to re-run the CLI in adopt mode and then `/customize`.
+A two-way plan for such a project, which would also write the first manifest,
+is planned. Upgrades run only when you ask. Nothing checks for a new release
 for you.
 
 ## Flags
 
-| Flag                    | Effect                                                                                                                            |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `--name <project-name>` | Override the project name (default: the target directory's basename).                                                             |
-| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                                                                                  |
-| `--force`               | Overwrite a non-empty target directory (fresh mode only).                                                                         |
-| `--adopt`               | Force adopt mode, even if the target looks empty.                                                                                 |
-| `--fresh`               | Force fresh mode, even if the target looks like an existing project.                                                              |
-| `--pack <name>`         | Install an opt-in pack from `templates/packs/` in fresh mode, or narrow the survey to the named packs in adopt mode (repeatable). |
-| `--list-packs`          | Print every available pack and exit.                                                                                              |
-| `--json`                | Write one machine-readable JSON document to stdout and every human-readable line to stderr (see below).                           |
-| `--help`, `--version`   | Print usage, or the CLI's version.                                                                                                |
+| Flag                    | Effect                                                                                                                                                                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name <project-name>` | Override the project name (default: the target directory's basename).                                                                                                                                                                                                            |
+| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                                                                                                                                                                                                                                 |
+| `--force`               | Overwrite a non-empty target directory (fresh mode only).                                                                                                                                                                                                                        |
+| `--adopt`               | Force adopt mode, even if the target looks empty.                                                                                                                                                                                                                                |
+| `--fresh`               | Force fresh mode, even if the target looks like an existing project.                                                                                                                                                                                                             |
+| `--upgrade`             | Plan an upgrade of a project that has a manifest: render the new release, compare it, and write the plan under `.groundwork/upgrade/`. It changes no project file and cannot be combined with `--adopt`, `--fresh`, `--name`, `--force`, `--pack`, `--skip-install` or `--json`. |
+| `--pack <name>`         | Install an opt-in pack from `templates/packs/` in fresh mode, or narrow the survey to the named packs in adopt mode (repeatable).                                                                                                                                                |
+| `--list-packs`          | Print every available pack and exit.                                                                                                                                                                                                                                             |
+| `--json`                | Write one machine-readable JSON document to stdout and every human-readable line to stderr (see below).                                                                                                                                                                          |
+| `--help`, `--version`   | Print usage, or the CLI's version.                                                                                                                                                                                                                                               |
 
 An unexpected failure (anything that is not a bad invocation) prints its
 error name before the message, for example `TypeError: ...`. Set `M3L_DEBUG`
@@ -414,21 +419,23 @@ everything else that goes wrong at run time. With `--json` the exit codes are
 the same, and stdout also carries the error document described under
 [Machine-readable output](#machine-readable-output).
 
-| Situation                                                                                  | Exit | What happens / what to do                                                                                                                                                                         |
-| ------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unrecognized flag, missing flag value, repeated `--name`, missing or extra target argument | 2    | Prints the error and the usage text.                                                                                                                                                              |
-| `--adopt` with `--fresh`                                                                   | 2    | The two are mutually exclusive.                                                                                                                                                                   |
-| `--name` is not a valid npm package name, or a `--pack` value is not a valid pack name     | 2    | Prints the rule it broke and the usage text.                                                                                                                                                      |
-| Unknown `--pack`                                                                           | 2    | Lists the available packs.                                                                                                                                                                        |
-| `--pack` for a pack without fresh mode                                                     | 2    | Says the pack does not support fresh mode and lists its modes.                                                                                                                                    |
-| Adopt mode with `--adopt` and a missing target directory or `--force`                      | 2    | Adopt never writes project files; run `/customize` to reconcile instead.                                                                                                                          |
-| Windows, fresh mode                                                                        | 1    | Refuses before writing anything: Linux and macOS only. Adopt mode, `--help`, `--version` and `--list-packs` still run.                                                                            |
-| Fresh target is not empty and `--force` is absent                                          | 1    | Refuses; pass `--force` to overwrite, or `--adopt` to survey it.                                                                                                                                  |
-| Fresh mode, `/customize` skill install fails                                               | 1    | The project is already written and `git init` and `pnpm install` did not run. Re-run with `--fresh --force` plus your original `--name`, `--pack` and `--skip-install`; a plain re-run adopts it. |
-| Fresh mode, `git init` fails                                                               | 1    | The project is left written. Run `git init` (and `pnpm install` unless `--skip-install`) yourself.                                                                                                |
-| Fresh mode, `pnpm install` fails                                                           | 1    | The project is left written without dependencies. Run `pnpm install` there yourself.                                                                                                              |
-| Adopt mode fails after it starts deleting the previous run's files                         | 1    | The message names which of `inventory.json`, `adoption-report.md` and `adoption-decisions.json` were removed; fix the cause and re-run. A removed `adoption-decisions.json` is not recreated.     |
-| A pack's manifest fails to load                                                            | 1    | A broken install, not a bad invocation.                                                                                                                                                           |
+| Situation                                                                                                    | Exit | What happens / what to do                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unrecognized flag, missing flag value, repeated `--name`, missing or extra target argument                   | 2    | Prints the error and the usage text.                                                                                                                                                              |
+| `--adopt` with `--fresh`                                                                                     | 2    | The two are mutually exclusive.                                                                                                                                                                   |
+| `--upgrade` with `--adopt` or `--fresh`, or with `--name`, `--force`, `--pack`, `--skip-install` or `--json` | 2    | `--upgrade` is its own mode and takes none of those. A missing target directory is refused too.                                                                                                   |
+| `--upgrade` on a project with no `.groundwork/manifest.json`                                                 | 2    | Writes nothing. Re-run the CLI in adopt mode (`npx @monte3l/groundwork .`) and then `/customize`.                                                                                                 |
+| `--name` is not a valid npm package name, or a `--pack` value is not a valid pack name                       | 2    | Prints the rule it broke and the usage text.                                                                                                                                                      |
+| Unknown `--pack`                                                                                             | 2    | Lists the available packs.                                                                                                                                                                        |
+| `--pack` for a pack without fresh mode                                                                       | 2    | Says the pack does not support fresh mode and lists its modes.                                                                                                                                    |
+| Adopt mode with `--adopt` and a missing target directory or `--force`                                        | 2    | Adopt never writes project files; run `/customize` to reconcile instead.                                                                                                                          |
+| Windows, fresh mode                                                                                          | 1    | Refuses before writing anything: Linux and macOS only. Adopt mode, `--help`, `--version` and `--list-packs` still run.                                                                            |
+| Fresh target is not empty and `--force` is absent                                                            | 1    | Refuses; pass `--force` to overwrite, or `--adopt` to survey it.                                                                                                                                  |
+| Fresh mode, `/customize` skill install fails                                                                 | 1    | The project is already written and `git init` and `pnpm install` did not run. Re-run with `--fresh --force` plus your original `--name`, `--pack` and `--skip-install`; a plain re-run adopts it. |
+| Fresh mode, `git init` fails                                                                                 | 1    | The project is left written. Run `git init` (and `pnpm install` unless `--skip-install`) yourself.                                                                                                |
+| Fresh mode, `pnpm install` fails                                                                             | 1    | The project is left written without dependencies. Run `pnpm install` there yourself.                                                                                                              |
+| Adopt mode fails after it starts deleting the previous run's files                                           | 1    | The message names which of `inventory.json`, `adoption-report.md` and `adoption-decisions.json` were removed; fix the cause and re-run. A removed `adoption-decisions.json` is not recreated.     |
+| A pack's manifest fails to load                                                                              | 1    | A broken install, not a bad invocation.                                                                                                                                                           |
 
 A flag value that starts with `-` counts as missing, and `--pack` is the only value
 flag you can repeat. `--help`, `--version` and `--list-packs` exit `0`, but an

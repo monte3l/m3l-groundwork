@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Decides whether the CLI is writing a fresh project into an empty directory
- * or adopting an already-established one. Adopt mode never overwrites
- * project files -- see conflicts.ts and inventory.ts for what it does
- * instead. Detection is a fact-check, never a guess it hides: the signal
- * that chose the mode is always carried alongside it so an auto-detection
- * is never a silent surprise.
+ * Decides which of the CLI's three modes runs: writing a fresh project into
+ * an empty directory, adopting an already-established one, or planning an
+ * upgrade of a project that has a manifest. Only fresh and adopt are ever
+ * auto-detected; upgrade runs only when `--upgrade` asks for it. Adopt mode
+ * never overwrites project files -- see conflicts.ts and inventory.ts for
+ * what it does instead -- and neither does upgrade mode, which writes only
+ * under `.groundwork/upgrade/`. Detection is a fact-check, never a guess it
+ * hides: the signal that chose the mode is always carried alongside it so an
+ * auto-detection is never a silent surprise.
  */
 import { existsSync, readdirSync } from "node:fs";
 import { extname } from "node:path";
 
-type Mode = "fresh" | "adopt";
+type Mode = "fresh" | "adopt" | "upgrade";
 
 export interface ModeDetection {
   mode: Mode;
@@ -67,12 +70,13 @@ export function detectMode(dir: string): ModeDetection {
 export interface ModeFlags {
   adopt: boolean;
   fresh: boolean;
+  upgrade: boolean;
 }
 
 /**
- * Applies `--adopt`/`--fresh` overrides onto an auto-detected mode. Throws
- * if both are passed -- an explicit contradiction should never resolve
- * silently to one of the two.
+ * Applies `--adopt`/`--fresh`/`--upgrade` overrides onto an auto-detected
+ * mode. Throws if any two are passed -- an explicit contradiction should
+ * never resolve silently to one of them.
  */
 export function resolveMode(
   detected: ModeDetection,
@@ -80,6 +84,13 @@ export function resolveMode(
 ): ModeDetection {
   if (flags.adopt && flags.fresh) {
     throw new Error("--adopt and --fresh are mutually exclusive");
+  }
+  if (flags.upgrade && (flags.adopt || flags.fresh)) {
+    const other = flags.adopt ? "--adopt" : "--fresh";
+    throw new Error(`--upgrade and ${other} are mutually exclusive`);
+  }
+  if (flags.upgrade) {
+    return { mode: "upgrade", signal: "--upgrade forced" };
   }
   if (flags.adopt) {
     return { mode: "adopt", signal: "--adopt forced" };
