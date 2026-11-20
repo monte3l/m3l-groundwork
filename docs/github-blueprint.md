@@ -118,8 +118,12 @@ covers `github-actions` and three pinned-tool npm directories
 `tools/deploy`). Community files at the root: `README`,
 `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, `GOVERNANCE`, `ROADMAP`,
 `LICENSE`, plus `.editorconfig` and `.gitattributes` (check with `ls -a`;
-GitHub's community profile does not list them). Issue forms and the PR
-template live under `.github/`. Read GitHub's own view with
+GitHub's community profile does not list them). The issue forms are the
+org's: the repository has no `.github/ISSUE_TEMPLATE/`, because one local file
+hides every org form. The PR template lives under `.github/`. `ROADMAP.md` has
+the five sections of the org's
+[tracking policy](https://github.com/monte3l/.github/blob/main/blueprint/tracking.md),
+and `docs/decisions/` holds the decision records. Read GitHub's own view with
 `gh api repos/monte3l/m3l-groundwork/community/profile`.
 
 `scancode.yml` runs `aboutcode-org/scancode-action` with `check-compliance`,
