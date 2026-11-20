@@ -12,6 +12,9 @@ export default {
   designDir: "design",
   brand: true,
   manifest: "packages/cli/package.json",
+  // Compares the README with the code (packs, flags, requirements, the
+  // /customize skill). `build.mjs --check` runs it, so `pnpm verify` does too.
+  parity: ["bin/doc-parity.mjs"],
   navGroups: ["Start", "Project", "Security", "Internals"],
   nav: [
     { href: "index.html", label: "Docs" },
