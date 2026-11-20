@@ -31,10 +31,17 @@ const own = allowedLicenses(WORKFLOW);
 // data, so scancode-config.yml ignores it; policies.yml does not approve them.
 const NPM_ONLY = ["Artistic-2.0", "CC-BY-3.0"];
 
+// The permissive licenses the scaffold's own toolchain brings in, so a new
+// project's first lockfile does not fail Dependency Review on them.
+const TOOLCHAIN = ["BlueOak-1.0.0", "Python-2.0", "BSD-2-Clause-Views"];
+
 describe("the dependency-review template's license allow-list", () => {
-  it("accepts BlueOak-1.0.0, which the scaffold's own lint toolchain brings in", () => {
-    expect(template).toContain("BlueOak-1.0.0");
-  });
+  it.each(TOOLCHAIN)(
+    "accepts %s, which the scaffold's own toolchain brings in",
+    (license) => {
+      expect(template).toContain(license);
+    },
+  );
 
   it.each(template)(
     "allows %s only because this repository's own workflow vets it too",
@@ -49,4 +56,40 @@ describe("the dependency-review template's license allow-list", () => {
       expect(template).not.toContain(license);
     },
   );
+});
+
+function exemptions(path: string): string[] {
+  const text = readFileSync(join(root, path), "utf8");
+  return text
+    .split("\n")
+    .filter((l) => /^\s+-\s+pkg:/.test(l))
+    .map((l) => l.replace(/^\s+-\s+/, "").trim());
+}
+
+describe("the starter dependency-review config", () => {
+  const starter = exemptions(
+    join("templates", "core", ".github", "dependency-review-config.yml"),
+  );
+
+  it("exempts lightningcss, a build-time tool, by package URL", () => {
+    expect(starter).toContain("pkg:npm/lightningcss");
+  });
+
+  it("exempts the lightningcss platform builds the toolchain installs", () => {
+    const platforms = starter.filter((p) =>
+      p.startsWith("pkg:npm/lightningcss-"),
+    );
+    expect(platforms.length).toBeGreaterThan(0);
+  });
+
+  it.each(starter)("%s names a package without pinning a version", (purl) => {
+    expect(purl).not.toMatch(/@\d/);
+    expect(purl).not.toContain("*");
+  });
+
+  it("exempts nothing but the lightningcss family", () => {
+    for (const purl of starter) {
+      expect(purl).toMatch(/^pkg:npm\/lightningcss(-[a-z0-9-]+)?$/);
+    }
+  });
 });
