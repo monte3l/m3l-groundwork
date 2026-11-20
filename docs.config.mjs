@@ -46,6 +46,12 @@ export default {
       label: "Roadmap",
     },
     {
+      src: "docs/decisions/README.md",
+      out: "decisions.html",
+      group: "Project",
+      label: "Decisions",
+    },
+    {
       src: "CODE_OF_CONDUCT.md",
       out: "CODE_OF_CONDUCT.html",
       group: "Project",
@@ -83,6 +89,11 @@ export default {
     },
   ],
   exclude: [
+    {
+      glob: "docs/decisions/0000-template.md",
+      reason:
+        "decision-record skeleton with placeholders, copied rather than read",
+    },
     {
       glob: "CLAUDE.md",
       reason: "instructions for coding agents, not reader-facing",
