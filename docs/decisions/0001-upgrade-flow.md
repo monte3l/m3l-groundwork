@@ -51,7 +51,8 @@ The third option.
   `/upgrade` records (see `decisions.json` in the rule file), so a scripted
   run and an interactive one keep one record. The `--upgrade` plan step stays
   read-only. Exit codes and the `--json` report are shared with the fresh and
-  adopt modes and are defined in `.claude/rules/headless-mode.md`.
+  adopt modes and are defined in
+  [`.claude/rules/headless-mode.md`](../../.claude/rules/headless-mode.md).
 - **`/upgrade` skill.** Applies the safe set in one confirmation, then walks
   through each conflict with a proposed merge. The CLI copies it into the
   project with the same guarded, never-overwrite install that `/customize`
