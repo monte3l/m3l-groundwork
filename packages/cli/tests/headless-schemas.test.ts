@@ -19,6 +19,8 @@ import {
 } from "../src/headless/contract.js";
 import { EXIT_CODES } from "../src/exit-codes.js";
 import { buildErrorReport, buildReport } from "../src/headless/report.js";
+import { buildAdoptPending } from "../src/headless/pending.js";
+import type { Inventory } from "../src/inventory.js";
 
 const cliDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -448,6 +450,8 @@ describe("report.v1.schema.json against buildReport", () => {
       setupSteps: [],
       nextStep: null,
       manifest: null,
+      pending: [],
+      pendingPath: null,
     },
     { cliVersion: "1.0.0" },
   );
@@ -466,6 +470,75 @@ describe("report.v1.schema.json against buildReport", () => {
   });
 });
 
+describe("report.v1.schema.json against a report with real adopt pending entries", () => {
+  const schema = load("report.v1.schema.json");
+  const props = schema["properties"] as Record<string, Schema>;
+  const inventory = {
+    schemaVersion: 6,
+    packs: [],
+    conflicts: [
+      { relPath: "tsconfig.json", status: "divergent", keyDiffs: undefined },
+      { relPath: "eslint.config.js", status: "absent", keyDiffs: undefined },
+      { relPath: ".gitignore", status: "identical", keyDiffs: undefined },
+    ],
+  } as unknown as Inventory;
+  const { pending } = buildAdoptPending(inventory, {
+    inventorySha256: "a".repeat(64),
+  });
+  const report = buildReport(
+    {
+      mode: "adopt",
+      target: "/t",
+      warnings: [],
+      setupSteps: [],
+      nextStep: null,
+      manifest: null,
+      pending,
+      pendingPath: ".groundwork/headless/pending.json",
+    },
+    { cliVersion: "1.0.0" },
+  );
+
+  it("has a non-empty pending list and an artifacts.pending path", () => {
+    expect(report.pending.length).toBeGreaterThan(0);
+    expect(report.artifacts.pending).toBe(".groundwork/headless/pending.json");
+  });
+
+  it("has exactly the schema's top-level and artifacts keys", () => {
+    expect(keysOf([schema])).toEqual(Object.keys(report).sort());
+    const artifacts = props["artifacts"] as Schema;
+    expect(keysOf(objectSchemas(artifacts, schema))).toEqual(
+      Object.keys(report.artifacts).sort(),
+    );
+  });
+
+  it("gives every pending entry exactly the schema's entry keys, in the schema's value shapes", () => {
+    const items = itemsOf(props["pending"] as Schema, schema);
+    const keys = keysOf(objectSchemas(items, schema));
+    for (const entry of report.pending) {
+      expect(Object.keys(entry).sort()).toEqual(keys);
+      expect(typeof entry.pointer).toBe("string");
+      expect(typeof entry.reason).toBe("string");
+      expect(
+        entry.choices === null ||
+          (Array.isArray(entry.choices) &&
+            entry.choices.every((c) => typeof c === "string")),
+      ).toBe(true);
+      expect(
+        entry.evidence === null || typeof entry.evidence === "string",
+      ).toBe(true);
+    }
+  });
+
+  it("allows every status, exitCode, mode and phase value this report holds", () => {
+    for (const key of ["status", "exitCode", "mode", "phase"] as const) {
+      expect((props[key]?.["enum"] as unknown[]).includes(report[key])).toBe(
+        true,
+      );
+    }
+  });
+});
+
 describe("report.v1.schema.json enums against the runtime", () => {
   const schema = load("report.v1.schema.json");
   const props = schema["properties"] as Record<string, Schema>;
@@ -480,6 +553,8 @@ describe("report.v1.schema.json enums against the runtime", () => {
         setupSteps: [],
         nextStep: null,
         manifest: null,
+        pending: [],
+        pendingPath: null,
       },
       context,
     );

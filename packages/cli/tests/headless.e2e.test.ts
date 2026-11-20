@@ -190,9 +190,18 @@ describe("--json through bin/m3l-groundwork.mjs", () => {
           inventory: ".groundwork/inventory.json",
           manifest: null,
           ...NO_ARTIFACTS,
+          pending: ".groundwork/headless/pending.json",
         },
         error: null,
       });
+      const onDisk = JSON.parse(
+        readFileSync(
+          join(dir, ".groundwork", "headless", "pending.json"),
+          "utf8",
+        ),
+      ) as { pending: unknown[] };
+      expect(onDisk.pending.length).toBeGreaterThan(0);
+      expect(report["pending"]).toEqual(onDisk.pending);
       expect(report.nextStep).toMatch(/^Next: /);
       expect(stderr).toContain("adopt mode");
       expect(stderr).toContain(report.nextStep);

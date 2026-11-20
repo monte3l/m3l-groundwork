@@ -21,8 +21,9 @@ exit-code table (`exit-codes.ts`), the `--json` flag for fresh mode and the
 adopt survey, the success and error shapes of `report` v1
 (`headless/report.ts` plus `schemas/report.v1.schema.json`), and the
 `answers` v1 contract (`headless/contract.ts` plus
-`schemas/answers.v1.schema.json`); both schemas ship in the tarball. Each is
-marked **(shipped)** below. Everything else
+`schemas/answers.v1.schema.json`); both schemas ship in the tarball; and the
+adopt survey's pending document under `--json` (`headless/pending.ts`). Each
+is marked **(shipped)** below. Everything else
 is design only; the paths above are where it will land. Update this file as
 each piece ships, and drop this line when the last one does.
 
@@ -115,8 +116,8 @@ each piece ships, and drop this line when the last one does.
   `additions[].action`, `upgrade.applySafe` and `upgrade.removals` decided,
   and `pending` empty. `interview.testsMandatory`, `ciDepth` and
   `keepAgents` may stay `null` under `complete`: `null` means "use the
-  baseline default". Not built yet: writing a pending document, and the
-  adopt survey or `--apply` reading one.
+  baseline default". Not built yet: `--apply` reading a pending or answers
+  document (the adopt survey writes one, see "Pending location").
 - **`report` v1** (`schema: "groundwork.report"`, `schemaVersion: 1`):
   `cliVersion`, `mode` (`fresh`, `adopt`, `upgrade` or `null`), `phase`
   (`survey`, `plan`, `apply`, `stamp` or `null`; both are `null` in an error
@@ -130,16 +131,42 @@ each piece ships, and drop this line when the last one does.
   `artifacts.manifest` `.groundwork/manifest.json`, copied from
   `RunResult.manifest`; an adopt survey `phase: "survey"` with
   `artifacts.inventory` `.groundwork/inventory.json` and `artifacts.manifest`
-  `null`) and `buildErrorReport` (`status` `error` for exit 1, `usage` for
-  exit 2, `mode`/`phase` and every `artifacts` path `null`, `error.chain` the
+  `null`; `artifacts.pending` and `pending` copied from
+  `RunResult.pendingPath` and `RunResult.pending`) and `buildErrorReport`
+  (`status` `error` for exit 1, `usage` for exit 2, `mode`/`phase` and every
+  `artifacts` path `null` **even when the failed run had already written
+  files** (a failed `pending.json` write leaves a complete `inventory.json` on
+  disk; the error message names what exists, and a typed error that carries the
+  written artifacts is planned for the apply step), `pending` empty, `error.chain` the
   message then each chained value's as strings, through `format-error.ts`'s
   `errorMessageChain`: cycle-safe, depth-capped, never throws). `dryRun` is
-  always `false` and `changes`, `pending`, `handoff` and `drift` are always
-  empty until `--apply` ships; `noop`, `pending`, `drift`, `plan` and
-  `stamp` are not produced yet.
+  always `false` and `changes`, `handoff` and `drift` are always empty until
+  `--apply` ships; `pending` holds `PendingEntry` objects, non-empty only for
+  an `--adopt --json` survey (see "Pending location"); the `noop`, `pending`
+  and `drift` statuses and the `plan` and `stamp` phases are not produced yet.
 - **Pending location.** Adopt and upgrade write
   `.groundwork/headless/pending.json`. Fresh must leave the target untouched,
   so its pending document goes only in the report, plus `--pending-out <path>`.
+  **Shipped for the adopt survey, under `--json` only:** `runAdopt` writes it
+  after `inventory.json`, atomically (temp file plus rename, 2-space JSON and
+  a trailing newline), from `buildAdoptPending` (`headless/pending.ts`). It is
+  an answers v1 document that passes `partial` and never `complete`, bound to
+  the survey by `basis.inventorySha256` (the lowercase hex sha256 of
+  `inventory.json`'s bytes as written). Prefilled defaults:
+  `interview.testsMandatory` `true`, `ciDepth` `standard`, `keepAgents` every
+  baseline agent, packs, plugins and guidance empty or off, `missedNotes`
+  empty, each absent baseline file an `add` addition (identical ones
+  omitted). Pending, with `null` in the document: `interview.kind`,
+  `interview.runtime` (evidence `null`) and each divergent baseline file's
+  `resolution` (choices `keep`, `take`, `delegate`, plus `merge-keys` for a
+  key-level difference; evidence names the differing keys or says the whole
+  file differs). The report's `artifacts.pending` and `pending` mirror it,
+  and the survey still exits 0 with `status: "ok"`: exit 3 belongs to
+  `--apply`. A failed write is exit 1 with an error naming `pending.json`;
+  `inventory.json` and the report stay. Every adopt run, with or without
+  `--json`, deletes a previous `pending.json` at its point of no return, and
+  `.groundwork/headless/` only when that leaves it empty, so a pending
+  document never outlives the inventory it is bound to.
 - **What the CLI applies, with no Claude.** Per-file `keep`, `take`, `add` and
   `remove` decisions, staged packs, agent removal, tests warn-only, CI depth
   and the Dependabot block. Explore, `test-author` and `code-implementer` are
@@ -176,10 +203,23 @@ each piece ships, and drop this line when the last one does.
   `packages/cli/src/headless/contract.ts`; a parity test in
   `packages/plugin/tests/` imports both dynamically and compares the
   `ProjectKind`, `RuntimeTarget` and `CiDepth` tuples.
-- **Inventory schema v7** adds `conflicts[].targetSha256` and stages divergent
-  baseline files, not only absent ones. Without it adopt cannot detect drift
-  and has no verified bytes to `take`. `/customize` Step 0.1 must accept 7 in
-  the same change.
+- **Inventory schema v7** (shipped) adds `conflicts[].targetSha256` and
+  stages divergent baseline files, not only absent ones: token-substituted,
+  as `inventory.stagedDivergent`, in their own directory
+  `.groundwork/baseline-divergent/`, so `stagedBaseline` stays absent-only
+  and `/customize`'s handling of it is unchanged. Without them adopt cannot
+  detect drift and has no verified bytes to `take`. `/customize` Step 0.1
+  accepts 7.
+  Consumer contract: `targetSha256: null` on an `absent` conflict means
+  nothing is there (a write is safe), but on a `divergent` conflict it means
+  the file could not be read -- the drift is undetermined, so `--apply` must
+  refuse to `take` it and never treat `null` as "no drift". `--apply` trusts
+  only `inventory.stagedDivergent` and ignores any leftover
+  `.groundwork/baseline-divergent/` directory (an older CLI run after a v7
+  run leaves one behind). Staged divergent copies are the UTF-8 decode and
+  re-encode of the token-substituted template, which would change a binary
+  template's bytes: none exist in `templates/core` today, but `--apply take`
+  must keep that in mind.
 - **Version.** The CLI's own version decides the release: a new flag or output
   format is `feat`, and the whole series targets the next minor.
 

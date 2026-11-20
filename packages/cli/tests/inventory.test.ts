@@ -153,6 +153,12 @@ const EMPTY_STAGED_BASELINE: StagedBaseline = {
   files: [],
 };
 
+const EMPTY_STAGED_DIVERGENT: StagedBaseline = {
+  dir: ".groundwork/baseline-divergent",
+  suffix: ".staged",
+  files: [],
+};
+
 function stagedBaselineFile(
   overrides: Partial<StagedBaselineFile> = {},
 ): StagedBaselineFile {
@@ -175,11 +181,11 @@ describe("buildInventory / writeInventory", () => {
     rmSync(groundworkDir, { recursive: true, force: true });
   });
 
-  it("bumps the schema version to 6 for HarnessSurvey.pluginLayout", () => {
+  it("bumps the schema version to 7 for conflicts[].targetSha256 and stagedDivergent", () => {
     // Hardcoded rather than compared against the imported constant: this
     // pins the version bump itself, which a self-referencing comparison
     // against INVENTORY_SCHEMA_VERSION could never discriminate.
-    expect(INVENTORY_SCHEMA_VERSION).toBe(6);
+    expect(INVENTORY_SCHEMA_VERSION).toBe(7);
   });
 
   it("builds an inventory carrying the schema version, mode signal, and survey", () => {
@@ -193,6 +199,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -228,6 +235,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -241,15 +249,36 @@ describe("buildInventory / writeInventory", () => {
       targetDir: "/tmp/project",
       survey: EMPTY_SURVEY,
       conflicts: [
-        { relPath: ".claude/settings.json", status: "identical", keyDiffs: [] },
-        { relPath: ".claude/agents/a.md", status: "divergent", keyDiffs: [] },
-        { relPath: "CLAUDE.md", status: "absent", keyDiffs: [] },
-        { relPath: "tsconfig.json", status: "divergent", keyDiffs: [] },
+        {
+          relPath: ".claude/settings.json",
+          status: "identical",
+          keyDiffs: [],
+          targetSha256: null,
+        },
+        {
+          relPath: ".claude/agents/a.md",
+          status: "divergent",
+          keyDiffs: [],
+          targetSha256: null,
+        },
+        {
+          relPath: "CLAUDE.md",
+          status: "absent",
+          keyDiffs: [],
+          targetSha256: null,
+        },
+        {
+          relPath: "tsconfig.json",
+          status: "divergent",
+          keyDiffs: [],
+          targetSha256: null,
+        },
       ],
       packs: [],
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -270,15 +299,36 @@ describe("buildInventory / writeInventory", () => {
       targetDir: "/tmp/project",
       survey: EMPTY_SURVEY,
       conflicts: [
-        { relPath: ".claude/agents/a.md", status: "divergent", keyDiffs: [] },
-        { relPath: "tsconfig.json", status: "divergent", keyDiffs: [] },
-        { relPath: "eslint.config.js", status: "absent", keyDiffs: [] },
-        { relPath: "package.json", status: "identical", keyDiffs: [] },
+        {
+          relPath: ".claude/agents/a.md",
+          status: "divergent",
+          keyDiffs: [],
+          targetSha256: null,
+        },
+        {
+          relPath: "tsconfig.json",
+          status: "divergent",
+          keyDiffs: [],
+          targetSha256: null,
+        },
+        {
+          relPath: "eslint.config.js",
+          status: "absent",
+          keyDiffs: [],
+          targetSha256: null,
+        },
+        {
+          relPath: "package.json",
+          status: "identical",
+          keyDiffs: [],
+          targetSha256: null,
+        },
       ],
       packs: [],
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -303,6 +353,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -329,6 +380,7 @@ describe("buildInventory / writeInventory", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -363,6 +415,7 @@ describe("writeInventory writes atomically", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -410,6 +463,7 @@ describe("writeInventory refuses to write through a pre-existing symlink at inve
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -450,16 +504,23 @@ describe("buildInventory normalizes backslash paths to forward slashes", () => {
   // paths at all.
   function nativeConflicts(): FileConflict[] {
     return [
-      { relPath: "src\\index.ts", status: "divergent", keyDiffs: undefined },
+      {
+        relPath: "src\\index.ts",
+        status: "divergent",
+        keyDiffs: undefined,
+        targetSha256: null,
+      },
       {
         relPath: ".claude\\agents\\x.md",
         status: "absent",
         keyDiffs: undefined,
+        targetSha256: null,
       },
       {
         relPath: "bin\\lib\\verify-steps.mjs",
         status: "identical",
         keyDiffs: undefined,
+        targetSha256: null,
       },
     ];
   }
@@ -475,6 +536,7 @@ describe("buildInventory normalizes backslash paths to forward slashes", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
   }
@@ -557,6 +619,7 @@ describe("buildInventory normalizes backslash paths to forward slashes", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks: [],
     });
 
@@ -625,8 +688,8 @@ describe("Inventory.stagedPacks", () => {
     rmSync(groundworkDir, { recursive: true, force: true });
   });
 
-  it("stays schemaVersion 6 -- stagedPacks (added in 5) is additive within the same schema, not a further bump", () => {
-    expect(INVENTORY_SCHEMA_VERSION).toBe(6);
+  it("stays schemaVersion 7 -- stagedPacks (added in 5) is additive within the same schema, not a further bump", () => {
+    expect(INVENTORY_SCHEMA_VERSION).toBe(7);
   });
 
   it("carries stagedPacks through buildInventory verbatim, one entry per pack", () => {
@@ -645,6 +708,7 @@ describe("Inventory.stagedPacks", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks,
     });
 
@@ -663,6 +727,7 @@ describe("Inventory.stagedPacks", () => {
       harnessGrade: EMPTY_GRADE,
       toolchainGrade: EMPTY_TOOLCHAIN_GRADE,
       stagedBaseline: EMPTY_STAGED_BASELINE,
+      stagedDivergent: EMPTY_STAGED_DIVERGENT,
       stagedPacks,
     });
 

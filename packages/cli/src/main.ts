@@ -24,13 +24,17 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
+  renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import type { Stats } from "node:fs";
 import assert from "node:assert/strict";
-import { join, relative, resolve, basename } from "node:path";
+import { createHash } from "node:crypto";
+import { join, relative, resolve, basename, dirname } from "node:path";
 import process from "node:process";
 import type { StdioOptions } from "node:child_process";
 import { resolveAsset, toPosixPath } from "./assets.js";
@@ -61,9 +65,12 @@ import { surveyProject } from "./survey/survey.js";
 import { planConflicts } from "./conflicts.js";
 import {
   STAGED_BASELINE_DIR,
+  STAGED_DIVERGENT_DIR,
   STAGED_SUFFIX,
   planBaselineStaging,
+  planDivergentStaging,
   stageBaselineAdditions,
+  stageDivergentBaseline,
 } from "./baseline-stage.js";
 import {
   assertDirectoryComponent,
@@ -101,6 +108,9 @@ import { renderReport } from "./report.js";
 import type { RequiredTokenKey } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
 import { gradeToolchain } from "./toolchain/grade.js";
+import { buildAdoptPending } from "./headless/pending.js";
+import { errnoCode } from "./survey/internal/read-guard.js";
+import type { AnswersV1 } from "./headless/contract.js";
 import { computePlan, renderRelease } from "./upgrade/plan.js";
 import type { UpgradePlan } from "./upgrade/plan.js";
 import { countClasses } from "./upgrade/report.js";
@@ -711,6 +721,8 @@ function runFresh(
     setupSteps,
     nextStep: null,
     manifest: MANIFEST_RELATIVE_PATH,
+    pending: [],
+    pendingPath: null,
   };
 }
 
@@ -978,6 +990,90 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
 }
 
 /**
+ * Where an `--adopt --json` survey writes its pending document, relative to
+ * the target (POSIX separators). The one source for both the RunResult's
+ * `pendingPath` and the absolute path written (`join` normalises the
+ * separators), so the two cannot drift.
+ */
+const PENDING_RELATIVE_PATH = ".groundwork/headless/pending.json";
+
+/** Adopt mode's advice for a refused `.groundwork/headless/` entry; ends with the tail `endsWithRerunAdvice` recognises. */
+const REMOVE_AND_RERUN_ADVICE = "remove it and re-run the CLI";
+
+/**
+ * Removes a previous run's pending document and any leftover
+ * `pending.json.tmp`, then `.groundwork/headless/` itself only if that left
+ * it empty (non-recursive `rmdir`), so a file someone else keeps there
+ * survives. An `ENOENT` or `ENOTEMPTY` from that `rmdir` (the directory
+ * vanished, or something landed in it after the check) leaves it as is;
+ * any other failure propagates unchanged.
+ */
+function removeStalePending(
+  headlessDir: string,
+  pendingPath: string,
+  tmpPath: string,
+): void {
+  rmSync(pendingPath, { force: true });
+  rmSync(tmpPath, { force: true });
+  if (existsSync(headlessDir) && readdirSync(headlessDir).length === 0) {
+    try {
+      rmdirSync(headlessDir);
+    } catch (error) {
+      const code = errnoCode(error);
+      if (code !== "ENOENT" && code !== "ENOTEMPTY") throw error;
+    }
+  }
+}
+
+/**
+ * Hashes `inventory.json`'s bytes as written, builds the pending document
+ * bound to them and writes it atomically (temp file, then rename) as
+ * 2-space JSON with a trailing newline. Any failure -- the read, the hash,
+ * a write or the rename -- removes the temp file (best effort: a failed
+ * removal only warns) and throws an `Error` naming `pending.json`, with the
+ * failure as `cause`; `inventory.json` and the report stay.
+ */
+function writePendingDocument(
+  inventory: Inventory,
+  inventoryPath: string,
+  headlessDir: string,
+  pendingPath: string,
+  tmpPath: string,
+): AnswersV1 {
+  try {
+    const inventorySha256 = createHash("sha256")
+      .update(readFileSync(inventoryPath))
+      .digest("hex");
+    const doc = buildAdoptPending(inventory, { inventorySha256 });
+    mkdirSync(headlessDir, { recursive: true });
+    // Re-checked after mkdir (which follows a symlink raced in since the
+    // up-front check), so nothing is written through one.
+    assertNotSymlink(headlessDir);
+    // Clear a leftover or planted temp path, then create it exclusively:
+    // "wx" fails rather than following a symlink raced in between.
+    rmSync(tmpPath, { force: true });
+    writeFileSync(tmpPath, `${JSON.stringify(doc, null, 2)}\n`, {
+      flag: "wx",
+    });
+    renameSync(tmpPath, pendingPath);
+    return doc;
+  } catch (cause) {
+    try {
+      rmSync(tmpPath, { force: true });
+    } catch (cleanupError) {
+      // Best effort: the write failure below is the error worth reporting.
+      console.warn(
+        `warning: could not remove the temporary file ${tmpPath} -- delete it by hand (${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)})`,
+      );
+    }
+    throw new Error(
+      `writing ${pendingPath} failed; .groundwork/inventory.json and adoption-report.md were written, but the pending document was not -- ${FIX_AND_RERUN_ADVICE}`,
+      { cause },
+    );
+  }
+}
+
+/**
  * Surveys an already-established project and writes `.groundwork/` --
  * `inventory.json` and `adoption-report.md`. Never touches a project file:
  * the one addition is a purely-additive, collision-guarded copy of the
@@ -989,10 +1085,13 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  * files as `files/<path>.staged` -- all packs written to a temporary
  * sibling directory and swapped in by rename, so `packs/` is never
  * half-written (`stagePacks`); absent baseline files are staged the same
- * way as inert `<path>.staged` copies at `.groundwork/baseline/`. With a
+ * way as inert `<path>.staged` copies at `.groundwork/baseline/`, and
+ * divergent ones -- as the token-substituted bytes the comparison used -- at
+ * `.groundwork/baseline-divergent/`. With a
  * previous staging in place each swap is two renames (park the old
  * directory, then move the new one in); a kill between them leaves that
- * directory absent with the old copy under its `.packs-*`/`.baseline-*`
+ * directory absent with the old copy under its
+ * `.packs-*`/`.baseline-*`/`.baseline-divergent-*`
  * work directory's `previous/` -- safe, because `inventory.json` was
  * already deleted, so nothing reads the gap as a completed run.
  *
@@ -1000,12 +1099,14 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  * this order: the four stale-file paths are scope-checked against
  * {@link assertAdoptWriteScope}; every surveyed pack is loaded and validated by
  * `loadPack` and surveyed (`planConflicts`, `observeWiring`); the pack
- * staging plan (`planPackStaging`) and the baseline staging plan
- * (`planBaselineStaging`) are each computed once, validated, and every path
+ * staging plan (`planPackStaging`) and the absent and divergent baseline
+ * staging plans (`planBaselineStaging`, `planDivergentStaging`) are each
+ * computed once, validated, and every path
  * they would write scope-checked; the `/customize` skill's planned install
  * paths (`plannedCustomizeSkillPaths`, a lexical check of its path
- * constants) are scope-checked; then `.groundwork/`, `.groundwork/packs`
- * and `.groundwork/baseline` are each refused if they are a symlink. So an
+ * constants) are scope-checked; then `.groundwork/`, `.groundwork/packs`,
+ * `.groundwork/baseline` and `.groundwork/baseline-divergent` are each
+ * refused if they are a symlink. So an
  * invalid pack (a malformed manifest, a prototype-sensitive key in its
  * wiring, an unstageable file tree), an invalid baseline plan, an
  * out-of-scope staging or skill-install path, or a symlinked staging
@@ -1015,8 +1116,11 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  * `inventory.json`/`adoption-report.md`/`adoption-decisions.json`/
  * `customization-report.md` (in that order), which follows those checks;
  * which of the four existed is
- * recorded just before. After the deletions, packs and the baseline are
- * staged from the plans already computed (their trees are not walked
+ * recorded just before. A previous `.groundwork/headless/pending.json` is
+ * deleted right after them, with or without `--json`, and
+ * `.groundwork/headless/` too when that leaves it empty (it is scope-checked
+ * and refused if a symlink with the others). After the deletions, packs, the
+ * absent baseline files and the divergent ones are staged from the plans already computed (their trees are not walked
  * again), the harness and toolchain are graded, the `/customize` skill is
  * installed and its writes scope-checked, `adoption-report.md` is written
  * (its `## Next step` leading with the same sentence the console prints
@@ -1036,8 +1140,14 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  *
  * If `inventory.json` fails to write, the just-written report is first
  * removed (best effort: a failed removal only warns, never masking the
- * write failure). Only console output follows `inventory.json`, so its
- * presence means every step of the run completed.
+ * write failure). Without `--json` only console output follows
+ * `inventory.json`, so its presence means every step of the run completed.
+ * Under `--json` the pending document (`buildAdoptPending`, bound to
+ * `inventory.json`'s sha256) is written after it, atomically, to
+ * `.groundwork/headless/pending.json`; a failure there throws an `Error`
+ * naming `pending.json` with the failure as `cause`, keeping
+ * `inventory.json` and the report. `pending.json` is never left behind; the
+ * temp file is removed on a best-effort basis (a failed removal only warns).
  */
 function runAdopt(
   options: CliOptions,
@@ -1061,20 +1171,27 @@ function runAdopt(
 
   const groundworkDir = join(options.targetDir, ".groundwork");
   const stagedBaselineDir = `.groundwork/${STAGED_BASELINE_DIR}`;
+  const stagedDivergentDir = `.groundwork/${STAGED_DIVERGENT_DIR}`;
   const stalePaths = STALE_FILE_NAMES.map((name) => ({
     name,
     path: join(groundworkDir, name),
   }));
   const inventoryPath = join(groundworkDir, "inventory.json");
   const reportPath = join(groundworkDir, "adoption-report.md");
-  assertAdoptWriteScope(
-    options.targetDir,
-    stalePaths.map(({ path }) => path),
-  );
+  const pendingPath = join(options.targetDir, PENDING_RELATIVE_PATH);
+  const pendingTmpPath = `${pendingPath}.tmp`;
+  const headlessDir = dirname(pendingPath);
+  assertAdoptWriteScope(options.targetDir, [
+    ...stalePaths.map(({ path }) => path),
+    headlessDir,
+    pendingPath,
+    pendingTmpPath,
+  ]);
 
   // Every surveyed pack must pass loadPack's validation (including its
-  // prototype-sensitive wiring-key check), and both staging plans (packs and
-  // baseline) must be computed and scope-checked, before anything under
+  // prototype-sensitive wiring-key check), and every staging plan (packs,
+  // absent and divergent baseline) must be computed and scope-checked,
+  // before anything under
   // .groundwork/ is touched, so an invalid pack or plan fails the run with
   // the previous inventory/report still intact rather than half-cleared.
   const packNames = options.packs.length > 0 ? options.packs : listPackNames();
@@ -1108,6 +1225,13 @@ function runAdopt(
     tokens,
   );
   assertAdoptWriteScope(options.targetDir, baselinePlan.paths);
+  const divergentPlan = planDivergentStaging(
+    templateRoot,
+    conflicts,
+    groundworkDir,
+    tokens,
+  );
+  assertAdoptWriteScope(options.targetDir, divergentPlan.paths);
   // A constant drift guard only: it lexically checks paths built from
   // customize-paths.ts's constants, so it can catch one of those constants
   // being edited to escape the project, and nothing else -- it reads no
@@ -1124,6 +1248,14 @@ function runAdopt(
   assertNotSymlink(groundworkDir);
   assertNotSymlink(join(options.targetDir, STAGED_PACKS_DIR));
   assertNotSymlink(join(groundworkDir, STAGED_BASELINE_DIR));
+  assertNotSymlink(join(groundworkDir, STAGED_DIVERGENT_DIR));
+  // .groundwork/headless/ must be a real directory (or absent), and the
+  // pending paths files: a directory at pending.json or its temp path would
+  // fail the run only after the deletions below. A symlink at either is
+  // fine -- it is removed, never followed.
+  assertDirectoryComponent(headlessDir, REMOVE_AND_RERUN_ADVICE);
+  assertNotDirectory(pendingPath, REMOVE_AND_RERUN_ADVICE);
+  assertNotDirectory(pendingTmpPath, REMOVE_AND_RERUN_ADVICE);
 
   // Recorded before any deletion, so a failure message names only files a
   // previous run actually left (and this run actually removed).
@@ -1152,6 +1284,9 @@ function runAdopt(
         removed.push(name);
       }
     }
+    // Bound to the inventory just deleted, so it goes too, with or without
+    // --json: a pending document must never outlive its survey.
+    removeStalePending(headlessDir, pendingPath, pendingTmpPath);
 
     const stagedPacks = stagePacks(
       loadedPacks,
@@ -1165,6 +1300,13 @@ function runAdopt(
       groundworkDir,
       tokens,
       baselinePlan,
+    );
+    const stagedDivergentFiles = stageDivergentBaseline(
+      templateRoot,
+      conflicts,
+      groundworkDir,
+      tokens,
+      divergentPlan,
     );
 
     inventory = buildInventory({
@@ -1180,6 +1322,11 @@ function runAdopt(
         dir: stagedBaselineDir,
         suffix: STAGED_SUFFIX,
         files: stagedBaselineFiles,
+      },
+      stagedDivergent: {
+        dir: stagedDivergentDir,
+        suffix: STAGED_SUFFIX,
+        files: stagedDivergentFiles,
       },
       stagedPacks,
     });
@@ -1237,9 +1384,24 @@ function runAdopt(
     }
     rethrowAfterPointOfNoReturn(error, removed);
   }
+  // Under --json only, after inventory.json: the document is bound to its
+  // bytes. A failure here keeps inventory.json and the report, which are
+  // complete; it is the pending document that is missing.
+  const pending = options.json
+    ? writePendingDocument(
+        inventory,
+        inventoryPath,
+        headlessDir,
+        pendingPath,
+        pendingTmpPath,
+      ).pending
+    : [];
 
   out.info(`wrote ${relative(options.targetDir, inventoryPath)}`);
   out.info(`wrote ${relative(options.targetDir, reportPath)}`);
+  if (options.json) {
+    out.info(`wrote ${PENDING_RELATIVE_PATH}`);
+  }
   if (stagedBaselineFiles.length > 0) {
     out.info(
       `staged ${stagedBaselineFiles.length} baseline file(s) at ${stagedBaselineDir}/ for /customize`,
@@ -1274,6 +1436,8 @@ function runAdopt(
     setupSteps: [],
     nextStep,
     manifest: null,
+    pending,
+    pendingPath: options.json ? PENDING_RELATIVE_PATH : null,
   };
 }
 

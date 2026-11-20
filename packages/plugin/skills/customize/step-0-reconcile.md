@@ -66,8 +66,8 @@ Contents:
      `npx @monte3l/groundwork .` and then run `/customize` again."
 
    **Check `inventory.schemaVersion` before reading anything else.** This
-   skill understands schema versions **1 through 6** (the highest it knows is
-   6). If `schemaVersion` is **higher than 6**, the CLI that wrote it is newer
+   skill understands schema versions **1 through 7** (the highest it knows is
+   7). If `schemaVersion` is **higher than 7**, the CLI that wrote it is newer
    than this plugin: **stop and change nothing**, do not interpret the
    inventory (a newer schema may have renamed or repurposed fields, and a
    confident misreading is worse than none), and tell the user to update the
@@ -91,6 +91,7 @@ Contents:
    | 4               | `toolchainGrade`, `toolchainConformance`                                                                                                                                                                                                                                                                                  | skip the toolchain-grade starting point                                                                                          |
    | 5               | `stagedBaseline` (`{ dir, suffix, files }`): the baseline additions staged at `.groundwork/baseline/`, each as `{ path, staged, sha256 }`; `stagedPacks` (per pack: `{ name, dir, suffix, manifest, files }`): every pack staged at `.groundwork/packs/<name>/`, its manifest and each file as `{ path, staged, sha256 }` | schema 1-4 only: read baseline additions from `inventory.templateRoot`; packs use the unsuffixed copy under `.groundwork/packs/` |
    | 6               | `survey.harness.pluginLayout`: `null`, or `{ manifest, components }` when the project root holds `.claude-plugin/plugin.json` (`components` lists which of `hooks/hooks.json`, `skills/`, `agents/`, `commands/`, `.mcp.json` exist)                                                                                      | no plugin-layout evidence; ask the project kind cold rather than pre-selecting one                                               |
+   | 7               | `conflicts[].targetSha256` (sha256 of the project file the comparison read, or `null`); `stagedDivergent` (`{ dir, suffix, files }`): the divergent baseline files, token-substituted, at `.groundwork/baseline-divergent/`. Both are informational for /customize; they feed the headless --apply step                   | no drift data and no divergent copies: nothing for /customize to do differently                                                  |
 
    **For a schema 5 or later inventory: verify the staged baseline now, before
    anything is offered to the user.** A schema 1-4 inventory has no

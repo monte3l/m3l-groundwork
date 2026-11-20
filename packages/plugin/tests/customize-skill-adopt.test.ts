@@ -208,8 +208,8 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
     expect(section.slice(idx, idx + 400)).toContain("change nothing");
   });
 
-  it("says to change nothing in the same breath as the schemaVersion-higher-than-5 stop", () => {
-    const idx = section.indexOf("higher than 6");
+  it("says to change nothing in the same breath as the schemaVersion-higher-than-7 stop", () => {
+    const idx = section.indexOf("higher than 7");
     expect(idx).toBeGreaterThan(-1);
     expect(section.slice(idx, idx + 400)).toContain("change nothing");
   });
@@ -239,8 +239,8 @@ describe("SKILL.md Step 0.1 section (heading-scoped: '1. Look for' through '2. *
     expect(section).toContain("single quoted argument");
   });
 
-  it("says the schemaVersion-higher-than-5 stop names /plugin update, the re-run command, and the project-local reason /plugin update alone can't fix it", () => {
-    const idx = section.indexOf("higher than 6");
+  it("says the schemaVersion-higher-than-7 stop names /plugin update, the re-run command, and the project-local reason /plugin update alone can't fix it", () => {
+    const idx = section.indexOf("higher than 7");
     expect(idx).toBeGreaterThan(-1);
     // Widened from 650: the corrected local-copy advice (delete-first,
     // names both local-copy locations) lengthened this paragraph.
@@ -437,15 +437,15 @@ describe("SKILL.md Step 3 Round 1 -- schema-5 install condition wording", () => 
   });
 });
 
-describe("SKILL.md Step 0.1 -- corrected local-copy advice for a schemaVersion higher than 6", () => {
-  const higherThan5Index = text.indexOf("higher than 6");
+describe("SKILL.md Step 0.1 -- corrected local-copy advice for a schemaVersion higher than 7", () => {
+  const higherThan7Index = text.indexOf("higher than 7");
 
-  it("finds the 'higher than 6' paragraph", () => {
-    expect(higherThan5Index).toBeGreaterThan(-1);
+  it("finds the 'higher than 7' paragraph", () => {
+    expect(higherThan7Index).toBeGreaterThan(-1);
   });
 
   it("tells the agent to delete the stale local copy first, names both local-copy locations, and says /plugin update does not load a deleted copy back", () => {
-    const window = text.slice(higherThan5Index, higherThan5Index + 1100);
+    const window = text.slice(higherThan7Index, higherThan7Index + 1100);
     expect(window).toContain("delete that directory first");
     expect(window).toContain("`.claude/skills/customize/`");
     expect(window).toContain("never overwrites a copy that differs");
@@ -455,12 +455,12 @@ describe("SKILL.md Step 0.1 -- corrected local-copy advice for a schemaVersion h
   });
 
   it("drops the incorrect claim that re-running the CLI refreshes the plugin's local copy", () => {
-    const window = text.slice(higherThan5Index, higherThan5Index + 1100);
+    const window = text.slice(higherThan7Index, higherThan7Index + 1100);
     expect(window).not.toContain("so the CLI refreshes its local copy");
   });
 
   it("warns that deleting `.claude/skills/customize/` discards any local edits", () => {
-    const window = text.slice(higherThan5Index, higherThan5Index + 1100);
+    const window = text.slice(higherThan7Index, higherThan7Index + 1100);
     expect(window).toContain("discards any local edits");
   });
 });
@@ -1353,6 +1353,54 @@ describe("Step 3 -- retargeting rule", () => {
     "contains %s in step-3-round-1.md",
     (phrase) => {
       expect(step3Flat).toContain(phrase);
+    },
+  );
+});
+
+describe("SKILL.md Step 0.1 -- schema 7 (conflicts[].targetSha256, stagedDivergent)", () => {
+  const installedStep0 = readFileSync(
+    join(
+      here,
+      "..",
+      "..",
+      "..",
+      ".claude",
+      "skills",
+      "customize",
+      "step-0-reconcile.md",
+    ),
+    "utf8",
+  ).replace(/\s+/g, " ");
+
+  it.each([
+    ["packages/plugin copy", text],
+    [".claude/skills/customize copy", installedStep0],
+  ])(
+    "%s: understands schema versions 1 through 7 and stops only above 7",
+    (_label, body) => {
+      expect(body).toContain("understands schema versions **1 through 7**");
+      expect(body).toContain("the highest it knows is 7");
+      expect(body).toContain("**higher than 7**");
+      expect(body).not.toContain("1 through 6");
+      expect(body).not.toContain("higher than 6");
+    },
+  );
+
+  it.each([
+    ["packages/plugin copy", text],
+    [".claude/skills/customize copy", installedStep0],
+  ])(
+    "%s: the schema table has a row 7 after row 6, naming both additions as informational and feeding --apply",
+    (_label, body) => {
+      const row6 = body.indexOf("| 6 ");
+      const row7 = body.indexOf("| 7 ");
+      expect(row6).toBeGreaterThan(-1);
+      expect(row7).toBeGreaterThan(row6);
+      const row = body.slice(row7, row7 + 600);
+      expect(row).toContain("`conflicts[].targetSha256`");
+      expect(row).toContain("`stagedDivergent`");
+      expect(row).toContain("informational for /customize");
+      expect(row).toContain("--apply");
     },
   );
 });

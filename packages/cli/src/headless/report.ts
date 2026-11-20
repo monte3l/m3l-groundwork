@@ -5,14 +5,16 @@
  * The `groundwork.report` v1 document a `--json` run writes to stdout
  * (`.claude/rules/headless-mode.md`, "report v1"). Pure builders only: the
  * bin script decides when to write one. A fresh run reports `phase: "apply"`,
- * an adopt survey `phase: "survey"`; `changes`, `pending`, `handoff` and
- * `drift` are always empty until `--apply` ships. Every field is present and
- * none is `undefined`, in a fixed key order, so the serialized document is
- * byte-stable for the same input.
+ * an adopt survey `phase: "survey"`. `pending` carries the entries of the
+ * pending document an `--adopt --json` survey wrote (empty otherwise);
+ * `changes`, `handoff` and `drift` are always empty until `--apply` ships.
+ * Every field is present and none is `undefined`, in a fixed key order, so
+ * the serialized document is byte-stable for the same input.
  */
 import { EXIT_CODES, type ExitCode } from "../exit-codes.js";
 import { errorMessageChain } from "../format-error.js";
 import type { RunResult } from "../run-result.js";
+import type { PendingEntry } from "./contract.js";
 
 /** Where a fresh/adopt run left its `.groundwork/` artifacts, relative to `target`; `null` when not written. */
 interface ReportArtifacts {
@@ -54,7 +56,7 @@ export interface ReportV1 {
   readonly target: string | null;
   readonly artifacts: ReportArtifacts;
   readonly changes: readonly never[];
-  readonly pending: readonly never[];
+  readonly pending: readonly PendingEntry[];
   readonly handoff: readonly never[];
   readonly drift: readonly never[];
   readonly setupSteps: RunResult["setupSteps"];
@@ -85,7 +87,12 @@ function baseReport(
     | "warnings"
     | "nextStep"
     | "error"
-  > & { readonly inventory: string | null; readonly manifest: string | null },
+    | "pending"
+  > & {
+    readonly inventory: string | null;
+    readonly manifest: string | null;
+    readonly pendingPath: string | null;
+  },
 ): ReportV1 {
   return {
     schema: "groundwork.report",
@@ -101,12 +108,12 @@ function baseReport(
       inventory: fields.inventory,
       manifest: fields.manifest,
       plan: null,
-      pending: null,
+      pending: fields.pendingPath,
       commitMsg: null,
       prBody: null,
     },
     changes: [],
-    pending: [],
+    pending: fields.pending,
     handoff: [],
     drift: [],
     setupSteps: fields.setupSteps,
@@ -120,7 +127,12 @@ function baseReport(
  * The success report of a completed fresh or adopt run: `status: "ok"`,
  * exit code 0, for adopt mode the inventory it wrote, and the upgrade
  * manifest path the run reported (`result.manifest`: fresh mode's
- * `.groundwork/manifest.json`, `null` for adopt).
+ * `.groundwork/manifest.json`, `null` for adopt), and the pending document
+ * the run reported (`result.pendingPath` as `artifacts.pending` and
+ * `result.pending` as `pending`: an `--adopt --json` survey's
+ * `.groundwork/headless/pending.json` and its entries, otherwise `null` and
+ * `[]`). Pending decisions do not change the status or exit code: a survey
+ * that wrote them is still `ok` with exit 0.
  *
  * @example
  * ```ts
@@ -134,6 +146,8 @@ function baseReport(
  *     setupSteps: [],
  *     nextStep: null,
  *     manifest: ".groundwork/manifest.json",
+ *     pending: [],
+ *     pendingPath: null,
  *   },
  *   { cliVersion: "1.2.3" },
  * );
@@ -150,6 +164,8 @@ export function buildReport(result: RunResult, ctx: ReportContext): ReportV1 {
     target: result.target,
     inventory: adopt ? INVENTORY_PATH : null,
     manifest: result.manifest,
+    pendingPath: result.pendingPath,
+    pending: result.pending,
     setupSteps: result.setupSteps,
     warnings: result.warnings,
     nextStep: result.nextStep,
@@ -161,7 +177,7 @@ export function buildReport(result: RunResult, ctx: ReportContext): ReportV1 {
  * The error envelope of a failed run: `status: "usage"` for exit code 2,
  * `"error"` for any other fatal code, with the thrown value's message and
  * chain. `mode`, `phase`, `target` and every `artifacts` path (including
- * `manifest`) are always `null`. `error.chain` is
+ * `manifest` and `pending`) are always `null`, and `pending` is empty. `error.chain` is
  * `errorMessageChain(error)` (`../format-error.ts`): every entry a string,
  * the first equal to `error.message`, an unreadable message rendered as
  * `[unprintable value]`, cycles cut and depth capped. Never throws, whatever
@@ -192,6 +208,8 @@ export function buildErrorReport(
     target: null,
     inventory: null,
     manifest: null,
+    pendingPath: null,
+    pending: [],
     setupSteps: [],
     warnings: [],
     nextStep: null,
