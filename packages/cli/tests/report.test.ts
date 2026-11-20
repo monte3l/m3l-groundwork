@@ -276,6 +276,7 @@ describe("renderReport", () => {
       expect(report).toContain(".groundwork/*\n");
       expect(report).toContain("!.groundwork/adoption-report.md");
       expect(report).toContain("!.groundwork/customization-report.md");
+      expect(report).toContain("!.groundwork/manifest.json");
       expect(report.split(".groundwork/*\n")).toHaveLength(2);
     }
   });
@@ -286,6 +287,9 @@ describe("renderReport", () => {
     expect(report).toContain("re-run");
     expect(report).toContain("/customize");
     expect(report).not.toContain("notices and asks");
+    expect(report).toContain(
+      "a clone of the project holds the two reports and the manifest (when one was written) but no `.groundwork/inventory.json`",
+    );
   });
 
   it("reports no harness found when .claude/ is absent", () => {

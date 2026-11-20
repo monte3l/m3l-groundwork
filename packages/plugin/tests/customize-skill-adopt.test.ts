@@ -1225,12 +1225,20 @@ describe("Step 7 -- customization-report.md", () => {
     expect(window).toContain("adopt mode only");
   });
 
-  it.each([".groundwork/*", "!.groundwork/adoption-report.md"])(
+  it.each([
+    ".groundwork/*",
+    "!.groundwork/adoption-report.md",
+    "!.groundwork/manifest.json",
+  ])(
     "tells the user about the gitignore convention (%s) in Step 7",
     (phrase) => {
       expect(step7Section).toContain(phrase);
     },
   );
+
+  it("says a teammate's clone holds the two reports and the manifest", () => {
+    expect(step7Section).toContain("the two reports and the manifest");
+  });
 });
 
 describe("Step 0.4/0.5 -- decisions file shape and resume rule", () => {
@@ -1272,6 +1280,42 @@ describe("Step 0.1 -- missing .groundwork guard", () => {
     expect(step01Slice).toContain("git ls-files .groundwork");
     expect(step01Slice).toContain("clone of an adopted project");
     expect(step01Slice).not.toContain("interrupted CLI re-run took");
+  });
+
+  const manifestLead =
+    "Absent, but `.groundwork/` holds only `manifest.json` \u2192 a fresh bootstrap.";
+  const interruptedLead = "Absent, but `.groundwork/` exists";
+
+  it("treats a .groundwork/ holding only manifest.json as a fresh bootstrap", () => {
+    expect(step01Slice).toContain(manifestLead);
+  });
+
+  it("never treats the manifest-only case as an interrupted run", () => {
+    expect(step01Slice).toContain("never treat it as an interrupted run");
+  });
+
+  it("never edits or deletes the manifest", () => {
+    expect(step01Slice).toMatch(/never edit or delete the manifest/i);
+  });
+
+  it("lists manifest.json among the tracked files of an adopted clone", () => {
+    expect(step01Slice).toContain(
+      "Absent, but `.groundwork/` holds only tracked report files (and `manifest.json`) \u2192 a clone of an adopted project.",
+    );
+  });
+
+  it("checks the manifest-only bullet before the generic interrupted-run bullet", () => {
+    const manifestIdx = step01Slice.indexOf(manifestLead);
+    const interruptedIdx = step01Slice.indexOf(interruptedLead);
+    expect(manifestIdx).toBeGreaterThan(-1);
+    expect(interruptedIdx).toBeGreaterThan(-1);
+    expect(manifestIdx).toBeLessThan(interruptedIdx);
+  });
+
+  it("names the manifest-only case in the SKILL.md outline", () => {
+    expect(skillText).toContain(
+      "A `.groundwork/` holding only `manifest.json` is a fresh bootstrap.",
+    );
   });
 });
 

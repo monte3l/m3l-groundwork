@@ -47,7 +47,15 @@ this line when the last one does.
   the tailoring replayed, must extend `parseManifest` with them (and bump
   `schemaVersion` if an older reader would misread the result) and keep them in
   step with Round 1 in `/customize`. Fresh mode's `files` omit the `/customize`
-  skill copy and anything under `.groundwork/`.
+  skill copy and anything under `.groundwork/`. **Two other surfaces read the
+  `.groundwork/` directory and must keep knowing about it:** `/customize`
+  Step 0.1 (a `.groundwork/` holding only `manifest.json` is a fresh bootstrap,
+  not an interrupted run, and a clone holding the tracked reports plus the
+  manifest is still a clone of an adopted project), and the recommended
+  `.gitignore` block in Step 7 and the adoption report (`report.ts`), which
+  must keep `!.groundwork/manifest.json` or the manifest never reaches git. A
+  new file under `.groundwork/` that is meant to be tracked needs the same
+  three updates.
 - **The classifier is a pure function.** `M` is the manifest hash, `C` the
   current file and `N` the new emitted file:
 

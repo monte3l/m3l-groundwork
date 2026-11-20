@@ -595,17 +595,20 @@ export function renderReport(inventory: Inventory, nextStep?: string): string {
     "`.groundwork/` itself was not added to this project's `.gitignore`. " +
       "We recommend tracking this report (and `customization-report.md`, " +
       "once `/customize` has written it) as a record of the adoption, and " +
-      "ignoring the rest, which is disposable -- regenerate it any time by " +
-      "re-running the CLI:",
+      "`manifest.json`, which records what fresh mode emitted, when it " +
+      "exists; ignore the rest, which is disposable -- regenerate it any " +
+      "time by re-running the CLI:",
     "",
     "```gitignore",
     ".groundwork/*",
     "!.groundwork/adoption-report.md",
     "!.groundwork/customization-report.md",
+    "!.groundwork/manifest.json",
     "```",
     "",
     "`/customize` asks about this at the end of its run. With this rule a " +
-      "clone of the project holds the two reports but no " +
+      "clone of the project holds the two reports and the manifest (when " +
+      "one was written) but no " +
       "`.groundwork/inventory.json`, so on such a clone re-run the CLI " +
       "(`npx @monte3l/groundwork .`) and then run `/customize`.",
     "",
