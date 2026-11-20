@@ -181,7 +181,10 @@ The planned flow has three parts:
    `.groundwork/upgrade/`: a plan, a report and staged copies. It never
    touches a project file.
 3. **`/upgrade`**, a skill the same command copies into the project, applies
-   the plan.
+   the plan. For scripted runs, a separate `--apply <answers.json>` step does
+   the same without a conversation. It is the only step that writes project
+   files, it runs only when you ask, and it refuses if your tree changed since
+   the plan was made.
 
 For each file it compares what groundwork last wrote, what you have now and what
 the new release writes:

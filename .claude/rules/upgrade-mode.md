@@ -32,7 +32,10 @@ Update this file as each piece ships, and drop this line when the last one does.
   delete it. It stores `cliVersion`, `tokens`, `packs`, a sha256 per file with
   an `origin` of `emitted` or `merged`, and a sha256 per JSON key for
   `package.json`, `tsconfig*.json` and `.claude/settings.json`. Hash the
-  post-pack output, since packs merge into shared files.
+  post-pack output, since packs merge into shared files. It also stores
+  `answers.interview` and the mechanical Round 1 actions (agent removal, the
+  verify-policy JSON, the Dependabot swap) so the old base can be rebuilt with
+  the tailoring replayed; keep it in step with Round 1 in `/customize`.
 - **The classifier is a pure function.** `M` is the manifest hash, `C` the
   current file and `N` the new emitted file:
 
@@ -58,6 +61,13 @@ Update this file as each piece ships, and drop this line when the last one does.
 - **The CLI hashes, the skill never does.** `--upgrade --stamp` re-hashes the
   plan's paths from disk and writes the manifest, marking `origin: merged`
   wherever the file differs from the staged new content.
+- **`--apply <answers.json>` is the only write step.** It touches project files
+  only when you ask, and only against a `plan.json` whose hashes still match
+  the tree. A changed tree is drift and the run refuses. The `--upgrade` plan
+  step never writes a project file. Exit codes 0-4 and the `--json` report are
+  shared with the other modes: they are defined in
+  `.claude/rules/headless-mode.md`, which another change adds. Link to it from
+  here once it exists, and do not copy the table.
 - **The skill reaches the project through the CLI.** `--upgrade` copies
   `/upgrade` in with the guarded installer `/customize` uses
   (`installCustomizeSkillGuarded` in `plugin.ts`, paths in
@@ -67,9 +77,12 @@ Update this file as each piece ships, and drop this line when the last one does.
   same run refreshes an unchanged `/customize` copy.
 - **The skill rebuilds an old base with a released CLI.**
   `npx @monte3l/groundwork@<old> --fresh --skip-install --name <n> --pack ... <tmp>`
-  needs no new flag. It records decisions in `.groundwork/upgrade/decisions.json`
-  so a compacted session does not re-ask, and checks `plan.json.schemaVersion`
-  before reading it.
+  needs no new flag for the base itself; the recorded tailoring is replayed on
+  top. It records decisions in `.groundwork/upgrade/decisions.json` so a
+  compacted session does not re-ask, and checks `plan.json.schemaVersion`
+  before reading it. Conflict decisions have one shape, shared with the
+  `answers.upgrade` section of an `--apply` answers file:
+  `[{path, resolution: keep|take|delegate}]`.
 - **A change here is `feat(cli)`,** so it ships as a minor release. The e2e test
   swaps a second fixture template root in after a first bootstrap, so it proves
   the plan without a published release.
