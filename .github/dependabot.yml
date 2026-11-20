@@ -24,6 +24,38 @@ updates:
     labels:
       - "dependencies"
 
+  # The workflows that templates/ ships into bootstrapped projects pin their
+  # actions by SHA too, but they live outside .github/workflows/, so the entry
+  # above never saw them and their pins went stale (scorecard-action and
+  # claude-code-action were both behind the org's own templates). Dependabot
+  # reads a non-root directory directly, one level of *.yml, and `directories`
+  # takes a glob, so the three packs that ship workflows are one pattern.
+  # If a scheduled run never opens a pull request for a stale pin here, the entry
+  # does not work: fall back to Renovate scoped to these folders.
+  #
+  # One pull request for the lot, typed `fix(deps)` and not `ci`, as for the
+  # publishing pack's tools below: a bump here changes shipped output, and
+  # release-please turns a `fix` into a patch release, which is how a refreshed
+  # pin reaches the next project that is bootstrapped. Grouped, so a week of
+  # bumps is one release and not eight. A project that was already bootstrapped
+  # keeps its own pins and its own Dependabot.
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/templates/core/.github/workflows"
+      - "/templates/packs/*/files/.github/workflows"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "fix(deps)"
+    cooldown:
+      default-days: 7
+    groups:
+      template-actions:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+
   # tools/release/ pins the exact libnpmpublish and
   # npm-registry-fetch versions the release workflow's publish job installs (see release.yml's `npm ci --prefix`
   # step) via a committed package-lock.json's integrity hash, not a bare
