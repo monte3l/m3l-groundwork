@@ -141,4 +141,34 @@ describe("renderRelease -- failure while rendering", () => {
     expect((thrown as Error).cause).toBe("plain boom");
     expect(readdirSync(tmpRoot)).toEqual([]);
   });
+
+  it("dispose never throws when removal fails; it warns naming the leftover directory", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {
+      /* silence */
+    });
+    const rendered = renderRelease({
+      manifest,
+      cliVersion: "2.0.0",
+      templatesDir: release.templatesDir,
+      packsRoot: release.packsRoot,
+      tmpRoot,
+    });
+    rmSyncMock.mockImplementation(() => {
+      throw new Error("cleanup refused");
+    });
+
+    expect(() => {
+      rendered.dispose();
+    }).not.toThrow();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain(rendered.dir);
+    warn.mockRestore();
+    // Put the real removal back so the sandbox is cleaned by afterEach.
+    rmSyncMock.mockImplementation(
+      (...args: Parameters<typeof FsModule.rmSync>) => realRmSync(...args),
+    );
+    rendered.dispose();
+    expect(readdirSync(tmpRoot)).toEqual([]);
+  });
 });

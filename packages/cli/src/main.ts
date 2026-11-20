@@ -90,7 +90,7 @@ import {
 } from "./packs.js";
 import { STAGED_PACKS_DIR, planPackStaging, stagePacks } from "./pack-stage.js";
 import { renderReport } from "./report.js";
-import type { TokenTable } from "./tokens.js";
+import type { RequiredTokenKey } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
 import { gradeToolchain } from "./toolchain/grade.js";
 
@@ -321,7 +321,7 @@ function isEmptyOrMissing(dir: string): boolean {
   return !existsSync(dir) || readdirSync(dir).length === 0;
 }
 
-function buildTokens(projectName: string): TokenTable {
+function buildTokens(projectName: string): Record<RequiredTokenKey, string> {
   return { PROJECT_NAME: projectName, YEAR: String(new Date().getFullYear()) };
 }
 

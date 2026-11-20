@@ -200,6 +200,53 @@ export function flattenJsonKeys(value: unknown): Record<string, string> {
   return Object.fromEntries(entries);
 }
 
+/**
+ * The outcome of {@link parseJsonKeys}: the per-key hashes and whether the
+ * document was a JSON object (a non-object gives `{}` keys), or a parse
+ * failure. A failure carries no text: the parser's message can quote the
+ * file.
+ *
+ * @example
+ * ```ts
+ * import type { JsonKeysResult } from "./manifest.js";
+ *
+ * const failed: JsonKeysResult = { ok: false };
+ * ```
+ */
+export type JsonKeysResult =
+  | {
+      readonly ok: true;
+      readonly isObject: boolean;
+      readonly keys: Record<string, string>;
+    }
+  | { readonly ok: false };
+
+/**
+ * Parses `text` as JSONC and flattens it with {@link flattenJsonKeys}: the
+ * one "JSON file to per-key hashes" step the manifest and the upgrade plan
+ * share. A parse failure is returned, never thrown, and carries none of the
+ * parser's message. A value nested deeply enough to overflow the stack while
+ * hashing throws the engine's `RangeError` unchanged; the caller names the
+ * file.
+ *
+ * @example
+ * ```ts
+ * import { parseJsonKeys } from "./manifest.js";
+ *
+ * parseJsonKeys('{"name": "x"}'); // { ok: true, isObject: true, keys: { "/name": ... } }
+ * parseJsonKeys("[1]"); // { ok: true, isObject: false, keys: {} }
+ * ```
+ */
+export function parseJsonKeys(text: string): JsonKeysResult {
+  const parsed = parseJsonc(text);
+  if (!parsed.ok) return { ok: false };
+  return {
+    ok: true,
+    isObject: isPlainObject(parsed.value),
+    keys: flattenJsonKeys(parsed.value),
+  };
+}
+
 /** Whether the manifest records per-key hashes for `relPath`. */
 function hasJsonKeys(relPath: string): boolean {
   if (relPath === ".claude/settings.json") return true;
@@ -263,14 +310,14 @@ export function buildManifest(params: BuildManifestParams): Manifest {
     }
     files[relPath] = { sha256: sha256Hex(bytes), origin: "emitted" };
     if (hasJsonKeys(relPath)) {
-      const parsed = parseJsonc(bytes.toString("utf8"));
+      const parsed = parseJsonKeys(bytes.toString("utf8"));
       // The parser's message is not chained: it can quote the file's text.
       if (!parsed.ok) {
         throw new ManifestError(
           `could not parse ${relPath} as JSON to record it in ${MANIFEST_RELATIVE_PATH}`,
         );
       }
-      jsonKeys[relPath] = flattenJsonKeys(parsed.value);
+      jsonKeys[relPath] = parsed.keys;
     }
   }
   return {
@@ -371,13 +418,30 @@ function objectEntries(value: unknown, field: string): [string, unknown][] {
   return entries;
 }
 
+/**
+ * Whether `path` is a relative, `/`-separated path that stays inside the
+ * project and reads the same on every platform: no backslash, and no empty
+ * (so not absolute), `.` or `..` segment. The one rule the manifest parser
+ * and the upgrade plan apply to a recorded path.
+ *
+ * @example
+ * ```ts
+ * import { isProjectRelativePath } from "./manifest.js";
+ *
+ * isProjectRelativePath("docs/guide.md"); // true
+ * isProjectRelativePath("../etc/passwd"); // false
+ * ```
+ */
+export function isProjectRelativePath(path: string): boolean {
+  return (
+    !path.includes("\\") &&
+    !path.split("/").some((s) => s === "" || s === "." || s === "..")
+  );
+}
+
 /** Refuses a recorded path that could leave the project or reads differently per platform. */
 function assertRelativePath(path: string, field: string): void {
-  const segments = path.split("/");
-  if (
-    path.includes("\\") ||
-    segments.some((s) => s === "" || s === "." || s === "..")
-  ) {
+  if (!isProjectRelativePath(path)) {
     throw invalid(
       `${field} holds ${JSON.stringify(path)}, which is not a relative, /-separated path inside the project`,
     );

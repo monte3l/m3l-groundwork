@@ -17,9 +17,6 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
-// chmod does not deny access to root or on Windows, so those tests skip there.
-const cannotChmod = process.platform === "win32" || process.getuid?.() === 0;
 import { sha256Hex } from "../src/manifest.js";
 import type { Manifest } from "../src/manifest.js";
 import type { UpgradeClass } from "../src/upgrade/classify.js";
@@ -31,6 +28,9 @@ import {
   writeRelease,
 } from "./upgrade-plan-fixture.js";
 import type { FixtureRelease, WrittenRelease } from "./upgrade-plan-fixture.js";
+
+// chmod does not deny access to root or on Windows, so those tests skip there.
+const cannotChmod = process.platform === "win32" || process.getuid?.() === 0;
 
 const h = sha256Hex;
 const hj = (value: unknown): string => h(JSON.stringify(value));
@@ -549,7 +549,7 @@ describe("renderRelease and computePlan", () => {
       const release = render();
       const before = snapshotTree(project);
 
-      expect(() => plan(release)).toThrowError(/docs\/guide\.md|docs/);
+      expect(() => plan(release)).toThrowError(/docs\/guide\.md/);
       expect(snapshotTree(project)).toEqual(before);
     });
 

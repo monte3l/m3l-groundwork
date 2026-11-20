@@ -31,6 +31,13 @@ export interface FixtureRelease {
       {
         files: Readonly<Record<string, string>>;
         scripts?: Readonly<Record<string, string>>;
+        /** `.claude/settings.json` hook wiring, event to matcher entries. */
+        hooks?: Readonly<
+          Record<
+            string,
+            readonly { matcher?: string; hooks: readonly object[] }[]
+          >
+        >;
         requires?: readonly string[];
       }
     >
@@ -76,7 +83,7 @@ export function writeRelease(
         budget: { agents: 0, skills: 0, hooks: 0, workflows: 0, scripts: 0 },
         requires: { paths: [...(pack.requires ?? [])] },
         wiring: {
-          settings: {},
+          settings: { ...pack.hooks },
           packageScripts: { ...pack.scripts },
           verifySteps: [],
         },

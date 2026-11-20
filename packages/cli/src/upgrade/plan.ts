@@ -10,17 +10,28 @@
  * {@link classifyAll}. This module never imports `main.ts` (which will import
  * it), so the template roots are parameters.
  */
-import { lstatSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import type { Stats } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toPosixPath } from "../assets.js";
 import { emitTemplate } from "../emit.js";
-import { parseJsonc } from "../jsonc.js";
-import { buildManifest, flattenJsonKeys, sha256Hex } from "../manifest.js";
-import type { Manifest } from "../manifest.js";
+import {
+  buildManifest,
+  isProjectRelativePath,
+  parseJsonKeys,
+  sha256Hex,
+} from "../manifest.js";
+import type { JsonKeysResult, Manifest } from "../manifest.js";
 import { installPack, listPackNames, loadPack } from "../packs.js";
 import { isAbsentError } from "../survey/internal/read-guard.js";
+import { REQUIRED_TOKEN_KEYS } from "../tokens.js";
 import { classifyAll } from "./classify.js";
 import type { Recorded, UpgradeClass } from "./classify.js";
 
@@ -42,7 +53,11 @@ export interface RenderedRelease {
   readonly dir: string;
   /** The manifest built from the rendered files, packs included. */
   readonly manifest: Manifest;
-  /** Removes {@link RenderedRelease.dir} recursively; safe to call twice. */
+  /**
+   * Removes {@link RenderedRelease.dir} recursively; safe to call twice, and
+   * never throws: a failed removal warns on stderr, naming the leftover
+   * directory.
+   */
   readonly dispose: () => void;
 }
 
@@ -97,7 +112,9 @@ type JsonKeyEntry = {
  * The result of {@link computePlan}: plain JSON (no `Map`, no `undefined`),
  * deterministic for the same inputs. `files` is sorted by path in code-unit
  * order; `jsonKeys` maps a JSON file's path to its entries sorted by pointer
- * and holds only files with at least one recorded or next pointer.
+ * and holds only files with at least one recorded or next pointer. A file's
+ * own class in `files` is what decides its fate; its `jsonKeys` entries only
+ * matter when the file is present in the project and holds a JSON object.
  *
  * @example
  * ```ts
@@ -120,6 +137,42 @@ export interface UpgradePlan {
 /** The schema of the plan {@link computePlan} returns. */
 const PLAN_SCHEMA_VERSION = 1;
 
+/** A thrown value as text: an `Error`'s message, anything else stringified. */
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Packs as fresh mode installs and records them: de-duplicated, sorted. */
+function normalisePacks(packs: readonly string[]): string[] {
+  return [...new Set(packs)].sort();
+}
+
+/**
+ * Refuses a token table whose keys are not exactly {@link REQUIRED_TOKEN_KEYS},
+ * each a non-empty string. The message names keys only, never a value.
+ */
+function assertManifestTokens(tokens: Readonly<Record<string, string>>): void {
+  const required: ReadonlySet<string> = new Set(REQUIRED_TOKEN_KEYS);
+  const problems: string[] = [];
+  for (const key of REQUIRED_TOKEN_KEYS) {
+    const value: unknown = Object.hasOwn(tokens, key) ? tokens[key] : undefined;
+    if (value === undefined) {
+      problems.push(`${key} is missing`);
+    } else if (typeof value !== "string" || value === "") {
+      problems.push(`${key} is empty`);
+    }
+  }
+  for (const key of Object.keys(tokens)) {
+    if (!required.has(key))
+      problems.push(`${JSON.stringify(key)} is unexpected`);
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `the manifest's tokens must be exactly ${REQUIRED_TOKEN_KEYS.join(" and ")}, each a non-empty string: ${problems.join("; ")}`,
+    );
+  }
+}
+
 /** Removes `dir`, reporting (never throwing) a failure as text for the caller's message. */
 function removeQuietly(dir: string): string {
   try {
@@ -128,29 +181,32 @@ function removeQuietly(dir: string): string {
   } catch (cleanupError) {
     // Best effort: the render failure is the error worth throwing, so a
     // failed cleanup is reported in its message rather than replacing it.
-    const detail =
-      cleanupError instanceof Error
-        ? cleanupError.message
-        : String(cleanupError);
-    return `; the temporary directory ${dir} could not be removed -- delete it by hand (${detail})`;
+    return `; the temporary directory ${dir} could not be removed -- delete it by hand (${errorText(cleanupError)})`;
   }
 }
 
 /**
  * Renders the release this CLI ships for `manifest`: the baseline under
- * `templatesDir`, then each of `manifest.packs` in order from `packsRoot`,
- * all with `manifest.tokens` (never the current year), into a new
+ * `templatesDir`, then the manifest's packs from `packsRoot` in sorted,
+ * de-duplicated order (as fresh mode installs them), all with
+ * `manifest.tokens` (never the current year), into a new
  * `groundwork-upgrade-*` directory under `tmpRoot` (the OS temp directory by
  * default). Its manifest is built as fresh mode builds one, stamped with
- * `cliVersion`. Writes nothing outside that directory.
+ * `cliVersion`. Writes nothing outside that directory. The directory stays
+ * until `dispose` is called: a forgotten `dispose` leaks the rendered tree
+ * under the temp directory, and a process killed mid-render can leave a
+ * partial one behind.
  *
  * @param params - The project's manifest, this CLI's version, the template
  *   roots and an optional parent for the temporary directory.
  * @returns The rendered release; call `dispose` when done with it.
- * @throws `Error` naming a pack recorded in the manifest but missing from
- *   this release, before anything is written; `Error` with the original
- *   failure as `cause` on any other failure, after removing the temporary
- *   directory.
+ * @throws `Error` naming the offending keys (never a value) when
+ *   `manifest.tokens` is not exactly `PROJECT_NAME` and `YEAR`, each a
+ *   non-empty string, and `Error` naming a pack recorded in the manifest but
+ *   missing from this release; both before anything is created.
+ * @throws `Error` with the original failure as `cause` when the temporary
+ *   directory cannot be created, or when rendering fails, after removing the
+ *   directory (a failed removal is named in the message).
  *
  * @example
  * ```ts
@@ -172,8 +228,10 @@ export function renderRelease(params: {
   readonly tmpRoot?: string;
 }): RenderedRelease {
   const { manifest, cliVersion, templatesDir, packsRoot } = params;
+  assertManifestTokens(manifest.tokens);
+  const packs = normalisePacks(manifest.packs);
   const available = new Set(listPackNames(packsRoot));
-  for (const name of manifest.packs) {
+  for (const name of packs) {
     if (!available.has(name)) {
       throw new Error(
         `pack "${name}" is recorded in the manifest but missing from this release (${cliVersion})`,
@@ -196,7 +254,7 @@ export function renderRelease(params: {
     const files = [
       ...emitTemplate(templatesDir, dir, manifest.tokens).filesWritten,
     ];
-    for (const name of manifest.packs) {
+    for (const name of packs) {
       const pack = loadPack(name, packsRoot);
       files.push(...installPack(pack, dir, manifest.tokens).filesWritten);
     }
@@ -204,14 +262,13 @@ export function renderRelease(params: {
       targetDir: dir,
       cliVersion,
       tokens: manifest.tokens,
-      packs: manifest.packs,
+      packs,
       files: [...new Set(files.map(toPosixPath))],
     });
   } catch (cause) {
     const leftover = removeQuietly(dir);
-    const detail = cause instanceof Error ? cause.message : String(cause);
     throw new Error(
-      `could not render the ${cliVersion} release: ${detail}${leftover}`,
+      `could not render the ${cliVersion} release: ${errorText(cause)}${leftover}`,
       { cause },
     );
   }
@@ -221,7 +278,15 @@ export function renderRelease(params: {
     dir: rendered,
     manifest: next,
     dispose: (): void => {
-      rmSync(rendered, { recursive: true, force: true });
+      try {
+        rmSync(rendered, { recursive: true, force: true });
+      } catch (error) {
+        // Never throw from cleanup: a caller's `finally { dispose() }` must
+        // not mask the error that got it there.
+        console.warn(
+          `warning: could not remove the temporary directory ${rendered} -- delete it by hand (${errorText(error)})`,
+        );
+      }
     },
   };
 }
@@ -236,19 +301,6 @@ function inspect(abs: string, relPath: string): Stats | undefined {
   }
 }
 
-/** Refuses a path that is absolute, backslashed or has an empty, `.` or `..` segment. */
-function assertInsideProject(relPath: string): void {
-  const segments = relPath.split("/");
-  if (
-    relPath.includes("\\") ||
-    segments.some((s) => s === "" || s === "." || s === "..")
-  ) {
-    throw new Error(
-      `refusing to plan ${JSON.stringify(relPath)}: not a relative, /-separated path inside the project`,
-    );
-  }
-}
-
 /**
  * The bytes of the project file at `relPath`, or `undefined` when it (or an
  * ancestor directory) is missing. Each component is `lstat`ed and never
@@ -260,7 +312,11 @@ function readProjectFile(
   relPath: string,
   checkedDirs: Set<string>,
 ): Buffer | undefined {
-  assertInsideProject(relPath);
+  if (!isProjectRelativePath(relPath)) {
+    throw new Error(
+      `refusing to plan ${JSON.stringify(relPath)}: not a relative, /-separated path inside the project`,
+    );
+  }
   const segments = relPath.split("/");
   for (let depth = 1; depth < segments.length; depth++) {
     const dirRel = segments.slice(0, depth).join("/");
@@ -290,18 +346,38 @@ function readProjectFile(
   }
 }
 
-/** The current per-key hashes of a JSON file, `{}` when it is absent. */
+/**
+ * The current per-key hashes of a JSON file, `{}` when it is absent. A file
+ * that does not parse, or parses to anything but an object, is refused
+ * naming the path with no `cause`: the parser's message can quote the file.
+ */
 function currentJsonKeys(
   relPath: string,
   bytes: Buffer | undefined,
 ): Record<string, string> {
   if (bytes === undefined) return {};
-  const parsed = parseJsonc(bytes.toString("utf8"));
-  // The parser's message is not chained: it can quote the file's text.
+  let parsed: JsonKeysResult;
+  try {
+    parsed = parseJsonKeys(bytes.toString("utf8"));
+  } catch (cause) {
+    // Only hashing can throw here (a parse failure is returned): a stack
+    // overflow on a deeply nested value, whose message holds no file text.
+    throw new Error(
+      `could not hash the JSON keys of ${relPath} in the project`,
+      {
+        cause,
+      },
+    );
+  }
   if (!parsed.ok) {
     throw new Error(`could not parse ${relPath} in the project as JSON`);
   }
-  return flattenJsonKeys(parsed.value);
+  if (!parsed.isObject) {
+    throw new Error(
+      `refusing to plan ${relPath}: it must hold a JSON object -- restore its top-level object`,
+    );
+  }
+  return parsed.keys;
 }
 
 /** A record's own entries as a `Map`, so a `__proto__` key stays ordinary. */
@@ -332,23 +408,94 @@ function own<V>(
   return Object.hasOwn(record, key) ? record[key] : undefined;
 }
 
+/** Whether two token tables hold the same keys with the same values. */
+function sameTokens(
+  a: Readonly<Record<string, string>>,
+  b: Readonly<Record<string, string>>,
+): boolean {
+  const aKeys = Object.keys(a).sort();
+  const bKeys = Object.keys(b).sort();
+  return (
+    aKeys.length === bKeys.length &&
+    aKeys.every((key, i) => key === bKeys[i] && own(a, key) === own(b, key))
+  );
+}
+
+/**
+ * Refuses a `release` that was not rendered for this plan: another CLI
+ * version than `cliVersion`, other tokens than the manifest's (no value is
+ * named), or another sorted, de-duplicated pack list.
+ */
+function assertReleaseMatches(
+  manifest: Manifest,
+  release: RenderedRelease,
+  cliVersion: string,
+): void {
+  const next = release.manifest;
+  if (next.cliVersion !== cliVersion) {
+    throw new Error(
+      `the release was rendered for CLI version ${next.cliVersion}, not ${cliVersion} -- render it with this CLI's version`,
+    );
+  }
+  if (!sameTokens(next.tokens, manifest.tokens)) {
+    throw new Error(
+      "the release was rendered with other tokens than the manifest's -- render it from the same manifest",
+    );
+  }
+  const recordedPacks = normalisePacks(manifest.packs);
+  const releasePacks = normalisePacks(next.packs);
+  if (recordedPacks.join("\n") !== releasePacks.join("\n")) {
+    throw new Error(
+      `the release was rendered with packs ${JSON.stringify(releasePacks)}, but the manifest records ${JSON.stringify(recordedPacks)} -- render it from the same manifest`,
+    );
+  }
+}
+
+/** Refuses a `targetDir` that does not exist or is not a directory. */
+function assertProjectDirectory(targetDir: string): void {
+  let stat: Stats;
+  try {
+    stat = statSync(targetDir);
+  } catch (cause) {
+    throw new Error(
+      `the project directory ${targetDir} does not exist or cannot be inspected`,
+      { cause },
+    );
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`the project path ${targetDir} is not a directory`);
+  }
+}
+
 /**
  * Classifies every baseline path and JSON key of the project at `targetDir`
- * against its `manifest` and the rendered `release`. Strictly read-only: the
- * paths are the union of both manifests' `files` (a project-only file is
- * never listed), each read by `lstat` per component without following a
- * link. JSON keys cover every file in either manifest's `jsonKeys`, the
- * current keys parsed from the project file (none when it is absent); every
- * recorded key counts as `emitted`.
+ * against its `manifest` and the rendered `release`. Strictly read-only, and
+ * the plan depends only on these inputs (the project tree, the manifest, the
+ * release): no clock, no environment. The paths are the union of both
+ * manifests' `files` (a project-only file is never listed); each is read
+ * once (its absence included) after an `lstat` of every component that
+ * refuses a symlink. That walk is check-then-read: a component swapped for a
+ * link between the `lstat` and the read is followed, and the later apply
+ * step's hash and drift check is the backstop (the same accepted race
+ * `plugin.ts` documents). JSON keys cover every file with at least one key in
+ * either manifest's `jsonKeys`; a file with none is never parsed. Every
+ * recorded key counts as `emitted`. The file's own class wins: its key
+ * entries only matter when the file is present and holds a JSON object.
  *
  * @param params - The project root, its manifest, the rendered release and
  *   this CLI's version.
- * @returns The plan, sorted and plain-JSON-serialisable.
+ * @returns The plan, sorted and plain-JSON-serialisable; `toCliVersion` and
+ *   `packs` come from the release's manifest.
+ * @throws `Error` naming `targetDir` when it is missing or not a directory.
+ * @throws `Error` when the release was rendered for another CLI version,
+ *   with other tokens or with other packs than the manifest's.
  * @throws `Error` naming the path when a managed file or an ancestor
  *   directory is a symlink, a non-directory ancestor or a non-regular file
  *   sits where a file is expected, a recorded path leaves the project, a
- *   file cannot be read (the failure as `cause`), or a JSON file does not
- *   parse (no `cause`: the parser's message can quote the file).
+ *   file cannot be inspected or read (the failure as `cause`), a JSON file
+ *   does not parse or holds no object (no `cause`: the parser's message can
+ *   quote the file), or hashing its keys fails (the engine's `RangeError` as
+ *   `cause`).
  *
  * @example
  * ```ts
@@ -370,6 +517,8 @@ export function computePlan(params: {
   readonly cliVersion: string;
 }): UpgradePlan {
   const { targetDir, manifest, release, cliVersion } = params;
+  assertReleaseMatches(manifest, release, cliVersion);
+  assertProjectDirectory(targetDir);
   const nextManifest = release.manifest;
 
   const recorded = toMap<Recorded>(manifest.files);
@@ -384,11 +533,12 @@ export function computePlan(params: {
   ].sort((a, b) => (a < b ? -1 : 1));
 
   const checkedDirs = new Set<string>();
-  const bytesByPath = new Map<string, Buffer>();
+  // Absence is cached too, so each path is read exactly once.
+  const bytesByPath = new Map<string, Buffer | undefined>();
   const read = (relPath: string): Buffer | undefined => {
     if (bytesByPath.has(relPath)) return bytesByPath.get(relPath);
     const bytes = readProjectFile(targetDir, relPath, checkedDirs);
-    if (bytes !== undefined) bytesByPath.set(relPath, bytes);
+    bytesByPath.set(relPath, bytes);
     return bytes;
   };
 
@@ -442,9 +592,9 @@ export function computePlan(params: {
   return {
     schemaVersion: PLAN_SCHEMA_VERSION,
     fromCliVersion: manifest.cliVersion,
-    toCliVersion: cliVersion,
+    toCliVersion: nextManifest.cliVersion,
     tokens: { ...manifest.tokens },
-    packs: [...manifest.packs],
+    packs: [...nextManifest.packs],
     files,
     // fromEntries defines own data properties, so a `__proto__` path stays a key.
     jsonKeys: Object.fromEntries(jsonKeys),
