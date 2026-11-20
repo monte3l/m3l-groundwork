@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The pure `groundwork.report` v1 builders (src/headless/report.ts). This PR
- * only populates the success report of a fresh/adopt run and the error
- * envelope; changes/pending/handoff/drift are always empty arrays here.
+ * The pure `groundwork.report` v1 builders (src/headless/report.ts). The
+ * success report of a fresh/adopt run carries the adopt `pending` entries
+ * (empty otherwise) and the error envelope is always empty; changes, handoff
+ * and drift are still always empty arrays here.
  */
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
@@ -13,6 +14,7 @@ import {
   type ReportV1,
 } from "../src/headless/report.js";
 import type { ExitCode } from "../src/exit-codes.js";
+import type { PendingEntry } from "../src/headless/contract.js";
 import type { RunResult } from "../src/run-result.js";
 import { MANIFEST_RELATIVE_PATH } from "../src/manifest.js";
 
@@ -69,6 +71,16 @@ describe("ReportV1 type", () => {
       string | null
     >();
     expectTypeOf<RunResult["manifest"]>().toEqualTypeOf<string | null>();
+    expectTypeOf<RunResult["pending"]>().toEqualTypeOf<
+      readonly PendingEntry[]
+    >();
+    expectTypeOf<RunResult["pendingPath"]>().toEqualTypeOf<string | null>();
+    expectTypeOf<ReportV1["pending"]>().toEqualTypeOf<
+      readonly PendingEntry[]
+    >();
+    expectTypeOf<ReportV1["artifacts"]["pending"]>().toEqualTypeOf<
+      string | null
+    >();
   });
 
   it("places manifest right after inventory in artifacts key order", () => {
@@ -92,6 +104,8 @@ describe("buildReport", () => {
     setupSteps: [{ pack: "publishing", steps: ["pnpm add -D x"] }],
     nextStep: null,
     manifest: MANIFEST_RELATIVE_PATH,
+    pending: [],
+    pendingPath: null,
   };
   const adopt: RunResult = {
     mode: "adopt",
@@ -100,6 +114,27 @@ describe("buildReport", () => {
     setupSteps: [],
     nextStep: "Next: run /customize",
     manifest: null,
+    pending: [],
+    pendingPath: null,
+  };
+  const entries: readonly PendingEntry[] = [
+    {
+      pointer: "/interview/kind",
+      reason: "no default",
+      choices: ["library", "cli"],
+      evidence: null,
+    },
+    {
+      pointer: "/adopt/conflicts/0/resolution",
+      reason: "no default",
+      choices: ["keep", "take", "delegate"],
+      evidence: "whole file differs",
+    },
+  ];
+  const adoptPending: RunResult = {
+    ...adopt,
+    pending: entries,
+    pendingPath: ".groundwork/headless/pending.json",
   };
 
   it("reports a fresh run as an ok apply with the manifest and no inventory", () => {
@@ -157,7 +192,28 @@ describe("buildReport", () => {
     });
   });
 
-  it.each([[fresh], [adopt]])(
+  it("reports a pending adopt survey with the entries and the relative pending path, still ok with exit 0", () => {
+    const report = buildReport(adoptPending, ctx);
+    expect(report).toMatchObject({
+      mode: "adopt",
+      phase: "survey",
+      status: "ok",
+      exitCode: 0,
+      error: null,
+      pending: entries,
+    });
+    expect(report.artifacts.pending).toBe(".groundwork/headless/pending.json");
+    expect(report.artifacts.inventory).toBe(".groundwork/inventory.json");
+    expect(report.changes).toEqual([]);
+  });
+
+  it("an adopt survey without a pending document reports pending [] and artifacts.pending null", () => {
+    const report = buildReport(adopt, ctx);
+    expect(report.pending).toEqual([]);
+    expect(report.artifacts.pending).toBeNull();
+  });
+
+  it.each([[fresh], [adopt], [adoptPending]])(
     "is stable: key order, JSON round-trip, no undefined (%#)",
     (result) => {
       const report = buildReport(result, ctx);
