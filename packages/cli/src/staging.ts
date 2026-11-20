@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The staging machinery adopt mode's two stagers share --
- * `baseline-stage.ts` (`.groundwork/baseline/`) and `pack-stage.ts`
+ * The staging machinery adopt mode's stagers share --
+ * `baseline-stage.ts` (`.groundwork/baseline/` and
+ * `.groundwork/baseline-divergent/`) and `pack-stage.ts`
  * (`.groundwork/packs/`): the inert `.staged` naming convention, the
  * template-tree walk that maps a source file to its install path, the
  * stale-work-dir sweep, and the atomic write-then-swap lifecycle. Each
  * stager owns its own plan validation and its own result shape; everything
  * here is parameterized by the staging directory's name and a noun for
- * messages, so both stagers' failures read the same way.
+ * messages, so every stager's failures read the same way.
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -205,8 +206,28 @@ function incompleteStagingError(
 }
 
 /**
- * Removes every entry of `groundworkDir` whose name starts with
- * `.<dirName>-`, best effort (a removal failure only warns). Its purpose is
+ * Whether `name` is a work directory {@link stageAtomically} made for
+ * `dirName`. The check is simply: the `.<dirName>-` prefix, a non-empty
+ * suffix, and no further `-` -- so a hand-made `.baseline-word` matches too.
+ * The no-dash rule separates the stagers because `mkdtemp`'s suffix comes
+ * from the platform's implementation, which draws only from `[A-Za-z0-9]` on
+ * every platform this CLI supports. So `baseline`'s sweep never matches
+ * `.baseline-divergent-XXXXXX`, the work directory of the
+ * `baseline-divergent` staging beside it -- each stager sweeps only its own.
+ */
+function isWorkDirName(name: string, dirName: string): boolean {
+  const prefix = `.${dirName}-`;
+  return (
+    name.startsWith(prefix) &&
+    name.length > prefix.length &&
+    !name.slice(prefix.length).includes("-")
+  );
+}
+
+/**
+ * Removes every entry of `groundworkDir` named `.<dirName>-` plus a
+ * `mkdtemp`-style suffix with no further `-` ({@link isWorkDirName}), best
+ * effort (a removal failure only warns). Its purpose is
  * reclaiming work directories a crashed earlier run left behind, but there
  * is no PID or age check: any matching entry is removed, whatever made it,
  * because `.groundwork/` is CLI-owned. So two concurrent runs against the
@@ -227,9 +248,8 @@ function removeStaleWorkDirs(target: StagingTarget): void {
   } catch (cause) {
     throw incompleteStagingError(noun, join(groundworkDir, dirName), cause);
   }
-  const prefix = `.${dirName}-`;
   for (const name of names) {
-    if (name.startsWith(prefix)) {
+    if (isWorkDirName(name, dirName)) {
       removeBestEffort(join(groundworkDir, name));
     }
   }
@@ -332,7 +352,8 @@ export interface StagingTarget {
  * or `<groundworkDir>/<dirName>` (before anything is deleted or written),
  * then sweeps the `.<dirName>-*` work directories a crashed earlier run
  * left. The sweep removes **every** entry of the CLI-owned `.groundwork/`
- * whose name matches `.<dirName>-*`, whatever created it -- including a
+ * whose name matches `.<dirName>-*` with no further `-` in the suffix (so
+ * `baseline`'s sweep spares `.baseline-divergent-*`), whatever created it -- including a
  * concurrent run's in-progress work directory, so two runs against the same
  * directory can fail each other with the standard incomplete/re-run error;
  * a failure to remove one only warns. Returns the staging directory's path.

@@ -8,10 +8,17 @@
  * `/customize`'s Step 0 can install them from a self-contained copy rather
  * than from `templateRoot` -- an absolute path that may not exist by the time
  * it runs -- and no toolchain globbing the project ever picks one up.
+ *
+ * The files a conflict plan marked "divergent" are staged the same inert
+ * way, in their own directory `.groundwork/baseline-divergent/`, as the
+ * token-substituted bytes the comparison used -- verified bytes for the
+ * headless `--apply` step to take, kept apart so `/customize`'s handling of
+ * `baseline/` is unchanged.
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { toPosixPath } from "./assets.js";
+import { readBaselineContent } from "./conflicts.js";
 import type { FileConflict } from "./conflicts.js";
 import { isPathContained } from "./emit.js";
 import {
@@ -44,6 +51,18 @@ export { STAGED_SUFFIX, stagedNameFor, toPosixPath };
 export const STAGED_BASELINE_DIR = "baseline";
 
 /**
+ * The directory name, under `.groundwork/`, that divergent baseline files are
+ * staged into (token-substituted, for the headless `--apply` step).
+ *
+ * @example
+ * ```ts
+ * import { join } from "node:path";
+ * const stagedDir = join(".groundwork", STAGED_DIVERGENT_DIR); // ".groundwork/baseline-divergent"
+ * ```
+ */
+export const STAGED_DIVERGENT_DIR = "baseline-divergent";
+
+/**
  * One staged baseline file: its install path, its staged name, and the
  * sha256 of the staged bytes, so `/customize` can verify the copy it installs.
  *
@@ -69,33 +88,71 @@ export interface StagedBaselineFile {
 type PlannedBaselineFile = BaselineStagingPlan["files"][number];
 
 /**
- * Pairs every absent conflict with its template source. Four defects are
- * refused, each with its own `Error` (no `cause`) and never skipped: a
- * template with two files mapping to one install path, a `relPath` whose
- * staged name would land outside `destDir` (CWE-22, docs/assurance-case.md),
- * an absent path with no template counterpart, and two staged names that
- * would land on the same file ({@link findStagedPathCollision}: equal once
- * NFC-normalized and case-folded, or one a directory prefix of the other).
+ * What one baseline staging copies and how: the conflicts of one `status`,
+ * into `<groundworkDir>/<dirName>/`, each as the bytes `content` returns.
+ * The two kinds share every other step (plan validation, the symlink
+ * guard, the stale-dir sweep, the atomic swap).
+ */
+interface BaselineStagingKind {
+  /** The public function's name, prefixed to its plan and invariant messages. */
+  readonly caller: string;
+  readonly status: "absent" | "divergent";
+  readonly dirName: string;
+  /** What is staged, for the shared staging messages. */
+  readonly noun: string;
+  /** The bytes staged for the template file at `sourcePath`. */
+  readonly content: (sourcePath: string, tokens: TokenTable) => Uint8Array;
+}
+
+/** Absent files: the raw template bytes -- `/customize` substitutes tokens at install time. */
+const ABSENT_KIND: BaselineStagingKind = {
+  caller: "stageBaselineAdditions",
+  status: "absent",
+  dirName: STAGED_BASELINE_DIR,
+  noun: "baseline",
+  content: (sourcePath) => readFileSync(sourcePath),
+};
+
+/** Divergent files: the token-substituted bytes the conflict comparison used. */
+const DIVERGENT_KIND: BaselineStagingKind = {
+  caller: "stageDivergentBaseline",
+  status: "divergent",
+  dirName: STAGED_DIVERGENT_DIR,
+  noun: "divergent baseline",
+  content: (sourcePath, tokens) =>
+    Buffer.from(readBaselineContent(sourcePath, tokens), "utf8"),
+};
+
+/**
+ * Pairs every conflict of `kind.status` with its template source. Four
+ * defects are refused, each with its own `Error` (no `cause`) and never
+ * skipped: a template with two files mapping to one install path, a
+ * `relPath` whose staged name would land outside `destDir` (CWE-22,
+ * docs/assurance-case.md), a path with no template counterpart, and two
+ * staged names that would land on the same file
+ * ({@link findStagedPathCollision}: equal once NFC-normalized and
+ * case-folded, or one a directory prefix of the other).
  */
 function planStaging(
+  kind: BaselineStagingKind,
   templateRoot: string,
-  absent: readonly FileConflict[],
+  selected: readonly FileConflict[],
   tokens: TokenTable,
   destDir: string,
 ): PlannedBaselineFile[] {
   const templateFiles = collectTemplateFiles(templateRoot, tokens);
-  const plan = absent.map(({ relPath }): PlannedBaselineFile => {
+  const plan = selected.map(({ relPath }): PlannedBaselineFile => {
     // No ":" refusal here: that check (a Windows drive letter / ADS) is packs-only, in pack-stage.ts.
     const destPath = join(destDir, stagedNameFor(relPath));
     if (!isPathContained(destPath, destDir)) {
       throw new Error(
-        `stageBaselineAdditions: staged path ${resolve(destPath)} for ${relPath} escapes ${resolve(destDir)}`,
+        `${kind.caller}: staged path ${resolve(destPath)} for ${relPath} escapes ${resolve(destDir)}`,
       );
     }
     const sourcePath = templateFiles.get(relPath);
     if (sourcePath === undefined) {
       throw new Error(
-        `absent baseline file ${relPath} has no counterpart under ${templateRoot}`,
+        `${kind.status} baseline file ${relPath} has no counterpart under ${templateRoot}`,
       );
     }
     return { path: relPath, sourcePath };
@@ -105,15 +162,69 @@ function planStaging(
   );
   if (collision !== undefined) {
     throw new Error(
-      `stageBaselineAdditions: two staged baseline files under ${destDir} collide: ${collision}; rename one of the template files under ${templateRoot}`,
+      `${kind.caller}: two staged baseline files under ${destDir} collide: ${collision}; rename one of the template files under ${templateRoot}`,
     );
   }
   return plan;
 }
 
-/** The absent conflicts in `conflicts` -- the files a baseline staging copies. */
-function absentConflicts(conflicts: readonly FileConflict[]): FileConflict[] {
-  return conflicts.filter((c) => c.status === "absent");
+/** {@link planBaselineStaging} / {@link planDivergentStaging} for one `kind`. */
+function planKind(
+  kind: BaselineStagingKind,
+  templateRoot: string,
+  conflicts: readonly FileConflict[],
+  groundworkDir: string,
+  tokens: TokenTable,
+): BaselineStagingPlan {
+  const selected = conflicts.filter((c) => c.status === kind.status);
+  if (selected.length === 0) {
+    return { groundworkDir, paths: [], files: [] };
+  }
+  const destDir = join(groundworkDir, kind.dirName);
+  const files = planStaging(kind, templateRoot, selected, tokens, destDir);
+  const paths = files.map(({ path }) => join(destDir, stagedNameFor(path)));
+  return { groundworkDir, paths, files };
+}
+
+/** {@link stageBaselineAdditions} / {@link stageDivergentBaseline} for one `kind`, from a plan already computed. */
+function stageKind(
+  kind: BaselineStagingKind,
+  groundworkDir: string,
+  tokens: TokenTable,
+  plan: BaselineStagingPlan,
+): StagedBaselineFile[] {
+  assertPlanBuiltFor(kind.caller, plan.groundworkDir, groundworkDir);
+  const target: StagingTarget = {
+    groundworkDir,
+    dirName: kind.dirName,
+    noun: kind.noun,
+    plural: false,
+  };
+
+  prepareStaging(target);
+  if (plan.files.length === 0) {
+    clearStaging(target);
+    return [];
+  }
+
+  return stageAtomically(target, (newDir) =>
+    plan.files.map(({ path, sourcePath }): StagedBaselineFile => {
+      const stagedName = stagedNameFor(path);
+      // writeStagedBytes re-asserts the CWE-22 containment planStaging
+      // already checked, against the directory actually written to.
+      const sha256 = writeStagedBytes(
+        kind.caller,
+        kind.content(sourcePath, tokens),
+        newDir,
+        stagedName,
+      );
+      return {
+        path: toPosixPath(path),
+        staged: toPosixPath(stagedName),
+        sha256,
+      };
+    }),
+  );
 }
 
 /**
@@ -170,14 +281,7 @@ export function planBaselineStaging(
   groundworkDir: string,
   tokens: TokenTable,
 ): BaselineStagingPlan {
-  const absent = absentConflicts(conflicts);
-  if (absent.length === 0) {
-    return { groundworkDir, paths: [], files: [] };
-  }
-  const destDir = join(groundworkDir, STAGED_BASELINE_DIR);
-  const files = planStaging(templateRoot, absent, tokens, destDir);
-  const paths = files.map(({ path }) => join(destDir, stagedNameFor(path)));
-  return { groundworkDir, paths, files };
+  return planKind(ABSENT_KIND, templateRoot, conflicts, groundworkDir, tokens);
 }
 
 /**
@@ -228,7 +332,9 @@ export function plannedBaselineStagingPaths(
  *   `Error`, leaving `.groundwork/` exactly as it was.
  * - Then, still before anything is deleted or written, `groundworkDir` and
  *   `<groundworkDir>/baseline` are checked not to be symlinks, and every
- *   `.baseline-*` entry of the CLI-owned `groundworkDir` -- meant for work
+ *   `.baseline-XXXXXX` entry of the CLI-owned `groundworkDir` (never a
+ *   `.baseline-divergent-*` one, which belongs to
+ *   {@link stageDivergentBaseline}) -- meant for work
  *   directories a crashed earlier run left, but removed whatever created
  *   it, so a concurrent run against the same directory can lose its
  *   in-progress work directory and fail with the incomplete/re-run error
@@ -292,40 +398,84 @@ export function stageBaselineAdditions(
     tokens,
   ),
 ): StagedBaselineFile[] {
-  assertPlanBuiltFor(
-    "stageBaselineAdditions",
-    plan.groundworkDir,
-    groundworkDir,
-  );
-  const target: StagingTarget = {
-    groundworkDir,
-    dirName: STAGED_BASELINE_DIR,
-    noun: "baseline",
-    plural: false,
-  };
+  return stageKind(ABSENT_KIND, groundworkDir, tokens, plan);
+}
 
-  prepareStaging(target);
-  if (plan.files.length === 0) {
-    clearStaging(target);
-    return [];
-  }
-
-  return stageAtomically(target, (newDir) =>
-    plan.files.map(({ path, sourcePath }): StagedBaselineFile => {
-      const stagedName = stagedNameFor(path);
-      // writeStagedBytes re-asserts the CWE-22 containment planStaging
-      // already checked, against the directory actually written to.
-      const sha256 = writeStagedBytes(
-        "stageBaselineAdditions",
-        readFileSync(sourcePath),
-        newDir,
-        stagedName,
-      );
-      return {
-        path: toPosixPath(path),
-        staged: toPosixPath(stagedName),
-        sha256,
-      };
-    }),
+/**
+ * {@link planBaselineStaging} for the "divergent" conflicts: every path
+ * under `<groundworkDir>/baseline-divergent/` -- one `<path>.staged` per
+ * divergent conflict -- and each file's template source, so adopt mode can
+ * scope-check `paths` before anything is deleted or written and hand the
+ * same plan to {@link stageDivergentBaseline}. Writes nothing; both arrays
+ * are empty when nothing diverges.
+ *
+ * @throws The same plan `Error`s as {@link planBaselineStaging}, for the
+ * divergent conflicts.
+ *
+ * @example
+ * ```ts
+ * import { assertAdoptWriteScope } from "./main.js";
+ * const plan = planDivergentStaging(templateRoot, conflicts, groundworkDir, tokens);
+ * assertAdoptWriteScope(targetDir, plan.paths);
+ * stageDivergentBaseline(templateRoot, conflicts, groundworkDir, tokens, plan);
+ * ```
+ */
+export function planDivergentStaging(
+  templateRoot: string,
+  conflicts: readonly FileConflict[],
+  groundworkDir: string,
+  tokens: TokenTable,
+): BaselineStagingPlan {
+  return planKind(
+    DIVERGENT_KIND,
+    templateRoot,
+    conflicts,
+    groundworkDir,
+    tokens,
   );
+}
+
+/**
+ * Stages every template file `conflicts` marks "divergent" into
+ * `<groundworkDir>/baseline-divergent/` as `<path>.staged`: the
+ * token-substituted bytes the conflict comparison used (the template file
+ * decoded as UTF-8, `tokens` applied, re-encoded), not the raw template --
+ * so the headless `--apply` step has verified bytes to take. Each entry's
+ * `sha256` is the digest of those staged bytes.
+ *
+ * Every guarantee of {@link stageBaselineAdditions} holds, for its own
+ * directory: the plan is validated before anything is deleted or written,
+ * a symlinked `groundworkDir` or `baseline-divergent/` is refused first, the
+ * stale `.baseline-divergent-*` work directories are swept (and only those:
+ * `baseline/`'s sweep spares them, and this one spares `.baseline-*`), the
+ * directory is removed when nothing diverges, and otherwise it is written
+ * into a temporary sibling and swapped in by rename, replacing any previous
+ * staging wholesale.
+ *
+ * @throws The same errors as {@link stageBaselineAdditions}.
+ *
+ * @param plan - The plan {@link planDivergentStaging} computed for these same
+ * arguments; computed here when omitted.
+ *
+ * @example
+ * ```ts
+ * const conflicts = planConflicts(templateRoot, targetDir, tokens);
+ * const staged = stageDivergentBaseline(templateRoot, conflicts, ".groundwork", tokens);
+ * // staged: [{ path: "package.json", staged: "package.json.staged", sha256: "…" }, …]
+ * ```
+ */
+export function stageDivergentBaseline(
+  templateRoot: string,
+  conflicts: readonly FileConflict[],
+  groundworkDir: string,
+  tokens: TokenTable,
+  // Defaulted before the symlink check and sweep, like stageBaselineAdditions.
+  plan: BaselineStagingPlan = planDivergentStaging(
+    templateRoot,
+    conflicts,
+    groundworkDir,
+    tokens,
+  ),
+): StagedBaselineFile[] {
+  return stageKind(DIVERGENT_KIND, groundworkDir, tokens, plan);
 }

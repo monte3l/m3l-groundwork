@@ -8,6 +8,7 @@
  * a whole-file conflict on `package.json` is a useless finding, since the
  * answer is always a merge, never "pick one file wholesale".
  */
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { restoreDotfilePath } from "./assets.js";
@@ -26,11 +27,51 @@ import type { TokenTable } from "./tokens.js";
 
 type ConflictStatus = "absent" | "identical" | "divergent";
 
+/**
+ * One baseline (or pack) file compared against the target: whether the
+ * target lacks it, has it byte-for-byte (or key-for-key), or has something
+ * else there.
+ *
+ * @example
+ * ```ts
+ * const conflict: FileConflict = {
+ *   relPath: "package.json",
+ *   status: "divergent",
+ *   keyDiffs: ["type"],
+ *   targetSha256: "9f86d081...", // hex digest of the project's package.json
+ * };
+ * ```
+ */
 export interface FileConflict {
   relPath: string;
   status: ConflictStatus;
   /** Present only for a key-level comparison (package.json / tsconfig*.json): the top-level keys that differ. */
   keyDiffs: string[] | undefined;
+  /**
+   * Lowercase hex sha256 of the target file's bytes, from the single read
+   * the comparison used -- so it always describes the bytes the verdict was
+   * reached on. `null` when there was no such read: the file is absent, or
+   * the path is blocked, unresolvable or unreadable.
+   */
+  targetSha256: string | null;
+}
+
+/**
+ * The baseline content `planConflicts` compares a target file against: the
+ * template file at `sourcePath`, decoded as UTF-8, with `tokens` applied.
+ * The one derivation, so adopt mode's divergent staging writes exactly the
+ * bytes the comparison used.
+ *
+ * @example
+ * ```ts
+ * const content = readBaselineContent("/repo/templates/core/package.json", { PROJECT_NAME: "acme" });
+ * ```
+ */
+export function readBaselineContent(
+  sourcePath: string,
+  tokens: TokenTable,
+): string {
+  return applyTokens(readFileSync(sourcePath, "utf8"), tokens);
 }
 
 function isKeyLevelJsonFile(relPath: string): boolean {
@@ -99,10 +140,20 @@ function compareFile(
     // silent clean add.
     const note = blockedAbsentNote(targetPath, targetDir);
     if (note === undefined) {
-      return { relPath, status: "absent", keyDiffs: undefined };
+      return {
+        relPath,
+        status: "absent",
+        keyDiffs: undefined,
+        targetSha256: null,
+      };
     }
     recordOnce(undetermined, note);
-    return { relPath, status: "divergent", keyDiffs: undefined };
+    return {
+      relPath,
+      status: "divergent",
+      keyDiffs: undefined,
+      targetSha256: null,
+    };
   }
   if (probe.kind === "unresolvable") {
     // A permission failure names the enclosing directory (the `stat` needed
@@ -113,22 +164,37 @@ function compareFile(
       undetermined,
       unreadableNote(probeSubject(targetPath, probe.code), probe.code),
     );
-    return { relPath, status: "divergent", keyDiffs: undefined };
+    return {
+      relPath,
+      status: "divergent",
+      keyDiffs: undefined,
+      targetSha256: null,
+    };
   }
 
   // A read failure that is a property of the project's tree (a permission
   // failure, a directory where the baseline has a file) is divergent too --
   // it cannot be shown identical -- and is recorded naming the path, so the
   // report never shows "divergent" with no reason behind it.
-  let targetContent: string;
+  // Read once, as bytes: the hash and the comparison both come from this one
+  // Buffer, so the hash can never describe different bytes than the verdict
+  // (and is taken over the raw bytes, not a lossy UTF-8 decoding of them).
+  let targetBytes: Buffer;
   try {
-    targetContent = readFileSync(targetPath, "utf8");
+    targetBytes = readFileSync(targetPath);
   } catch (error) {
     const code = recordedReadCode(error);
     if (code === undefined) throw readFailure(targetPath, error);
     recordOnce(undetermined, unreadableNote(targetPath, code));
-    return { relPath, status: "divergent", keyDiffs: undefined };
+    return {
+      relPath,
+      status: "divergent",
+      keyDiffs: undefined,
+      targetSha256: null,
+    };
   }
+  const targetSha256 = createHash("sha256").update(targetBytes).digest("hex");
+  const targetContent = targetBytes.toString("utf8");
 
   if (isKeyLevelJsonFile(relPath)) {
     const keyDiffs = compareJsonKeys(baselineContent, targetContent);
@@ -137,6 +203,7 @@ function compareFile(
         relPath,
         status: keyDiffs.length === 0 ? "identical" : "divergent",
         keyDiffs,
+        targetSha256,
       };
     }
     // Fall through to a whole-file compare if either side failed to parse.
@@ -146,6 +213,7 @@ function compareFile(
     relPath,
     status: baselineContent === targetContent ? "identical" : "divergent",
     keyDiffs: undefined,
+    targetSha256,
   };
 }
 
@@ -168,10 +236,7 @@ function walkTemplate(
       continue;
     }
 
-    const baselineContent = applyTokens(
-      readFileSync(sourcePath, "utf8"),
-      tokens,
-    );
+    const baselineContent = readBaselineContent(sourcePath, tokens);
     results.push(
       compareFile(
         relPath,
@@ -198,7 +263,9 @@ function walkTemplate(
  * recorded once naming that ancestor. A regular file where an enclosing
  * directory should be (`ENOTDIR`) is `divergent`, recorded once naming that
  * blocking ancestor. A genuinely missing path is `absent`; any other errno
- * throws.
+ * throws. Every result carries `targetSha256`: the sha256 of the target
+ * file's bytes from the one read its comparison used, or `null` when there
+ * was no such read (absent, blocked, unresolvable or unreadable).
  *
  * @example
  * ```ts

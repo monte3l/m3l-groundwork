@@ -203,10 +203,23 @@ each piece ships, and drop this line when the last one does.
   `packages/cli/src/headless/contract.ts`; a parity test in
   `packages/plugin/tests/` imports both dynamically and compares the
   `ProjectKind`, `RuntimeTarget` and `CiDepth` tuples.
-- **Inventory schema v7** adds `conflicts[].targetSha256` and stages divergent
-  baseline files, not only absent ones. Without it adopt cannot detect drift
-  and has no verified bytes to `take`. `/customize` Step 0.1 must accept 7 in
-  the same change.
+- **Inventory schema v7** (shipped) adds `conflicts[].targetSha256` and
+  stages divergent baseline files, not only absent ones: token-substituted,
+  as `inventory.stagedDivergent`, in their own directory
+  `.groundwork/baseline-divergent/`, so `stagedBaseline` stays absent-only
+  and `/customize`'s handling of it is unchanged. Without them adopt cannot
+  detect drift and has no verified bytes to `take`. `/customize` Step 0.1
+  accepts 7.
+  Consumer contract: `targetSha256: null` on an `absent` conflict means
+  nothing is there (a write is safe), but on a `divergent` conflict it means
+  the file could not be read -- the drift is undetermined, so `--apply` must
+  refuse to `take` it and never treat `null` as "no drift". `--apply` trusts
+  only `inventory.stagedDivergent` and ignores any leftover
+  `.groundwork/baseline-divergent/` directory (an older CLI run after a v7
+  run leaves one behind). Staged divergent copies are the UTF-8 decode and
+  re-encode of the token-substituted template, which would change a binary
+  template's bytes: none exist in `templates/core` today, but `--apply take`
+  must keep that in mind.
 - **Version.** The CLI's own version decides the release: a new flag or output
   format is `feat`, and the whole series targets the next minor.
 
