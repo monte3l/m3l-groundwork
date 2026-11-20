@@ -28,7 +28,7 @@ import assert from "node:assert/strict";
 import { join, relative, resolve, basename } from "node:path";
 import process from "node:process";
 import type { StdioOptions } from "node:child_process";
-import { resolveAsset } from "./assets.js";
+import { resolveAsset, toPosixPath } from "./assets.js";
 import type { CapCounts } from "./caps.js";
 import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
 import {
@@ -62,6 +62,7 @@ import {
 } from "./baseline-stage.js";
 import {
   assertDirectoryComponent,
+  assertFileDestination,
   assertNotDirectory,
   assertNotSymlink,
   endsWithRerunAdvice,
@@ -74,8 +75,14 @@ import {
   writeInventory,
 } from "./inventory.js";
 import type { Inventory, PackSurvey } from "./inventory.js";
+import {
+  MANIFEST_RELATIVE_PATH,
+  buildManifest,
+  writeManifest,
+} from "./manifest.js";
 import type { Pack } from "./packs.js";
 import {
+  PACK_NAME_PATTERN,
   listPackNames,
   loadPack,
   installPack,
@@ -135,9 +142,10 @@ const HELP_FLAGS = new Set(["--help", "-h"]);
 const VERSION_FLAGS = new Set(["--version", "-v"]);
 const LIST_PACKS_FLAGS = new Set(["--list-packs"]);
 const JSON_FLAGS = new Set(["--json"]);
-// A --pack value is a bare directory name under templates/packs/ -- this
-// allowlist keeps it from ever reaching packs.ts's join() as a path.
-const PACK_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+// A --pack value is a bare directory name under templates/packs/ --
+// PACK_NAME_PATTERN (owned by packs.ts, shared with loadPack and the
+// manifest's `packs` check) keeps it from
+// ever reaching packs.ts's join() as a path.
 // A --name value is substituted verbatim into the emitted package.json, so it
 // must fit a conservative, ASCII-lowercase subset of npm's naming rules
 // (optional @scope/). Reserved names like `node_modules` are out of scope.
@@ -434,6 +442,21 @@ function assertSafeSkillDestination(targetDir: string): void {
 }
 
 /**
+ * Fresh mode's pre-flight over the manifest's destination: `.groundwork`
+ * must be missing or a real directory, and `.groundwork/manifest.json`
+ * missing or a regular file (never a symlink or a directory). Nothing is
+ * written either way.
+ */
+function assertSafeManifestDestination(targetDir: string): void {
+  const groundworkDir = join(targetDir, ".groundwork");
+  assertDirectoryComponent(groundworkDir, FRESH_SYMLINK_ADVICE);
+  assertFileDestination(
+    join(groundworkDir, "manifest.json"),
+    FRESH_SYMLINK_ADVICE,
+  );
+}
+
+/**
  * The stdio a `--json` run hands `git init` and `pnpm install`: no stdin,
  * and the child's stdout redirected to stderr, so stdout carries only the
  * report (`.claude/rules/headless-mode.md`).
@@ -475,6 +498,10 @@ function runFresh(
   // untouched.
   assertSafeSkillDestination(options.targetDir);
 
+  // And the manifest's: writeManifest refuses the same shapes, but only
+  // after the baseline, the packs and the skill are written.
+  assertSafeManifestDestination(options.targetDir);
+
   mkdirSync(options.targetDir, { recursive: true });
 
   const result = emitTemplate(templatesCoreDir(), options.targetDir, tokens);
@@ -482,6 +509,7 @@ function runFresh(
 
   const warnings: string[] = [];
   const installedPacks: { name: string; budget: CapCounts }[] = [];
+  const emittedFiles = [...result.filesWritten];
   for (const pack of packs) {
     const name = pack.manifest.name;
     const packResult = installPack(pack, options.targetDir, tokens);
@@ -489,6 +517,7 @@ function runFresh(
       `installed pack "${name}" (${packResult.filesWritten.length} files)`,
     );
     installedPacks.push({ name, budget: packResult.budget });
+    emittedFiles.push(...packResult.filesWritten);
   }
   if (installedPacks.length > 0) {
     const summary = formatCapsSummary(
@@ -542,6 +571,30 @@ function runFresh(
       ? "the /customize skill was already up to date"
       : `installed the /customize skill (${pluginResult.filesWritten.length} files)`,
   );
+
+  // Recorded once every pack has merged into the shared files, and before
+  // git init so the first commit can carry it. Only the baseline's and the
+  // packs' files are listed: the /customize skill is not part of the
+  // emitted project.
+  try {
+    writeManifest(
+      targetDir,
+      buildManifest({
+        targetDir,
+        cliVersion: resolveCliVersion(),
+        tokens,
+        packs: installedPacks.map((pack) => pack.name),
+        files: emittedFiles.map(toPosixPath),
+      }),
+    );
+  } catch (error) {
+    const notRun = skipInstall ? "git init" : "git init / pnpm install";
+    throw new Error(
+      `the project was written to ${targetDir}, but writing ${MANIFEST_RELATIVE_PATH} failed and ${notRun} did not run -- fix the cause, then re-run with --fresh --force (plus your original --name/--pack/--skip-install); a plain re-run adopts it`,
+      { cause: error },
+    );
+  }
+  out.info(`wrote ${MANIFEST_RELATIVE_PATH}`);
 
   // Human mode keeps the one-argument calls (the children inherit stdio);
   // --json redirects their stdout to stderr.

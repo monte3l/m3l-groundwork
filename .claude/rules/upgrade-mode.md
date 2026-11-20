@@ -9,13 +9,16 @@ paths:
   - "packages/plugin/skills/upgrade/**"
 ---
 
-# Upgrade mode (design record, not yet built)
+# Upgrade mode (design record, partly built)
 
 The CLI's third mode and the `/upgrade` skill. The decision and its
 alternatives are in
 [`docs/decisions/0001-upgrade-flow.md`](../../docs/decisions/0001-upgrade-flow.md).
-None of this exists in `packages/` yet; the paths above are where it will land.
-Update this file as each piece ships, and drop this line when the last one does.
+**Built so far:** `packages/cli/src/manifest.ts` (schema 1) and fresh mode
+writing `.groundwork/manifest.json`. Everything else, `--upgrade`, `--apply`,
+the classifier and the `/upgrade` skill, is not in `packages/` yet; the paths
+above are where it will land. Update this file as each piece ships, and drop
+this line when the last one does.
 
 - **Offline and deterministic, like Phase A.** `--upgrade` reads the project and
   the packaged baseline, and writes only under `.groundwork/upgrade/`:
@@ -31,11 +34,28 @@ Update this file as each piece ships, and drop this line when the last one does.
   and must never be in `STALE_FILE_NAMES` (`main.ts`): an adopt re-run must not
   delete it. It stores `cliVersion`, `tokens`, `packs`, a sha256 per file with
   an `origin` of `emitted` or `merged`, and a sha256 per JSON key for
-  `package.json`, `tsconfig*.json` and `.claude/settings.json`. Hash the
-  post-pack output, since packs merge into shared files. It also stores
+  `package.json`, `tsconfig*.json` and `.claude/settings.json`. A JSON key is
+  named by a JSON Pointer (RFC 6901): a top-level key is `/scripts`, an inner
+  key of a non-empty top-level object is `/scripts/verify`, `~` and `/` inside a
+  name are escaped as `~0` and `~1`, and an empty object is one `/x` entry. A
+  dotted name would collide (`a.b` as a key versus `b` inside `a`). Hash the
+  post-pack output, since packs merge into shared files. Schema 1, written by
+  fresh mode today, holds exactly those fields and `parseManifest` rejects any
+  other top-level key. The change that makes `/customize` or `--apply` write
   `answers.interview` and the mechanical Round 1 actions (agent removal, the
-  verify-policy JSON, the Dependabot swap) so the old base can be rebuilt with
-  the tailoring replayed; keep it in step with Round 1 in `/customize`.
+  verify-policy JSON, the Dependabot swap), so the old base can be rebuilt with
+  the tailoring replayed, must extend `parseManifest` with them (and bump
+  `schemaVersion` if an older reader would misread the result) and keep them in
+  step with Round 1 in `/customize`. Fresh mode's `files` omit the `/customize`
+  skill copy and anything under `.groundwork/`. **Two other surfaces read the
+  `.groundwork/` directory and must keep knowing about it:** `/customize`
+  Step 0.1 (a `.groundwork/` holding only `manifest.json` is a fresh bootstrap,
+  not an interrupted run, and a clone holding the tracked reports plus the
+  manifest is still a clone of an adopted project), and the recommended
+  `.gitignore` block in Step 7 and the adoption report (`report.ts`), which
+  must keep `!.groundwork/manifest.json` or the manifest never reaches git. A
+  new file under `.groundwork/` that is meant to be tracked needs the same
+  three updates.
 - **The classifier is a pure function.** `M` is the manifest hash, `C` the
   current file and `N` the new emitted file:
 

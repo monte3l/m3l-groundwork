@@ -62,7 +62,9 @@ In outline:
 1. Look for `.groundwork/inventory.json`. No `.groundwork/` at all usually
    means a fresh bootstrap: skip to Step 1, unless `git rev-list -n1 HEAD`
    shows the repository has commits (the folder may be gitignored), in which
-   case ask first. A `.groundwork/` holding only tracked report files is a
+   case ask first. A `.groundwork/` holding only `manifest.json` is a fresh
+   bootstrap. A `.groundwork/` holding only tracked report files (and
+   `manifest.json`) is a
    clone of an adopted project: re-run the CLI. Any other `.groundwork/` with
    no inventory means an interrupted CLI run, and an unreadable inventory is invalid: in both cases
    stop and change nothing, and never treat the project as a fresh bootstrap.
@@ -285,20 +287,23 @@ retargeted gate reported as not exercised), an **Assumed, not answered** list
 (each `"dismissed"` interview entry and the fallback used), and a skipped
 `guard-readonly-bash` with its reason. Rewrite the adoption report's
 `## Next step` to point at this file. Never write it in fresh mode: a
-`.groundwork/` directory with no inventory reads as an interrupted adopt run.
+`.groundwork/` directory with no inventory and anything beside `manifest.json`
+reads as an interrupted adopt run.
 
 **Adopt mode only: ask once about `.gitignore`.** The CLI never edits the
-project's `.gitignore`. Recommend tracking the two reports and ignoring the
-rest of `.groundwork/` (the inventory holds absolute machine paths, the
-staged copies are bulky, and the decisions file is only valid beside its own
-inventory):
+project's `.gitignore`. Recommend tracking the two reports and the manifest
+and ignoring the rest of `.groundwork/` (the inventory holds absolute machine
+paths, the staged copies are bulky, and the decisions file is only valid
+beside its own inventory). The manifest records what the CLI emitted, so it
+must be committed for a later upgrade to see it:
 
 ```gitignore
 .groundwork/*
 !.groundwork/adoption-report.md
 !.groundwork/customization-report.md
+!.groundwork/manifest.json
 ```
 
 Add it only if the user agrees. Say that a teammate's clone then holds the
-two reports but no `.groundwork/inventory.json`, which Step 0.1 recognizes as a
-clone and answers with the re-run advice.
+two reports and the manifest but no `.groundwork/inventory.json`, which Step 0.1
+recognizes as a clone and answers with the re-run advice.

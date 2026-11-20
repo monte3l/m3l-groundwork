@@ -25,10 +25,18 @@ Contents:
      second answer stops with the re-run advice below and changes nothing.
      Never apply fresh-mode tailoring to an established codebase on the
      strength of a missing directory alone.
-   - **Absent, but `.groundwork/` holds only tracked report files → a clone
-     of an adopted project.** The recommended `.gitignore` (Step 7) tracks
-     `adoption-report.md` and `customization-report.md` and ignores the
-     rest, so a clone has a `.groundwork/` with those reports and no
+   - **Absent, but `.groundwork/` holds only `manifest.json` → a fresh
+     bootstrap.** Fresh mode writes `.groundwork/manifest.json` (what it
+     emitted, with hashes) and nothing else there. Treat this exactly like a
+     missing `.groundwork/`: apply the `git rev-list -n1 HEAD` guard above,
+     then continue on the fresh path, and never treat it as an interrupted
+     run. Never edit or delete the manifest: it is the tracked record a later
+     upgrade compares against, and `/customize` does not own it.
+   - **Absent, but `.groundwork/` holds only tracked report files (and
+     `manifest.json`) → a clone of an adopted project.** The recommended
+     `.gitignore` (Step 7) tracks `adoption-report.md`,
+     `customization-report.md` and `manifest.json` and ignores the rest, so
+     a clone has a `.groundwork/` with those files and no
      inventory, no `baseline/` and no `packs/`. Confirm with
      `git ls-files .groundwork` (it lists the files present). This is not an
      interrupted run. Stop, change nothing, and tell the user: "This clone has
@@ -44,7 +52,8 @@ Contents:
      established project. Tell the user: "`.groundwork/` is incomplete: a
      previous adopt run did not finish, or `inventory.json` was removed.
      If this project was never adopted (it was bootstrapped fresh), delete
-     `.groundwork/` and run `/customize` again. Otherwise re-run
+     everything in `.groundwork/` except `manifest.json` and run `/customize`
+     again. Otherwise re-run
      `npx @monte3l/groundwork .` and then run `/customize` again."
      Change nothing.
    - **Present, but not valid JSON, or its `schemaVersion` is not an integer
