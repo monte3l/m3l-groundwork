@@ -825,26 +825,193 @@ describe("main", () => {
       }
     });
 
-    // Contract 1: --pack in adopt mode is rejected up front as a usage
-    // error, rather than silently ignored while the survey proceeds to
-    // stage every pack regardless (the OLD contract, dropped by this fix --
-    // see the previous test for its replacement covering the no--pack
-    // case).
-    it("rejects --pack in adopt mode as a usage error, rather than silently ignoring it", () => {
-      const projectDir = join(targetDir, "existing-project3-pack-usage");
-      mkdirSync(projectDir);
-      writeFileSync(
-        projectDir + "/package.json",
-        JSON.stringify({ name: "acme", type: "module" }),
-      );
+    describe("--pack narrows the adopt survey", () => {
+      function makeProject(name: string): string {
+        const projectDir = join(targetDir, name);
+        mkdirSync(projectDir);
+        writeFileSync(
+          join(projectDir, "package.json"),
+          JSON.stringify({ name: "acme", type: "module" }),
+        );
+        return projectDir;
+      }
 
-      expect(() => main([projectDir, "--pack", "harness-extras"])).toThrow(
-        CliUsageError,
-      );
-      expect(() => main([projectDir, "--pack", "harness-extras"])).toThrow(
-        /no effect in adopt mode/,
-      );
-      expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
+      function readInventory(projectDir: string): Inventory {
+        return JSON.parse(
+          readFileSync(
+            join(projectDir, ".groundwork", "inventory.json"),
+            "utf8",
+          ),
+        ) as Inventory;
+      }
+
+      it("surveys and stages only the named pack, in the inventory, on disk and in the report", () => {
+        const projectDir = makeProject("pack-one");
+
+        main([projectDir, "--pack", "harness-extras"]);
+
+        const inventory = readInventory(projectDir);
+        expect(inventory.packs.map((p) => p.name)).toEqual(["harness-extras"]);
+        expect(inventory.stagedPacks.map((p) => p.name)).toEqual([
+          "harness-extras",
+        ]);
+        expect(
+          readdirSync(join(projectDir, ".groundwork", "packs")).sort(),
+        ).toEqual(["harness-extras"]);
+
+        const report = readFileSync(
+          join(projectDir, ".groundwork", "adoption-report.md"),
+          "utf8",
+        );
+        const packHeadings = report
+          .split("\n")
+          .filter((line) => /^### [a-z][a-z0-9-]*$/.test(line));
+        expect(packHeadings).toContain("### harness-extras");
+        expect(packHeadings).not.toContain("### quality");
+        expect(packHeadings).not.toContain("### service");
+      });
+
+      it("surveys and stages exactly the named packs when --pack is repeated", () => {
+        const projectDir = makeProject("pack-two");
+
+        main([projectDir, "--pack", "quality", "--pack", "harness-extras"]);
+
+        const inventory = readInventory(projectDir);
+        expect(inventory.packs.map((p) => p.name).sort()).toEqual([
+          "harness-extras",
+          "quality",
+        ]);
+        expect(inventory.stagedPacks.map((p) => p.name).sort()).toEqual([
+          "harness-extras",
+          "quality",
+        ]);
+        expect(
+          readdirSync(join(projectDir, ".groundwork", "packs")).sort(),
+        ).toEqual(["harness-extras", "quality"]);
+      });
+
+      it("accepts a pack whose modes lack adopt (licensing is fresh-only) and still surveys and stages it", () => {
+        const projectDir = makeProject("pack-fresh-only");
+
+        main([projectDir, "--pack", "licensing"]);
+
+        const inventory = readInventory(projectDir);
+        expect(inventory.packs.map((p) => p.name)).toEqual(["licensing"]);
+        expect(inventory.packs[0]?.modes).not.toContain("adopt");
+        expect(inventory.stagedPacks.map((p) => p.name)).toEqual(["licensing"]);
+        expect(readdirSync(join(projectDir, ".groundwork", "packs"))).toEqual([
+          "licensing",
+        ]);
+      });
+
+      it("rejects an unknown pack with CliUsageError listing the available packs, creating no .groundwork/", () => {
+        const projectDir = makeProject("pack-unknown");
+
+        let thrown: unknown;
+        try {
+          main([projectDir, "--pack", "nope"]);
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(CliUsageError);
+        const message = (thrown as Error).message;
+        expect(message).toContain('unknown pack "nope"');
+        expect(message).toContain("harness-extras");
+        expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
+      });
+
+      it("rejects an unknown pack before touching an existing .groundwork/, leaving the previous inventory and report intact", () => {
+        const projectDir = makeProject("pack-unknown-existing");
+        main([projectDir]);
+        const groundwork = join(projectDir, ".groundwork");
+        const inventoryBefore = readFileSync(
+          join(groundwork, "inventory.json"),
+          "utf8",
+        );
+        const reportBefore = readFileSync(
+          join(groundwork, "adoption-report.md"),
+          "utf8",
+        );
+        const packsBefore = readdirSync(join(groundwork, "packs")).sort();
+
+        expect(() =>
+          main([projectDir, "--pack", "harness-extras", "--pack", "nope"]),
+        ).toThrow(CliUsageError);
+
+        expect(readFileSync(join(groundwork, "inventory.json"), "utf8")).toBe(
+          inventoryBefore,
+        );
+        expect(
+          readFileSync(join(groundwork, "adoption-report.md"), "utf8"),
+        ).toBe(reportBefore);
+        expect(readdirSync(join(groundwork, "packs")).sort()).toEqual(
+          packsBefore,
+        );
+      });
+
+      it("replaces a previous wider staging on a narrowed re-run, and a later plain run restores every pack", () => {
+        const projectDir = makeProject("pack-rerun");
+        const packsDir = join(projectDir, ".groundwork", "packs");
+
+        main([projectDir]);
+        const allPacks = readInventory(projectDir)
+          .packs.map((p) => p.name)
+          .sort();
+        expect(allPacks.length).toBeGreaterThan(1);
+        expect(readdirSync(packsDir).sort()).toEqual(allPacks);
+
+        main([projectDir, "--pack", "quality"]);
+        const narrowed = readInventory(projectDir);
+        expect(readdirSync(packsDir)).toEqual(["quality"]);
+        expect(narrowed.packs.map((p) => p.name)).toEqual(["quality"]);
+        expect(narrowed.stagedPacks.map((p) => p.name)).toEqual(["quality"]);
+
+        main([projectDir]);
+        const restored = readInventory(projectDir);
+        expect(readdirSync(packsDir).sort()).toEqual(allPacks);
+        expect(restored.packs.map((p) => p.name).sort()).toEqual(allPacks);
+        expect(restored.stagedPacks.map((p) => p.name).sort()).toEqual(
+          allPacks,
+        );
+      });
+
+      it("still rejects --force alongside --pack in adopt mode", () => {
+        const projectDir = makeProject("pack-force");
+
+        expect(() =>
+          main([projectDir, "--pack", "harness-extras", "--force"]),
+        ).toThrow(/--force has no effect in adopt mode/);
+        expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
+      });
+
+      it("still rejects --adopt --pack against a missing target directory", () => {
+        const missing = join(targetDir, "does-not-exist");
+
+        expect(() =>
+          main([missing, "--adopt", "--pack", "harness-extras"]),
+        ).toThrow(/does not exist/);
+        expect(existsSync(missing)).toBe(false);
+      });
+
+      it("describes --pack as narrowing the adopt survey in the usage text, no longer calling it rejected", () => {
+        const logSpy = vi
+          .spyOn(console, "log")
+          .mockImplementation(() => undefined);
+        try {
+          main(["--help"]);
+          const usage = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+          const packLine = usage
+            .split("\n")
+            .find((line) => line.includes("--pack <name>"));
+          expect(packLine).toMatch(/narrow/i);
+          expect(usage).not.toContain(
+            "--pack and --force are rejected in adopt mode",
+          );
+        } finally {
+          logSpy.mockRestore();
+        }
+      });
     });
 
     it("stages absent baseline files at .groundwork/baseline/ as <path>.staged, each with a sha256 matching the staged bytes, without touching the project", () => {

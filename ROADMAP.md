@@ -31,21 +31,12 @@ one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
 
 ## Next 12 months
 
-- **A standalone "add a pack" mode, targeted at 1.1.** Tracked in
-  [#318](https://github.com/monte3l/m3l-groundwork/issues/318), in the
-  [1.1.0 milestone](https://github.com/monte3l/m3l-groundwork/milestone/1).
-  Today, adding an optional pack to an already-bootstrapped project means
-  re-running the CLI (auto-detected as adopt mode) and then `/customize`. A
-  dedicated additive-install flag is real, planned work, and it extends adopt
-  mode's survey-only contract rather than loosening it -- see
-  [`docs/known-gaps.md`](docs/known-gaps.md).
 - **An upgrade flow for adopted and bootstrapped projects, as a minor release.**
   A committed manifest, a third `--upgrade` CLI mode and an `/upgrade` skill
   that compares last-emitted, current and new files. Designed in
   [`docs/decisions/0001-upgrade-flow.md`](docs/decisions/0001-upgrade-flow.md),
-  not built. No issue is open for it yet. It is separate from the add-a-pack
-  mode above and comes after it: `--upgrade` takes no `--pack`, so #318 needs
-  nothing from it.
+  not built. No issue is open for it yet. It takes no `--pack`: its packs
+  come from the manifest, and adding one is `--pack` in adopt mode.
 - **`pnpm/setup` in CI.** Tracked in
   [#319](https://github.com/monte3l/m3l-groundwork/issues/319). Its v3 reads
   Node's version from `.node-version` through a `node-version-file` input, so

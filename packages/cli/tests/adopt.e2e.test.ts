@@ -148,8 +148,8 @@ describe("adopt mode end-to-end", () => {
         ),
       ).toBe(true);
 
-      // Every pack under templates/packs/ is surveyed regardless of any
-      // --pack flag (none was passed here) and staged, unapplied, each file
+      // With no --pack flag (none was passed here) every pack under
+      // templates/packs/ is surveyed, and each is staged, unapplied, each file
       // under an inert .staged name -- never the bare unsuffixed name.
       expect(inventory.packs.some((p) => p.name === "harness-extras")).toBe(
         true,

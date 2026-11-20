@@ -49,10 +49,10 @@ already enumerate groups rather than individual steps.
 - `modes` — `["fresh"]` and/or `["fresh", "adopt"]`. By convention,
   "adopt-capable" means an artifact has no dependency on the baseline's exact
   file layout (an agent, most hooks), so it is safe to install into an
-  existing project. Nothing enforces this: adopt mode stages every pack
-  whatever its `modes`, and fresh mode refuses a pack that does not list
-  `fresh`. A pack whose artifacts
-  assume a layout can still list `adopt` (`quality` does: its gate assumes a
+  existing project. Nothing enforces this: adopt mode stages every pack it
+  is asked to (all of them, or the ones named with `--pack`) whatever its
+  `modes`, and fresh mode refuses a pack that does not list `fresh`. A pack
+  whose artifacts assume a layout can still list `adopt` (`quality` does: its gate assumes a
   flat `src/` and `tests/`); it must then say what to adjust in `adoptNotes`,
   which `/customize` surfaces before installing.
 - `budget` — the pack's cap deltas (`agents`/`skills`/`hooks`/`workflows`/

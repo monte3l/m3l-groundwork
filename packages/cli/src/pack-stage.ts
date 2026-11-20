@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Adopt mode's staging of every pack under `templates/packs/`: each pack's
+ * Adopt mode's staging of the surveyed packs -- every pack under
+ * `templates/packs/`, or only those named with `--pack`: each pack's
  * manifest and `files/` tree are copied into `.groundwork/packs/<name>/`,
  * every file under an inert `<path>.staged` name, so `/customize`'s Step 0
  * can install a pack from a self-contained copy -- after confirmation --

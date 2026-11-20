@@ -13,9 +13,9 @@
  * already-established project and writes only a report -- see `mode.ts`,
  * `survey/survey.ts`, `conflicts.ts`, and `report.ts`. Adopt mode never
  * touches a project file, including a pack's: it surveys every pack under
- * `templates/packs/` into the report, stages each as inert `.staged` copies
- * under `.groundwork/packs/`, and defers installation to `/customize`; see
- * `runAdopt`.
+ * `templates/packs/` (or only those named by `--pack`) into the report,
+ * stages each as inert `.staged` copies under `.groundwork/packs/`, and
+ * defers installation to `/customize`; see `runAdopt`.
  */
 import {
   existsSync,
@@ -108,7 +108,8 @@ const USAGE = [
   "  --force                 Overwrite a non-empty target directory (fresh mode only)",
   "  --adopt                 Force adopt mode, even if the target looks empty",
   "  --fresh                 Force fresh-bootstrap mode, even if the target looks pre-existing",
-  "  --pack <name>           Install an opt-in pack from templates/packs/ (fresh mode only; repeatable)",
+  "  --pack <name>           Install a pack from templates/packs/ (fresh mode), or narrow",
+  "                          the survey to the named packs (adopt mode); repeatable",
   "  --list-packs            Print every available pack and exit",
   "  --help, -h              Print this message",
   "  --version, -v           Print the CLI's version",
@@ -118,9 +119,9 @@ const USAGE = [
   "looks like a project (package.json, .git, or loose source files) is",
   "surveyed and adopted instead -- see .groundwork/adoption-report.md.",
   "",
-  "--pack and --force are rejected in adopt mode -- adopt mode never writes",
-  "project files. Every available pack is surveyed into the report",
-  "automatically; run /customize to install one.",
+  "--force is rejected in adopt mode -- adopt mode never writes project",
+  "files. Every available pack is surveyed into the report unless --pack",
+  "names some; run /customize to install one.",
 ].join("\n");
 
 // --name takes a single value; --pack is repeatable. Every other
@@ -593,6 +594,20 @@ function describeInstallFailure(error: unknown): string {
 }
 
 /**
+ * Throws the usage error (exit 2) for a `--pack` name that is not one of
+ * `available`, listing the available packs. Shared by fresh and adopt mode
+ * so both word an unknown pack the same way.
+ */
+function assertKnownPack(name: string, available: readonly string[]): void {
+  if (!available.includes(name)) {
+    const list = available.length > 0 ? available.join(", ") : "none";
+    throw new CliUsageError(
+      `unknown pack "${name}" (available: ${list})\n\n${USAGE}`,
+    );
+  }
+}
+
+/**
  * Loads one `--pack` for fresh mode -- called for every pack before any file
  * is written. An unknown name (the message lists the available packs) or a
  * fresh-incompatible pack is a usage error (exit 2); a pack that exists but
@@ -600,13 +615,7 @@ function describeInstallFailure(error: unknown): string {
  * (exit 1), since that is a broken install, not a bad invocation.
  */
 function resolveFreshPack(name: string): Pack {
-  const available = listPackNames();
-  if (!available.includes(name)) {
-    const list = available.length > 0 ? available.join(", ") : "none";
-    throw new CliUsageError(
-      `unknown pack "${name}" (available: ${list})\n\n${USAGE}`,
-    );
-  }
+  assertKnownPack(name, listPackNames());
   const pack = loadPack(name);
   if (!pack.manifest.modes.includes("fresh")) {
     throw new CliUsageError(
@@ -620,7 +629,10 @@ function resolveFreshPack(name: string): Pack {
  * Rejects flags and targets adopt mode cannot honor, as usage errors (exit
  * 2) rather than silently ignoring them: a missing target directory (there
  * is nothing to survey), `--force` (adopt mode never writes project files),
- * and `--pack` (every pack is surveyed automatically).
+ * and a `--pack` naming no available pack -- checked here, before `runAdopt`
+ * touches anything under `.groundwork/`. A known `--pack` narrows the survey
+ * to the named packs; unlike fresh mode, a pack whose `modes` lacks "adopt"
+ * is still accepted, since adopt mode only surveys and stages it.
  */
 function assertAdoptUsage(options: CliOptions): void {
   if (!existsSync(options.targetDir)) {
@@ -634,9 +646,8 @@ function assertAdoptUsage(options: CliOptions): void {
     );
   }
   if (options.packs.length > 0) {
-    throw new CliUsageError(
-      `--pack has no effect in adopt mode -- every pack is surveyed automatically; run /customize to install one.\n\n${USAGE}`,
-    );
+    const available = listPackNames();
+    for (const name of options.packs) assertKnownPack(name, available);
   }
 }
 
@@ -828,8 +839,8 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  * the one addition is a purely-additive, collision-guarded copy of the
  * `/customize` skill (see `installCustomizeSkillGuarded`), so the report
  * can point straight at a working next step. Every pack under
- * `templates/packs/` is surveyed (`main` rejects `--pack` in this mode, see
- * `assertAdoptUsage`) and staged, unapplied and inert, at
+ * `templates/packs/` -- or, when `--pack` names some, only those (validated
+ * by `assertAdoptUsage`) -- is surveyed and staged, unapplied and inert, at
  * `.groundwork/packs/<name>/` -- its manifest as `pack.json.staged`, its
  * files as `files/<path>.staged` -- all packs written to a temporary
  * sibling directory and swapped in by rename, so `packs/` is never
@@ -843,7 +854,7 @@ function groundworkReportNextStep(result: GuardedInstallResult): string {
  *
  * Checked before anything under `.groundwork/` is deleted or written, in
  * this order: the four stale-file paths are scope-checked against
- * {@link assertAdoptWriteScope}; every pack is loaded and validated by
+ * {@link assertAdoptWriteScope}; every surveyed pack is loaded and validated by
  * `loadPack` and surveyed (`planConflicts`, `observeWiring`); the pack
  * staging plan (`planPackStaging`) and the baseline staging plan
  * (`planBaselineStaging`) are each computed once, validated, and every path
@@ -917,12 +928,13 @@ function runAdopt(
     stalePaths.map(({ path }) => path),
   );
 
-  // Every pack must pass loadPack's validation (including its
+  // Every surveyed pack must pass loadPack's validation (including its
   // prototype-sensitive wiring-key check), and both staging plans (packs and
   // baseline) must be computed and scope-checked, before anything under
   // .groundwork/ is touched, so an invalid pack or plan fails the run with
   // the previous inventory/report still intact rather than half-cleared.
-  const loadedPacks: Pack[] = listPackNames().map((name) => loadPack(name));
+  const packNames = options.packs.length > 0 ? options.packs : listPackNames();
+  const loadedPacks: Pack[] = packNames.map((name) => loadPack(name));
   const packs: PackSurvey[] = loadedPacks.map((pack) => ({
     name: pack.manifest.name,
     modes: pack.manifest.modes,
