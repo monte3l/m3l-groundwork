@@ -6,16 +6,19 @@
  * interactivity, no network call beyond the package install -- this must
  * work on a plane against a warm pnpm store.
  *
- * Two modes, auto-detected from the target directory (`--adopt`/`--fresh`
- * force either): **fresh** writes the baseline template tree into an empty
- * or missing target directory, then installs any `--pack` requested.
- * **adopt** surveys an
+ * Three modes. Two are auto-detected from the target directory
+ * (`--adopt`/`--fresh` force either): **fresh** writes the baseline template
+ * tree into an empty or missing target directory, then installs any `--pack`
+ * requested. **adopt** surveys an
  * already-established project and writes only a report -- see `mode.ts`,
  * `survey/survey.ts`, `conflicts.ts`, and `report.ts`. Adopt mode never
  * touches a project file, including a pack's: it surveys every pack under
  * `templates/packs/` (or only those named by `--pack`) into the report,
  * stages each as inert `.staged` copies under `.groundwork/packs/`, and
- * defers installation to `/customize`; see `runAdopt`.
+ * defers installation to `/customize`; see `runAdopt`. The third,
+ * **upgrade**, runs only when `--upgrade` asks for it: it plans an upgrade of
+ * a project that has a `.groundwork/manifest.json` against this release and
+ * writes the plan only under `.groundwork/upgrade/`; see `runUpgrade`.
  */
 import {
   existsSync,
@@ -25,8 +28,10 @@ import {
   renameSync,
   rmdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
+import type { Stats } from "node:fs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { join, relative, resolve, basename, dirname } from "node:path";
@@ -85,6 +90,7 @@ import type { Inventory, PackSurvey } from "./inventory.js";
 import {
   MANIFEST_RELATIVE_PATH,
   buildManifest,
+  readManifest,
   writeManifest,
 } from "./manifest.js";
 import type { Pack } from "./packs.js";
@@ -94,6 +100,7 @@ import {
   loadPack,
   installPack,
   observeWiring,
+  packsRootDir,
 } from "./packs.js";
 import { STAGED_PACKS_DIR, planPackStaging, stagePacks } from "./pack-stage.js";
 import { NPM_NAME_MAX_LENGTH, NPM_NAME_PATTERN } from "./npm-name.js";
@@ -104,6 +111,16 @@ import { gradeToolchain } from "./toolchain/grade.js";
 import { buildAdoptPending } from "./headless/pending.js";
 import { errnoCode } from "./survey/internal/read-guard.js";
 import type { AnswersV1 } from "./headless/contract.js";
+import { computePlan, renderRelease } from "./upgrade/plan.js";
+import type { UpgradePlan } from "./upgrade/plan.js";
+import { countClasses } from "./upgrade/report.js";
+import {
+  UPGRADE_PLAN_FILE,
+  UPGRADE_RELATIVE_DIR,
+  UPGRADE_REPORT_FILE,
+} from "./upgrade/paths.js";
+import { inspectPreviousUpgrade, stageUpgrade } from "./upgrade/stage.js";
+import type { StagedUpgrade } from "./upgrade/stage.js";
 
 export interface CliOptions {
   targetDir: string;
@@ -112,6 +129,7 @@ export interface CliOptions {
   force: boolean;
   adopt: boolean;
   fresh: boolean;
+  upgrade: boolean;
   help: boolean;
   version: boolean;
   listPacks: boolean;
@@ -127,6 +145,8 @@ const USAGE = [
   "  --force                 Overwrite a non-empty target directory (fresh mode only)",
   "  --adopt                 Force adopt mode, even if the target looks empty",
   "  --fresh                 Force fresh-bootstrap mode, even if the target looks pre-existing",
+  "  --upgrade               Plan an upgrade of a project that has .groundwork/manifest.json;",
+  "                          writes only under .groundwork/upgrade/",
   "  --pack <name>           Install a pack from templates/packs/ (fresh mode), or narrow",
   "                          the survey to the named packs (adopt mode); repeatable",
   "  --list-packs            Print every available pack and exit",
@@ -143,6 +163,10 @@ const USAGE = [
   "--force is rejected in adopt mode -- adopt mode never writes project",
   "files. Every available pack is surveyed into the report unless --pack",
   "names some; run /customize to install one.",
+  "",
+  "--upgrade is never auto-detected and takes none of --adopt, --fresh,",
+  "--name, --force, --pack, --skip-install or --json: the project name and",
+  "packs come from the manifest, and it never writes a project file.",
 ].join("\n");
 
 // --name takes a single value; --pack is repeatable. Every other
@@ -165,6 +189,7 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--force",
   "--adopt",
   "--fresh",
+  "--upgrade",
   ...JSON_FLAGS,
   ...LIST_PACKS_FLAGS,
   ...HELP_FLAGS,
@@ -244,6 +269,51 @@ function tokenizeArgv(argv: string[]): TokenizedArgv {
   return { positional, flags, values, repeatableValues };
 }
 
+/**
+ * Why each flag upgrade mode rejects has no effect there, in the order they
+ * are checked. `--json` is refused separately: its plan report is not built.
+ */
+const UPGRADE_REJECTED_FLAGS: readonly (readonly [string, string])[] = [
+  ["--name", "the project name comes from .groundwork/manifest.json"],
+  ["--force", "upgrade mode never writes a project file"],
+  [
+    "--pack",
+    "the packs come from .groundwork/manifest.json; to add a pack to an existing project, run the CLI in adopt mode with --pack",
+  ],
+  ["--skip-install", "upgrade mode installs nothing"],
+];
+
+/**
+ * Rejects every flag `--upgrade` cannot be combined with, as usage errors:
+ * the other two mode flags (mutually exclusive), the flags that have no
+ * effect in upgrade mode, and `--json`, whose plan report is not built yet.
+ */
+function assertUpgradeFlags(
+  flags: ReadonlySet<string>,
+  values: ReadonlyMap<string, string>,
+  repeatableValues: ReadonlyMap<string, readonly string[]>,
+): void {
+  for (const other of ["--adopt", "--fresh"]) {
+    if (flags.has(other)) {
+      throw new CliUsageError(
+        `--upgrade and ${other} are mutually exclusive\n\n${USAGE}`,
+      );
+    }
+  }
+  for (const [flag, reason] of UPGRADE_REJECTED_FLAGS) {
+    if (flags.has(flag) || values.has(flag) || repeatableValues.has(flag)) {
+      throw new CliUsageError(
+        `${flag} has no effect in upgrade mode -- ${reason}\n\n${USAGE}`,
+      );
+    }
+  }
+  if ([...JSON_FLAGS].some((flag) => flags.has(flag))) {
+    throw new CliUsageError(
+      `--json cannot be combined with --upgrade: plan reports are not available yet -- read .groundwork/upgrade/plan.json instead\n\n${USAGE}`,
+    );
+  }
+}
+
 /** Parses argv into structured options. Throws with USAGE on a missing target dir, unless --help/--version/--list-packs is present. */
 export function parseArgs(argv: string[]): CliOptions {
   const { positional, flags, values, repeatableValues } = tokenizeArgv(argv);
@@ -261,6 +331,7 @@ export function parseArgs(argv: string[]): CliOptions {
       force: false,
       adopt: false,
       fresh: false,
+      upgrade: false,
       help,
       version,
       listPacks,
@@ -273,6 +344,10 @@ export function parseArgs(argv: string[]): CliOptions {
     throw new CliUsageError(
       `--adopt and --fresh are mutually exclusive\n\n${USAGE}`,
     );
+  }
+  const upgrade = flags.has("--upgrade");
+  if (upgrade) {
+    assertUpgradeFlags(flags, values, repeatableValues);
   }
 
   const targetArg = positional[0];
@@ -312,6 +387,7 @@ export function parseArgs(argv: string[]): CliOptions {
     force: flags.has("--force"),
     adopt: flags.has("--adopt"),
     fresh: flags.has("--fresh"),
+    upgrade,
     help: false,
     version: false,
     listPacks: false,
@@ -1366,14 +1442,112 @@ function runAdopt(
 }
 
 /**
+ * Rejects a target upgrade mode cannot plan, as usage errors (exit 2): one
+ * that does not exist or is not a directory. Checked before mode detection,
+ * which cannot list a file. The flags were checked by `parseArgs`.
+ */
+function assertUpgradeUsage(options: CliOptions): void {
+  const { targetDir } = options;
+  let stat: Stats | undefined;
+  try {
+    // ENOENT only is "absent"; any other failure (EACCES on a parent) is a
+    // runtime error, never mistaken for a missing directory.
+    stat = statSync(targetDir, { throwIfNoEntry: false });
+  } catch (cause) {
+    throw new Error(`could not inspect ${targetDir}`, { cause });
+  }
+  if (stat === undefined) {
+    throw new CliUsageError(
+      `${targetDir} does not exist -- --upgrade needs a project bootstrapped by this CLI\n\n${USAGE}`,
+    );
+  }
+  if (!stat.isDirectory()) {
+    throw new CliUsageError(
+      `${targetDir} is not a directory -- --upgrade needs a project directory\n\n${USAGE}`,
+    );
+  }
+}
+
+/** `upgrade plan <from> -> <to>: <n> <class>, ...` in the report's class order. */
+function upgradeSummary(plan: UpgradePlan): string {
+  const counts = countClasses(plan.files)
+    .map(([cls, count]) => `${String(count)} ${cls}`)
+    .join(", ");
+  return `upgrade plan ${plan.fromCliVersion} -> ${plan.toCliVersion}: ${counts === "" ? "no files" : counts}`;
+}
+
+/**
+ * Upgrade mode: reads the project's `.groundwork/manifest.json`, renders this
+ * release for it into a temporary directory (`renderRelease`), classifies
+ * every baseline path and JSON key (`computePlan`) and stages the plan, its
+ * report and the new copies under `.groundwork/upgrade/` (`stageUpgrade`).
+ * The rendered release is always disposed of. Never writes a project file or
+ * the manifest, and exits normally whatever the plan holds, conflicts
+ * included: applying it is a later step.
+ *
+ * @throws {@link CliUsageError} with the adopt advice, before anything is
+ *   written, when the project has no manifest; the `ManifestError` unchanged
+ *   when the manifest cannot be read or parsed; the plan or staging module's
+ *   `Error` otherwise.
+ */
+function runUpgrade(
+  options: CliOptions,
+  detection: ModeDetection,
+  out: Out,
+): undefined {
+  const { targetDir } = options;
+  out.info(`upgrade mode: ${detection.signal}`);
+  const manifest = readManifest(targetDir);
+  if (manifest === undefined) {
+    throw new CliUsageError(
+      `${targetDir} has no ${MANIFEST_RELATIVE_PATH}, so there is no record to plan an upgrade from -- re-run the CLI in adopt mode in the project (npx @monte3l/groundwork .) and then run /customize to take the new release`,
+    );
+  }
+  // Before rendering: a non-directory there is refused with nothing written.
+  const foreign = inspectPreviousUpgrade(targetDir);
+  const cliVersion = resolveCliVersion();
+  const release = renderRelease({
+    manifest,
+    cliVersion,
+    templatesDir: templatesCoreDir(),
+    packsRoot: packsRootDir(),
+  });
+  let plan: UpgradePlan;
+  let staged: StagedUpgrade;
+  try {
+    plan = computePlan({ targetDir, manifest, release, cliVersion });
+    // Staged before dispose: the staged copies are read from the release.
+    staged = stageUpgrade({ targetDir, plan, release });
+  } finally {
+    release.dispose();
+  }
+  // Warned only once the swap succeeded: a failed staging leaves them in place.
+  if (foreign.length > 0) {
+    out.warn(
+      `warning: discarded ${foreign.join(", ")} from ${UPGRADE_RELATIVE_DIR}/ -- a decision recorded there is only valid beside its own plan, and this run wrote a new plan`,
+    );
+  }
+  const count = staged.staged.length;
+  out.info(upgradeSummary(plan));
+  out.info(
+    `wrote ${UPGRADE_RELATIVE_DIR}/ (${UPGRADE_PLAN_FILE}, ${UPGRADE_REPORT_FILE} and ${String(count)} staged ${count === 1 ? "file" : "files"})`,
+  );
+  out.info(
+    `Next: read ${UPGRADE_RELATIVE_DIR}/${UPGRADE_REPORT_FILE} -- the /upgrade skill that applies a plan is not available yet`,
+  );
+  return undefined;
+}
+
+/**
  * Runs the CLI. `platform` is injectable so fresh mode's Windows refusal
  * (a runtime error, exit 1, raised before anything is written) is
- * unit-testable on any OS; it defaults to `process.platform`. Adopt mode and
- * `--help`/`--version`/`--list-packs` run on every platform. `out` receives
- * every fresh/adopt status line; by default it is `createOut` in human mode,
- * or in json mode when `--json` is given (every line on stderr). Returns the
- * run's {@link RunResult}, or `undefined` for
- * `--help`/`--version`/`--list-packs`. Under `--json`, a fresh/adopt run
+ * unit-testable on any OS; it defaults to `process.platform`. Adopt mode,
+ * upgrade mode and `--help`/`--version`/`--list-packs` run on every platform.
+ * `out` receives every fresh/adopt/upgrade status line; by default it is
+ * `createOut` in human mode, or in json mode when `--json` is given (every
+ * line on stderr). Returns the run's {@link RunResult}, or `undefined` for
+ * `--help`/`--version`/`--list-packs` and for an `--upgrade` plan (which
+ * refuses `--json`, so it has no report to build). Under `--json`, a fresh/adopt run
  * prints no report itself -- the bin script builds it from the returned
  * result -- while `--version` and `--list-packs` print one single-line JSON
  * document each (`groundwork.version`, `groundwork.packs`); `--help` always
@@ -1436,16 +1610,28 @@ export function main(
     return;
   }
 
+  if (options.upgrade) {
+    assertUpgradeUsage(options);
+  }
   const detected = detectMode(options.targetDir);
   const resolved = resolveMode(detected, {
     adopt: options.adopt,
     fresh: options.fresh,
+    upgrade: options.upgrade,
   });
 
   const sink = out ?? createOut({ json: options.json });
-  if (resolved.mode === "adopt") {
-    assertAdoptUsage(options);
-    return runAdopt(options, resolved, sink);
+  switch (resolved.mode) {
+    case "adopt":
+      assertAdoptUsage(options);
+      return runAdopt(options, resolved, sink);
+    case "upgrade":
+      return runUpgrade(options, resolved, sink);
+    case "fresh":
+      return runFresh(options, platform, sink);
+    default: {
+      const unhandled: never = resolved.mode;
+      throw new Error(`unhandled mode ${String(unhandled)}`);
+    }
   }
-  return runFresh(options, platform, sink);
 }

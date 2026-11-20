@@ -16,18 +16,37 @@ alternatives are in
 [`docs/decisions/0001-upgrade-flow.md`](../../docs/decisions/0001-upgrade-flow.md).
 **Built so far:** `packages/cli/src/manifest.ts` (schema 1) with fresh mode
 writing `.groundwork/manifest.json`, the pure classifier
-(`upgrade/classify.ts`) and the plan computation (`upgrade/plan.ts`). Everything
-else, the `--upgrade` flag with its staging and `plan.json`, `--upgrade --stamp`,
-`--apply` and the `/upgrade` skill, is not in `packages/` yet; the paths above
-are where it will land. Update this file as each piece ships, and drop this
-line when the last one does.
+(`upgrade/classify.ts`), the plan computation (`upgrade/plan.ts`) and the
+`--upgrade` mode that stages the plan (`upgrade/stage.ts`, `upgrade/report.ts`,
+`runUpgrade` in `main.ts`). Everything else, `--upgrade --stamp`, `--apply`,
+the legacy no-manifest plan, the `--json` plan report and the `/upgrade` skill,
+is not in `packages/` yet; the paths above are where it will land. Update this
+file as each piece ships, and drop this line when the last one does.
 
 - **Offline and deterministic, like Phase A.** `--upgrade` reads the project and
   the packaged baseline, and writes only under `.groundwork/upgrade/`:
-  `plan.json` last and atomically (the commit marker, as `inventory.json` is
-  for adopt), a report and `.staged` copies. It never writes a project file.
-  It rejects `--name`, `--force` and `--pack`, and combines with neither
-  `--adopt` nor `--fresh`. The pack list comes from the manifest. Adding a pack
+  the `staged/<path>.staged` copies of the rendered file for every `add`,
+  `safe-update`, `conflict-2way` and `conflict-3way` entry, then
+  `upgrade-report.md`, then `plan.json` last (the commit marker, as
+  `inventory.json` is for adopt). Every staged byte is read and checked against
+  the plan's `nextSha256` before anything is written, so a release copy that
+  changed after the plan was computed fails the run with nothing touched. The
+  whole directory is built in a work directory and swapped in by rename
+  (`stageAtomically`), so a failed run leaves the previous plan intact. Re-running
+  replaces the directory wholesale and warns by name when it discards anything
+  but `plan.json`, `upgrade-report.md` and `staged/` (a recorded decision is only
+  valid beside its own plan); a regular file at `.groundwork/upgrade` is refused.
+  The directory names live in one module, `upgrade/paths.ts`. `/customize`
+  ignores `upgrade/` and `.upgrade-*` when it classifies `.groundwork/`. It never
+  writes a project file or the manifest. It rejects `--name`, `--force`,
+  `--pack`, `--skip-install` and `--json` (plan reports wait for the headless
+  series), needs an existing directory, and combines with neither `--adopt` nor
+  `--fresh`. A project with **no manifest** is refused (exit 2) with advice to
+  re-run the CLI in adopt mode and then `/customize`; the legacy two-way plan is
+  a later change. `plan.json` is the plan plus `legacy: false` and a `staged`
+  list of `{path, staged, sha256}`, with no timestamps or absolute paths, so two
+  runs on the same inputs are byte-identical. Until the `/upgrade` skill ships,
+  the report's Next step says to apply the staged files by hand. The pack list comes from the manifest. Adding a pack
   to an existing project is `--pack <name>` in adopt mode
   ([#318](https://github.com/monte3l/m3l-groundwork/issues/318)), which needs no
   manifest. The skill's stamp step records the new pack in the manifest like any

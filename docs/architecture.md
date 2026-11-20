@@ -122,7 +122,9 @@ fails if either names a step directly or matrices the lanes) verifies.
 
 A third CLI mode and a second skill, for projects that already ran groundwork.
 Decision record: [`docs/decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md).
-Contract: `.claude/rules/upgrade-mode.md`. Nothing here is in `packages/` yet.
+Contract: `.claude/rules/upgrade-mode.md`. Built so far: the manifest, the
+classifier, the plan computation and `--upgrade`, which stages the plan. Not
+built: the `/upgrade` skill, `--stamp` and `--apply`.
 
 ```
   fresh / adopt ──▶ .groundwork/manifest.json  (tracked: version, tokens,

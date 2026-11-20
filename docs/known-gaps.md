@@ -31,13 +31,17 @@
   and unbounded work, with anything needing profiling reported as
   `NOT CHECKED`) and an `api-doc` skill that writes an OpenAPI description
   from the routes the code defines; recommended only for the `service` kind.
-- **No upgrade flow for an already-bootstrapped project.** Taking a new
-  release is the same indirect re-run, and it cannot tell a file you edited
-  from a file upstream changed, because nothing records what the last run
-  emitted. A manifest, `--upgrade` mode and an `/upgrade` skill are designed
-  in [`decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md) and not
-  built. `--upgrade` takes its packs from the manifest; to add one to an
-  existing project, run the CLI with `--pack <name>` (adopt mode).
+- **The upgrade flow is only partly built.** Fresh mode writes a manifest of
+  what it emitted, and `--upgrade` compares it with your files and the new
+  release and stages a plan under `.groundwork/upgrade/`. Nothing applies that
+  plan yet: the `/upgrade` skill, `--upgrade --stamp` and `--apply` are
+  designed in [`decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md)
+  and not built, so the plan is applied by hand. A project with no manifest
+  (anything bootstrapped or adopted before it existed) is refused by
+  `--upgrade`; for it, taking a new release is still the indirect re-run of the
+  CLI in adopt mode followed by `/customize`. `--upgrade` takes its packs from
+  the manifest; to add one to an existing project, run the CLI with
+  `--pack <name>` (adopt mode).
 - **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it.
   Re-checked 2026-10-01: the original blocker is gone, since `pnpm/setup@v3`
   (2026-09-20) has a `node-version-file` input and auto-detects
