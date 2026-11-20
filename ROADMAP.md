@@ -39,7 +39,7 @@ one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
   dedicated additive-install flag is real, planned work, and it extends adopt
   mode's survey-only contract rather than loosening it -- see
   [`docs/known-gaps.md`](docs/known-gaps.md).
-- **An upgrade flow for adopted and bootstrapped projects, targeted at 1.1.**
+- **An upgrade flow for adopted and bootstrapped projects, as a minor release.**
   A committed manifest, a third `--upgrade` CLI mode and an `/upgrade` skill
   that compares last-emitted, current and new files. Designed in
   [`docs/decisions/0001-upgrade-flow.md`](docs/decisions/0001-upgrade-flow.md),

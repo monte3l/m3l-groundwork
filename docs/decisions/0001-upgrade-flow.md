@@ -62,7 +62,7 @@ The third option.
   same code (`assertAdoptUsage` and the pack staging) but not each other's
   contract. Folding them together would hold a small, ready change behind the
   larger one.
-- A new CLI mode is a `feat`, so it waits for a 1.1 release.
+- A new CLI mode is a `feat`, so it ships as a minor release.
 - A file the user or skill merged by hand has a base that cannot be rebuilt,
   so it falls back to a two-way compare on the next upgrade.
 - Rebuilding an old base needs the network and the old version still on npm.

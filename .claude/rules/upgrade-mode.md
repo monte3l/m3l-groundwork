@@ -70,6 +70,6 @@ Update this file as each piece ships, and drop this line when the last one does.
   needs no new flag. It records decisions in `.groundwork/upgrade/decisions.json`
   so a compacted session does not re-ask, and checks `plan.json.schemaVersion`
   before reading it.
-- **A change here is `feat(cli)`,** so it waits for a 1.1 release. The e2e test
+- **A change here is `feat(cli)`,** so it ships as a minor release. The e2e test
   swaps a second fixture template root in after a first bootstrap, so it proves
   the plan without a published release.
