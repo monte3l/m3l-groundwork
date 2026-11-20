@@ -39,6 +39,7 @@
     "bin",
     "templates",
     "plugin",
+    "schemas",
     "LICENSE"
   ],
   "publishConfig": {

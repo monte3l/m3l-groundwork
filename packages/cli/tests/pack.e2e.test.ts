@@ -90,6 +90,16 @@ describe("published tarball end-to-end", () => {
     ).toBe(true);
   });
 
+  it("ships the answers and report JSON Schemas inside the tarball", () => {
+    for (const name of ["answers.v1.schema.json", "report.v1.schema.json"]) {
+      const shipped = join(scratch, "extracted", "package", "schemas", name);
+      expect(existsSync(shipped)).toBe(true);
+      expect(readFileSync(shipped, "utf8")).toBe(
+        readFileSync(join(cliDir, "schemas", name), "utf8"),
+      );
+    }
+  });
+
   it("never vendors this repo's own design/ directory into the tarball", () => {
     expect(existsSync(join(scratch, "extracted", "package", "design"))).toBe(
       false,
