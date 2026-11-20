@@ -34,9 +34,12 @@ one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
 - **An upgrade flow for adopted and bootstrapped projects, as a minor release.**
   A committed manifest, a third `--upgrade` CLI mode and an `/upgrade` skill
   that compares last-emitted, current and new files. Designed in
-  [`docs/decisions/0001-upgrade-flow.md`](docs/decisions/0001-upgrade-flow.md),
-  not built. No issue is open for it yet. It takes no `--pack`: its packs
-  come from the manifest, and adding one is `--pack` in adopt mode.
+  [`docs/decisions/0001-upgrade-flow.md`](docs/decisions/0001-upgrade-flow.md).
+  The manifest, the classifier and `--upgrade` (which stages a plan) are built;
+  still ahead are the `/upgrade` skill that applies a plan, `--upgrade --stamp`,
+  `--apply` and a plan for projects that have no manifest. No issue is open for
+  it yet. It takes no `--pack`: its packs come from the manifest, and adding one
+  is `--pack` in adopt mode.
 - **`pnpm/setup` in CI.** Tracked in
   [#319](https://github.com/monte3l/m3l-groundwork/issues/319). Its v3 reads
   Node's version from `.node-version` through a `node-version-file` input, so

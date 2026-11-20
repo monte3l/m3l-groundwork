@@ -225,3 +225,169 @@ describe("renderUpgradeReport", () => {
     expect(renderUpgradeReport(reversed)).toBe(renderUpgradeReport(FULL));
   });
 });
+
+const KEY_INTRO =
+  "The JSON files below are compared key by key; each key that is not current is listed with its class. A file's own class above decides what happens to it.";
+const NOT_YET =
+  "The `/upgrade` skill that applies a plan is not available yet, so nothing in the project has been changed: this run wrote only under `.groundwork/upgrade/`.";
+const REMOVED_INTRO =
+  "The new release no longer ships these files. A `remove` file is unchanged since it was written; an `orphan-edited` one holds your changes.";
+const REMOVED_STEP =
+  "The files under Removed upstream are no longer in the baseline. Delete them by hand if you no longer need them.";
+const STAGED_STEP =
+  "The new release's copy of every file under Needs a decision and Safe to apply is staged in `.groundwork/upgrade/staged/` as `<path>.staged`. Apply them by hand: copy a Safe to apply file over the project's, and merge a Needs a decision file with your own changes.";
+
+describe("renderUpgradeReport (exact, hand-written expectations)", () => {
+  it("renders the full plan exactly", () => {
+    const expected = [
+      "# Upgrade plan",
+      "",
+      "From 1.2.0 to 1.3.0.",
+      "",
+      "## Summary",
+      "",
+      "| class | files |",
+      "| --- | --- |",
+      "| conflict-3way | 2 |",
+      "| conflict-2way | 1 |",
+      "| safe-update | 2 |",
+      "| add | 1 |",
+      "| remove | 1 |",
+      "| orphan-edited | 1 |",
+      "| user-deleted | 1 |",
+      "| local-only | 1 |",
+      "| gone | 1 |",
+      "| current | 2 |",
+      "",
+      "## Needs a decision",
+      "",
+      "You changed these files and the new release changed them too, or the file differs from the new release with no recorded base to compare against.",
+      "",
+      "- `a.md` (conflict-3way)",
+      "- `b.md` (conflict-3way)",
+      "- `c.md` (conflict-2way)",
+      "",
+      "## Safe to apply",
+      "",
+      "You have not changed these files, or they are new in this release.",
+      "",
+      "- `b.txt` (safe-update)",
+      "- `d.txt` (safe-update)",
+      "- `e.txt` (add)",
+      "",
+      "## Removed upstream",
+      "",
+      REMOVED_INTRO,
+      "",
+      "- `edited.txt` (orphan-edited)",
+      "- `old.txt` (remove)",
+      "",
+      "## Key-level changes",
+      "",
+      KEY_INTRO,
+      "",
+      "- `package.json`",
+      "  - `/scripts/test`: add",
+      "  - `/scripts/verify`: safe-update",
+      "",
+      "## Next step",
+      "",
+      NOT_YET,
+      "",
+      STAGED_STEP,
+      "",
+      REMOVED_STEP,
+      "",
+    ].join("\n");
+    expect(renderUpgradeReport(FULL)).toBe(expected);
+  });
+
+  it("renders a remove-only plan exactly (nothing staged, something removed)", () => {
+    const expected = [
+      "# Upgrade plan",
+      "",
+      "From 1.2.0 to 1.3.0.",
+      "",
+      "## Summary",
+      "",
+      "| class | files |",
+      "| --- | --- |",
+      "| remove | 1 |",
+      "",
+      "## Removed upstream",
+      "",
+      REMOVED_INTRO,
+      "",
+      "- `old.txt` (remove)",
+      "",
+      "## Next step",
+      "",
+      NOT_YET,
+      "",
+      REMOVED_STEP,
+      "",
+    ].join("\n");
+    expect(renderUpgradeReport(planOf([file("old.txt", "remove")]))).toBe(
+      expected,
+    );
+  });
+
+  it("sorts unsorted input paths, files and pointers", () => {
+    const plan = planOf(
+      [
+        file("z.txt", "safe-update"),
+        file("m.txt", "add"),
+        file("a.txt", "safe-update"),
+      ],
+      {
+        "tsconfig.json": [
+          { pointer: "/z", class: "add" },
+          { pointer: "/a", class: "safe-update" },
+        ],
+        "package.json": [
+          { pointer: "/scripts/z", class: "add" },
+          { pointer: "/scripts/a", class: "safe-update" },
+        ],
+      },
+    );
+    const expected = [
+      "# Upgrade plan",
+      "",
+      "From 1.2.0 to 1.3.0.",
+      "",
+      "## Summary",
+      "",
+      "| class | files |",
+      "| --- | --- |",
+      "| safe-update | 2 |",
+      "| add | 1 |",
+      "",
+      "## Safe to apply",
+      "",
+      "You have not changed these files, or they are new in this release.",
+      "",
+      "- `a.txt` (safe-update)",
+      "- `m.txt` (add)",
+      "- `z.txt` (safe-update)",
+      "",
+      "## Key-level changes",
+      "",
+      KEY_INTRO,
+      "",
+      "- `package.json`",
+      "  - `/scripts/a`: safe-update",
+      "  - `/scripts/z`: add",
+      "- `tsconfig.json`",
+      "  - `/a`: safe-update",
+      "  - `/z`: add",
+      "",
+      "## Next step",
+      "",
+      NOT_YET,
+      "",
+      STAGED_STEP,
+      "",
+    ].join("\n");
+    expect(renderUpgradeReport(plan)).toBe(expected);
+  });
+});

@@ -82,7 +82,8 @@ contract; `packages/cli/src/main.ts`.
 The `.groundwork/manifest.json` that fresh mode writes: a tracked record of
 which CLI version, project name and packs produced a project, with a hash of
 each emitted file. It is what will let an upgrade tell a file you edited from a
-file upstream changed. The upgrade itself is not built yet.
+file upstream changed. `--upgrade` reads it today and stages a plan; applying
+the plan is not built yet.
 In this repo: [`docs/decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md).
 
 ### /customize

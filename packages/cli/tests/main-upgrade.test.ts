@@ -9,6 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -27,6 +28,7 @@ import {
 } from "../src/manifest.js";
 import type { Manifest } from "../src/manifest.js";
 import type { Out } from "../src/output.js";
+import type * as PlanModule from "../src/upgrade/plan.js";
 import type { InstallPluginResult } from "../src/plugin.js";
 import { snapshotTree } from "./upgrade-plan-fixture.js";
 
@@ -52,6 +54,26 @@ vi.mock("../src/plugin.js", () => ({
   installCustomizeSkillGuarded: installGuardedMock,
 }));
 
+// Wraps (never replaces) renderRelease to record where the release was
+// rendered and that the directory existed when the call returned.
+const { renderedDirs, existedAtRender } = vi.hoisted(() => ({
+  renderedDirs: [] as string[],
+  existedAtRender: [] as boolean[],
+}));
+vi.mock("../src/upgrade/plan.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof PlanModule>();
+  const { existsSync: exists } = await import("node:fs");
+  return {
+    ...actual,
+    renderRelease: (...args: Parameters<typeof actual.renderRelease>) => {
+      const release = actual.renderRelease(...args);
+      renderedDirs.push(release.dir);
+      existedAtRender.push(exists(release.dir));
+      return release;
+    },
+  };
+});
+
 const { main, CliUsageError } = await import("../src/main.js");
 const { resolveCliVersion } = await import("../src/inventory.js");
 
@@ -59,19 +81,23 @@ interface PlanOnDisk {
   fromCliVersion: string;
   toCliVersion: string;
   legacy: boolean;
-  files: { path: string; class: string }[];
+  files: { path: string; class: string; nextSha256?: string }[];
   staged: { path: string; staged: string; sha256: string }[];
 }
 
-function recordingOut(): Out & { infoLines: string[] } {
+function recordingOut(): Out & { infoLines: string[]; warnLines: string[] } {
   const infoLines: string[] = [];
+  const warnLines: string[] = [];
   return {
     infoLines,
+    warnLines,
     info: (msg) => {
       infoLines.push(msg);
     },
     notice: () => undefined,
-    warn: () => undefined,
+    warn: (msg) => {
+      warnLines.push(msg);
+    },
     success: () => undefined,
   };
 }
@@ -175,13 +201,18 @@ describe("main --upgrade", () => {
       60_000,
     );
 
-    it("prints a one-line summary and the staging location through out.info", () => {
+    it("prints the whole one-line summary and the staging location through out.info", () => {
       buildProject();
       const out = recordingOut();
       upgrade(out);
-      const text = out.infoLines.join("\n");
-      expect(text).toContain("wrote .groundwork/upgrade/");
-      expect(text).toMatch(/current/);
+      const version = resolveCliVersion();
+      const count = planOnDisk().files.length;
+      expect(out.infoLines).toContain(
+        `upgrade plan ${version} -> ${version}: ${String(count)} current`,
+      );
+      expect(out.infoLines.join("\n")).toMatch(
+        /wrote \.groundwork\/upgrade\/ \(.*\b0 staged files\)/,
+      );
     });
 
     it("exits normally and leaves no temporary render directory behind", () => {
@@ -190,6 +221,33 @@ describe("main --upgrade", () => {
         upgrade();
       }).not.toThrow();
       expect(renderLeftovers()).toEqual([]);
+    });
+
+    it("renders under the stubbed temp root while running and removes the directory afterwards", () => {
+      buildProject();
+      renderedDirs.length = 0;
+      existedAtRender.length = 0;
+
+      upgrade();
+
+      expect(renderedDirs).toHaveLength(1);
+      const dir = renderedDirs[0] ?? "";
+      expect(dir.startsWith(`${tmpRoot}/`)).toBe(true);
+      expect(existedAtRender).toEqual([true]);
+      expect(existsSync(dir)).toBe(false);
+    });
+
+    it("removes the render directory when the plan fails too", () => {
+      buildProject();
+      writeFileSync(join(project, "tsconfig.json"), "{ broken");
+      renderedDirs.length = 0;
+
+      expect(() => {
+        upgrade();
+      }).toThrow(/tsconfig\.json/);
+
+      expect(renderedDirs).toHaveLength(1);
+      expect(existsSync(renderedDirs[0] ?? "")).toBe(false);
     });
 
     it("gives byte-identical plan.json and report on a second run", () => {
@@ -214,8 +272,11 @@ describe("main --upgrade", () => {
     const OLD_COMMITLINT = "// the old commitlint config\n";
     const OLD_LEFTHOOK = "# the old lefthook\n";
 
+    let freshCommitlint: Buffer;
+
     function tamper(): void {
       buildProject();
+      freshCommitlint = readFileSync(join(project, "commitlint.config.js"));
       // safe-update: the project still holds the OLD content the manifest records.
       writeFileSync(join(project, "commitlint.config.js"), OLD_COMMITLINT);
       // conflict-3way: the manifest records an old hash AND the user edited the file.
@@ -271,11 +332,40 @@ describe("main --upgrade", () => {
       ]) {
         expect(existsSync(join(stagedDir, `${unstaged}.staged`))).toBe(false);
       }
-      // The staged bytes are the new release's, not the project's.
-      expect(
-        readFileSync(join(stagedDir, "commitlint.config.js.staged"), "utf8"),
-      ).not.toBe(OLD_COMMITLINT);
+      // The staged bytes are exactly the new release's (what fresh mode emitted).
+      const stagedBytes = readFileSync(
+        join(stagedDir, "commitlint.config.js.staged"),
+      );
+      expect(stagedBytes).toEqual(freshCommitlint);
+      const staged = plan.staged.find((s) => s.path === "commitlint.config.js");
+      const planned = plan.files.find((e) => e.path === "commitlint.config.js");
+      expect(planned?.nextSha256).toBeDefined();
+      expect(staged?.sha256).toBe(planned?.nextSha256);
+      expect(staged?.sha256).toBe(sha256Hex(stagedBytes));
+      expect(staged?.sha256).toBe(sha256Hex(freshCommitlint));
       expect(treeOutsideUpgrade()).toEqual(before);
+    });
+
+    it("pluralises the staged-file count in the summary line", () => {
+      tamper();
+      const out = recordingOut();
+      upgrade(out);
+      expect(out.infoLines.join("\n")).toMatch(/\b2 staged files\)/);
+    });
+
+    it("says '1 staged file' for exactly one staged file", () => {
+      buildProject();
+      writeFileSync(join(project, "commitlint.config.js"), OLD_COMMITLINT);
+      tamperManifest((m) => {
+        m.files["commitlint.config.js"] = {
+          sha256: sha256Hex(OLD_COMMITLINT),
+          origin: "emitted",
+        };
+      });
+      const out = recordingOut();
+      upgrade(out);
+      expect(planOnDisk().staged).toHaveLength(1);
+      expect(out.infoLines.join("\n")).toMatch(/\b1 staged file\)/);
     });
 
     it("lists the decisions and removals in the report", () => {
@@ -362,6 +452,108 @@ describe("main --upgrade", () => {
       expect(existsSync(upgradeDir())).toBe(false);
       expect(renderLeftovers()).toEqual([]);
     });
+  });
+
+  describe("a previous .groundwork/upgrade/", () => {
+    it("discards foreign entries loudly through the warn channel, naming each", () => {
+      buildProject();
+      upgrade();
+      writeFileSync(join(upgradeDir(), "decisions.json"), "[]\n");
+      writeFileSync(join(upgradeDir(), "notes.txt"), "mine\n");
+      const out = recordingOut();
+
+      upgrade(out);
+
+      expect(readdirSync(upgradeDir()).sort()).toEqual([
+        "plan.json",
+        "upgrade-report.md",
+      ]);
+      const warning = out.warnLines.join("\n");
+      expect(warning).toContain("decisions.json");
+      expect(warning).toContain("notes.txt");
+      expect(warning).toMatch(/discarded/);
+      expect(warning).toMatch(/decision/);
+      expect(warning).toMatch(/own plan/);
+      const elsewhere = [...out.infoLines].join("\n");
+      expect(elsewhere).not.toContain("notes.txt");
+    });
+
+    it("does not warn when the previous staging holds only plan.json, upgrade-report.md and staged", () => {
+      buildProject();
+      writeFileSync(join(project, "commitlint.config.js"), "// mine\n");
+      tamperManifest((m) => {
+        m.files["commitlint.config.js"] = {
+          sha256: sha256Hex("// mine\n"),
+          origin: "emitted",
+        };
+      });
+      upgrade();
+      expect(readdirSync(upgradeDir()).sort()).toEqual([
+        "plan.json",
+        "staged",
+        "upgrade-report.md",
+      ]);
+      const out = recordingOut();
+
+      upgrade(out);
+
+      expect(out.warnLines).toEqual([]);
+    });
+
+    it("refuses a regular file at .groundwork/upgrade with a plain error, writing nothing", () => {
+      buildProject();
+      writeFileSync(join(project, ".groundwork", "upgrade"), "i am a file\n");
+      const before = snapshotTree(project);
+
+      let thrown: unknown;
+      try {
+        upgrade();
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown).not.toBeInstanceOf(CliUsageError);
+      expect(thrown).not.toBeInstanceOf(ManifestError);
+      const message = (thrown as Error).message;
+      expect(message).toContain(".groundwork/upgrade");
+      expect(message).toMatch(/remove/);
+      expect(snapshotTree(project)).toEqual(before);
+      expect(
+        readFileSync(join(project, ".groundwork", "upgrade"), "utf8"),
+      ).toBe("i am a file\n");
+      expect(renderLeftovers()).toEqual([]);
+    });
+  });
+
+  describe("an unreadable target", () => {
+    const cannotChmod =
+      process.platform === "win32" || process.getuid?.() === 0;
+
+    it.skipIf(cannotChmod)(
+      "surfaces the real error naming the path instead of 'does not exist'",
+      () => {
+        const locked = join(base, "locked");
+        const target = join(locked, "project");
+        mkdirSync(target, { recursive: true });
+        chmodSync(locked, 0o000);
+
+        let thrown: unknown;
+        try {
+          main([target, "--upgrade"], "linux", recordingOut());
+        } catch (error) {
+          thrown = error;
+        } finally {
+          chmodSync(locked, 0o755);
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(CliUsageError);
+        const message = (thrown as Error).message;
+        expect(message).toContain(target);
+        expect(message).not.toMatch(/does not exist/);
+      },
+    );
   });
 
   describe("usage errors in upgrade mode", () => {

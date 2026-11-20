@@ -28,6 +28,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import type { Stats } from "node:fs";
 import assert from "node:assert/strict";
 import { join, relative, resolve, basename } from "node:path";
 import process from "node:process";
@@ -103,7 +104,12 @@ import { gradeToolchain } from "./toolchain/grade.js";
 import { computePlan, renderRelease } from "./upgrade/plan.js";
 import type { UpgradePlan } from "./upgrade/plan.js";
 import { countClasses } from "./upgrade/report.js";
-import { stageUpgrade } from "./upgrade/stage.js";
+import {
+  UPGRADE_PLAN_FILE,
+  UPGRADE_RELATIVE_DIR,
+  UPGRADE_REPORT_FILE,
+} from "./upgrade/paths.js";
+import { inspectPreviousUpgrade, stageUpgrade } from "./upgrade/stage.js";
 import type { StagedUpgrade } from "./upgrade/stage.js";
 
 export interface CliOptions {
@@ -1278,12 +1284,20 @@ function runAdopt(
  */
 function assertUpgradeUsage(options: CliOptions): void {
   const { targetDir } = options;
-  if (!existsSync(targetDir)) {
+  let stat: Stats | undefined;
+  try {
+    // ENOENT only is "absent"; any other failure (EACCES on a parent) is a
+    // runtime error, never mistaken for a missing directory.
+    stat = statSync(targetDir, { throwIfNoEntry: false });
+  } catch (cause) {
+    throw new Error(`could not inspect ${targetDir}`, { cause });
+  }
+  if (stat === undefined) {
     throw new CliUsageError(
       `${targetDir} does not exist -- --upgrade needs a project bootstrapped by this CLI\n\n${USAGE}`,
     );
   }
-  if (!statSync(targetDir).isDirectory()) {
+  if (!stat.isDirectory()) {
     throw new CliUsageError(
       `${targetDir} is not a directory -- --upgrade needs a project directory\n\n${USAGE}`,
     );
@@ -1325,6 +1339,8 @@ function runUpgrade(
       `${targetDir} has no ${MANIFEST_RELATIVE_PATH}, so there is no record to plan an upgrade from -- re-run the CLI in adopt mode in the project (npx @monte3l/groundwork .) and then run /customize to take the new release`,
     );
   }
+  // Before rendering: a non-directory there is refused with nothing written.
+  const foreign = inspectPreviousUpgrade(targetDir);
   const cliVersion = resolveCliVersion();
   const release = renderRelease({
     manifest,
@@ -1341,12 +1357,19 @@ function runUpgrade(
   } finally {
     release.dispose();
   }
+  // Warned only once the swap succeeded: a failed staging leaves them in place.
+  if (foreign.length > 0) {
+    out.warn(
+      `warning: discarded ${foreign.join(", ")} from ${UPGRADE_RELATIVE_DIR}/ -- a decision recorded there is only valid beside its own plan, and this run wrote a new plan`,
+    );
+  }
+  const count = staged.staged.length;
   out.info(upgradeSummary(plan));
   out.info(
-    `wrote .groundwork/upgrade/ (plan.json, upgrade-report.md and ${String(staged.staged.length)} staged files)`,
+    `wrote ${UPGRADE_RELATIVE_DIR}/ (${UPGRADE_PLAN_FILE}, ${UPGRADE_REPORT_FILE} and ${String(count)} staged ${count === 1 ? "file" : "files"})`,
   );
   out.info(
-    "Next: read .groundwork/upgrade/upgrade-report.md -- the /upgrade skill that applies a plan is not available yet",
+    `Next: read ${UPGRADE_RELATIVE_DIR}/${UPGRADE_REPORT_FILE} -- the /upgrade skill that applies a plan is not available yet`,
   );
   return undefined;
 }

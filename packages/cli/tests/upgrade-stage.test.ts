@@ -301,4 +301,76 @@ describe("stageUpgrade", () => {
     expect(() => stage()).toThrow(Error);
     expect(existsSync(upgradeDir())).toBe(false);
   });
+
+  it("records every staged sha256 equal to the plan's nextSha256 for that path", () => {
+    stage();
+    const parsed = JSON.parse(
+      readFileSync(join(upgradeDir(), "plan.json"), "utf8"),
+    ) as {
+      files: { path: string; nextSha256?: string }[];
+      staged: { path: string; sha256: string }[];
+    };
+    expect(parsed.staged.length).toBeGreaterThan(0);
+    for (const entry of parsed.staged) {
+      const planned = parsed.files.find((f) => f.path === entry.path);
+      expect(planned?.nextSha256).toBeDefined();
+      expect(entry.sha256).toBe(planned?.nextSha256);
+    }
+  });
+
+  describe("verifies and reads the release before writing anything", () => {
+    const groundwork = (): string => join(project, ".groundwork");
+
+    it("throws naming the path when the release copy changed after the plan was computed, leaving the previous staging and .groundwork byte-identical", () => {
+      stage();
+      const before = snapshotTree(groundwork());
+      writeFileSync(join(release.dir, "a.txt"), "a changed after the plan\n");
+
+      let thrown: unknown;
+      try {
+        stage();
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toContain("a.txt");
+      expect((thrown as Error).message).toMatch(
+        /changed after the plan was computed/,
+      );
+      expect(snapshotTree(groundwork())).toEqual(before);
+    });
+
+    it("creates no .groundwork at all when a first staging finds a changed release copy", () => {
+      writeFileSync(join(release.dir, "a.txt"), "a changed after the plan\n");
+      expect(() => stage()).toThrow(/a\.txt/);
+      expect(existsSync(groundwork())).toBe(false);
+    });
+
+    it("throws naming the path and the release directory, not 'incomplete', when a staged file is missing from the release, leaving the previous staging and .groundwork byte-identical", () => {
+      stage();
+      const before = snapshotTree(groundwork());
+      rmSync(join(release.dir, "docs", "guide.md"));
+
+      let thrown: unknown;
+      try {
+        stage();
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain("docs/guide.md");
+      expect(message).toContain(release.dir);
+      expect(message).not.toContain("incomplete");
+      expect(snapshotTree(groundwork())).toEqual(before);
+    });
+
+    it("creates no .groundwork at all when a first staging finds a missing release file", () => {
+      rmSync(join(release.dir, "c.txt"));
+      expect(() => stage()).toThrow(/c\.txt/);
+      expect(existsSync(groundwork())).toBe(false);
+    });
+  });
 });

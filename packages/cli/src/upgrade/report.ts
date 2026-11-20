@@ -8,6 +8,7 @@
  * entries.
  */
 import type { UpgradeClass } from "./classify.js";
+import { UPGRADE_RELATIVE_DIR, UPGRADE_STAGED_DIR_NAME } from "./paths.js";
 import type { UpgradePlan } from "./plan.js";
 
 type PlanFile = UpgradePlan["files"][number];
@@ -30,7 +31,7 @@ const SUMMARY_ORDER: readonly UpgradeClass[] = [
 ];
 
 /** Where the staged copies live, relative to the project root. */
-const STAGED_DIR = ".groundwork/upgrade/staged/";
+const STAGED_DIR = `${UPGRADE_RELATIVE_DIR}/${UPGRADE_STAGED_DIR_NAME}/`;
 
 /**
  * The section each class is listed under; a table keyed by every class, so a
@@ -131,7 +132,7 @@ function nextStepLines(staged: boolean, removed: boolean): string[] {
     "",
     "## Next step",
     "",
-    "The `/upgrade` skill that applies a plan is not available yet, so nothing in the project has been changed: this run wrote only under `.groundwork/upgrade/`.",
+    `The \`/upgrade\` skill that applies a plan is not available yet, so nothing in the project has been changed: this run wrote only under \`${UPGRADE_RELATIVE_DIR}/\`.`,
   ];
   if (!staged && !removed) {
     lines.push(

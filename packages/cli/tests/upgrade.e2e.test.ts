@@ -96,6 +96,10 @@ describe("--upgrade end-to-end", () => {
       expect(result.status, result.output).toBe(2);
       expect(result.output).toContain("--json");
       expect(result.output).toMatch(/not available yet/);
+      const report = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(report["schema"]).toBe("groundwork.report");
+      expect(report["status"]).toBe("usage");
+      expect(report["exitCode"]).toBe(2);
       expect(existsSync(join(projectDir, ".groundwork", "upgrade"))).toBe(
         false,
       );
