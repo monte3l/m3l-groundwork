@@ -77,6 +77,14 @@ deletes any old `inventory.json` first and writes it last, atomically, so a
 In this repo: [`CLAUDE.md`](../CLAUDE.md#architecture-notes), the adopt mode
 contract; `packages/cli/src/main.ts`.
 
+### Manifest
+
+The planned `.groundwork/manifest.json`: a tracked record of which CLI version,
+project name and packs produced a project, with a hash of each emitted file. It
+is what lets an upgrade tell a file you edited from a file upstream changed.
+Not built yet.
+In this repo: [`docs/decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md).
+
 ### /customize
 
 The Claude Code skill this project ships as its adaptive phase: for a fresh
