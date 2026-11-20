@@ -162,6 +162,50 @@ surveys which packs apply and stages them under `.groundwork/packs/` (and
 the baseline files it would add under `.groundwork/baseline/`);
 `/customize` installs from there after you confirm.
 
+## Upgrading to a new release
+
+> [!NOTE]
+> The upgrade flow is designed but not built yet. The design is in
+> [`docs/decisions/0001-upgrade-flow.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/decisions/0001-upgrade-flow.md).
+> Until it ships, the way to take a new release is the one in
+> [`docs/known-gaps.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/known-gaps.md): re-run the CLI in the project
+> (it is detected as adopt mode) and then `/customize`.
+
+The planned flow has three parts:
+
+1. **A manifest.** `.groundwork/manifest.json`, committed to git, records the
+   CLI version, the project name, the packs and a hash of each file groundwork
+   emitted. Fresh mode writes it, and `/customize` writes it after an adopt.
+2. **`npx @monte3l/groundwork@latest --upgrade .`** compares the manifest, your
+   files and the new baseline, offline. It writes only under
+   `.groundwork/upgrade/`: a plan, a report and staged copies. It never
+   touches a project file.
+3. **`/upgrade`**, a skill the same command copies into the project, applies
+   the plan. For scripted runs, a separate `--apply <answers.json>` step does
+   the same without a conversation. It is the only step that writes project
+   files, it runs only when you ask, and it refuses if your tree changed since
+   the plan was made.
+
+For each file it compares what groundwork last wrote, what you have now and what
+the new release writes:
+
+| What changed                              | What happens                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| Only upstream changed it                  | Updated in one batch you confirm                                    |
+| Only you changed it                       | Left alone                                                          |
+| Both changed it                           | Shown as upstream change next to your change, with a merge proposed |
+| New upstream                              | Added in the batch                                                  |
+| Removed upstream, and you never edited it | Deleted in the batch                                                |
+| Removed upstream, and you edited it       | Reported, never deleted                                             |
+
+`package.json` and the tsconfig files are compared key by key, so a bumped
+`typescript` version updates unless you changed that key.
+
+A project bootstrapped before the manifest existed has none. Its first upgrade
+is a two-way comparison that ends by writing one, and later upgrades are
+three-way. Upgrades run only when you ask. Nothing checks for a new release
+for you.
+
 ## Flags
 
 | Flag                    | Effect                                                                        |
