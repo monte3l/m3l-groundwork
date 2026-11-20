@@ -166,7 +166,9 @@ to an already-bootstrapped project. A pack that lists only fresh mode (such as
 ## Upgrading to a new release
 
 > [!NOTE]
-> The upgrade flow is designed but not built yet. The design is in
+> The upgrade flow is designed and only partly built: fresh mode already writes
+> the manifest (step 1 below), and `--upgrade` and `/upgrade` do not exist yet.
+> The design is in
 > [`docs/decisions/0001-upgrade-flow.md`](docs/decisions/0001-upgrade-flow.md).
 > Until it ships, the way to take a new release is the one in
 > [`docs/known-gaps.md`](docs/known-gaps.md): re-run the CLI in the project
@@ -176,7 +178,8 @@ The planned flow has three parts:
 
 1. **A manifest.** `.groundwork/manifest.json`, committed to git, records the
    CLI version, the project name, the packs and a hash of each file groundwork
-   emitted. Fresh mode writes it, and `/customize` writes it after an adopt.
+   emitted. Fresh mode writes it today. `/customize` will write it after an
+   adopt.
 2. **`npx @monte3l/groundwork@latest --upgrade .`** compares the manifest, your
    files and the new baseline, offline. It writes only under
    `.groundwork/upgrade/`: a plan, a report and staged copies. It never
@@ -282,7 +285,8 @@ my-new-project/
 ├── .github/workflows/     # ci, dependency-review, security-audit
 ├── .claude/               # agents, skills, hooks, rules, settings.json
 ├── CLAUDE.md              # the agent-facing project guide
-└── docs/research/         # living trackers for the guidance sweeps
+├── docs/research/         # living trackers for the guidance sweeps
+└── .groundwork/           # manifest.json: what this run emitted, with hashes
 ```
 
 `pnpm verify` runs the same five [groups](docs/glossary.md#verify-group)

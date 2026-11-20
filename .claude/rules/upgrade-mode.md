@@ -9,13 +9,16 @@ paths:
   - "packages/plugin/skills/upgrade/**"
 ---
 
-# Upgrade mode (design record, not yet built)
+# Upgrade mode (design record, partly built)
 
 The CLI's third mode and the `/upgrade` skill. The decision and its
 alternatives are in
 [`docs/decisions/0001-upgrade-flow.md`](../../docs/decisions/0001-upgrade-flow.md).
-None of this exists in `packages/` yet; the paths above are where it will land.
-Update this file as each piece ships, and drop this line when the last one does.
+**Built so far:** `packages/cli/src/manifest.ts` (schema 1) and fresh mode
+writing `.groundwork/manifest.json`. Everything else, `--upgrade`, `--apply`,
+the classifier and the `/upgrade` skill, is not in `packages/` yet; the paths
+above are where it will land. Update this file as each piece ships, and drop
+this line when the last one does.
 
 - **Offline and deterministic, like Phase A.** `--upgrade` reads the project and
   the packaged baseline, and writes only under `.groundwork/upgrade/`:
@@ -32,10 +35,15 @@ Update this file as each piece ships, and drop this line when the last one does.
   delete it. It stores `cliVersion`, `tokens`, `packs`, a sha256 per file with
   an `origin` of `emitted` or `merged`, and a sha256 per JSON key for
   `package.json`, `tsconfig*.json` and `.claude/settings.json`. Hash the
-  post-pack output, since packs merge into shared files. It also stores
+  post-pack output, since packs merge into shared files. Schema 1, written by
+  fresh mode today, holds exactly those fields and `parseManifest` rejects any
+  other top-level key. The change that makes `/customize` or `--apply` write
   `answers.interview` and the mechanical Round 1 actions (agent removal, the
-  verify-policy JSON, the Dependabot swap) so the old base can be rebuilt with
-  the tailoring replayed; keep it in step with Round 1 in `/customize`.
+  verify-policy JSON, the Dependabot swap), so the old base can be rebuilt with
+  the tailoring replayed, must extend `parseManifest` with them (and bump
+  `schemaVersion` if an older reader would misread the result) and keep them in
+  step with Round 1 in `/customize`. Fresh mode's `files` omit the `/customize`
+  skill copy and anything under `.groundwork/`.
 - **The classifier is a pure function.** `M` is the manifest hash, `C` the
   current file and `N` the new emitted file:
 
