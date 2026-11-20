@@ -6,6 +6,7 @@
  * defence: whatever was thrown, and whatever fails while reporting it, the
  * process ends with an exit code set and never with an uncaught throw.
  */
+import { EXIT_CODES, type ExitCode } from "./exit-codes.js";
 import { escapeControls, formatFatalError } from "./format-error.js";
 
 /** Printed when neither the formatted report nor the raw stack could be printed on the raw channel. */
@@ -26,12 +27,31 @@ function rawText(error: unknown): string {
   return escapeControls(String(stack ?? error));
 }
 
+/** The non-zero {@link ExitCode}s -- the only codes a fatal path may end with. */
+type FatalExitCode = Exclude<ExitCode, typeof EXIT_CODES.ok>;
+
+/** Every value in {@link EXIT_CODES} except `ok`, for the runtime check on `classify`'s result. */
+const FATAL_CODES: readonly unknown[] = Object.values(EXIT_CODES).filter(
+  (code) => code !== EXIT_CODES.ok,
+);
+
 /**
- * Reports a fatal `error`: sets the exit code first -- 2 when
- * `isUsageError(error)` says it is a usage error, 1 otherwise, including
- * when `isUsageError` itself throws -- then prints the report through
- * `io.print`. For a usage error the report is exactly
- * `formatErrorChain(error)`. For any other failure it is
+ * Narrows `value` to a {@link FatalExitCode}: one of `EXIT_CODES`' values
+ * other than `ok`, compared with `includes` (so `NaN` never matches).
+ */
+function isFatalExitCode(value: unknown): value is FatalExitCode {
+  return FATAL_CODES.includes(value);
+}
+
+/**
+ * Reports a fatal `error`: sets the exit code first -- whatever
+ * `classify(error)` returns when that is a non-zero {@link ExitCode}
+ * (`./exit-codes.ts`), or `EXIT_CODES.runtime` (1) when `classify` throws or
+ * returns anything else (`0`, `undefined`, `NaN`, an out-of-range number, a
+ * non-number) -- then prints the
+ * report through `io.print`. For any code other than `EXIT_CODES.runtime`
+ * (a usage error, say) the report is exactly `formatErrorChain(error)`. For
+ * a runtime failure it is
  * `formatFatalError(error, { withName: true, withStack: debug })` (both in
  * `./format-error.ts`): the same chain, its top line prefixed `<name>: `
  * when `error` is an `Error` with a readable, non-blank `name` other than
@@ -57,14 +77,19 @@ function rawText(error: unknown): string {
  * @param io - Where the exit code and the report go: `print` for the
  * formatted chain, `printRaw` -- a plain write with nothing in it that can
  * fail the way `print` did -- for all three fallbacks.
- * @param isUsageError - Whether `error` is a bad invocation rather than a
- * runtime failure.
+ * @param classify - The non-zero exit code `error` maps to
+ * (`.claude/rules/headless-mode.md` lists them); in the CLI,
+ * `EXIT_CODES.usage` for a `CliUsageError` and `EXIT_CODES.runtime` for
+ * anything else. Its result is checked at runtime: anything other than 1,
+ * 2, 3 or 4 is treated exactly like a throwing classifier -- exit code 1
+ * and the runtime report.
  * @param debug - Append the top error's own stack (never a cause's) to a
- * runtime failure's report (never to a usage error's); defaults to `false`.
+ * runtime failure's report (never to any other code's); defaults to `false`.
  * The CLI sets it when `M3L_DEBUG` is non-empty.
  *
  * @example
  * ```ts
+ * import { EXIT_CODES } from "./exit-codes.js";
  * import { CliUsageError, main } from "./main.js";
  * import { handleFatal } from "./fatal.js";
  *
@@ -84,7 +109,8 @@ function rawText(error: unknown): string {
  *         console.error(text);
  *       },
  *     },
- *     (e) => e instanceof CliUsageError,
+ *     (e) =>
+ *       e instanceof CliUsageError ? EXIT_CODES.usage : EXIT_CODES.runtime,
  *     (process.env["M3L_DEBUG"] ?? "") !== "",
  *   );
  * }
@@ -97,21 +123,24 @@ export function handleFatal(
     print(text: string): void;
     printRaw(text: string): void;
   },
-  isUsageError: (error: unknown) => boolean,
+  classify: (error: unknown) => FatalExitCode,
   debug = false,
 ): void {
-  let code = 1;
+  let code: FatalExitCode = EXIT_CODES.runtime;
   try {
-    code = isUsageError(error) ? 2 : 1;
+    // The type already excludes 0, but a JS caller (the bin script) or a
+    // cast can still hand back anything: check before trusting it.
+    const classified: unknown = classify(error);
+    if (isFatalExitCode(classified)) code = classified;
   } catch {
-    // A classifier that throws cannot vouch for a usage error: a runtime failure.
+    // A classifier that throws cannot vouch for any other code: a runtime failure.
   }
   try {
     io.setExitCode(code);
   } catch {
     // Nothing else can record the code; still try to print the report below.
   }
-  const runtime = code === 1;
+  const runtime = code === EXIT_CODES.runtime;
   const options = { withName: runtime, withStack: runtime && debug };
   try {
     io.print(formatFatalError(error, options));
