@@ -12,12 +12,15 @@ paths:
   - "packages/plugin/skills/upgrade/**"
 ---
 
-# Headless mode (design record, not yet built)
+# Headless mode (design record, partly built)
 
 Unattended runs of all three modes -- fresh, adopt and upgrade -- for `claude -p`
 agents, fleet scripts, local scripts and CI. This file is the contract the CLI,
-the `/customize` skill and the `/upgrade` skill share. None of it exists in
-`packages/` yet; the paths above are where it will land. Update this file as
+the `/customize` skill and the `/upgrade` skill share. Shipped so far: the
+exit-code table (`exit-codes.ts`), the `--json` flag for fresh mode and the
+adopt survey, and the success and error shapes of `report` v1
+(`headless/report.ts`); each is marked **(shipped)** below. Everything else
+is design only; the paths above are where it will land. Update this file as
 each piece ships, and drop this line when the last one does.
 
 - **Fail closed, never guess.** A decision nobody supplied stops the run with
@@ -31,7 +34,7 @@ each piece ships, and drop this line when the last one does.
   and refuses with exit 4 on drift. Fresh mode validates the answers before its
   first `mkdir`, then bootstraps and applies in one run. `mode` in the answers
   is required and never inferred from the directory.
-- **Exit codes** (checked in this order: usage, load the plan, drift,
+- **Exit codes** (shipped as `EXIT_CODES`; checked in this order: usage, load the plan, drift,
   completeness, apply). Only these are part of the contract:
 
   | Code | Meaning                                                               |
@@ -42,11 +45,18 @@ each piece ships, and drop this line when the last one does.
   | 3    | Decisions pending; the pending document was written                   |
   | 4    | Drift: the tree changed since the survey or plan, nothing was written |
 
-- **`--json` keeps stdout pure.** One report document on stdout, human text on
-  stderr, and child processes (`git init`, `pnpm install`) get
+- **`--json` keeps stdout pure (shipped for fresh and the adopt survey).** One
+  report document on stdout, human text on stderr (`createOut({ json: true })`;
+  `Out.notice` carries the warning-painted lines that go to stdout in human
+  mode), and child processes (`git init`, `pnpm install`) get
   `["ignore", 2, 2]`. `bin/m3l-groundwork.mjs` looks for `--json` before
-  `parseArgs`, so a usage error also produces a JSON envelope. `--dry-run`
-  writes nothing, not even under `.groundwork/`.
+  `parseArgs`, so a usage error also produces a JSON envelope; it writes the
+  report exactly once, after `main()` returns or after `handleFatal` has
+  printed the human error, and the exit codes do not change. `main()` writes
+  no report itself. `--version --json` and `--list-packs --json` print their
+  own single-line `groundwork.version` and `groundwork.packs` documents;
+  `--help` is the one exception and always prints the usage text.
+  `--dry-run` (not built) writes nothing, not even under `.groundwork/`.
 - **`answers` v1** (`schema: "groundwork.answers"`, `schemaVersion: 1`). One
   file for every mode; the pending document uses the same schema under a
   `partial` profile that allows `null`. Sections: `mode`, `basis`
@@ -63,11 +73,21 @@ each piece ships, and drop this line when the last one does.
   `upgrade.conflicts` has the same shape as `.groundwork/upgrade/decisions.json`:
   one record, not two.
 - **`report` v1** (`schema: "groundwork.report"`, `schemaVersion: 1`):
-  `cliVersion`, `mode`, `phase` (`survey`, `plan`, `apply` or `stamp`),
-  `dryRun`, `status` (`ok`, `noop`, `pending`, `drift`, `error` or `usage`),
-  `exitCode`, `target`, `artifacts`, `changes` (`path`, `action`, `class`,
-  `sha256Before`, `sha256After`), `pending`, `handoff`, `drift`, `setupSteps`,
-  `warnings` and `error`.
+  `cliVersion`, `mode` (`fresh`, `adopt`, `upgrade` or `null`), `phase`
+  (`survey`, `plan`, `apply`, `stamp` or `null`; both are `null` in an error
+  envelope), `dryRun`, `status` (`ok`, `noop`, `pending`, `drift`, `error`
+  or `usage`), `exitCode`, `target`, `artifacts`, `changes` (`path`,
+  `action`, `class`, `sha256Before`, `sha256After`), `pending`, `handoff`,
+  `drift`, `setupSteps`, `warnings`, `nextStep` and `error`, always in that
+  order with no field omitted. **Shipped:** `buildReport` (a fresh run is `phase: "apply"`, an
+  adopt survey `phase: "survey"` with `artifacts.inventory`
+  `.groundwork/inventory.json`) and `buildErrorReport` (`status` `error` for
+  exit 1, `usage` for exit 2, `mode`/`phase` `null`, `error.chain` the
+  message then each chained value's as strings, through `format-error.ts`'s
+  `errorMessageChain`: cycle-safe, depth-capped, never throws). `dryRun` is
+  always `false` and `changes`, `pending`, `handoff` and `drift` are always
+  empty until `--apply` ships; `noop`, `pending`, `drift`, `plan` and
+  `stamp` are not produced yet.
 - **Pending location.** Adopt and upgrade write
   `.groundwork/headless/pending.json`. Fresh must leave the target untouched,
   so its pending document goes only in the report, plus `--pending-out <path>`.

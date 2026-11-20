@@ -177,9 +177,12 @@ describe("createOut (json mode)", () => {
     expect(written(plainStderr)).toBe("ok\nhmm\n");
   });
 
-  it("falls back to process.stderr when no stderr is injected", () => {
+  it("routes every line through console.error when no stderr is injected, never process.stderr.write", () => {
     vi.stubEnv("NO_COLOR", "1");
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     const stdoutWrite = vi
       .spyOn(process.stdout, "write")
       .mockImplementation(() => true);
@@ -191,12 +194,10 @@ describe("createOut (json mode)", () => {
     out.info("a");
     out.success("b");
     out.warn("c");
+    out.notice("d");
 
-    expect(stderrWrite.mock.calls.map((call) => String(call[0]))).toEqual([
-      "a\n",
-      "b\n",
-      "c\n",
-    ]);
+    expect(consoleError.mock.calls).toEqual([["a"], ["b"], ["c"], ["d"]]);
+    expect(stderrWrite).not.toHaveBeenCalled();
     expect(stdoutWrite).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
   });
@@ -220,5 +221,74 @@ describe("createOut (json mode)", () => {
 
     expect(written(stderr)).toContain("\u001b[");
     expect(written(stderr)).toContain("x");
+  });
+});
+
+describe("Out.notice (the warning-painted line)", () => {
+  it("is part of the Out type", () => {
+    expectTypeOf<Out["notice"]>().toEqualTypeOf<(msg: string) => void>();
+  });
+
+  it("human mode: console.log of the stdout-painted warning line, bytes identical to today", () => {
+    vi.stubEnv("NO_COLOR", undefined);
+    vi.stubEnv("FORCE_COLOR", "1");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    createOut({ json: false }).notice("over cap");
+
+    expect(log).toHaveBeenCalledExactlyOnceWith(
+      paint(process.stdout, "warning", "over cap"),
+    );
+    expect(log.mock.calls[0]?.[0]).toContain("\u001b[");
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("human mode: writes to an injected stdout, painted for stdout's colour support, never stderr", () => {
+    vi.stubEnv("NO_COLOR", undefined);
+    vi.stubEnv("FORCE_COLOR", undefined);
+    const stdout = fakeStream(true);
+    const stderr = fakeStream(false);
+
+    createOut({
+      json: false,
+      stdout: asStream(stdout),
+      stderr: asStream(stderr),
+    }).notice("n");
+
+    expect(written(stdout)).toBe(`${paint(stdout, "warning", "n")}\n`);
+    expect(written(stdout)).toContain("\u001b[");
+    expect(written(stderr)).toBe("");
+  });
+
+  it("json mode: goes to stderr painted for stderr's colour support, nothing to stdout or console.log", () => {
+    vi.stubEnv("NO_COLOR", undefined);
+    vi.stubEnv("FORCE_COLOR", undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const stdout = fakeStream(true);
+    const stderr = fakeStream(false);
+
+    createOut({
+      json: true,
+      stdout: asStream(stdout),
+      stderr: asStream(stderr),
+    }).notice("n");
+
+    expect(written(stderr)).toBe("n\n");
+    expect(written(stdout)).toBe("");
+    expect(log).not.toHaveBeenCalled();
+
+    const colourStderr = fakeStream(true);
+    createOut({
+      json: true,
+      stdout: asStream(fakeStream(false)),
+      stderr: asStream(colourStderr),
+    }).notice("n");
+    expect(written(colourStderr)).toBe(
+      `${paint(colourStderr, "warning", "n")}\n`,
+    );
+    expect(written(colourStderr)).toContain("\u001b[");
   });
 });

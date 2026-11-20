@@ -4,7 +4,9 @@
 /**
  * Renders a thrown value and its full `cause` chain for the terminal --
  * what `bin/m3l-groundwork.mjs` prints instead of a bare `error.message`,
- * which would silently drop every chained cause.
+ * which would silently drop every chained cause -- and lists the same
+ * chain's messages, with the same guards, for the `--json` error envelope
+ * (`headless/report.ts`).
  */
 
 /** Rendered in place of a value that cannot be read or stringified (a throwing getter, a null-prototype object, a `Symbol` message, a revoked Proxy). */
@@ -484,6 +486,68 @@ function messageLines(message: string, depth: number, head: string): string[] {
 /** `message` as a `caused by:` line at `depth`, every further line indented one level deeper and marked `| `. */
 function causedByLines(message: string, depth: number): string[] {
   return messageLines(message, depth, `${"  ".repeat(depth)}caused by: `);
+}
+
+/** A pending link of {@link errorMessageChain}'s walk: the value and how many links lead to it from the top. */
+interface ChainStep {
+  readonly value: unknown;
+  readonly steps: number;
+}
+
+/** Pushes `node`'s children onto `stack` at `steps`, reversed so they pop in their original order. */
+function pushSteps(stack: ChainStep[], node: Inspected, steps: number): void {
+  const { kept } = childrenOf(node);
+  for (let i = kept.length - 1; i >= 0; i--) {
+    stack.push({ value: kept[i], steps });
+  }
+}
+
+/**
+ * `error`'s message, then every chained value's, depth-first in the order
+ * {@link formatErrorChain} walks them: a `cause` before an
+ * `AggregateError`'s `errors` members (at most 32 per parent). Messages are
+ * raw -- neither split, escaped nor deduplicated against their parent --
+ * and read with the same guards as {@link formatErrorChain}: a message that
+ * cannot be read or stringified, a `Symbol`, a throwing `cause`/`errors`
+ * accessor or an unclassifiable value each yield `[unprintable value]`. An
+ * object (or function) already listed is not listed again, so a cause
+ * cycle ends at the repeat; every branch follows at most 32 links. Always
+ * returns at least one entry, the first being the top message; never
+ * throws.
+ *
+ * @example
+ * ```ts
+ * import { errorMessageChain } from "./format-error.js";
+ *
+ * errorMessageChain(new Error("staging failed", { cause: new Error("ENOSPC") }));
+ * // ["staging failed", "ENOSPC"]
+ * ```
+ */
+export function errorMessageChain(error: unknown): [string, ...string[]] {
+  const top = inspect(error);
+  const chain: [string, ...string[]] = [messageOf(top)];
+  const seen = new Set<object>();
+  if (isObjectLike(error)) {
+    seen.add(error);
+  }
+  const stack: ChainStep[] = [];
+  pushSteps(stack, top, 1);
+  for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+    const { value, steps } = next;
+    if (steps > MAX_DEPTH) {
+      continue;
+    }
+    if (isObjectLike(value)) {
+      if (seen.has(value)) {
+        continue;
+      }
+      seen.add(value);
+    }
+    const node = inspect(value);
+    chain.push(messageOf(node));
+    pushSteps(stack, node, steps + 1);
+  }
+  return chain;
 }
 
 /**
