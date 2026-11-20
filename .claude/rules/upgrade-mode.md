@@ -14,11 +14,13 @@ paths:
 The CLI's third mode and the `/upgrade` skill. The decision and its
 alternatives are in
 [`docs/decisions/0001-upgrade-flow.md`](../../docs/decisions/0001-upgrade-flow.md).
-**Built so far:** `packages/cli/src/manifest.ts` (schema 1) and fresh mode
-writing `.groundwork/manifest.json`. Everything else, `--upgrade`, `--apply`,
-the classifier and the `/upgrade` skill, is not in `packages/` yet; the paths
-above are where it will land. Update this file as each piece ships, and drop
-this line when the last one does.
+**Built so far:** `packages/cli/src/manifest.ts` (schema 1) with fresh mode
+writing `.groundwork/manifest.json`, the pure classifier
+(`upgrade/classify.ts`) and the plan computation (`upgrade/plan.ts`). Everything
+else, the `--upgrade` flag with its staging and `plan.json`, `--upgrade --stamp`,
+`--apply` and the `/upgrade` skill, is not in `packages/` yet; the paths above
+are where it will land. Update this file as each piece ships, and drop this
+line when the last one does.
 
 - **Offline and deterministic, like Phase A.** `--upgrade` reads the project and
   the packaged baseline, and writes only under `.groundwork/upgrade/`:
@@ -30,6 +32,23 @@ this line when the last one does.
   ([#318](https://github.com/monte3l/m3l-groundwork/issues/318)), which needs no
   manifest. The skill's stamp step records the new pack in the manifest like any
   other change.
+- **The plan is computed by rendering the new release, not by reading
+  `templates/`.** `renderRelease` (`upgrade/plan.ts`) emits the baseline and then
+  each pack **the manifest lists** into a temp directory with **the manifest's
+  tokens**, through the same `emitTemplate` and `installPack` fresh mode uses, so
+  pack merges into shared files are exact. Packs install in sorted, de-duplicated
+  order, as fresh mode does. The manifest's tokens must be exactly
+  `REQUIRED_TOKEN_KEYS` (`tokens.ts`, shared with `buildTokens`) with non-empty
+  values, or a damaged manifest would render a literal `__PROJECT_NAME__` and
+  classify real files as safe updates. `computePlan` then hashes the project and
+  classifies every path and JSON key with `classifyAll`. It is read-only on the
+  project, refuses a managed file or ancestor that is a symlink, a directory or
+  unparseable (naming the path, never quoting file text), and refuses a release
+  rendered for a different manifest. A file's own class wins over its key
+  entries; the keys only matter when the file is present and a JSON object. The
+  lstat-then-read walk has the same check-then-use race the guarded
+  `/customize` install documents, and the apply step's hash check is the
+  backstop. Callers must `dispose()` the release; `dispose` never throws.
 - **The manifest is the only record.** `.groundwork/manifest.json` is tracked
   and must never be in `STALE_FILE_NAMES` (`main.ts`): an adopt re-run must not
   delete it. It stores `cliVersion`, `tokens`, `packs`, a sha256 per file with
