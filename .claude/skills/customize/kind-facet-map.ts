@@ -31,9 +31,54 @@
  * research agent digs into deepest.
  */
 
-export type ProjectKind = "library" | "cli" | "frontend" | "service" | "plugin";
-export type RuntimeTarget = "node" | "browser" | "both";
-export type CiDepth = "minimal" | "standard" | "thorough";
+/**
+ * Every `ProjectKind`, in interview order. A parity test keeps it equal to
+ * the CLI's tuple in `packages/cli/src/headless/contract.ts` (the two
+ * packages share no import).
+ *
+ * @example
+ * ```ts
+ * import { PROJECT_KINDS } from "./kind-facet-map.js";
+ *
+ * const isKind = (value: string) =>
+ *   (PROJECT_KINDS as readonly string[]).includes(value);
+ * ```
+ */
+export const PROJECT_KINDS = [
+  "library",
+  "cli",
+  "frontend",
+  "service",
+  "plugin",
+] as const;
+/**
+ * Every `RuntimeTarget`, in interview order; parity-tested like
+ * {@link PROJECT_KINDS}.
+ *
+ * @example
+ * ```ts
+ * import { RUNTIME_TARGETS } from "./kind-facet-map.js";
+ *
+ * const [defaultTarget] = RUNTIME_TARGETS; // "node"
+ * ```
+ */
+export const RUNTIME_TARGETS = ["node", "browser", "both"] as const;
+/**
+ * Every `CiDepth`, shallowest first; parity-tested like
+ * {@link PROJECT_KINDS}.
+ *
+ * @example
+ * ```ts
+ * import { CI_DEPTHS } from "./kind-facet-map.js";
+ *
+ * const deepest = CI_DEPTHS[CI_DEPTHS.length - 1]; // "thorough"
+ * ```
+ */
+export const CI_DEPTHS = ["minimal", "standard", "thorough"] as const;
+
+export type ProjectKind = (typeof PROJECT_KINDS)[number];
+export type RuntimeTarget = (typeof RUNTIME_TARGETS)[number];
+export type CiDepth = (typeof CI_DEPTHS)[number];
 
 export interface InterviewAnswers {
   readonly kind: ProjectKind;

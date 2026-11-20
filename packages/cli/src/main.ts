@@ -89,6 +89,7 @@ import {
   observeWiring,
 } from "./packs.js";
 import { STAGED_PACKS_DIR, planPackStaging, stagePacks } from "./pack-stage.js";
+import { NPM_NAME_MAX_LENGTH, NPM_NAME_PATTERN } from "./npm-name.js";
 import { renderReport } from "./report.js";
 import type { TokenTable } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
@@ -147,11 +148,8 @@ const JSON_FLAGS = new Set(["--json"]);
 // manifest's `packs` check) keeps it from
 // ever reaching packs.ts's join() as a path.
 // A --name value is substituted verbatim into the emitted package.json, so it
-// must fit a conservative, ASCII-lowercase subset of npm's naming rules
-// (optional @scope/). Reserved names like `node_modules` are out of scope.
-const NPM_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
-// npm's own ceiling on a package name's total length, scope included.
-const NPM_NAME_MAX_LENGTH = 214;
+// must fit NPM_NAME_PATTERN within NPM_NAME_MAX_LENGTH (npm-name.ts, shared
+// with the answers contract's fresh.name).
 const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--skip-install",
   "--force",

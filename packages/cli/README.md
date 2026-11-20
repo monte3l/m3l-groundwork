@@ -255,6 +255,11 @@ and `pnpm install` have their output redirected to stderr too.
   and `--list-packs --json` writes a `groundwork.packs` document listing each
   pack's `name`, `modes` and `description`. `--help` always prints the usage
   text.
+- The package ships a JSON Schema (draft 2020-12) for the report,
+  `schemas/report.v1.schema.json`, and one for the `groundwork.answers`
+  document that unattended runs will read, `schemas/answers.v1.schema.json`.
+  Load them by file path inside the installed package; they are not exposed
+  through the package `exports` map.
 
 ## Requirements
 
