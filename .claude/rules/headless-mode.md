@@ -18,8 +18,11 @@ Unattended runs of all three modes -- fresh, adopt and upgrade -- for `claude -p
 agents, fleet scripts, local scripts and CI. This file is the contract the CLI,
 the `/customize` skill and the `/upgrade` skill share. Shipped so far: the
 exit-code table (`exit-codes.ts`), the `--json` flag for fresh mode and the
-adopt survey, and the success and error shapes of `report` v1
-(`headless/report.ts`); each is marked **(shipped)** below. Everything else
+adopt survey, the success and error shapes of `report` v1
+(`headless/report.ts` plus `schemas/report.v1.schema.json`), and the
+`answers` v1 contract (`headless/contract.ts` plus
+`schemas/answers.v1.schema.json`); both schemas ship in the tarball. Each is
+marked **(shipped)** below. Everything else
 is design only; the paths above are where it will land. Update this file as
 each piece ships, and drop this line when the last one does.
 
@@ -71,7 +74,49 @@ each piece ships, and drop this line when the last one does.
   `isPrototypeSensitiveKey` (`merge-json.ts`). Conflict resolutions are `keep`,
   `take` or `delegate`; adopt adds `merge-keys` for key-level JSON.
   `upgrade.conflicts` has the same shape as `.groundwork/upgrade/decisions.json`:
-  one record, not two.
+  one record, not two. **Shipped:** the tuples, types and
+  `validateAnswers(value, profile)` in `headless/contract.ts`, the gate a
+  later `--apply` trusts to drive file writes. It never throws, and every
+  error (a `ValidationIssue`) carries a JSON pointer; it stops early at 100
+  errors or once its per-call work budget of 1,000,000 units is spent (one
+  per object, key, array and array slot, one per path plus one per 256 of its
+  characters; beyond it the document is rejected with one error, and a
+  document at every top-level cap passes). On success it returns a
+  new, deeply frozen plain structure built from values read exactly once,
+  sharing no reference with the input. Only plain objects (prototype
+  `Object.prototype` or `null`) are accepted; an array's `length` is read
+  once and capped at 10,000 entries; strings are capped (10,000 characters
+  for `missedNotes`, `reason` and `evidence`, 1,000 for pointers, names,
+  domains, plugin ids and `takeKeys` entries); `basis` hashes are 64
+  lowercase hex digits; `fresh.name` follows the `--name` rule
+  (`npm-name.ts`). The validator counts string lengths in UTF-16 code units,
+  JSON Schema `maxLength` in code points, so the validator is the stricter of
+  the two. Paths are relative POSIX paths of at most 4,096 characters, with
+  no empty, `.` or `..` segment, no segment ending in `.` or a space, no `:`
+  in any segment (NTFS alternate data streams), no backslash, drive letter,
+  control character or lone surrogate (the validator always rejects a lone
+  surrogate; a schema engine that is neither per-code-unit nor per-code-point
+  ECMA-262 may not), and a first segment other than `.git`, `.groundwork` or
+  `git~1` (the NTFS 8.3 short name of `.git`), compared case-insensitively.
+  Only the first segment is protected: a nested `sub/.git/hooks/...` is
+  allowed by design, and the `--apply` PR must decide it explicitly. Paths
+  are unique per array after NFC normalization, upper-casing and then
+  lower-casing (so `ſ`, `ı` and the Kelvin sign fold to `s`, `i`, `k`);
+  uniqueness is per collection, so the same path may appear in both
+  `additions` and `conflicts`, and the `--apply` PR must define the rule.
+  `takeKeys` is
+  allowed only with `merge-keys`. `answers.v1.schema.json` is the structural
+  (`partial`) shape; `headless-schemas.test.ts` keeps its property names,
+  enums, `required` lists, `maxItems` and path pattern in step with the
+  validator. `complete` additionally requires the mode's own section and a
+  matching `basis` (`inventorySha256` for adopt, `planSha256` for upgrade,
+  `null` for fresh), every other mode section `null`, `interview.kind` and
+  `runtime` for fresh and adopt, every conflict `resolution`, every
+  `additions[].action`, `upgrade.applySafe` and `upgrade.removals` decided,
+  and `pending` empty. `interview.testsMandatory`, `ciDepth` and
+  `keepAgents` may stay `null` under `complete`: `null` means "use the
+  baseline default". Not built yet: writing a pending document, and the
+  adopt survey or `--apply` reading one.
 - **`report` v1** (`schema: "groundwork.report"`, `schemaVersion: 1`):
   `cliVersion`, `mode` (`fresh`, `adopt`, `upgrade` or `null`), `phase`
   (`survey`, `plan`, `apply`, `stamp` or `null`; both are `null` in an error
@@ -81,7 +126,7 @@ each piece ships, and drop this line when the last one does.
   `null`), `changes` (`path`, `action`, `class`, `sha256Before`,
   `sha256After`), `pending`, `handoff`, `drift`, `setupSteps`, `warnings`,
   `nextStep` and `error`, always in that order with no field omitted.
-  **Shipped:** `buildReport` (a fresh run is `phase: "apply"` with
+  **Shipped:** `schemas/report.v1.schema.json`, and `buildReport` (a fresh run is `phase: "apply"` with
   `artifacts.manifest` `.groundwork/manifest.json`, copied from
   `RunResult.manifest`; an adopt survey `phase: "survey"` with
   `artifacts.inventory` `.groundwork/inventory.json` and `artifacts.manifest`
