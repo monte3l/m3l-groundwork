@@ -6,7 +6,7 @@ payload, so `sync-design.sh` copies it into every consumer and `SHA256SUMS`
 covers it. A consumer keeps only a config file, its own parity checks and its
 deploy wiring.
 
-The kit has no dependencies. It needs Node 24 and `git`.
+The kit has no dependencies. It needs Node 24 and `git`, and `git` 2.21 or later for page freshness.
 
 ## Use
 
@@ -15,6 +15,7 @@ node design/source/docs-kit/build.mjs --check
 node design/source/docs-kit/build.mjs --out _site
 node design/source/docs-kit/check-live.mjs --site _site
 node design/source/docs-kit/check-live.mjs --metadata
+node design/source/docs-kit/freshness.mjs
 ```
 
 Each command reads `docs.config.mjs` from the current directory, or the file
@@ -26,6 +27,7 @@ named by `--config`. The directory that holds the config is the repository root.
 | `build.mjs --check` | Validates and writes nothing | 0 clean, 1 drift, 2 usage or config |
 | `check-live.mjs --site <dir>` | Fetches every URL of the deployed site and compares it with the build | 0 matched, 1 mismatch, 2 usage |
 | `check-live.mjs --metadata` | Compares the manifest with the GitHub repository | 0 matched, 1 mismatch, 2 usage |
+| `freshness.mjs [--today <date>] [--max-age <days>]` | Lists the pages nobody has touched or reviewed for a while, as Markdown on standard output. A report, never a gate. See [Page freshness](#page-freshness) | 0 every page is fresh, 1 a page needs a look, 2 usage or config, 3 git cannot give the dates (a shallow clone) |
 
 ## Config
 
@@ -47,6 +49,7 @@ named by `--config`. The directory that holds the config is the repository root.
 | `brand` | no | `true` to add the MONTE3L favicon links, a copy of `favicon.ico` at the site root, and the symbol, linked to the home page, in the header. Needs `<designDir>/source/brand/` from m3l-design v1.2.0 or later, and `--check` fails if a file is missing. Default `false` |
 | `llms` | no | `{ description, optionalGroups, full }`. Adds a markdown copy of every page, `llms.txt`, and the head links that point to them. See [For agents](#for-agents). Default off |
 | `sitemap` | no | `true` to write `sitemap.xml`. Default `false` |
+| `freshness` | no | `{ maxAgeDays, exclude, lastmod }`. `maxAgeDays` is the age past which `freshness.mjs` reports a page, default 180. `exclude` is `{ glob, reason }` for pages the report skips. `lastmod: true` writes each page's last commit date into `sitemap.xml` and needs `sitemap: true`. See [Page freshness](#page-freshness) |
 | `manifest` | no | The `package.json` or `plugin.json` that `--metadata` and the homepage gate read |
 
 A generator default-exports `async ({ root, config }) => [{ out, group, label, html }]`.
@@ -71,9 +74,62 @@ Every problem is listed in one run.
 | Design integrity | A file does not match `SHA256SUMS`, a file under `source/` is not listed in it, or the marker is not the vendored tier |
 | Local CSS | A stylesheet in `<designDir>/local/` holds a colour or length literal instead of a `var(--token)` |
 | Alerts | A page source has more than two GitHub alerts in a row |
+| Reviewed date | Only when `freshness` is set: a page's frontmatter has a `reviewed` key that is not a real date written `YYYY-MM-DD`. A page being old is never a failure |
 | Agent copies | A link in a `.md` copy is not external, an anchor or a page of the site. This is how a link split across lines shows up, because the rewrite works line by line |
 | Homepage | The manifest `homepage` is not `siteUrl` |
 | Parity | A parity module reports a message |
+
+## Page freshness
+
+`freshness.mjs` lists the pages that nobody has touched or reviewed for a while.
+It is a report and never a gate: `build.mjs --check` does not fail because a page
+is old, so a quiet month cannot stop a merge.
+
+A page's age is the newer of two dates:
+
+| Date | Where it comes from |
+| --- | --- |
+| Last commit | The committer date of the last commit that changed the page's file, read with one `git log` |
+| Reviewed | The `reviewed: YYYY-MM-DD` line in the page's frontmatter, if there is one |
+
+A page with no frontmatter needs nothing from its author. The limit is 180 days,
+or `freshness.maxAgeDays`, or `--max-age`.
+
+Setting `reviewed` is itself a commit to the page, so it never makes a page look
+older than its last commit. Its job is to record, in the file, that a person read
+the page again and found it still true, and on which day. It counts only when it
+is later than the commit date.
+
+| Finding | Meaning |
+| --- | --- |
+| `STALE` | The newer of the two dates is more than the limit ago |
+| `FUTURE` | `reviewed` is after today. It is reported and ignored for the age, so it cannot hide a page for as long as the date lies ahead |
+| `INVALID` | `reviewed` is not a real date written `YYYY-MM-DD`. It is ignored for the age, and it is the one finding that also fails `build.mjs --check`, for a site that sets `freshness` |
+
+A page git has never seen has no commit date and is not aged unless it has a
+`reviewed` date.
+
+> [!WARNING]
+> A shallow clone has only the newest commits, so every date it gave would be
+> wrong in a quiet way. `freshness.mjs` exits 3 instead, and a build that sets
+> `freshness.lastmod` fails with exit 2, like any config error. Check out with
+> `fetch-depth: 0`.
+
+### Sitemap dates
+
+With `sitemap: true` and `freshness: { lastmod: true }`, `sitemap.xml` gets a
+`<lastmod>` for each page: the date of the last commit that changed its file.
+A `reviewed` date does not move it, because reading a page again is not changing
+it, and a sitemap date is meant to say that the content changed. A page with no
+commit yet gets no `<lastmod>`, and neither does a page a generator returns,
+because it has no file of its own to date. It is off by default, so a site that
+does not ask for it builds exactly as before.
+
+The dates come from the history, so two builds of one commit write the same
+sitemap only if both see all of it. The docs root may be a subdirectory of the
+repository, and a page name may hold any character. That matters because `check-live.mjs`
+compares the deployed bytes with a fresh build: give the deploy and the daily
+check the same full checkout.
 
 ## For agents
 
