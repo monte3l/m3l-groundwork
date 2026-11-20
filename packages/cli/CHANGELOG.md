@@ -1,5 +1,12 @@
 # @monte3l/groundwork
 
+## [1.3.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.3.0...@monte3l/groundwork@1.3.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **deps:** Bump the template-actions group across 4 directories with 8 updates ([0612707](https://github.com/monte3l/m3l-groundwork/commit/0612707fe2fb6db60c44842d5cebe3ea16d2015b))
+
 ## [1.3.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.2.1...@monte3l/groundwork@1.3.0) (2026-11-19)
 
 
