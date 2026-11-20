@@ -194,6 +194,7 @@ describe("main return value (RunResult)", () => {
   it("routes fresh status lines through the supplied Out, not console.log", () => {
     const out = {
       info: vi.fn(),
+      notice: vi.fn(),
       warn: vi.fn(),
       success: vi.fn(),
     } satisfies Out;
@@ -217,6 +218,7 @@ describe("main return value (RunResult)", () => {
     );
     const out = {
       info: vi.fn(),
+      notice: vi.fn(),
       warn: vi.fn(),
       success: vi.fn(),
     } satisfies Out;

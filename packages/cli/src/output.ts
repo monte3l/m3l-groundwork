@@ -4,18 +4,24 @@
 /**
  * Routes the CLI's status lines. In human mode every line goes to the same
  * stream, with the same trailing newline, as `console.log` (`info`,
- * `success`) or `console.error` (`warn`) would send it, including when a
+ * `notice`, `success`) or `console.error` (`warn`) would send it, including when a
  * stream is injected; json mode sends every line to stderr so stdout stays
- * free for a machine-readable result. Colour is decided per stream by
- * {@link paint}.
+ * free for a machine-readable result -- through `console.error` unless a
+ * stderr is injected, never a direct `process.stderr.write` (whose EPIPE on a
+ * closed pipe would surface as an unhandled `'error'` event; the header of
+ * `bin/m3l-groundwork.mjs` explains why `console.error` is safe). Colour is
+ * decided per stream by {@link paint}.
  */
 import process from "node:process";
 import { paint } from "./term.js";
 
 /**
- * The CLI's status-line sink: `info` for plain lines, `success` for the
- * closing "ready" line (painted with the success role), `warn` for warnings
- * (painted with the warning role, always on stderr).
+ * The CLI's status-line sink: `info` for plain lines, `notice` for a
+ * warning-painted status line that belongs with the run's normal output (the
+ * over-cap summary, the pack setup block -- stdout in human mode, stderr in
+ * json mode), `success` for the closing "ready" line (painted with the
+ * success role), `warn` for warnings (painted with the warning role, always
+ * on stderr).
  *
  * @example
  * ```ts
@@ -26,6 +32,7 @@ import { paint } from "./term.js";
  */
 export interface Out {
   readonly info: (msg: string) => void;
+  readonly notice: (msg: string) => void;
   readonly warn: (msg: string) => void;
   readonly success: (msg: string) => void;
 }
@@ -43,10 +50,12 @@ function writeLine(stream: NodeJS.WriteStream, msg: string): void {
 }
 
 /**
- * Builds an {@link Out}. In human mode `info`/`success` go to stdout and
- * `warn` to stderr -- through `console.log`/`console.error` unless a stream
- * is injected. In json mode all three go to stderr, painted according to
- * the stderr stream's colour support.
+ * Builds an {@link Out}. In human mode `info`/`notice`/`success` go to
+ * stdout and `warn` to stderr -- through `console.log`/`console.error`
+ * unless a stream is injected, each painted for its own stream. In json mode
+ * all four go to stderr -- through `console.error` unless a stderr is
+ * injected, in which case `msg` plus a newline is written to it -- painted
+ * according to the stderr stream's colour support.
  *
  * @example
  * ```ts
@@ -57,17 +66,22 @@ function writeLine(stream: NodeJS.WriteStream, msg: string): void {
  */
 export function createOut(options: CreateOutOptions): Out {
   const { json, stdout, stderr } = options;
+  const toStderr = (msg: string): void => {
+    if (stderr === undefined) console.error(msg);
+    else writeLine(stderr, msg);
+  };
   if (json) {
-    const sink = stderr ?? process.stderr;
+    const paintTarget = stderr ?? process.stderr;
     return {
-      info: (msg) => {
-        writeLine(sink, msg);
+      info: toStderr,
+      notice: (msg) => {
+        toStderr(paint(paintTarget, "warning", msg));
       },
       success: (msg) => {
-        writeLine(sink, paint(sink, "success", msg));
+        toStderr(paint(paintTarget, "success", msg));
       },
       warn: (msg) => {
-        writeLine(sink, paint(sink, "warning", msg));
+        toStderr(paint(paintTarget, "warning", msg));
       },
     };
   }
@@ -75,12 +89,11 @@ export function createOut(options: CreateOutOptions): Out {
     if (stdout === undefined) console.log(msg);
     else writeLine(stdout, msg);
   };
-  const toStderr = (msg: string): void => {
-    if (stderr === undefined) console.error(msg);
-    else writeLine(stderr, msg);
-  };
   return {
     info: toStdout,
+    notice: (msg) => {
+      toStdout(paint(stdout ?? process.stdout, "warning", msg));
+    },
     success: (msg) => {
       toStdout(paint(stdout ?? process.stdout, "success", msg));
     },

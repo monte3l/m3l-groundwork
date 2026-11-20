@@ -59,7 +59,7 @@ describe("handleFatal", () => {
     vi.restoreAllMocks();
   });
 
-  it("types as documented: (error, io, classify, debug?) => void, with io carrying print AND printRaw", () => {
+  it("types as documented: (error, io, classify, debug?) => ExitCode, with io carrying print AND printRaw", () => {
     expectTypeOf(handleFatal).toEqualTypeOf<
       (
         error: unknown,
@@ -70,7 +70,7 @@ describe("handleFatal", () => {
         },
         classify: (error: unknown) => Exclude<ExitCode, 0>,
         debug?: boolean,
-      ) => void
+      ) => Exclude<ExitCode, 0>
     >();
   });
 
@@ -931,5 +931,42 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     expect(getExitCode()).toBe(1);
     expect(prints[0]).toMatch(/^TypeError: boom/);
     expect(prints[0]).toContain("    at frameOne");
+  });
+});
+
+describe("handleFatal: returns the exit code it set", () => {
+  it.each([
+    ["usage", EXIT_CODES.usage],
+    ["runtime", EXIT_CODES.runtime],
+  ])("returns %s when the classifier says so", (_name, code) => {
+    const { io, getExitCode } = makeIo();
+    const returned = handleFatal(new Error("x"), io, () => code);
+    expect(returned).toBe(code);
+    expect(returned).toBe(getExitCode());
+  });
+
+  it("returns 1 when the classifier throws", () => {
+    const { io, getExitCode } = makeIo();
+    const returned = handleFatal(new Error("x"), io, () => {
+      throw new Error("classifier boom");
+    });
+    expect(returned).toBe(1);
+    expect(getExitCode()).toBe(1);
+  });
+
+  it.each([
+    ["0", 0],
+    ["NaN", Number.NaN],
+    ["an out-of-range number", 5],
+    ["undefined", undefined],
+  ])("returns 1 when the classifier returns %s", (_name, bad) => {
+    const { io, getExitCode } = makeIo();
+    const returned = handleFatal(
+      new Error("x"),
+      io,
+      () => bad as unknown as Exclude<ExitCode, 0>,
+    );
+    expect(returned).toBe(1);
+    expect(getExitCode()).toBe(1);
   });
 });
