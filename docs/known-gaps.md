@@ -35,6 +35,13 @@
   Today that path is: re-run the CLI against the now-non-empty directory
   (it auto-detects adopt mode), then run `/customize`. Works, but is
   indirect -- a dedicated additive install mode is real future work.
+- **No upgrade flow for an already-bootstrapped project.** Taking a new
+  release is the same indirect re-run, and it cannot tell a file you edited
+  from a file upstream changed, because nothing records what the last run
+  emitted. A manifest, `--upgrade` mode and an `/upgrade` skill are designed
+  in [`decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md) and not
+  built. It does not cover the gap above: `--upgrade` takes its packs from the
+  manifest, and adding a pack stays with #318.
 - **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it.
   Re-checked 2026-10-01: the original blocker is gone, since `pnpm/setup@v3`
   (2026-09-20) has a `node-version-file` input and auto-detects

@@ -118,6 +118,31 @@ either file, and it's also what a structural check (`gate-lane-parity`,
 part of the toolchain grader, which scrapes both YAML files as text and
 fails if either names a step directly or matrices the lanes) verifies.
 
+## Upgrade flow (planned)
+
+A third CLI mode and a second skill, for projects that already ran groundwork.
+Decision record: [`docs/decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md).
+Contract: `.claude/rules/upgrade-mode.md`. Nothing here is in `packages/` yet.
+
+```
+  fresh / adopt ──▶ .groundwork/manifest.json  (tracked: version, tokens,
+                                                packs, sha256 per file/key)
+                              │
+  new CLI release ──▶ groundwork --upgrade   offline, writes only
+                              │              .groundwork/upgrade/
+                              ▼
+                    plan.json (commit marker) + report + .staged copies
+                              │
+                              ▼
+                    /upgrade skill (copied in by the CLI): batch the safe
+                    set, 3-way proposal per conflict, then --upgrade --stamp
+```
+
+The split follows the two-phase rule. The CLI hashes, classifies and stages,
+so the plan is reproducible. The skill reads a diff and proposes a merge, which
+needs judgment. A file's old content is not stored: the skill rebuilds it by
+running the old CLI version through `npx`.
+
 ## Design system
 
 This repo's own root -- not `templates/core`, which stays brand-neutral for

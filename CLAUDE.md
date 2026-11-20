@@ -68,7 +68,8 @@ Run any task with `pnpm <script>`.
 The design record is split by area; each file loads when you edit the files it
 governs. CLI internals (token substitution, `resolveAsset()`, dotfile escaping,
 zero runtime dependencies): `.claude/rules/package-cli.md`. Adopt mode:
-`.claude/rules/adopt-mode.md`. The two grader implementations that must not
+`.claude/rules/adopt-mode.md`. The planned upgrade mode (not built yet):
+`.claude/rules/upgrade-mode.md`. The two grader implementations that must not
 drift: `.claude/rules/harness-graders.md`. `/customize`, `domain-map.ts`,
 `pack-map.ts`: `.claude/rules/package-plugin.md`. The baseline's caps (≤5
 agents, ≤8 skills, ≤10 hooks, ≤3 workflows, ≤12 scripts):
