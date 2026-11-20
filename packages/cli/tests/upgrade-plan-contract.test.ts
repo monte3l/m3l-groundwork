@@ -290,4 +290,40 @@ describe("upgrade plan contract", () => {
       expect((thrown as Error).message).toContain("package.json");
     });
   });
+
+  describe("duplicate packs with a script", () => {
+    it("renders a pack listed twice exactly like the pack listed once, script included", () => {
+      // Regression guard on the result, not on the de-duplication itself:
+      // the merges are idempotent (an identical script is a no-op), so a
+      // second install of the same pack gives the same bytes and dropping
+      // the de-duplication is an equivalent mutant.
+      const scripted = writeRelease(join(base, "scripted"), {
+        core: {
+          "package.json":
+            '{"name":"__PROJECT_NAME__","scripts":{"lint":"x"}}\n',
+        },
+        packs: { pa: { files: { "pa.txt": "a\n" }, scripts: { x: "node x" } } },
+      });
+      const single: Manifest = buildProject({
+        written: scripted,
+        packNames: ["pa"],
+        targetDir: join(base, "scripted-project"),
+        tokens: TOKENS,
+        cliVersion: "1.0.0",
+      });
+      written = scripted;
+
+      const once = render(single);
+      const twice = render({ ...single, packs: ["pa", "pa"] });
+
+      expect(twice.manifest.jsonKeys["package.json"]?.["/scripts/x"]).toBe(
+        hj("node x"),
+      );
+      expect(twice.manifest.files).toEqual(once.manifest.files);
+      expect(twice.manifest.jsonKeys).toEqual(once.manifest.jsonKeys);
+      expect(twice.manifest.packs).toEqual(["pa"]);
+      twice.dispose();
+      once.dispose();
+    });
+  });
 });
