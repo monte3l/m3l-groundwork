@@ -66,8 +66,7 @@ Update this file as each piece ships, and drop this line when the last one does.
   the tree. A changed tree is drift and the run refuses. The `--upgrade` plan
   step never writes a project file. Exit codes 0-4 and the `--json` report are
   shared with the other modes: they are defined in
-  `.claude/rules/headless-mode.md`, which another change adds. Link to it from
-  here once it exists, and do not copy the table.
+  [`headless-mode.md`](headless-mode.md). Link to it, do not copy the table.
 - **The skill reaches the project through the CLI.** `--upgrade` copies
   `/upgrade` in with the guarded installer `/customize` uses
   (`installCustomizeSkillGuarded` in `plugin.ts`, paths in
