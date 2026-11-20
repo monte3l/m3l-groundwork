@@ -27,10 +27,9 @@ function allowedLicenses(path: string): string[] {
 const template = allowedLicenses(join("templates", "core", WORKFLOW));
 const own = allowedLicenses(WORKFLOW);
 
-// Built from parts on purpose: ScanCode reads a whole license id in a source
-// file as a license this repository contains, and policies.yml does not
-// approve these two. Only npm's own dependency tree needs them.
-const NPM_ONLY = ["Artistic-" + "2.0", "CC-BY-" + "3.0"];
+// Only npm's own dependency tree needs these two. This file names them as
+// data, so scancode-config.yml ignores it; policies.yml does not approve them.
+const NPM_ONLY = ["Artistic-2.0", "CC-BY-3.0"];
 
 describe("the dependency-review template's license allow-list", () => {
   it("accepts BlueOak-1.0.0, which the scaffold's own lint toolchain brings in", () => {
