@@ -18,7 +18,9 @@
  * defers installation to `/customize`; see `runAdopt`. The third,
  * **upgrade**, runs only when `--upgrade` asks for it: it plans an upgrade of
  * a project that has a `.groundwork/manifest.json` against this release and
- * writes the plan only under `.groundwork/upgrade/`; see `runUpgrade`.
+ * writes the plan only under `.groundwork/upgrade/`; see `runUpgrade`. Its
+ * stamp step, `--upgrade --stamp`, records an applied plan in the manifest
+ * and writes nothing else; see `runUpgradeStamp`.
  */
 import {
   existsSync,
@@ -121,6 +123,8 @@ import {
 } from "./upgrade/paths.js";
 import { inspectPreviousUpgrade, stageUpgrade } from "./upgrade/stage.js";
 import type { StagedUpgrade } from "./upgrade/stage.js";
+import { UpgradeStampError, stampUpgrade } from "./upgrade/stamp.js";
+import type { StampResult } from "./upgrade/stamp.js";
 
 export interface CliOptions {
   targetDir: string;
@@ -130,6 +134,7 @@ export interface CliOptions {
   adopt: boolean;
   fresh: boolean;
   upgrade: boolean;
+  stamp: boolean;
   help: boolean;
   version: boolean;
   listPacks: boolean;
@@ -147,6 +152,8 @@ const USAGE = [
   "  --fresh                 Force fresh-bootstrap mode, even if the target looks pre-existing",
   "  --upgrade               Plan an upgrade of a project that has .groundwork/manifest.json;",
   "                          writes only under .groundwork/upgrade/",
+  "  --stamp                 With --upgrade: record the applied plan in",
+  "                          .groundwork/manifest.json; writes nothing else",
   "  --pack <name>           Install a pack from templates/packs/ (fresh mode), or narrow",
   "                          the survey to the named packs (adopt mode); repeatable",
   "  --list-packs            Print every available pack and exit",
@@ -167,6 +174,8 @@ const USAGE = [
   "--upgrade is never auto-detected and takes none of --adopt, --fresh,",
   "--name, --force, --pack, --skip-install or --json: the project name and",
   "packs come from the manifest, and it never writes a project file.",
+  "--upgrade --stamp, run once the plan is applied, re-hashes the plan's",
+  "files and writes only the manifest.",
 ].join("\n");
 
 // --name takes a single value; --pack is repeatable. Every other
@@ -190,6 +199,7 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--adopt",
   "--fresh",
   "--upgrade",
+  "--stamp",
   ...JSON_FLAGS,
   ...LIST_PACKS_FLAGS,
   ...HELP_FLAGS,
@@ -332,6 +342,7 @@ export function parseArgs(argv: string[]): CliOptions {
       adopt: false,
       fresh: false,
       upgrade: false,
+      stamp: false,
       help,
       version,
       listPacks,
@@ -346,6 +357,12 @@ export function parseArgs(argv: string[]): CliOptions {
     );
   }
   const upgrade = flags.has("--upgrade");
+  const stamp = flags.has("--stamp");
+  if (stamp && !upgrade) {
+    throw new CliUsageError(
+      `--stamp needs --upgrade: run --upgrade --stamp once the staged plan is applied\n\n${USAGE}`,
+    );
+  }
   if (upgrade) {
     assertUpgradeFlags(flags, values, repeatableValues);
   }
@@ -388,6 +405,7 @@ export function parseArgs(argv: string[]): CliOptions {
     adopt: flags.has("--adopt"),
     fresh: flags.has("--fresh"),
     upgrade,
+    stamp,
     help: false,
     version: false,
     listPacks: false,
@@ -1476,6 +1494,56 @@ function upgradeSummary(plan: UpgradePlan): string {
   return `upgrade plan ${plan.fromCliVersion} -> ${plan.toCliVersion}: ${counts === "" ? "no files" : counts}`;
 }
 
+/** The usage error for a project with no manifest, shared by the plan and the stamp. */
+function noManifestError(
+  targetDir: string,
+  options?: ErrorOptions,
+): CliUsageError {
+  return new CliUsageError(
+    `${targetDir} has no ${MANIFEST_RELATIVE_PATH}, so there is no record to plan an upgrade from -- re-run the CLI in adopt mode in the project (npx @monte3l/groundwork .) and then run /customize to take the new release`,
+    options,
+  );
+}
+
+/**
+ * Upgrade mode's stamp step (`--upgrade --stamp`): records the applied plan
+ * in `.groundwork/manifest.json` with `stampUpgrade`, which writes nothing
+ * else. Never renders the release, plans or stages.
+ *
+ * @throws {@link CliUsageError} (exit 2), before anything is written, when the
+ *   project has no manifest (the same advice as the plan step) or no
+ *   `plan.json`; the `ManifestError` unchanged when the manifest cannot be
+ *   read, parsed or written; `stampUpgrade`'s `UpgradeStampError` for a plan
+ *   that is invalid or stale (exit 1).
+ */
+function runUpgradeStamp(
+  options: CliOptions,
+  detection: ModeDetection,
+  out: Out,
+): undefined {
+  const { targetDir } = options;
+  out.info(`upgrade mode: ${detection.signal}`);
+  let result: StampResult;
+  try {
+    result = stampUpgrade({ targetDir });
+  } catch (error) {
+    if (error instanceof UpgradeStampError && error.code === "no-manifest") {
+      throw noManifestError(targetDir, { cause: error });
+    }
+    if (error instanceof UpgradeStampError && error.code === "no-plan") {
+      throw new CliUsageError(
+        `${targetDir} has no ${UPGRADE_RELATIVE_DIR}/${UPGRADE_PLAN_FILE}: no plan to stamp -- run --upgrade first`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+  out.info(
+    `stamped ${MANIFEST_RELATIVE_PATH} at ${result.manifest.cliVersion}: ${String(result.updated)} updated, ${String(result.kept)} kept, ${String(result.dropped)} dropped`,
+  );
+  return undefined;
+}
+
 /**
  * Upgrade mode: reads the project's `.groundwork/manifest.json`, renders this
  * release for it into a temporary directory (`renderRelease`), classifies
@@ -1498,11 +1566,7 @@ function runUpgrade(
   const { targetDir } = options;
   out.info(`upgrade mode: ${detection.signal}`);
   const manifest = readManifest(targetDir);
-  if (manifest === undefined) {
-    throw new CliUsageError(
-      `${targetDir} has no ${MANIFEST_RELATIVE_PATH}, so there is no record to plan an upgrade from -- re-run the CLI in adopt mode in the project (npx @monte3l/groundwork .) and then run /customize to take the new release`,
-    );
-  }
+  if (manifest === undefined) throw noManifestError(targetDir);
   // Before rendering: a non-directory there is refused with nothing written.
   const foreign = inspectPreviousUpgrade(targetDir);
   const cliVersion = resolveCliVersion();
@@ -1533,7 +1597,7 @@ function runUpgrade(
     `wrote ${UPGRADE_RELATIVE_DIR}/ (${UPGRADE_PLAN_FILE}, ${UPGRADE_REPORT_FILE} and ${String(count)} staged ${count === 1 ? "file" : "files"})`,
   );
   out.info(
-    `Next: read ${UPGRADE_RELATIVE_DIR}/${UPGRADE_REPORT_FILE} -- the /upgrade skill that applies a plan is not available yet`,
+    `Next: read ${UPGRADE_RELATIVE_DIR}/${UPGRADE_REPORT_FILE}, apply the staged files you want by hand, then run --upgrade --stamp to record them -- the /upgrade skill that applies a plan is not available yet`,
   );
   return undefined;
 }
@@ -1546,8 +1610,8 @@ function runUpgrade(
  * `out` receives every fresh/adopt/upgrade status line; by default it is
  * `createOut` in human mode, or in json mode when `--json` is given (every
  * line on stderr). Returns the run's {@link RunResult}, or `undefined` for
- * `--help`/`--version`/`--list-packs` and for an `--upgrade` plan (which
- * refuses `--json`, so it has no report to build). Under `--json`, a fresh/adopt run
+ * `--help`/`--version`/`--list-packs` and for an `--upgrade` plan or stamp
+ * (which refuse `--json`, so they have no report to build). Under `--json`, a fresh/adopt run
  * prints no report itself -- the bin script builds it from the returned
  * result -- while `--version` and `--list-packs` print one single-line JSON
  * document each (`groundwork.version`, `groundwork.packs`); `--help` always
@@ -1626,7 +1690,9 @@ export function main(
       assertAdoptUsage(options);
       return runAdopt(options, resolved, sink);
     case "upgrade":
-      return runUpgrade(options, resolved, sink);
+      return options.stamp
+        ? runUpgradeStamp(options, resolved, sink)
+        : runUpgrade(options, resolved, sink);
     case "fresh":
       return runFresh(options, platform, sink);
     default: {

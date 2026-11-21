@@ -6,8 +6,9 @@
  * the CLI emitted into a project -- the CLI version, the token table, the
  * installed packs, a sha256 per file and a sha256 per top-level/depth-2 key
  * of the JSON files packs merge into. Fresh mode writes it once the baseline
- * and every pack are on disk; adopt mode never touches it; the planned
- * upgrade mode reads it as the merge base (`.claude/rules/upgrade-mode.md`).
+ * and every pack are on disk; adopt mode never touches it; upgrade mode reads
+ * it as the merge base, and its stamp step (`upgrade/stamp.ts`) rewrites it
+ * once a plan is applied (`.claude/rules/upgrade-mode.md`).
  *
  * Parsing is strict: the file is tracked, so anything but the exact schema
  * is refused with a {@link ManifestError} rather than guessed at.
@@ -57,8 +58,9 @@ export const MANIFEST_RELATIVE_PATH = ".groundwork/manifest.json";
 /**
  * One recorded file: the sha256 of its bytes (64 lowercase hex characters)
  * and how it came to hold them -- `emitted` straight from the baseline or a
- * pack, `merged` when the recorded bytes differ from what the CLI would emit
- * (written by the planned upgrade stamp step). Reached by consumers as
+ * pack, `merged` when the recorded bytes are not a base the recorded CLI
+ * version would emit (written by the upgrade stamp step, `upgrade/stamp.ts`).
+ * Reached by consumers as
  * `Manifest["files"][string]`.
  */
 interface ManifestFileEntry {

@@ -34,14 +34,18 @@
 - **The upgrade flow is only partly built.** Fresh mode writes a manifest of
   what it emitted, and `--upgrade` compares it with your files and the new
   release and stages a plan under `.groundwork/upgrade/`. Nothing applies that
-  plan yet: the `/upgrade` skill, `--upgrade --stamp` and `--apply` are
-  designed in [`decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md)
-  and not built, so the plan is applied by hand. A project with no manifest
+  plan yet: the `/upgrade` skill and `--apply` are designed in
+  [`decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md) and not
+  built, so the plan is applied by hand and then recorded in the manifest with
+  `--upgrade --stamp`. A project with no manifest
   (anything bootstrapped or adopted before it existed) is refused by
   `--upgrade`; for it, taking a new release is still the indirect re-run of the
   CLI in adopt mode followed by `/customize`. `--upgrade` takes its packs from
   the manifest; to add one to an existing project, run the CLI with
   `--pack <name>` (adopt mode).
+- **Manifest JSON keys carry no origin.** A key `--upgrade --stamp` keeps with
+  its old hash stays a three-way base under the new CLI version, until a
+  manifest schema change adds a per-key origin.
 - **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it.
   Re-checked 2026-10-01: the original blocker is gone, since `pnpm/setup@v3`
   (2026-09-20) has a `node-version-file` input and auto-detects

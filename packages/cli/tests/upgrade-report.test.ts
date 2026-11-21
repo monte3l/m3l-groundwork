@@ -188,6 +188,30 @@ describe("renderUpgradeReport", () => {
     expect(next).not.toMatch(/nothing to apply/i);
   });
 
+  it("tells the reader to run `--upgrade --stamp` after applying the staged files", () => {
+    const next = section(renderUpgradeReport(FULL), "Next step") ?? "";
+    expect(next).toContain("--upgrade --stamp");
+    expect(next).toMatch(/apply/i);
+  });
+
+  it("tells the reader to run `--upgrade --stamp` for a remove-only plan with nothing staged", () => {
+    const next =
+      section(
+        renderUpgradeReport(planOf([file("x", "remove")])),
+        "Next step",
+      ) ?? "";
+    expect(next).toContain("--upgrade --stamp");
+  });
+
+  it("does not mention `--upgrade --stamp` when there is nothing to apply", () => {
+    const next =
+      section(
+        renderUpgradeReport(planOf([file("a", "current")])),
+        "Next step",
+      ) ?? "";
+    expect(next).not.toContain("--stamp");
+  });
+
   it.each(["remove", "orphan-edited", "conflict-2way"] as const)(
     "does not claim nothing to apply when a %s entry exists",
     (cls) => {
@@ -236,6 +260,9 @@ const REMOVED_STEP =
   "The files under Removed upstream are no longer in the baseline. Delete them by hand if you no longer need them.";
 const STAGED_STEP =
   "The new release's copy of every file under Needs a decision and Safe to apply is staged in `.groundwork/upgrade/staged/` as `<path>.staged`. Apply them by hand: copy a Safe to apply file over the project's, and merge a Needs a decision file with your own changes.";
+
+const STAMP_STEP =
+  "Once you have applied the changes you want, run `npx @monte3l/groundwork --upgrade --stamp .` to record the result in `.groundwork/manifest.json`. A change you did not apply is recorded as yours, so the next upgrade compares that file two-way.";
 
 describe("renderUpgradeReport (exact, hand-written expectations)", () => {
   it("renders the full plan exactly", () => {
@@ -298,6 +325,8 @@ describe("renderUpgradeReport (exact, hand-written expectations)", () => {
       "",
       REMOVED_STEP,
       "",
+      STAMP_STEP,
+      "",
     ].join("\n");
     expect(renderUpgradeReport(FULL)).toBe(expected);
   });
@@ -325,6 +354,8 @@ describe("renderUpgradeReport (exact, hand-written expectations)", () => {
       NOT_YET,
       "",
       REMOVED_STEP,
+      "",
+      STAMP_STEP,
       "",
     ].join("\n");
     expect(renderUpgradeReport(planOf([file("old.txt", "remove")]))).toBe(
@@ -386,6 +417,8 @@ describe("renderUpgradeReport (exact, hand-written expectations)", () => {
       NOT_YET,
       "",
       STAGED_STEP,
+      "",
+      STAMP_STEP,
       "",
     ].join("\n");
     expect(renderUpgradeReport(plan)).toBe(expected);
