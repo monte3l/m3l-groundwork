@@ -28,22 +28,34 @@ import {
 } from "../src/manifest.js";
 import type { Manifest } from "../src/manifest.js";
 import type { Out } from "../src/output.js";
+import { AssertionError } from "node:assert/strict";
 import type * as PlanModule from "../src/upgrade/plan.js";
-import type { InstallPluginResult } from "../src/plugin.js";
+import type * as PluginModule from "../src/plugin.js";
+import type {
+  GuardedInstallResult,
+  InstallPluginResult,
+} from "../src/plugin.js";
+import { UPGRADE_SKILL } from "../src/skill-spec.js";
 import { snapshotTree } from "./upgrade-plan-fixture.js";
 
-const { gitInitMock, runInstallMock, installSkillMock, installGuardedMock } =
-  vi.hoisted(() => ({
-    gitInitMock: vi.fn(),
-    runInstallMock: vi.fn(),
-    installSkillMock: vi.fn((): InstallPluginResult => ({
-      filesWritten: [],
-    })),
-    installGuardedMock: vi.fn(() => ({
-      filesWritten: [],
-      location: "claude" as const,
-    })),
-  }));
+const {
+  gitInitMock,
+  runInstallMock,
+  installSkillMock,
+  installGuardedMock,
+  installUpgradeSkillMock,
+} = vi.hoisted(() => ({
+  gitInitMock: vi.fn(),
+  runInstallMock: vi.fn(),
+  installUpgradeSkillMock: vi.fn(),
+  installSkillMock: vi.fn((): InstallPluginResult => ({
+    filesWritten: [],
+  })),
+  installGuardedMock: vi.fn(() => ({
+    filesWritten: [],
+    location: "claude" as const,
+  })),
+}));
 
 vi.mock("../src/git.js", () => ({
   gitInit: gitInitMock,
@@ -52,6 +64,7 @@ vi.mock("../src/git.js", () => ({
 vi.mock("../src/plugin.js", () => ({
   installCustomizeSkill: installSkillMock,
   installCustomizeSkillGuarded: installGuardedMock,
+  installSkillGuarded: installUpgradeSkillMock,
 }));
 
 // Wraps (never replaces) renderRelease to record where the release was
@@ -100,6 +113,19 @@ function recordingOut(): Out & { infoLines: string[]; warnLines: string[] } {
     },
     success: () => undefined,
   };
+}
+
+const UPGRADE_CLAUDE_FILES = [
+  join(".claude", "skills", "upgrade", "step-3-conflicts.md"),
+  join(".claude", "skills", "upgrade", "SKILL.md"),
+];
+const UPGRADE_FALLBACK_FILES = [
+  join(".groundwork", "upgrade-skill", "step-3-conflicts.md"),
+  join(".groundwork", "upgrade-skill", "SKILL.md"),
+];
+
+function claudeInstall(): GuardedInstallResult {
+  return { filesWritten: UPGRADE_CLAUDE_FILES, location: "claude" };
 }
 
 describe("main --upgrade", () => {
@@ -157,6 +183,8 @@ describe("main --upgrade", () => {
       filesWritten: [],
       location: "claude",
     });
+    installUpgradeSkillMock.mockReset();
+    installUpgradeSkillMock.mockReturnValue(claudeInstall());
     vi.spyOn(process.stdout, "write").mockReturnValue(true);
     vi.spyOn(console, "log").mockImplementation(() => {
       /* silence */
@@ -384,8 +412,10 @@ describe("main --upgrade", () => {
       upgrade(out);
       const next = out.infoLines.filter((l) => l.startsWith("Next:"));
       expect(next).toHaveLength(1);
-      expect(next[0]).toContain("apply the staged files you want by hand");
-      expect(next[0]).toContain("/upgrade skill");
+      expect(next[0]).toBe(
+        "Next: open this project in Claude Code and run /upgrade to apply the plan (or apply the staged files by hand, then run --upgrade --stamp)",
+      );
+      expect(next[0]).not.toContain("not available yet");
       expect(next[0]).not.toContain("nothing to apply");
     });
 
@@ -651,5 +681,385 @@ describe("main --upgrade", () => {
         }).toThrow(CliUsageError);
       },
     );
+  });
+
+  describe("the /upgrade skill install", () => {
+    const APPLY_NEXT =
+      "Next: open this project in Claude Code and run /upgrade to apply the plan (or apply the staged files by hand, then run --upgrade --stamp)";
+    const OLD = "// the old commitlint config\n";
+
+    /** One safe-update, so the plan has something to apply. */
+    const stageOneUpdate = (): void => {
+      buildProject();
+      writeFileSync(join(project, "commitlint.config.js"), OLD);
+      tamperManifest((m) => {
+        m.files["commitlint.config.js"] = {
+          sha256: sha256Hex(OLD),
+          origin: "emitted",
+        };
+      });
+    };
+    const fallbackInstall = (
+      fallbackCause: "entry" | "component",
+    ): GuardedInstallResult => ({
+      filesWritten: UPGRADE_FALLBACK_FILES,
+      location: "groundwork",
+      fallbackReason:
+        "REASON: .claude/skills/upgrade/SKILL.md is the project's",
+      fallbackCause,
+    });
+
+    it("installs UPGRADE_SKILL into the project through the generic guarded installer, once", () => {
+      buildProject();
+      upgrade();
+      expect(installUpgradeSkillMock).toHaveBeenCalledTimes(1);
+      const args = installUpgradeSkillMock.mock.calls[0] as unknown[];
+      expect(args[0]).toBe(UPGRADE_SKILL);
+      expect(args[1]).toBe(project);
+    });
+
+    it("runs only after plan.json is committed and the render directory is disposed", () => {
+      buildProject();
+      let planExisted = false;
+      let renderDirGone = false;
+      installUpgradeSkillMock.mockImplementation(() => {
+        planExisted = existsSync(join(upgradeDir(), "plan.json"));
+        renderDirGone = renderedDirs.every((dir) => !existsSync(dir));
+        return claudeInstall();
+      });
+      upgrade();
+      expect(planExisted).toBe(true);
+      expect(renderDirGone).toBe(true);
+    });
+
+    it("reports a fresh install into .claude/skills/upgrade with its file count", () => {
+      buildProject();
+      const out = recordingOut();
+      upgrade(out);
+      expect(out.infoLines).toContain(
+        "installed the /upgrade skill into .claude/skills/upgrade (2 files)",
+      );
+    });
+
+    it("reports an identical existing copy as already present", () => {
+      buildProject();
+      installUpgradeSkillMock.mockReturnValue({
+        filesWritten: [],
+        location: "already-present",
+      });
+      const out = recordingOut();
+      upgrade(out);
+      expect(out.infoLines).toContain(
+        "the /upgrade skill is already present in .claude/skills/upgrade",
+      );
+      expect(out.infoLines.join("\n")).not.toContain(
+        "installed the /upgrade skill",
+      );
+    });
+
+    it("reports a fallback install with the installer's reason on an indented line after it", () => {
+      buildProject();
+      installUpgradeSkillMock.mockReturnValue(fallbackInstall("entry"));
+      const out = recordingOut();
+      upgrade(out);
+      const at = out.infoLines.indexOf(
+        "installed the /upgrade skill into .groundwork/upgrade-skill (2 files)",
+      );
+      expect(at).toBeGreaterThanOrEqual(0);
+      expect(out.infoLines[at + 1]).toBe(
+        "  REASON: .claude/skills/upgrade/SKILL.md is the project's",
+      );
+    });
+
+    it("ends the apply case with the /upgrade Next line", () => {
+      stageOneUpdate();
+      const out = recordingOut();
+      upgrade(out);
+      expect(out.infoLines.filter((l) => l.startsWith("Next:"))).toEqual([
+        APPLY_NEXT,
+      ]);
+    });
+
+    it("writes a nothing-to-apply report that does not tell the user to run /upgrade to apply", () => {
+      buildProject();
+      upgrade();
+      const report = readFileSync(
+        join(upgradeDir(), "upgrade-report.md"),
+        "utf8",
+      );
+      expect(report).toMatch(/nothing to apply/i);
+      expect(report).not.toContain("to apply this plan");
+      expect(report).toContain(
+        "This run wrote this plan only under `.groundwork/upgrade/`; the `/upgrade` skill is installed separately, as the console output says.",
+      );
+    });
+
+    it("documents the fallback in --help as a different copy", () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      main(["--help"]);
+      const text = String(log.mock.calls[0]?.[0]).replace(/\s+/g, " ");
+      expect(text).toContain("a different copy");
+      expect(text).toContain(".groundwork/upgrade-skill/");
+      expect(text).not.toContain("the project's own");
+    });
+
+    it("keeps the nothing-to-apply Next line unchanged", () => {
+      buildProject();
+      const out = recordingOut();
+      upgrade(out);
+      expect(out.infoLines.filter((l) => l.startsWith("Next:"))).toEqual([
+        "Next: nothing to apply -- run --upgrade --stamp to record the new release in the manifest",
+      ]);
+    });
+
+    it.each(["entry", "component"] as const)(
+      "tells the user to copy the fallback copy into place first when the cause is %s",
+      (cause) => {
+        stageOneUpdate();
+        installUpgradeSkillMock.mockReturnValue(fallbackInstall(cause));
+        const out = recordingOut();
+        upgrade(out);
+        const next = out.infoLines.filter((l) => l.startsWith("Next:"));
+        expect(next).toHaveLength(1);
+        expect(next[0]).toContain(".groundwork/upgrade-skill/");
+        expect(next[0]).toContain(".claude/skills/upgrade");
+        expect(next[0]).toContain("/upgrade");
+        expect(next[0]).not.toBe(APPLY_NEXT);
+      },
+    );
+
+    it("writes the new report wording, not the unavailable-skill sentence", () => {
+      stageOneUpdate();
+      upgrade();
+      const report = readFileSync(
+        join(upgradeDir(), "upgrade-report.md"),
+        "utf8",
+      );
+      expect(report).toContain(
+        "Run `/upgrade` in Claude Code to apply this plan. This run wrote this plan only under `.groundwork/upgrade/`; the `/upgrade` skill is installed separately, as the console output says.",
+      );
+      expect(report).not.toContain("not available yet");
+    });
+
+    it.each([
+      ["package.json"],
+      [join(".claude", "skills", "customize", "SKILL.md")],
+      [join(".groundwork", "upgrade", "plan.json")],
+      [join(".groundwork", "manifest.json")],
+      [join(".groundwork", "upgrade-skill-evil", "SKILL.md")],
+      [join(".claude", "skills", "upgrade-evil", "SKILL.md")],
+      [join(".claude", "skills", "upgrade", "..", "..", "settings.json")],
+    ])(
+      "refuses an installer result that wrote outside its scope: %s",
+      (outside) => {
+        buildProject();
+        installUpgradeSkillMock.mockReturnValue({
+          filesWritten: [...UPGRADE_CLAUDE_FILES, outside],
+          location: "claude",
+        });
+        const out = recordingOut();
+        expect(() => {
+          upgrade(out);
+        }).toThrow(Error);
+        expect(out.infoLines.join("\n")).not.toContain(
+          "installed the /upgrade skill",
+        );
+      },
+    );
+
+    it("accepts every planned path of both locations", () => {
+      buildProject();
+      installUpgradeSkillMock.mockReturnValue({
+        filesWritten: [...UPGRADE_CLAUDE_FILES, ...UPGRADE_FALLBACK_FILES],
+        location: "claude",
+      });
+      expect(() => {
+        upgrade();
+      }).not.toThrow();
+    });
+
+    describe("when the installer throws", () => {
+      const boom = new Error("disk full");
+      let thrown: Error;
+
+      beforeEach(() => {
+        buildProject();
+        installUpgradeSkillMock.mockImplementation(() => {
+          throw boom;
+        });
+        try {
+          upgrade();
+          throw new Error("expected --upgrade to throw");
+        } catch (error) {
+          thrown = error as Error;
+        }
+      });
+
+      it("fails with an Error saying the plan was staged and a re-run retries the skill install", () => {
+        expect(thrown).not.toBe(boom);
+        expect(thrown.message).toContain(".groundwork/upgrade/");
+        expect(thrown.message).toMatch(/staged/i);
+        expect(thrown.message).toContain("--upgrade");
+        expect(thrown.message).toMatch(/re-?run/i);
+        expect(thrown.message).toContain("/upgrade");
+      });
+
+      it("chains the installer's error as the cause", () => {
+        expect(thrown.cause).toBe(boom);
+      });
+
+      it("leaves the staged plan in place", () => {
+        expect(existsSync(join(upgradeDir(), "plan.json"))).toBe(true);
+        expect(existsSync(join(upgradeDir(), "upgrade-report.md"))).toBe(true);
+      });
+    });
+
+    describe("when the installer throws an AssertionError", () => {
+      it("lets it propagate unchanged, with no retry advice", () => {
+        buildProject();
+        const broken = new AssertionError({ message: "broken invariant" });
+        installUpgradeSkillMock.mockImplementation(() => {
+          throw broken;
+        });
+        let thrown: unknown;
+        try {
+          upgrade();
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBe(broken);
+        expect(thrown).toBeInstanceOf(AssertionError);
+        expect((thrown as Error).message).not.toMatch(/re-?run/i);
+        expect((thrown as Error).message).not.toMatch(/staged/i);
+      });
+
+      it("lets a write-scope violation reach the caller as an AssertionError", () => {
+        buildProject();
+        installUpgradeSkillMock.mockReturnValue({
+          filesWritten: ["package.json"],
+          location: "claude",
+        });
+        expect(() => {
+          upgrade();
+        }).toThrow(AssertionError);
+      });
+    });
+
+    describe("never installs when --upgrade refuses", () => {
+      it("with no manifest", () => {
+        mkdirSync(project);
+        writeFileSync(join(project, "package.json"), '{"name":"legacy"}\n');
+        expect(() => {
+          upgrade();
+        }).toThrow(CliUsageError);
+        expect(installUpgradeSkillMock).not.toHaveBeenCalled();
+      });
+
+      it("with a corrupt manifest", () => {
+        buildProject();
+        writeFileSync(
+          join(project, ".groundwork", "manifest.json"),
+          "{ not json",
+        );
+        expect(() => {
+          upgrade();
+        }).toThrow(ManifestError);
+        expect(installUpgradeSkillMock).not.toHaveBeenCalled();
+      });
+
+      it.each([["--name", "widgets"], ["--force"], ["--json"], ["--adopt"]])(
+        "with the usage error %j",
+        (...extra: string[]) => {
+          buildProject();
+          expect(() => {
+            main([project, "--upgrade", ...extra], "linux", recordingOut());
+          }).toThrow(CliUsageError);
+          expect(installUpgradeSkillMock).not.toHaveBeenCalled();
+        },
+      );
+
+      it("when a regular file sits at .groundwork/upgrade", () => {
+        buildProject();
+        writeFileSync(join(project, ".groundwork", "upgrade"), "x");
+        expect(() => {
+          upgrade();
+        }).toThrow(Error);
+        expect(installUpgradeSkillMock).not.toHaveBeenCalled();
+      });
+    });
+
+    const SCOPE_ROOTS = [
+      ".groundwork/upgrade",
+      ".claude/skills/upgrade",
+      ".groundwork/upgrade-skill",
+    ];
+    const SCOPE_PARENT_DIRS = [".claude", ".claude/skills", ".groundwork"];
+
+    /** Changed paths outside the three roots; the roots' parents count only as directories. */
+    function outsideScope(
+      changed: string[],
+      tree: Record<string, string>,
+    ): string[] {
+      return changed.filter((path) => {
+        const posix = path.split("\\").join("/");
+        const inRoot = SCOPE_ROOTS.some(
+          (root) => posix === root || posix.startsWith(`${root}/`),
+        );
+        const dirParent =
+          SCOPE_PARENT_DIRS.includes(posix) && tree[path] === "dir";
+        return !inRoot && !dirParent;
+      });
+    }
+
+    it.each([
+      [".claude/skills/customize/SKILL.md", "file"],
+      [".groundwork/upgrade-evil/x", "file"],
+      [".groundwork/upgrade-evil", "dir"],
+      [".claude/skills/upgrade-evil", "dir"],
+      [".claude", "file"],
+      [".groundwork", "file"],
+      ["package.json", "file"],
+    ])("scope check flags %s as a %s", (path, kind) => {
+      expect(outsideScope([path], { [path]: kind })).toEqual([path]);
+    });
+
+    it.each([
+      [".claude", "dir"],
+      [".claude/skills", "dir"],
+      [".groundwork", "dir"],
+      [".claude/skills/upgrade", "dir"],
+      [".groundwork/upgrade/plan.json", "file"],
+      [".groundwork/upgrade-skill/SKILL.md", "file"],
+    ])("scope check accepts %s as a %s", (path, kind) => {
+      expect(outsideScope([path], { [path]: kind })).toEqual([]);
+    });
+
+    it("writes only under .groundwork/upgrade/, .claude/skills/upgrade/ and .groundwork/upgrade-skill/ with the real installer, and leaves the manifest alone", async () => {
+      const actual =
+        await vi.importActual<typeof PluginModule>("../src/plugin.js");
+      installUpgradeSkillMock.mockImplementation(actual.installSkillGuarded);
+      stageOneUpdate();
+      const before = snapshotTree(project);
+      const manifestBytes = readFileSync(
+        join(project, ".groundwork", "manifest.json"),
+      );
+
+      upgrade();
+
+      const after = snapshotTree(project);
+      const changed = [
+        ...new Set([...Object.keys(before), ...Object.keys(after)]),
+      ]
+        .filter((path) => before[path] !== after[path])
+        .sort();
+      expect(changed.length).toBeGreaterThan(0);
+      expect(outsideScope(changed, after)).toEqual([]);
+      expect(changed).toContain(
+        join(".claude", "skills", "upgrade", "SKILL.md"),
+      );
+      expect(
+        readFileSync(join(project, ".groundwork", "manifest.json")),
+      ).toEqual(manifestBytes);
+    });
   });
 });

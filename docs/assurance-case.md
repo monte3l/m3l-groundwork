@@ -218,7 +218,10 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   adopt mode never removes or replaces an entry the project owns under
   `.claude/skills/customize/`. It replaces files remove-then-`wx` only in the
   CLI-owned `.groundwork/customize/` and, in fresh mode under `--force`, in
-  `.claude/skills/customize/`. There is,
+  `.claude/skills/customize/`. `--upgrade` copies the `/upgrade` skill with the
+  same installer, so the same holds for `.claude/skills/upgrade/` and its
+  CLI-owned fallback `.groundwork/upgrade-skill/`, and `--upgrade` checks the
+  paths that install wrote against exactly those two directories. There is,
   however, a time-of-check-to-time-of-use gap between those `lstat` checks and the
   later `rmSync` calls and writes: a local attacker able to swap a directory for a symlink in
   that window is outside the threat model this tool accepts, which assumes

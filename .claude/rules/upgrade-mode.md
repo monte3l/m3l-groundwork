@@ -18,14 +18,18 @@ alternatives are in
 writing `.groundwork/manifest.json`, the pure classifier
 (`upgrade/classify.ts`), the plan computation (`upgrade/plan.ts`) and the
 `--upgrade` mode that stages the plan (`upgrade/stage.ts`, `upgrade/report.ts`,
-`runUpgrade` in `main.ts`) and `--upgrade --stamp` (`upgrade/stamp.ts`,
-`runUpgradeStamp` in `main.ts`). Everything else, `--apply`,
-the legacy no-manifest plan, the `--json` plan report and the `/upgrade` skill,
-is not in `packages/` yet; the paths above are where it will land. Update this
-file as each piece ships, and drop this line when the last one does.
+`runUpgrade` in `main.ts`), `--upgrade --stamp` (`upgrade/stamp.ts`,
+`runUpgradeStamp` in `main.ts`), and the `/upgrade` skill
+(`packages/plugin/skills/upgrade/`, `UPGRADE_SKILL` in `skill-spec.ts`), which
+`--upgrade` installs. Everything else, `--apply`, the legacy no-manifest plan
+and the `--json` plan report, is not in `packages/` yet; the paths above are
+where it will land. Update this file as each piece ships, and drop this line
+when the last one does.
 
 - **Offline and deterministic, like Phase A.** `--upgrade` reads the project and
-  the packaged baseline, and writes only under `.groundwork/upgrade/`:
+  the packaged baseline. It writes the plan only under `.groundwork/upgrade/`,
+  and then the `/upgrade` skill (see "The skill reaches the project through
+  the CLI" below) and nothing else. Under `.groundwork/upgrade/` it writes
   the `staged/<path>.staged` copies of the rendered file for every `add`,
   `safe-update`, `conflict-2way` and `conflict-3way` entry, then
   `upgrade-report.md`, then `plan.json` last (the commit marker, as
@@ -39,16 +43,20 @@ file as each piece ships, and drop this line when the last one does.
   valid beside its own plan); a regular file at `.groundwork/upgrade` is refused.
   The directory names live in one module, `upgrade/paths.ts`. `/customize`
   ignores `upgrade/` and `.upgrade-*` when it classifies `.groundwork/`. It never
-  writes a project file or the manifest. It rejects `--name`, `--force`,
+  writes the manifest, or a project file beyond the skill copy. It rejects `--name`, `--force`,
   `--pack`, `--skip-install` and `--json` (plan reports wait for the headless
   series), needs an existing directory, and combines with neither `--adopt` nor
   `--fresh`. A project with **no manifest** is refused (exit 2) with advice to
   re-run the CLI in adopt mode and then `/customize`; the legacy two-way plan is
   a later change. `plan.json` is the plan plus `legacy: false` and a `staged`
   list of `{path, staged, sha256}`, with no timestamps or absolute paths, so two
-  runs on the same inputs are byte-identical. Until the `/upgrade` skill ships,
-  the report's Next step (and the run's `Next:` line) says to apply the
-  staged files by hand and then run `--upgrade --stamp`; when nothing is
+  runs on the same inputs are byte-identical. The report's Next step (and the
+  run's `Next:` line) says to run `/upgrade` in Claude Code, or to apply the
+  staged files by hand and then run `--upgrade --stamp`; after a fallback
+  install the `Next:` line says to copy `.groundwork/upgrade-skill/` into
+  `.claude/skills/upgrade/` first. The report is written before the skill
+  install, so it says only that the skill is installed separately, as the
+  console output says; when nothing is
   listed under Needs a decision, Safe to apply or Removed upstream
   (`nothingToApply` in `upgrade/report.ts`, the one predicate both read), it
   says there is nothing to apply and that `--upgrade --stamp` still records
@@ -145,7 +153,10 @@ file as each piece ships, and drop this line when the last one does.
 - **No manifest means a legacy project.** Run the adopt survey and
   `planConflicts`, call every divergent file `conflict-2way`, set
   `legacy: true` in the plan, and write a manifest at stamp time.
-- **The CLI hashes, the skill never does.** `--upgrade --stamp`
+- **The CLI records every hash and writes the manifest; the skill never
+  records a hash.** The skill may run a read-only `shasum -a 256` to check a
+  file still matches the plan before it overwrites or deletes it, but only
+  the CLI decides what the manifest says. `--upgrade --stamp`
   (`stampUpgrade` in `upgrade/stamp.ts`) re-hashes the plan's paths from disk
   and writes the manifest, and nothing else: it never renders, plans or
   stages. It reads `plan.json` `lstat`-first (a regular file only), validates
@@ -189,19 +200,33 @@ file as each piece ships, and drop this line when the last one does.
 - **`--apply <answers.json>` is the only write step.** It touches project files
   only when you ask, and only against a `plan.json` whose hashes still match
   the tree. A changed tree is drift and the run refuses. The `--upgrade` plan
-  step never writes a project file. Exit codes 0-4 and the `--json` report are
+  step never writes a project file beyond the guarded `/upgrade` skill copy. Exit codes 0-4 and the `--json` report are
   shared with the other modes: they are defined in
   [`headless-mode.md`](headless-mode.md). Link to it, do not copy the table.
 - **The skill reaches the project through the CLI.** `--upgrade` copies
-  `/upgrade` in with the guarded installer `/customize` uses: `lstat`
-  presence checks, never overwrite a changed copy (it goes to
-  `.groundwork/upgrade/skill/`), `SKILL.md` last, rollback on failure. That
-  installer is already generic: `installSkill` and `installSkillGuarded` in
-  `plugin.ts` take a `SkillSpec` (`skill-spec.ts`: name, entry file, write
-  order, both destinations, where each file is read from), and
-  `installCustomizeSkill`/`installCustomizeSkillGuarded` are thin wrappers
-  over `CUSTOMIZE_SKILL`. `/upgrade` needs only its own `SkillSpec`; do not
-  fork the installer. The same run refreshes an unchanged `/customize` copy.
+  `/upgrade` in with the guarded installer `/customize` uses
+  (`installSkillGuarded(UPGRADE_SKILL, ...)`): `lstat` presence checks, never
+  overwrite a changed copy, `SKILL.md` last, rollback on failure. It runs
+  only after `plan.json` is committed and the rendered release disposed, and
+  never when `--upgrade` refuses earlier. The fallback is
+  `.groundwork/upgrade-skill/` (`UPGRADE_SKILL_FALLBACK_RELATIVE_DIR` in
+  `upgrade/paths.ts`), a sibling of `.groundwork/upgrade/`, never inside it,
+  because `--upgrade` replaces `.groundwork/upgrade/` wholesale on every run.
+  Every path the installer reports writing must be one of
+  `plannedSkillPaths(UPGRADE_SKILL)` exactly (`assertUpgradeSkillWriteScope`
+  in `main.ts`, over the same helper as adopt's `assertAdoptWriteScope`), or
+  the run fails with an `AssertionError`; one thrown by the installer
+  propagates unchanged too (a bug, not retryable). Any other installer failure is an `Error`
+  saying the plan was staged and that re-running `--upgrade` retries the
+  install, with the installer's error as `cause`; the plan stays. `/upgrade`
+  has only its own `SkillSpec`; do not fork the installer. **Not done:**
+  refreshing an unchanged `/customize` copy in the same run. The manifest
+  does not record the skill copy's hash (fresh mode's `files` omit it), so
+  the CLI cannot tell an unchanged copy from one the owner edited; that stays
+  a gap until the manifest records it. Same root cause: `--upgrade` never
+  refreshes an older `/upgrade` copy, so after the first install a release
+  whose skill text changed lands in `.groundwork/upgrade-skill/` and must be
+  copied over by hand; the fix needs a manifest schema change.
 - **The skill rebuilds an old base with a released CLI.**
   `npx @monte3l/groundwork@<old> --fresh --skip-install --name <n> --pack ... <tmp>`
   needs no new flag for the base itself; the recorded tailoring is replayed on

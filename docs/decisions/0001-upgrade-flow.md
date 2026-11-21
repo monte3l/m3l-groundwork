@@ -40,9 +40,9 @@ The third option.
   tailoring on top. Without that replay, a tailored file could never match
   its rebuilt base and would be a permanent `conflict-3way`.
 - **`--upgrade` mode.** A third mode beside `--adopt` and `--fresh`. Offline
-  and deterministic. It writes only under `.groundwork/upgrade/`: a `plan.json`
-  commit marker, a report and staged `.staged` copies. It never writes a
-  project file. `--upgrade --stamp` re-hashes the project and rewrites the
+  and deterministic. It writes the plan only under `.groundwork/upgrade/`: a
+  `plan.json` commit marker, a report and staged `.staged` copies. Besides
+  the guarded `/upgrade` skill copy (below), it never writes a project file. `--upgrade --stamp` re-hashes the project and rewrites the
   manifest after the plan has been applied.
 - **`--apply <answers.json>`.** The one step where the CLI writes project
   files. It runs only when you ask for it, and only against a `plan.json` it

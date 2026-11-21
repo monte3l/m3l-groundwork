@@ -174,34 +174,38 @@ to an already-bootstrapped project. A pack that lists only fresh mode (such as
 ## Upgrading to a new release
 
 > [!NOTE]
-> The upgrade flow is designed and only partly built. Fresh mode writes the
-> manifest (step 1 below), `--upgrade` (step 2) writes a plan and
-> `--upgrade --stamp` records it once applied (or right away when there is
-> nothing to apply), but `/upgrade` and `--apply`
-> (step 3) do not exist yet, so a plan is information you apply by hand. The design is in
+> The upgrade flow is partly built. Fresh mode writes the manifest (step 1
+> below), `--upgrade` (step 2) writes a plan and installs `/upgrade` (step 3),
+> and `--upgrade --stamp` records the result. The scripted `--apply` step, and
+> a plan for a project with no manifest, do not exist yet. The design is in
 > [`docs/decisions/0001-upgrade-flow.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/decisions/0001-upgrade-flow.md).
-> Until the apply step ships, the supported way to take a new release is the
-> one in [`docs/known-gaps.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/known-gaps.md): re-run the CLI in the
+> A project with no manifest takes a new release the way
+> [`docs/known-gaps.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/known-gaps.md) describes: re-run the CLI in the
 > project (it is detected as adopt mode) and then `/customize`.
 
-The planned flow has three parts:
+The flow has three parts:
 
 1. **A manifest.** `.groundwork/manifest.json`, committed to git, records the
    CLI version, the project name, the packs and a hash of each file groundwork
    emitted. Fresh mode writes it today. `/customize` will write it after an
    adopt.
 2. **`npx @monte3l/groundwork@latest --upgrade .`** compares the manifest, your
-   files and the new baseline, offline. It writes only under
+   files and the new baseline, offline. It writes the plan under
    `.groundwork/upgrade/`: `plan.json`, `upgrade-report.md` and staged copies of
-   the new files (`staged/`). It never touches a project file, and it refuses a
-   project that has no manifest.
-3. **`/upgrade`**, a skill the same command copies into the project, applies
-   the plan. For scripted runs, a separate `--apply <answers.json>` step does
-   the same without a conversation. It is the only step that writes project
-   files, it runs only when you ask, and it refuses if your tree changed since
-   the plan was made.
+   the new files (`staged/`). Then it installs the `/upgrade` skill into
+   `.claude/skills/upgrade/`. If that path already holds a different copy
+   (including one an earlier release installed), or is not a real directory,
+   it leaves it alone and puts the new copy in `.groundwork/upgrade-skill/`
+   instead: copy it into `.claude/skills/upgrade/` before you run `/upgrade`. It never touches any
+   other project file, and it refuses a project that has no manifest.
+3. **`/upgrade`**, run in Claude Code, applies the plan: the files only
+   upstream changed in one batch you confirm, then each conflict one at a
+   time, then it runs `--upgrade --stamp` for you. For scripted runs, a
+   separate `--apply <answers.json>` step will do the same without a
+   conversation. Only these steps write project files, they run only when you
+   ask, and they refuse if your tree changed since the plan was made.
 
-Until step 3 ships, apply the staged files you want by hand, then run
+You can also apply the staged files you want by hand, then run
 **`npx @monte3l/groundwork@latest --upgrade --stamp .`** to record the result.
 It re-hashes the files the plan lists and writes only
 `.groundwork/manifest.json`, with the new CLI version. A file you took from the
@@ -244,19 +248,19 @@ for you.
 
 ## Flags
 
-| Flag                    | Effect                                                                                                                                                                                                                                                                           |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--name <project-name>` | Override the project name (default: the target directory's basename).                                                                                                                                                                                                            |
-| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                                                                                                                                                                                                                                 |
-| `--force`               | Overwrite a non-empty target directory (fresh mode only).                                                                                                                                                                                                                        |
-| `--adopt`               | Force adopt mode, even if the target looks empty.                                                                                                                                                                                                                                |
-| `--fresh`               | Force fresh mode, even if the target looks like an existing project.                                                                                                                                                                                                             |
-| `--upgrade`             | Plan an upgrade of a project that has a manifest: render the new release, compare it, and write the plan under `.groundwork/upgrade/`. It changes no project file and cannot be combined with `--adopt`, `--fresh`, `--name`, `--force`, `--pack`, `--skip-install` or `--json`. |
-| `--stamp`               | With `--upgrade`: record an applied plan in `.groundwork/manifest.json`, re-hashing the files the plan lists. It writes nothing else, and is refused without `--upgrade`.                                                                                                        |
-| `--pack <name>`         | Install an opt-in pack from `templates/packs/` in fresh mode, or narrow the survey to the named packs in adopt mode (repeatable).                                                                                                                                                |
-| `--list-packs`          | Print every available pack and exit.                                                                                                                                                                                                                                             |
-| `--json`                | Write one machine-readable JSON document to stdout and every human-readable line to stderr (see below).                                                                                                                                                                          |
-| `--help`, `--version`   | Print usage, or the CLI's version.                                                                                                                                                                                                                                               |
+| Flag                    | Effect                                                                                                                                                                                                                                                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name <project-name>` | Override the project name (default: the target directory's basename).                                                                                                                                                                                                                                                               |
+| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                                                                                                                                                                                                                                                                                    |
+| `--force`               | Overwrite a non-empty target directory (fresh mode only).                                                                                                                                                                                                                                                                           |
+| `--adopt`               | Force adopt mode, even if the target looks empty.                                                                                                                                                                                                                                                                                   |
+| `--fresh`               | Force fresh mode, even if the target looks like an existing project.                                                                                                                                                                                                                                                                |
+| `--upgrade`             | Plan an upgrade of a project that has a manifest: render the new release, compare it, write the plan under `.groundwork/upgrade/` and install the `/upgrade` skill that applies it. It changes no other project file and cannot be combined with `--adopt`, `--fresh`, `--name`, `--force`, `--pack`, `--skip-install` or `--json`. |
+| `--stamp`               | With `--upgrade`: record an applied plan in `.groundwork/manifest.json`, re-hashing the files the plan lists. It writes nothing else, and is refused without `--upgrade`.                                                                                                                                                           |
+| `--pack <name>`         | Install an opt-in pack from `templates/packs/` in fresh mode, or narrow the survey to the named packs in adopt mode (repeatable).                                                                                                                                                                                                   |
+| `--list-packs`          | Print every available pack and exit.                                                                                                                                                                                                                                                                                                |
+| `--json`                | Write one machine-readable JSON document to stdout and every human-readable line to stderr (see below).                                                                                                                                                                                                                             |
+| `--help`, `--version`   | Print usage, or the CLI's version.                                                                                                                                                                                                                                                                                                  |
 
 An unexpected failure (anything that is not a bad invocation) prints its
 error name before the message, for example `TypeError: ...`. Set `M3L_DEBUG`

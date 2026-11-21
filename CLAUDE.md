@@ -68,7 +68,7 @@ Run any task with `pnpm <script>`.
 The design record is split by area; each file loads when you edit the files it
 governs. CLI internals (token substitution, `resolveAsset()`, dotfile escaping,
 zero runtime dependencies): `.claude/rules/package-cli.md`. Adopt mode:
-`.claude/rules/adopt-mode.md`. Upgrade mode (partly built):
+`.claude/rules/adopt-mode.md`. Upgrade mode and `/upgrade` (no `--apply` yet):
 `.claude/rules/upgrade-mode.md`. Headless (unattended) runs, `--json` and the
 shared exit codes: `.claude/rules/headless-mode.md`. The two grader
 implementations that must not drift: `.claude/rules/harness-graders.md`. `/customize`, `domain-map.ts`,

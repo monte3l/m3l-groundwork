@@ -14,6 +14,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
@@ -38,13 +39,22 @@ function run(args: string[]): {
   };
 }
 
-/** Every file outside `.git/` and `.groundwork/upgrade/`, path to content hash. */
+/** The only directories `--upgrade` may write under, besides nothing else. */
+const UPGRADE_WRITE_ROOTS = [
+  ".groundwork/upgrade",
+  ".claude/skills/upgrade",
+  ".groundwork/upgrade-skill",
+];
+const skillSourceDir = join(here, "..", "..", "plugin", "skills", "upgrade");
+const SKILL_FILES = ["SKILL.md", "step-3-conflicts.md"] as const;
+
+/** Every file outside `.git/` and the three directories `--upgrade` owns, path to content hash. */
 function snapshot(root: string): Map<string, string> {
   const found = new Map<string, string>();
   const visit = (dir: string, prefix: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      if (rel === ".git" || rel === ".groundwork/upgrade") continue;
+      if (rel === ".git" || UPGRADE_WRITE_ROOTS.includes(rel)) continue;
       if (entry.isDirectory()) visit(join(dir, entry.name), rel);
       else
         found.set(
@@ -85,6 +95,135 @@ describe("--upgrade end-to-end", () => {
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
+  });
+
+  describe("the /upgrade skill install", () => {
+    const withProject = (body: (projectDir: string) => void): void => {
+      const base = mkdtempSync(join(tmpdir(), "m3l-upgrade-e2e-"));
+      const projectDir = join(base, "app");
+      try {
+        const bootstrap = run([projectDir, "--skip-install"]);
+        expect(bootstrap.status, bootstrap.output).toBe(0);
+        body(projectDir);
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    };
+    const claudeSkill = (projectDir: string, name: string): string =>
+      join(projectDir, ".claude", "skills", "upgrade", name);
+    const fallbackSkill = (projectDir: string, name: string): string =>
+      join(projectDir, ".groundwork", "upgrade-skill", name);
+
+    it("installs the plugin's /upgrade skill byte-for-byte into .claude/skills/upgrade/", () => {
+      withProject((projectDir) => {
+        const result = run([projectDir, "--upgrade"]);
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).toContain(
+          "installed the /upgrade skill into .claude/skills/upgrade (2 files)",
+        );
+        for (const name of SKILL_FILES) {
+          expect(readFileSync(claudeSkill(projectDir, name)), name).toEqual(
+            readFileSync(join(skillSourceDir, name)),
+          );
+        }
+        expect(
+          existsSync(join(projectDir, ".groundwork", "upgrade-skill")),
+        ).toBe(false);
+      });
+    });
+
+    it("writes only under .groundwork/upgrade/, .claude/skills/upgrade/ and .groundwork/upgrade-skill/, leaving the manifest alone", () => {
+      withProject((projectDir) => {
+        const before = snapshot(projectDir);
+        expect(run([projectDir, "--upgrade"]).status).toBe(0);
+        expect(snapshot(projectDir)).toEqual(before);
+        expect(existsSync(claudeSkill(projectDir, "SKILL.md"))).toBe(true);
+      });
+    });
+
+    it("keeps a project-owned different SKILL.md untouched and installs the copy under .groundwork/upgrade-skill/", () => {
+      withProject((projectDir) => {
+        mkdirSync(join(projectDir, ".claude", "skills", "upgrade"), {
+          recursive: true,
+        });
+        writeFileSync(claudeSkill(projectDir, "SKILL.md"), "# mine\n");
+
+        const result = run([projectDir, "--upgrade"]);
+
+        expect(result.status, result.output).toBe(0);
+        expect(readFileSync(claudeSkill(projectDir, "SKILL.md"), "utf8")).toBe(
+          "# mine\n",
+        );
+        expect(existsSync(claudeSkill(projectDir, "step-3-conflicts.md"))).toBe(
+          false,
+        );
+        for (const name of SKILL_FILES) {
+          expect(readFileSync(fallbackSkill(projectDir, name)), name).toEqual(
+            readFileSync(join(skillSourceDir, name)),
+          );
+        }
+        expect(result.output).toContain(
+          "installed the /upgrade skill into .groundwork/upgrade-skill (2 files)",
+        );
+      });
+    });
+
+    it("prints the already-present line and writes no skill file when re-run over an identical copy", () => {
+      withProject((projectDir) => {
+        expect(run([projectDir, "--upgrade"]).status).toBe(0);
+        const mtimes = SKILL_FILES.map(
+          (name) => statSync(claudeSkill(projectDir, name)).mtimeMs,
+        );
+
+        const second = run([projectDir, "--upgrade"]);
+
+        expect(second.status, second.output).toBe(0);
+        expect(second.output).toContain(
+          "the /upgrade skill is already present in .claude/skills/upgrade",
+        );
+        expect(second.output).not.toContain("installed the /upgrade skill");
+        expect(
+          SKILL_FILES.map(
+            (name) => statSync(claudeSkill(projectDir, name)).mtimeMs,
+          ),
+        ).toEqual(mtimes);
+      });
+    });
+
+    it("keeps .groundwork/upgrade-skill/ across the next --upgrade run without warning about it", () => {
+      withProject((projectDir) => {
+        mkdirSync(join(projectDir, ".claude", "skills", "upgrade"), {
+          recursive: true,
+        });
+        writeFileSync(claudeSkill(projectDir, "SKILL.md"), "# mine\n");
+        expect(run([projectDir, "--upgrade"]).status).toBe(0);
+
+        const second = run([projectDir, "--upgrade"]);
+
+        expect(second.status, second.output).toBe(0);
+        for (const name of SKILL_FILES) {
+          expect(readFileSync(fallbackSkill(projectDir, name)), name).toEqual(
+            readFileSync(join(skillSourceDir, name)),
+          );
+        }
+        expect(second.output).not.toMatch(/discarded/);
+        expect(second.output).not.toContain("upgrade-skill from");
+      });
+    });
+
+    it("does not install the skill when --upgrade refuses a project with no manifest", () => {
+      const base = mkdtempSync(join(tmpdir(), "m3l-upgrade-e2e-"));
+      const projectDir = join(base, "legacy");
+      try {
+        mkdirSync(projectDir);
+        writeFileSync(join(projectDir, "package.json"), '{"name":"legacy"}\n');
+        expect(run([projectDir, "--upgrade"]).status).toBe(2);
+        expect(existsSync(join(projectDir, ".claude"))).toBe(false);
+        expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
   });
 
   it("exits 2 for --upgrade --json, with a message", () => {

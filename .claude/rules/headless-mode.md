@@ -320,8 +320,9 @@ answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
   (later `/upgrade --headless <file>`) and never because a file exists. It
   never calls `AskUserQuestion`, refuses a schema or CLI version mismatch,
   does only the report's `handoff` entries, writes anything undecidable to
-  `pending` and stops, and ends by calling the CLI to stamp (the skill never
-  hashes). Round 2 runs only when `guidance.enabled`, and in headless it only
+  `pending` and stops, and ends by calling the CLI to stamp (the CLI records every hash
+  and writes the manifest; the skill never records a hash, though it may run a
+  read-only `shasum -a 256` to check a file still matches the plan). Round 2 runs only when `guidance.enabled`, and in headless it only
   reports: every finding is deferred. The documented `claude -p` recipe never
   uses `--dangerously-skip-permissions` and adds `WebFetch` and `WebSearch`
   only when guidance is on.
