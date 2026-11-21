@@ -290,9 +290,16 @@ answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
   meanwhile is another run's and is left alone without failing the run; a
   failed create removes nothing, and a release failure
   after a failed run keeps that run's error primary, attaching
-  `releaseError`). It rolls back a leftover journal first (one warning;
-  a journal that is not exactly the shape it writes is refused, naming the
-  journal), then verifies every action before the first write: the staged
+  `releaseError`). Holding the lock, it first makes sure
+  `.groundwork/headless/.gitignore` ignores `txn/` and `lock` (created with
+  exclusive create, even if the run then fails; an identical file is left
+  alone silently, a different one is left alone with a warning naming
+  `.gitignore`; never in `changes`; a dry run never creates it). It rolls
+  back a leftover journal next (one warning; a journal that is not exactly
+  the shape it writes is refused, naming the journal; on POSIX a journal or
+  backup that is not a regular file owned by the process's uid, or that is
+  group- or world-writable, is refused naming it, touching nothing -- the
+  journal is checked on the descriptor it is read through), then verifies every action before the first write: the staged
   copy is a relative path inside `.groundwork/baseline/` (`install-staged`)
   or `.groundwork/baseline-divergent/` (the other two), a real directory at
   every component, a regular file read with `O_NOFOLLOW`, and its raw bytes
@@ -312,7 +319,7 @@ answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
   unmodified parse does not re-serialise (in its indent, line ending and
   trailing newline) to exactly its original text ("delegate it instead"). It
   then writes `txn/backup/<n>` (mode 0600) for each replaced file and
-  `txn/journal.json`, fsyncs them, `txn/` and `headless/`, and runs
+  `txn/journal.json` (mode 0600), fsyncs them, `txn/` and `headless/`, and runs
   each write after `io.beforeStep`: `install-staged` creates missing
   parents, then opens the file with `wx` and writes and fsyncs it through
   that descriptor; the other two re-read the target without following a
@@ -323,15 +330,19 @@ answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
   refused as tampered) (`merge-keys` keeps the target's indentation, line ending and trailing
   newline). Before the commit point it fsyncs the directory each file landed
   in, every directory it created and each one's parent. Deleting the journal
-  is the commit point; `txn/` is fsynced, then removed (a failure is only a
-  warning) and `applied.json` (`schema` `groundwork.applied`,
-  `schemaVersion` 1, `changes`) is written last, and not at all when nothing
-  was written; if that write fails the `ApplyError` has `rolledBack: false`,
-  no leftovers, and says the changes landed and must be recorded by hand.
-  Removing `txn/` always deletes `journal.json` first, so a half-removed
-  `txn/` holds no journal, and the next run removes it with a warning that
-  the previous run's changes may have landed without `applied.json` and
-  should be checked and recorded by hand. Undo decides by hashes, so the next
+  is the commit point; `txn/` is fsynced, `applied.json` (`schema`
+  `groundwork.applied`, `schemaVersion` 1, `changes`) is written -- not at
+  all when nothing was written -- and only then is `txn/` removed (a
+  failure is only a warning; `applied.json` stays). If the `applied.json`
+  write fails the `ApplyError` has `rolledBack: false`, no leftovers, and
+  says the changes landed and must be recorded by hand (`txn/` is then
+  removed best effort). Removing `txn/` always deletes `journal.json` first,
+  so a half-removed `txn/` holds no journal, and the next run removes it with
+  a warning (naming "no journal" and `txn`) that the previous run's changes
+  may have landed without being written to `applied.json`: the operator
+  checks that `applied.json` lists the paths of that run's changes (every
+  successful run overwrites it, so it may hold an earlier run's record), and
+  otherwise checks the project and records any that landed by hand. Undo decides by hashes, so the next
   run can recover a journal without knowing which steps landed: a target
   already holding the original is left (no backup needed), a target holding
   the step's bytes is restored from its verified backup (or removed, with
@@ -343,10 +354,15 @@ answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
   stopped part-way after this run's exclusive open removes the file whatever
   it holds; a failed open created nothing and is not in `written`. A
   replaced target deleted since is a leftover (reason "deleted"), never
-  recreated from its backup, in-process or in recovery. The recovery warning
-  lists the restored and already-original paths; a failed recovery's error
-  names what it did restore next to the leftover reasons; if the same run's
-  plan then fails, its error names the restored paths too (the original
+  recreated from its backup, in-process or in recovery. Each replacing step
+  tracks whether its rename happened: one that failed before the rename
+  changed nothing, so the in-process rollback treats it as already original
+  (no leftover, not in `written`) and leaves the target as the user has it.
+  The recovery warning lists the restored and already-original paths; a
+  failed recovery's error names what it did restore next to the leftover
+  reasons; if the same run's plan then fails, its error carries the
+  recovery's note whenever recovery acted at all (restored files,
+  already-original ones, or a journal-less `txn/` removed; the original
   error chained as `cause`); a cleanup failure after a successful recovery
   is its own `ApplyError`.
   Every failure is an `ApplyError` (`headless/errors.ts`) with `written`
@@ -355,15 +371,20 @@ answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
   recovery's `cause` is an `AggregateError` of them) and the original
   failure as `cause`; a rollback with leftovers keeps `txn/` for recovery.
   `dryRun` verifies and returns the same `changes` with no lock, no recovery
-  and no write. **Limits:** a directory swapped for a symlink between the
+  and no write; a pending `txn/` (with a journal or without) adds one warning
+  that an unfinished earlier apply may have left the project half-applied. **Limits:** a directory swapped for a symlink between the
   check and the write cannot be fully prevented without `openat`, which Node
   lacks; durability is fsync best effort (a directory fsync is skipped where
   the platform cannot do it); the rename-replace breaks hard links and drops
   the owner and extended attributes; `merge-keys` only rewrites text it can
   reproduce exactly, though the survey may still offer it for a JSONC target
-  (7c aligns the two); a dry run ignores a pending `txn/`; and a stale `txn/`
-  that was committed to git could be recovered by a later run, so never
-  commit `.groundwork/headless/txn`.
+  (7c aligns the two); the journal-trust check is POSIX-only (Windows
+  has no uid or group/world write bits to check); and a stale `txn/`
+  committed to git could be recovered by a later run: the generated
+  `.groundwork/headless/.gitignore` reduces this (it does not help when a
+  different `.gitignore` already exists there, or with `git add -f`), and the
+  trust check does not catch it (a checked-out journal is owned by the
+  cloning user), though undo still checks every hash and path rule.
 - **PR files only.** `--apply` writes `.groundwork/headless/commit-msg.txt`, a
   Conventional Commit that passes the emitted `bin/lint-commit.mjs`, and
   `pr-body.md`. The caller does the branch, commit, push and `gh pr create`.

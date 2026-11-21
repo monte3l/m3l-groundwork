@@ -62,6 +62,12 @@ function makeProject(): string {
   const dir = mkdtempSync(join(tmpdir(), "hl-apply-"));
   made.push(dir);
   mkdirSync(join(dir, ".groundwork", "headless"), { recursive: true });
+  // The executor creates this as soon as it holds the lock; pre-creating it
+  // keeps before/after tree snapshots about what a run really changed.
+  writeFileSync(
+    join(dir, ".groundwork", "headless", ".gitignore"),
+    "txn/\nlock\n",
+  );
   return dir;
 }
 
