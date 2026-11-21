@@ -175,9 +175,9 @@ to an already-bootstrapped project. A pack that lists only fresh mode (such as
 
 > [!NOTE]
 > The upgrade flow is designed and only partly built. Fresh mode writes the
-> manifest (step 1 below) and `--upgrade` (step 2) writes a plan, but
-> `/upgrade` and `--apply` (step 3) do not exist yet, so a plan is information
-> you apply by hand. The design is in
+> manifest (step 1 below), `--upgrade` (step 2) writes a plan and
+> `--upgrade --stamp` records it once applied, but `/upgrade` and `--apply`
+> (step 3) do not exist yet, so a plan is information you apply by hand. The design is in
 > [`docs/decisions/0001-upgrade-flow.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/decisions/0001-upgrade-flow.md).
 > Until the apply step ships, the supported way to take a new release is the
 > one in [`docs/known-gaps.md`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/known-gaps.md): re-run the CLI in the
@@ -199,6 +199,20 @@ The planned flow has three parts:
    the same without a conversation. It is the only step that writes project
    files, it runs only when you ask, and it refuses if your tree changed since
    the plan was made.
+
+Until step 3 ships, apply the staged files you want by hand, then run
+**`npx @monte3l/groundwork@latest --upgrade --stamp .`** to record the result.
+It re-hashes the files the plan lists and writes only
+`.groundwork/manifest.json`, with the new CLI version. A file you took from the
+release is recorded as the release's copy. Any other file it keeps, one you
+kept your own way or a change you did not apply or declined, is recorded as
+merged unless it already matches the new release, so the next upgrade compares
+that file two-way instead of proposing the same change again. JSON keys have no
+such marker yet: a key you kept keeps its old hash and is still compared
+three-way. It refuses a project with no plan, and a plan that no longer matches
+the manifest: one made from another CLI version, or one where any file or JSON
+key's recorded hash differs from the manifest's. Run `--upgrade` again for a
+fresh plan.
 
 For each file it compares what groundwork last wrote, what you have now and what
 the new release writes:
@@ -231,6 +245,7 @@ for you.
 | `--adopt`               | Force adopt mode, even if the target looks empty.                                                                                                                                                                                                                                |
 | `--fresh`               | Force fresh mode, even if the target looks like an existing project.                                                                                                                                                                                                             |
 | `--upgrade`             | Plan an upgrade of a project that has a manifest: render the new release, compare it, and write the plan under `.groundwork/upgrade/`. It changes no project file and cannot be combined with `--adopt`, `--fresh`, `--name`, `--force`, `--pack`, `--skip-install` or `--json`. |
+| `--stamp`               | With `--upgrade`: record an applied plan in `.groundwork/manifest.json`, re-hashing the files the plan lists. It writes nothing else, and is refused without `--upgrade`.                                                                                                        |
 | `--pack <name>`         | Install an opt-in pack from `templates/packs/` in fresh mode, or narrow the survey to the named packs in adopt mode (repeatable).                                                                                                                                                |
 | `--list-packs`          | Print every available pack and exit.                                                                                                                                                                                                                                             |
 | `--json`                | Write one machine-readable JSON document to stdout and every human-readable line to stderr (see below).                                                                                                                                                                          |
@@ -434,6 +449,7 @@ the same, and stdout also carries the error document described under
 | `--adopt` with `--fresh`                                                                                     | 2    | The two are mutually exclusive.                                                                                                                                                                   |
 | `--upgrade` with `--adopt` or `--fresh`, or with `--name`, `--force`, `--pack`, `--skip-install` or `--json` | 2    | `--upgrade` is its own mode and takes none of those. A missing target directory is refused too.                                                                                                   |
 | `--upgrade` on a project with no `.groundwork/manifest.json`                                                 | 2    | Writes nothing. Re-run the CLI in adopt mode (`npx @monte3l/groundwork .`) and then `/customize`.                                                                                                 |
+| `--stamp` without `--upgrade`, or `--upgrade --stamp` with no `.groundwork/upgrade/plan.json`                | 2    | Writes nothing. Run `--upgrade` first.                                                                                                                                                            |
 | `--name` is not a valid npm package name, or a `--pack` value is not a valid pack name                       | 2    | Prints the rule it broke and the usage text.                                                                                                                                                      |
 | Unknown `--pack`                                                                                             | 2    | Lists the available packs.                                                                                                                                                                        |
 | `--pack` for a pack without fresh mode                                                                       | 2    | Says the pack does not support fresh mode and lists its modes.                                                                                                                                    |

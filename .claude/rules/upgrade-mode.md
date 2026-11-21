@@ -18,7 +18,8 @@ alternatives are in
 writing `.groundwork/manifest.json`, the pure classifier
 (`upgrade/classify.ts`), the plan computation (`upgrade/plan.ts`) and the
 `--upgrade` mode that stages the plan (`upgrade/stage.ts`, `upgrade/report.ts`,
-`runUpgrade` in `main.ts`). Everything else, `--upgrade --stamp`, `--apply`,
+`runUpgrade` in `main.ts`) and `--upgrade --stamp` (`upgrade/stamp.ts`,
+`runUpgradeStamp` in `main.ts`). Everything else, `--apply`,
 the legacy no-manifest plan, the `--json` plan report and the `/upgrade` skill,
 is not in `packages/` yet; the paths above are where it will land. Update this
 file as each piece ships, and drop this line when the last one does.
@@ -46,7 +47,8 @@ file as each piece ships, and drop this line when the last one does.
   a later change. `plan.json` is the plan plus `legacy: false` and a `staged`
   list of `{path, staged, sha256}`, with no timestamps or absolute paths, so two
   runs on the same inputs are byte-identical. Until the `/upgrade` skill ships,
-  the report's Next step says to apply the staged files by hand. The pack list comes from the manifest. Adding a pack
+  the report's Next step (and the run's `Next:` line) says to apply the
+  staged files by hand and then run `--upgrade --stamp`. The pack list comes from the manifest. Adding a pack
   to an existing project is `--pack <name>` in adopt mode
   ([#318](https://github.com/monte3l/m3l-groundwork/issues/318)), which needs no
   manifest. The skill's stamp step records the new pack in the manifest like any
@@ -138,9 +140,47 @@ file as each piece ships, and drop this line when the last one does.
 - **No manifest means a legacy project.** Run the adopt survey and
   `planConflicts`, call every divergent file `conflict-2way`, set
   `legacy: true` in the plan, and write a manifest at stamp time.
-- **The CLI hashes, the skill never does.** `--upgrade --stamp` re-hashes the
-  plan's paths from disk and writes the manifest, marking `origin: merged`
-  wherever the file differs from the staged new content.
+- **The CLI hashes, the skill never does.** `--upgrade --stamp`
+  (`stampUpgrade` in `upgrade/stamp.ts`) re-hashes the plan's paths from disk
+  and writes the manifest, and nothing else: it never renders, plans or
+  stages. It reads `plan.json` `lstat`-first (a regular file only), validates
+  it strictly (schema 1, `legacy: false`; read, parse and validation fail
+  separately, naming `plan.json` and never quoting its text, a version, an
+  unknown key or a token value; both versions must be semantic versions, and
+  an unknown key anywhere is refused) and refuses a stale plan (`stale-plan`):
+  `fromCliVersion` must equal the manifest's `cliVersion`, the tokens and
+  packs must match, and **every entry's `recordedSha256` must equal the
+  manifest's hash for that file or JSON key** (no `recordedSha256` needs no
+  manifest entry). So a plan from another version, or one whose entries no
+  longer match the manifest (as after a stamp that changed any of them), is
+  refused as stale; the per-entry message names the path, never a hash. The
+  new manifest has the plan's `toCliVersion`. **Base invariant:** the manifest
+  has one `cliVersion`, so a kept entry whose hash is not the new release's
+  (or that has no new release hash) is recorded as `{old hash, merged}`: its
+  base can no longer be rebuilt, and the next upgrade compares it two-way. An
+  entry whose hash is the new release's, or that is already `merged`, stays
+  as it is. With `D` the disk hash, `R` the plan's `recordedSha256` and `N`
+  its `nextSha256`: `gone` drops the entry when the file is absent and keeps
+  it when one is there; `orphan-edited` and `local-only` keep it;
+  `user-deleted` and a present `remove` keep the old hash, always as
+  `merged`; an absent `remove` is dropped; every other class keeps the old
+  entry (or none) when the file is absent, records `{N, emitted}` when
+  `D == N`, keeps the old entry when `D == R` (not applied, or declined) and
+  records `{D, merged}` otherwise; every kept entry goes through the base
+  invariant. JSON keys: a present JSON-object file records `N`
+  where the key equals it, drops a key absent from both the release and the
+  file, and keeps the rest; an absent file drops the keys with no `N` and
+  keeps the rest; a non-object keeps every old hash; a present file that does
+  not parse or is too deep to hash is `unreadable-file` ("could not hash the
+  JSON keys of `<path>`", with `cause`), before anything is written. JSON
+  keys carry no origin, so a key kept with its old hash stays a 3-way base
+  under the new `cliVersion` until a schema change adds a per-key origin. A file's
+  key entry is dropped once empty or with its file entry. Paths and keys the
+  plan does not list are kept. No manifest is the same usage error as
+  `--upgrade` (with the stamp error as `cause`); no `plan.json` is exit 2 with
+  "no plan to stamp -- run --upgrade first"; any other refusal is exit 1. The
+  project walk and the token comparison are shared with the plan step in
+  `upgrade/project-read.ts`.
 - **`--apply <answers.json>` is the only write step.** It touches project files
   only when you ask, and only against a `plan.json` whose hashes still match
   the tree. A changed tree is drift and the run refuses. The `--upgrade` plan

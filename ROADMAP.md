@@ -35,9 +35,10 @@ one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
   A committed manifest, a third `--upgrade` CLI mode and an `/upgrade` skill
   that compares last-emitted, current and new files. Designed in
   [`docs/decisions/0001-upgrade-flow.md`](docs/decisions/0001-upgrade-flow.md).
-  The manifest, the classifier and `--upgrade` (which stages a plan) are built;
-  still ahead are the `/upgrade` skill that applies a plan, `--upgrade --stamp`,
-  `--apply` and a plan for projects that have no manifest. No issue is open for
+  The manifest, the classifier, `--upgrade` (which stages a plan) and
+  `--upgrade --stamp` (which records an applied plan in the manifest) are built;
+  still ahead are the `/upgrade` skill that applies a plan, `--apply` and a plan
+  for projects that have no manifest. No issue is open for
   it yet. It takes no `--pack`: its packs come from the manifest, and adding one
   is `--pack` in adopt mode.
 - **`pnpm/setup` in CI.** Tracked in

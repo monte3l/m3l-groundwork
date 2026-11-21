@@ -140,4 +140,98 @@ describe("--upgrade end-to-end", () => {
       rmSync(base, { recursive: true, force: true });
     }
   });
+  describe("--upgrade --stamp", () => {
+    const sha = (text: string | Buffer): string =>
+      createHash("sha256").update(text).digest("hex");
+
+    it("records a hand-applied safe-update in the manifest and changes no project file", () => {
+      const base = mkdtempSync(join(tmpdir(), "m3l-upgrade-e2e-"));
+      const projectDir = join(base, "app");
+      try {
+        expect(run([projectDir, "--skip-install"]).status).toBe(0);
+        const file = join(projectDir, "commitlint.config.js");
+        const fresh = readFileSync(file, "utf8");
+        const old = "// the old commitlint config\n";
+        // Simulate an upstream change: the project and the manifest hold the old bytes.
+        writeFileSync(file, old);
+        const manifestPath = join(projectDir, ".groundwork", "manifest.json");
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+          cliVersion: string;
+          files: Record<string, { sha256: string; origin: string }>;
+        };
+        manifest.files["commitlint.config.js"] = {
+          sha256: sha(old),
+          origin: "emitted",
+        };
+        writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+        const planned = run([projectDir, "--upgrade"]);
+        expect(planned.status, planned.output).toBe(0);
+        expect(
+          existsSync(
+            join(
+              projectDir,
+              ".groundwork",
+              "upgrade",
+              "staged",
+              "commitlint.config.js.staged",
+            ),
+          ),
+        ).toBe(true);
+
+        // Apply by hand, as the report says.
+        writeFileSync(file, fresh);
+        const before = snapshot(projectDir);
+
+        const stamped = run([projectDir, "--upgrade", "--stamp"]);
+
+        expect(stamped.status, stamped.output).toBe(0);
+        expect(stamped.stdout).toMatch(
+          /stamped \.groundwork\/manifest\.json at \S+: 1 updated, \d+ kept, 0 dropped/,
+        );
+        const after = snapshot(projectDir);
+        const changed = [...new Set([...before.keys(), ...after.keys()])]
+          .filter((path) => before.get(path) !== after.get(path))
+          .sort();
+        expect(changed).toEqual([".groundwork/manifest.json"]);
+        const stampedManifest = JSON.parse(
+          readFileSync(manifestPath, "utf8"),
+        ) as typeof manifest;
+        expect(stampedManifest.files["commitlint.config.js"]).toEqual({
+          sha256: sha(fresh),
+          origin: "emitted",
+        });
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    it("exits 2 for --stamp without --upgrade", () => {
+      const base = mkdtempSync(join(tmpdir(), "m3l-upgrade-e2e-"));
+      const projectDir = join(base, "app");
+      try {
+        expect(run([projectDir, "--skip-install"]).status).toBe(0);
+        const result = run([projectDir, "--stamp"]);
+        expect(result.status, result.output).toBe(2);
+        expect(result.output).toMatch(/needs --upgrade/);
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    it("exits 2 with 'no plan to stamp' when no plan was staged", () => {
+      const base = mkdtempSync(join(tmpdir(), "m3l-upgrade-e2e-"));
+      const projectDir = join(base, "app");
+      try {
+        expect(run([projectDir, "--skip-install"]).status).toBe(0);
+        const result = run([projectDir, "--upgrade", "--stamp"]);
+        expect(result.status, result.output).toBe(2);
+        expect(result.output).toContain(
+          "no plan to stamp -- run --upgrade first",
+        );
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
+  });
 });

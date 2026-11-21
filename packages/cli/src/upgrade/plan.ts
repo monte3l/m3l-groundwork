@@ -10,30 +10,19 @@
  * {@link classifyAll}. This module never imports `main.ts` (which will import
  * it), so the template roots are parameters.
  */
-import {
-  lstatSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import type { Stats } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toPosixPath } from "../assets.js";
 import { emitTemplate } from "../emit.js";
-import {
-  buildManifest,
-  isProjectRelativePath,
-  parseJsonKeys,
-  sha256Hex,
-} from "../manifest.js";
+import { buildManifest, parseJsonKeys, sha256Hex } from "../manifest.js";
 import type { JsonKeysResult, Manifest } from "../manifest.js";
 import { installPack, listPackNames, loadPack } from "../packs.js";
-import { isAbsentError } from "../survey/internal/read-guard.js";
 import { REQUIRED_TOKEN_KEYS } from "../tokens.js";
 import { classifyAll } from "./classify.js";
 import type { Recorded, UpgradeClass } from "./classify.js";
+import { readProjectFile, sameTokens } from "./project-read.js";
 
 /**
  * A release rendered by {@link renderRelease}: the temporary directory that
@@ -291,61 +280,6 @@ export function renderRelease(params: {
   };
 }
 
-/** `lstat` without following a link; `undefined` when nothing is there. */
-function inspect(abs: string, relPath: string): Stats | undefined {
-  try {
-    return lstatSync(abs, { throwIfNoEntry: false });
-  } catch (cause) {
-    if (isAbsentError(cause)) return undefined;
-    throw new Error(`could not inspect ${relPath} in the project`, { cause });
-  }
-}
-
-/**
- * The bytes of the project file at `relPath`, or `undefined` when it (or an
- * ancestor directory) is missing. Each component is `lstat`ed and never
- * followed: a symlink anywhere on the way, a non-directory ancestor or a
- * non-regular file is refused, naming the path.
- */
-function readProjectFile(
-  targetDir: string,
-  relPath: string,
-  checkedDirs: Set<string>,
-): Buffer | undefined {
-  if (!isProjectRelativePath(relPath)) {
-    throw new Error(
-      `refusing to plan ${JSON.stringify(relPath)}: not a relative, /-separated path inside the project`,
-    );
-  }
-  const segments = relPath.split("/");
-  for (let depth = 1; depth < segments.length; depth++) {
-    const dirRel = segments.slice(0, depth).join("/");
-    if (checkedDirs.has(dirRel)) continue;
-    const stat = inspect(join(targetDir, dirRel), dirRel);
-    if (stat === undefined) return undefined;
-    // `lstat` never reports a symlink as a directory, so this refuses both.
-    if (!stat.isDirectory()) {
-      throw new Error(
-        `refusing to plan ${relPath}: ${dirRel} is a symlink or not a directory -- replace it with a real directory`,
-      );
-    }
-    checkedDirs.add(dirRel);
-  }
-  const abs = join(targetDir, relPath);
-  const stat = inspect(abs, relPath);
-  if (stat === undefined) return undefined;
-  if (!stat.isFile()) {
-    throw new Error(
-      `refusing to plan ${relPath}: it is a symlink, a directory or another non-regular file -- replace it with a regular file`,
-    );
-  }
-  try {
-    return readFileSync(abs);
-  } catch (cause) {
-    throw new Error(`could not read ${relPath} in the project`, { cause });
-  }
-}
-
 /**
  * The current per-key hashes of a JSON file, `{}` when it is absent. A file
  * that does not parse, or parses to anything but an object, is refused
@@ -406,19 +340,6 @@ function own<V>(
   key: string,
 ): V | undefined {
   return Object.hasOwn(record, key) ? record[key] : undefined;
-}
-
-/** Whether two token tables hold the same keys with the same values. */
-function sameTokens(
-  a: Readonly<Record<string, string>>,
-  b: Readonly<Record<string, string>>,
-): boolean {
-  const aKeys = Object.keys(a).sort();
-  const bKeys = Object.keys(b).sort();
-  return (
-    aKeys.length === bKeys.length &&
-    aKeys.every((key, i) => key === bKeys[i] && own(a, key) === own(b, key))
-  );
 }
 
 /**
@@ -537,7 +458,7 @@ export function computePlan(params: {
   const bytesByPath = new Map<string, Buffer | undefined>();
   const read = (relPath: string): Buffer | undefined => {
     if (bytesByPath.has(relPath)) return bytesByPath.get(relPath);
-    const bytes = readProjectFile(targetDir, relPath, checkedDirs);
+    const bytes = readProjectFile(targetDir, relPath, checkedDirs, "plan");
     bytesByPath.set(relPath, bytes);
     return bytes;
   };
