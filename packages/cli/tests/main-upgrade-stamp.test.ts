@@ -291,6 +291,20 @@ describe("main --upgrade --stamp", () => {
     });
   });
 
+  describe("--help", () => {
+    it("documents --upgrade --stamp as also valid straight away when --upgrade reports nothing to apply", () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      main(["--help"]);
+
+      // line wrapping is the implementer's call: compare on collapsed whitespace
+      const text = String(log.mock.calls[0]?.[0]).replace(/\s+/g, " ");
+      expect(text).toContain(
+        "--upgrade --stamp, run once the plan is applied (or straight away when --upgrade reports nothing to apply), re-hashes the plan's files and writes only the manifest.",
+      );
+    });
+  });
+
   describe("usage errors (exit 2)", () => {
     it("rejects --stamp without --upgrade, saying it needs --upgrade, writing nothing", () => {
       buildProject();

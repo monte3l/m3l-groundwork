@@ -170,7 +170,8 @@ to an already-bootstrapped project. A pack that lists only fresh mode (such as
 > [!NOTE]
 > The upgrade flow is designed and only partly built. Fresh mode writes the
 > manifest (step 1 below), `--upgrade` (step 2) writes a plan and
-> `--upgrade --stamp` records it once applied, but `/upgrade` and `--apply`
+> `--upgrade --stamp` records it once applied (or right away when there is
+> nothing to apply), but `/upgrade` and `--apply`
 > (step 3) do not exist yet, so a plan is information you apply by hand. The design is in
 > [`docs/decisions/0001-upgrade-flow.md`](docs/decisions/0001-upgrade-flow.md).
 > Until the apply step ships, the supported way to take a new release is the
@@ -207,6 +208,12 @@ three-way. It refuses a project with no plan, and a plan that no longer matches
 the manifest: one made from another CLI version, or one where any file or JSON
 key's recorded hash differs from the manifest's. Run `--upgrade` again for a
 fresh plan.
+
+A plan with nothing to apply (every file current, or different only by your own
+change or deletion) still needs `--upgrade --stamp`: until you run it, the
+manifest keeps the old CLI version. Stamping also drops the entries for files
+gone from both the release and the project. The report's Next step and the run's
+`Next:` line both say so.
 
 For each file it compares what groundwork last wrote, what you have now and what
 the new release writes:

@@ -37,7 +37,8 @@
   plan yet: the `/upgrade` skill and `--apply` are designed in
   [`decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md) and not
   built, so the plan is applied by hand and then recorded in the manifest with
-  `--upgrade --stamp`. A project with no manifest
+  `--upgrade --stamp` (or straight away when there is nothing to apply). A
+  project with no manifest
   (anything bootstrapped or adopted before it existed) is refused by
   `--upgrade`; for it, taking a new release is still the indirect re-run of the
   CLI in adopt mode followed by `/customize`. `--upgrade` takes its packs from
