@@ -124,10 +124,12 @@ directory with `mktemp -d` outside the project, and rebuild into a path
 inside it that does not exist yet, such as `<that dir>/base`:
 
 ```bash
-npx --yes @monte3l/groundwork@<fromCliVersion> --fresh --skip-install --name <PROJECT_NAME> [--pack <name> ...] <path>
+npx --yes '@monte3l/groundwork@<fromCliVersion>' --fresh --skip-install --name '<PROJECT_NAME>' [--pack '<name>' ...] '<path>'
 ```
 
-`<fromCliVersion>` comes from the plan. `<PROJECT_NAME>` is the manifest's
+Every value is single-quoted, and only after Step 0 of `SKILL.md` validated
+it: never run this command with a version, pack name or project name that
+did not pass that check. `<fromCliVersion>` comes from the plan. `<PROJECT_NAME>` is the manifest's
 `tokens.PROJECT_NAME`, and one `--pack <name>` is added for each name in the
 manifest's `packs`. Fresh mode runs `git init` in the new directory; if git
 init fails after the files were written, the base is still usable as long as

@@ -978,6 +978,61 @@ describe("main --upgrade", () => {
         },
       );
 
+      const writeRawManifest = (
+        mutate: (m: Record<string, unknown>) => void,
+      ): void => {
+        const path = join(project, ".groundwork", "manifest.json");
+        const raw = JSON.parse(readFileSync(path, "utf8")) as Record<
+          string,
+          unknown
+        >;
+        mutate(raw);
+        writeFileSync(path, `${JSON.stringify(raw, null, 2)}\n`);
+      };
+
+      it.each([
+        [
+          "a cliVersion carrying a shell command",
+          "cliVersion",
+          "1.2.3; echo x",
+          (m: Record<string, unknown>): void => {
+            m["cliVersion"] = "1.2.3; echo x";
+          },
+        ],
+        [
+          "a PROJECT_NAME carrying a shell command",
+          "PROJECT_NAME",
+          "app; echo x",
+          (m: Record<string, unknown>): void => {
+            m["tokens"] = { PROJECT_NAME: "app; echo x", YEAR: "2026" };
+          },
+        ],
+        [
+          "a pack name that is not a pack name",
+          "packs",
+          "x; echo y",
+          (m: Record<string, unknown>): void => {
+            m["packs"] = ["x; echo y"];
+          },
+        ],
+      ])("with a hostile manifest: %s", (_label, field, value, mutate) => {
+        buildProject();
+        writeRawManifest(mutate);
+        const before = snapshotTree(project);
+        let thrown: unknown;
+        try {
+          upgrade();
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(ManifestError);
+        expect((thrown as Error).message).toContain(field);
+        expect((thrown as Error).message).not.toContain(value);
+        expect(snapshotTree(project)).toEqual(before);
+        expect(existsSync(upgradeDir())).toBe(false);
+        expect(installUpgradeSkillMock).not.toHaveBeenCalled();
+      });
+
       it("when a regular file sits at .groundwork/upgrade", () => {
         buildProject();
         writeFileSync(join(project, ".groundwork", "upgrade"), "x");

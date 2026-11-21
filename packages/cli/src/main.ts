@@ -108,7 +108,11 @@ import {
   packsRootDir,
 } from "./packs.js";
 import { STAGED_PACKS_DIR, planPackStaging, stagePacks } from "./pack-stage.js";
-import { NPM_NAME_MAX_LENGTH, NPM_NAME_PATTERN } from "./npm-name.js";
+import {
+  NPM_NAME_MAX_LENGTH,
+  NPM_NAME_PATTERN,
+  isSafeProjectName,
+} from "./npm-name.js";
 import { renderReport } from "./report.js";
 import type { RequiredTokenKey } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
@@ -669,6 +673,17 @@ function runFresh(
   // And the manifest's: writeManifest refuses the same shapes, but only
   // after the baseline, the packs and the skill are written.
   assertSafeManifestDestination(options.targetDir);
+
+  // A name derived from the directory never went through --name's check, but
+  // the manifest refuses one outside the safe-character allowlist
+  // (isSafeProjectName, which parseManifest also applies): refuse it here,
+  // after the destination guards (their refusals come first) and before the
+  // first write, rather than after the project is written.
+  if (!isSafeProjectName(options.projectName)) {
+    throw new CliUsageError(
+      `the project name ${JSON.stringify(options.projectName)} (taken from the target directory's name) holds a character a project name may not (a quote, a shell metacharacter, a control character or a leading dash) -- pass --name <project-name>\n\n${USAGE}`,
+    );
+  }
 
   mkdirSync(options.targetDir, { recursive: true });
 

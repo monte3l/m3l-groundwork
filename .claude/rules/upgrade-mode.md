@@ -94,7 +94,23 @@ when the last one does.
   dotted name would collide (`a.b` as a key versus `b` inside `a`). Hash the
   post-pack output, since packs merge into shared files. Schema 1, written by
   fresh mode today, holds exactly those fields and `parseManifest` rejects any
-  other top-level key. The change that makes `/customize` or `--apply` write
+  other top-level key. **The manifest is attacker-controlled input:** it is
+  committed, so a hostile clone can carry any text, and the `/upgrade` skill
+  substitutes `cliVersion` and `tokens.PROJECT_NAME` into
+  `npx @monte3l/groundwork@<version> ... --name <name>`. So `parseManifest`
+  requires `cliVersion` to be a strict semantic version
+  (`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`) and a present
+  `PROJECT_NAME` to pass the safe-character allowlist (`isSafeProjectName`
+  in `npm-name.ts`: 1 to 214 Unicode letters, digits, spaces and
+  `. _ @ / + ~ -`, no leading `-`). It is an allowlist, not the npm rule
+  (`NPM_NAME_PATTERN` still guards an explicit `--name`), so a fresh project
+  in `MyApp` or `My App` keeps working. An absent `PROJECT_NAME` is left to
+  the plan step's required-token check. A refusal is a `ManifestError`
+  (exit 1) that names the field and never quotes the value, raised before
+  `--upgrade` writes anything. Fresh mode refuses, before its first write, a
+  directory-derived default name with a character outside the allowlist (a
+  quote, a shell metacharacter, a control character, a leading dash) unless
+  `--name` is given, so every name it records parses back. The change that makes `/customize` or `--apply` write
   `answers.interview` and the mechanical Round 1 actions (agent removal, the
   verify-policy JSON, the Dependabot swap), so the old base can be rebuilt with
   the tailoring replayed, must extend `parseManifest` with them (and bump

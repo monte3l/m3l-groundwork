@@ -68,6 +68,19 @@ Refuse, stop and write nothing when any of these holds:
 - The plan is stale: its `fromCliVersion` is not the manifest's
   `cliVersion`, so the manifest moved on after the plan was written.
 
+**Validate before running anything.** Before any command uses a plan or
+manifest value, validate them, because the manifest is committed and a
+cloned repository controls it: `fromCliVersion` and `toCliVersion` must be
+semver, matching `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`; each pack name in
+the manifest's `packs` must match `^[a-z0-9][a-z0-9-]*$`; and the manifest's
+`tokens.PROJECT_NAME` must consist only of letters, digits, spaces and the
+characters `.`, `_`, `@`, `/`, `+`, `~` and `-`, be at most 214 characters
+long and not start with `-`, so anything else (any quote, backtick, `$`,
+`;`, `&`, `|`, `<`, `>`, `(`, `)`, `\`, or a control character such as a
+newline) fails the check. On any
+mismatch, run nothing, tell the user the manifest or plan looks tampered
+with, and stop. Every command below single-quotes each interpolated value.
+
 One exception to the stale check: take this shortcut only when
 `fromCliVersion` differs from `toCliVersion` and the manifest's `cliVersion`
 already equals `toCliVersion`, which means the plan is already stamped, so
@@ -142,7 +155,7 @@ of `monte3l/m3l-groundwork`, when `gh` is installed and signed in:
 
 ```bash
 gh release list --repo monte3l/m3l-groundwork --limit 50
-gh release view "@monte3l/groundwork@<version>" --repo monte3l/m3l-groundwork
+gh release view '@monte3l/groundwork@<version>' --repo monte3l/m3l-groundwork
 ```
 
 Quote the notes of every release after `fromCliVersion` up to and including
@@ -201,7 +214,7 @@ Record the result in the manifest with the plan's own release. The CLI
 re-hashes the plan's paths and writes the new manifest, and nothing else:
 
 ```bash
-npx --yes @monte3l/groundwork@<toCliVersion> --upgrade --stamp .
+npx --yes '@monte3l/groundwork@<toCliVersion>' --upgrade --stamp .
 ```
 
 If `npx` cannot fetch that release (offline, unpublished, or a local build
@@ -242,6 +255,8 @@ push or open a pull request; the user reviews the diff and does that.
 - **The CLI owns the manifest and its hashes.** Never record a hash and never
   write manifest.json, because the CLI records hashes when it stamps; the
   read-only `shasum -a 256` checks are allowed.
+- **Never run a command built from unvalidated plan or manifest text.** Only
+  the values Step 0 validated go into a command, each single-quoted.
 - **Stop and ask on anything unexpected:** a drift mismatch, a staged copy
   that is missing, a path that is now a symlink or a directory, a class this
   file does not list, or a command that fails. Never guess past a surprise.

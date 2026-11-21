@@ -244,9 +244,9 @@ describe("step-3-conflicts.md -- conflict resolution", () => {
   it("rebuilds the old base for a 3-way delegate with the pinned fresh command", () => {
     const text = step3();
     expect(text).toMatch(
-      /npx --yes @monte3l\/groundwork@<fromCliVersion> --fresh --skip-install --name <PROJECT_NAME>/,
+      /npx --yes '?@monte3l\/groundwork@'?<fromCliVersion>'? --fresh --skip-install --name '?<PROJECT_NAME>'?/,
     );
-    expect(text).toMatch(/--pack <name>/);
+    expect(text).toMatch(/--pack '?<name>'?/);
     expect(text).toMatch(/temp(orary)? dir/i);
     expect(text).toMatch(/manifest/i);
     expect(text).toMatch(/base[^.]*(yours|your)[^.]*new|three[- ]way/i);
@@ -294,8 +294,8 @@ describe("upgrade SKILL.md -- report-only classes", () => {
 
 describe("upgrade SKILL.md -- Step 4 stamp and verify", () => {
   it("runs the stamp command", () => {
-    expect(skill()).toContain(
-      "npx --yes @monte3l/groundwork@<toCliVersion> --upgrade --stamp .",
+    expect(skill()).toMatch(
+      /npx --yes '?@monte3l\/groundwork@'?<toCliVersion>'? --upgrade --stamp \./,
     );
   });
 
@@ -716,6 +716,97 @@ describe("upgrade skill -- JSON definition, empty object, resume and alerts", ()
   it("uses a GitHub IMPORTANT alert in both SKILL.md and step-3-conflicts.md", () => {
     expect(skillRaw()).toMatch(/^> \[!IMPORTANT\]/m);
     expect(stepRaw()).toMatch(/^> \[!IMPORTANT\]/m);
+  });
+});
+
+describe("upgrade skill -- validation of interpolated values before npx", () => {
+  it("validates versions, pack names and PROJECT_NAME before the first npx use of a plan or manifest value", () => {
+    const text = skill();
+    const validation = text.search(/validat/i);
+    const firstInterpolated = text.search(/npx --yes/);
+    expect(validation).toBeGreaterThan(-1);
+    expect(firstInterpolated).toBeGreaterThan(-1);
+    expect(validation).toBeLessThan(firstInterpolated);
+    const sentence = /[^.]*validat[^.]*\./i.exec(text)?.[0] ?? "";
+    expect(sentence + both()).toMatch(/fromCliVersion/);
+    expect(both()).toMatch(/pack name/i);
+    expect(both()).toMatch(/PROJECT_NAME/);
+  });
+
+  it("requires versions to be semver", () => {
+    expect(both()).toMatch(
+      /semver|\^\\d\+\\\.\\d\+\\\.\\d\+\(-\[0-9A-Za-z\.-\]\+\)\?\$/i,
+    );
+  });
+
+  it("restricts pack names to lowercase alphanumerics and hyphens", () => {
+    expect(both()).toContain("^[a-z0-9][a-z0-9-]*$");
+  });
+
+  describe("PROJECT_NAME allowlist", () => {
+    const rule = (): string => {
+      const text = skill();
+      const at = text.indexOf("tokens.PROJECT_NAME");
+      expect(at).toBeGreaterThan(-1);
+      return text.slice(at, at + 700);
+    };
+
+    it("allows only letters, digits, spaces and the characters . _ @ / + ~ -", () => {
+      const text = rule();
+      expect(text).toMatch(/letters/i);
+      expect(text).toMatch(/digits/i);
+      expect(text).toMatch(/spaces/i);
+      for (const ch of [".", "_", "@", "/", "+", "~"]) {
+        expect(text).toContain(` ${ch} `.trim());
+      }
+    });
+
+    it("does not forbid whitespace outright, so a name like 'My App' passes", () => {
+      expect(rule()).not.toMatch(
+        /no whitespace|must hold no whitespace|reject[^.]*whitespace/i,
+      );
+    });
+
+    it("limits the name to 214 characters and refuses a leading dash", () => {
+      const text = rule();
+      expect(text).toContain("214");
+      expect(text).toMatch(
+        /(not start|start[s]? with|leading) `?-`?|leading dash/i,
+      );
+    });
+
+    it("refuses quotes, backticks, $, ;, &, |, <, >, (, ), backslash and control characters such as a newline", () => {
+      const text = rule();
+      expect(text).toMatch(/quotes?/i);
+      expect(text).toMatch(/backticks?/i);
+      for (const ch of ["$", ";", "&", "|", "<", ">", "(", ")", "\\"]) {
+        expect(text).toContain(ch);
+      }
+      expect(text).toMatch(/control character/i);
+      expect(text).toMatch(/newline/i);
+    });
+  });
+
+  it("on any mismatch runs nothing, says the manifest or plan looks tampered with, and stops", () => {
+    const text = both();
+    expect(text).toMatch(/tamper/i);
+    expect(text).toMatch(/runs? nothing|run nothing|do not run/i);
+  });
+
+  it("single-quotes every interpolated value in the commands", () => {
+    const text = both();
+    expect(text).toMatch(/single-quot/i);
+    expect(text).toMatch(/'[^' ]*<fromCliVersion>[^' ]*'|'<fromCliVersion>'/);
+    expect(skill()).toMatch(/'[^' ]*<toCliVersion>[^' ]*'/);
+  });
+
+  it("lists, as a hard rule, that it never runs a command built from unvalidated plan or manifest text", () => {
+    const text = skill();
+    const start = text.search(/#{1,4} [^#]*hard rules/i);
+    expect(start).toBeGreaterThan(-1);
+    expect(text.slice(start)).toMatch(
+      /never run[^.]*command[^.]*unvalidated[^.]*(plan|manifest)/i,
+    );
   });
 });
 

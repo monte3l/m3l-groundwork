@@ -191,7 +191,16 @@ The flow has three parts:
    (including one an earlier release installed), or is not a real directory,
    it leaves it alone and puts the new copy in `.groundwork/upgrade-skill/`
    instead: copy it into `.claude/skills/upgrade/` before you run `/upgrade`. It never touches any
-   other project file, and it refuses a project that has no manifest.
+   other project file, and it refuses a project that has no manifest. It
+   also refuses (exit 1, writing nothing) a manifest whose `cliVersion` is
+   not a plain semantic version, or whose project name holds anything but
+   letters, digits, spaces and `. _ @ / + ~ -` (or starts with `-`): the
+   manifest is committed, so a cloned repository could carry one crafted to
+   inject into the command `/upgrade` runs. For the same reason, fresh mode
+   refuses to take its default project name from a directory whose name has a
+   character outside that list (a quote, a shell metacharacter, a control
+   character or a leading dash), before writing anything, unless you pass
+   `--name`.
 3. **`/upgrade`**, run in Claude Code, applies the plan: the files only
    upstream changed in one batch you confirm, then each conflict one at a
    time, then it runs `--upgrade --stamp` for you. For scripted runs, a
