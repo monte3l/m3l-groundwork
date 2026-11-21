@@ -144,7 +144,7 @@ the work is gone.
 `docs:` commit via `writing-commits`) before moving on to any other task,
 rather than leaving it as an uncommitted file. **"Commit it" does not mean
 commit directly to `main`** when the project requires a PR for every change to
-`main`: in that case branch first (`git switch -c docs/<slug>-log`), commit
+`main`: in that case branch first, in a worktree off `origin/main` (`EnterWorktree`, or `git worktree add ../<repo>.wt/<branch> -b <branch> origin/main`), commit
 there, push, and open a PR, even for a trivial docs-only change. Only if the
 project allows direct pushes to `main` is the PR step skipped.
 
