@@ -625,8 +625,20 @@ function hasControlCharacter(path: string): boolean {
   return false;
 }
 
-/** Why one segment of a path is unsafe, or `undefined` when it is not. */
-function segmentProblem(segment: string): string | undefined {
+/**
+ * Why one segment of a path is unsafe, or `undefined` when it is not: an
+ * empty, `.` or `..` segment, a trailing dot or space (Windows strips both,
+ * so `.git.` names `.git`), or a colon (NTFS alternate data stream syntax).
+ *
+ * @example
+ * ```ts
+ * import { segmentProblem } from "./headless/contract.js";
+ *
+ * segmentProblem(".git."); // "must not end a segment with . or a space (Windows strips both)"
+ * segmentProblem("src"); // undefined
+ * ```
+ */
+export function segmentProblem(segment: string): string | undefined {
   if (segment === "") {
     return "must not contain an empty segment (a leading, trailing or doubled /)";
   }
