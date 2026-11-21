@@ -176,6 +176,36 @@ describe("stampUpgrade", () => {
       );
     });
 
+    it("stamps a plan of only current and local-only entries, moving cliVersion", () => {
+      writeManifestFile({
+        files: { "a.txt": emitted("a"), "b.txt": emitted("b-old") },
+      });
+      writeProjectFile("a.txt", "a");
+      writeProjectFile("b.txt", "b-mine");
+      writePlan({
+        files: [
+          {
+            path: "a.txt",
+            class: "current",
+            recordedSha256: h("a"),
+            nextSha256: h("a"),
+          },
+          {
+            path: "b.txt",
+            class: "local-only",
+            recordedSha256: h("b-old"),
+            nextSha256: h("b-mine"),
+          },
+        ],
+      });
+
+      const result = stamp();
+
+      expect(result.manifest.cliVersion).toBe(TO);
+      expect(stampedManifest().cliVersion).toBe(TO);
+      expect(stampedManifest().files["a.txt"]).toEqual(emitted("a"));
+    });
+
     it("counts updated, kept and dropped entries from unambiguous scenarios", () => {
       writeManifestFile({
         files: {

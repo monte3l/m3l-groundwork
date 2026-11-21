@@ -206,6 +206,36 @@ describe("--upgrade end-to-end", () => {
       }
     });
 
+    it("says nothing needs applying, and --upgrade --stamp then records the new release", () => {
+      const base = mkdtempSync(join(tmpdir(), "m3l-upgrade-e2e-"));
+      const projectDir = join(base, "app");
+      try {
+        expect(run([projectDir, "--skip-install"]).status).toBe(0);
+        const manifestPath = join(projectDir, ".groundwork", "manifest.json");
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+          cliVersion: string;
+        };
+        const release = manifest.cliVersion;
+        manifest.cliVersion = "0.0.1";
+        writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+        const planned = run([projectDir, "--upgrade"]);
+        expect(planned.status, planned.output).toBe(0);
+        expect(planned.stdout).toContain(
+          "Next: nothing to apply -- run --upgrade --stamp to record the new release in the manifest",
+        );
+
+        const stamped = run([projectDir, "--upgrade", "--stamp"]);
+        expect(stamped.status, stamped.output).toBe(0);
+        const after = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+          cliVersion: string;
+        };
+        expect(after.cliVersion).toBe(release);
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
+
     it("exits 2 for --stamp without --upgrade", () => {
       const base = mkdtempSync(join(tmpdir(), "m3l-upgrade-e2e-"));
       const projectDir = join(base, "app");

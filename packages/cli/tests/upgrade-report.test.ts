@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from "vitest";
-import { renderUpgradeReport } from "../src/upgrade/report.js";
+import { nothingToApply, renderUpgradeReport } from "../src/upgrade/report.js";
 import type { UpgradeClass } from "../src/upgrade/classify.js";
 import type { UpgradePlan } from "../src/upgrade/plan.js";
 
@@ -203,14 +203,27 @@ describe("renderUpgradeReport", () => {
     expect(next).toContain("--upgrade --stamp");
   });
 
-  it("does not mention `--upgrade --stamp` when there is nothing to apply", () => {
-    const next =
-      section(
-        renderUpgradeReport(planOf([file("a", "current")])),
-        "Next step",
-      ) ?? "";
-    expect(next).not.toContain("--stamp");
-  });
+  it.each([
+    ["current only", [file("a", "current")]],
+    [
+      "current, local-only, user-deleted and gone",
+      [
+        file("a", "current"),
+        file("b", "local-only"),
+        file("c", "user-deleted"),
+        file("d", "gone"),
+      ],
+    ],
+  ])(
+    "keeps the nothing-to-apply paragraph and adds the exact stamp paragraph (%s)",
+    (_name, files) => {
+      const next =
+        section(renderUpgradeReport(planOf(files)), "Next step") ?? "";
+      expect(next).toContain(
+        "There is nothing to apply: every baseline file is current, or differs only by a change you made or a file you deleted, which an upgrade keeps.\n\nRun `npx @monte3l/groundwork --upgrade --stamp .` to record the new release in `.groundwork/manifest.json`: nothing needs applying first.",
+      );
+    },
+  );
 
   it.each(["remove", "orphan-edited", "conflict-2way"] as const)(
     "does not claim nothing to apply when a %s entry exists",
@@ -422,5 +435,39 @@ describe("renderUpgradeReport (exact, hand-written expectations)", () => {
       "",
     ].join("\n");
     expect(renderUpgradeReport(plan)).toBe(expected);
+  });
+});
+
+describe("nothingToApply", () => {
+  // Typed exhaustively: a new UpgradeClass is a compile error until it is
+  // given an expectation here.
+  const EXPECTED: Readonly<Record<UpgradeClass, boolean>> = {
+    current: true,
+    "local-only": true,
+    "user-deleted": true,
+    gone: true,
+    add: false,
+    "safe-update": false,
+    "conflict-2way": false,
+    "conflict-3way": false,
+    remove: false,
+    "orphan-edited": false,
+  };
+
+  it.each(Object.entries(EXPECTED) as [UpgradeClass, boolean][])(
+    "a plan holding only a %s entry gives %s",
+    (cls, expected) => {
+      expect(nothingToApply([file("x", cls)])).toBe(expected);
+    },
+  );
+
+  it("is false for a mixed plan of one current and one add entry", () => {
+    expect(nothingToApply([file("a", "current"), file("b", "add")])).toBe(
+      false,
+    );
+  });
+
+  it("is true for an empty list", () => {
+    expect(nothingToApply([])).toBe(true);
   });
 });
