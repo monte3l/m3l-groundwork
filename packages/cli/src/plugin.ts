@@ -2,16 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Installs a skill from the plugin payload into a bootstrapped or adopted
- * project. Claude Code's marketplace-based plugin installation is an
- * interactive, network-involving flow this offline CLI can't drive; instead
- * this copies the skill's entry file (`SKILL.md`), its step files and its
- * deterministic backing data into a destination directory, so the skill
- * works immediately with no further setup step. Which files, in what order,
- * from where and to where is a {@link SkillSpec} (`skill-spec.ts`):
- * {@link installSkill} and {@link installSkillGuarded} take one, and the
- * `/customize` entry points ({@link installCustomizeSkill},
- * {@link installCustomizeSkillGuarded}) pass {@link CUSTOMIZE_SKILL}.
+ * Installs the `/customize` skill into a bootstrapped or adopted project.
+ * Claude Code's marketplace-based plugin installation is an interactive,
+ * network-involving flow this offline CLI can't drive; instead this copies
+ * the skill's SKILL.md, its step files and its deterministic backing data
+ * into a destination directory, so `/customize` works immediately with no
+ * further setup step.
  */
 import {
   lstatSync,
@@ -23,10 +19,12 @@ import {
 import { join } from "node:path";
 import { resolveAsset } from "./assets.js";
 import {
-  assertValidSkillSpec,
-  CUSTOMIZE_SKILL,
-  type SkillSpec,
-} from "./skill-spec.js";
+  CLAUDE_DEST_SEGMENTS,
+  CUSTOMIZE_SKILL_ENTRY_FILE,
+  CUSTOMIZE_SKILL_STEP_FILE_NAMES,
+  CUSTOMIZE_SKILL_WRITE_ORDER,
+  GROUNDWORK_DEST_SEGMENTS,
+} from "./customize-paths.js";
 import {
   assertNotSymlink,
   endsWithRerunAdvice,
@@ -88,46 +86,37 @@ const ADOPT_REMEDIATION: Remediation = {
 };
 
 /** The prefix every install failure's message starts with -- stated once, never twice. */
-function installErrorPrefix(skillName: string): string {
-  return `could not install the /${skillName} skill: `;
-}
+const INSTALL_ERROR_PREFIX = "could not install the /customize skill: ";
 
 /**
  * An already-built install failure. Private: it exists only so
  * {@link installError} can recognise one it is asked to re-wrap and fold it
  * in rather than nest a second prefix around it.
  */
-class SkillInstallError extends Error {
-  /** The name of the skill whose install failed. */
-  readonly skillName: string;
-  /** The message without its {@link installErrorPrefix}. */
+class CustomizeInstallError extends Error {
+  /** The message without {@link INSTALL_ERROR_PREFIX}. */
   readonly body: string;
 
-  constructor(skillName: string, body: string, cause: unknown) {
-    super(`${installErrorPrefix(skillName)}${body}`, { cause });
-    this.skillName = skillName;
+  constructor(body: string, cause: unknown) {
+    super(`${INSTALL_ERROR_PREFIX}${body}`, { cause });
     this.body = body;
   }
 }
 
 /**
- * Builds the one error shape every install failure of `spec` surfaces as,
- * keeping the underlying message and chaining the raw error as `cause`. It
- * adds no remediation: {@link withRemediation} appends the caller's once, at
- * the public boundary. A cause that is itself an install failure is folded
- * in: its body follows `detail` under a single prefix, and its own raw
- * `cause` (not the wrapper) is chained.
+ * Builds the one error shape every install failure surfaces as, keeping the
+ * underlying message and chaining the raw error as `cause`. It adds no
+ * remediation: {@link withRemediation} appends the caller's once, at the
+ * public boundary. A cause that is itself an install failure is folded in:
+ * its body follows `detail` under a single prefix, and its own raw `cause`
+ * (not the wrapper) is chained.
  */
-function installError(spec: SkillSpec, detail: string, cause: unknown): Error {
-  if (cause instanceof SkillInstallError) {
-    return new SkillInstallError(
-      spec.name,
-      `${detail}: ${cause.body}`,
-      cause.cause,
-    );
+function installError(detail: string, cause: unknown): Error {
+  if (cause instanceof CustomizeInstallError) {
+    return new CustomizeInstallError(`${detail}: ${cause.body}`, cause.cause);
   }
   const causeMessage = cause instanceof Error ? cause.message : String(cause);
-  return new SkillInstallError(spec.name, `${detail}: ${causeMessage}`, cause);
+  return new CustomizeInstallError(`${detail}: ${causeMessage}`, cause);
 }
 
 /**
@@ -144,11 +133,10 @@ function withRemediation<T>(remediation: Remediation, run: () => T): T {
     return run();
   } catch (error) {
     if (
-      error instanceof SkillInstallError &&
+      error instanceof CustomizeInstallError &&
       !remediation.isAdvised(error.body)
     ) {
-      throw new SkillInstallError(
-        error.skillName,
+      throw new CustomizeInstallError(
         `${error.body} -- ${remediation.advice}`,
         error.cause,
       );
@@ -158,13 +146,10 @@ function withRemediation<T>(remediation: Remediation, run: () => T): T {
 }
 
 /** The plugin payload's location, resolved inside a public entry point's run so a failure is wrapped like any other. */
-function resolveSourceDir(
-  spec: SkillSpec,
-  sourceDir: string | undefined,
-): string {
+function resolveSourceDir(sourceDir: string | undefined): string {
   return (
     sourceDir ??
-    wrapFs(spec, `could not locate the /${spec.name} skill's source`, pluginDir)
+    wrapFs("could not locate the /customize skill's source", pluginDir)
   );
 }
 
@@ -174,11 +159,11 @@ function untouched(action: string, path: string): string {
 }
 
 /** Runs one fallible fs probe/setup step, rethrowing any failure as an {@link installError}. */
-function wrapFs<T>(spec: SkillSpec, detail: string, step: () => T): T {
+function wrapFs<T>(detail: string, step: () => T): T {
   try {
     return step();
   } catch (cause) {
-    throw installError(spec, detail, cause);
+    throw installError(detail, cause);
   }
 }
 
@@ -201,43 +186,35 @@ interface PayloadFile {
 }
 
 /**
- * Reads every payload file of `spec` from the plugin source (each from
- * `spec.sourceFile`), in `spec.writeOrder` (the entry file last), before
- * anything is written. A missing or unreadable source file is a broken
- * install, not something to degrade past silently: it throws, with the raw
- * read error (its errno intact) as `cause`, and a message saying "is
- * missing" only for `ENOENT`.
+ * The payload files sourced from the plugin's `skills/customize/` (the
+ * entry file and its step files); every other one comes from its `src/`.
  */
-function readSkillPayload(
-  spec: SkillSpec,
-  sourceDir: string,
-): readonly PayloadFile[] {
-  return spec.writeOrder.map((name) => {
-    let from: string | undefined;
+const SKILL_DIR_FILE_NAMES: ReadonlySet<string> = new Set<string>([
+  CUSTOMIZE_SKILL_ENTRY_FILE,
+  ...CUSTOMIZE_SKILL_STEP_FILE_NAMES,
+]);
+
+/**
+ * Reads every payload file from the plugin source, in
+ * {@link CUSTOMIZE_SKILL_WRITE_ORDER} (`SKILL.md` last), before anything is
+ * written. A missing or unreadable source file is a broken install, not
+ * something to degrade past silently: it throws, with the raw read error
+ * (its errno intact) as `cause`, and a message saying "is missing" only for
+ * `ENOENT`.
+ */
+function readCustomizeSkillPayload(sourceDir: string): readonly PayloadFile[] {
+  return CUSTOMIZE_SKILL_WRITE_ORDER.map((name) => {
+    const from = SKILL_DIR_FILE_NAMES.has(name)
+      ? join(sourceDir, "skills", "customize", name)
+      : join(sourceDir, "src", name);
     try {
-      // The caller's callback: a throw or a non-string result is a broken
-      // install like any unreadable source file, not an escaping raw error.
-      const resolved: unknown = spec.sourceFile(sourceDir, name);
-      if (typeof resolved !== "string") {
-        throw new TypeError(
-          `sourceFile returned a ${typeof resolved}, not a path string`,
-        );
-      }
-      from = resolved;
       return { name, bytes: readFileSync(from) };
     } catch (cause) {
-      if (from === undefined) {
-        throw installError(
-          spec,
-          `could not locate the source file of ${JSON.stringify(name)}`,
-          cause,
-        );
-      }
       const detail =
         errnoField(cause, "code") === "ENOENT"
-          ? `the /${spec.name} skill's source file is missing: ${from}`
+          ? `the /customize skill's source file is missing: ${from}`
           : `could not read ${from}`;
-      throw installError(spec, detail, cause);
+      throw installError(detail, cause);
     }
   });
 }
@@ -274,32 +251,21 @@ interface SkillDestination {
   readonly symlinkAdvice: string | undefined;
 }
 
-/** Fresh mode's destination for `spec`: its `claudeSegments`, overwritten. */
-function freshDestination(spec: SkillSpec): SkillDestination {
-  return {
-    segments: spec.claudeSegments,
-    policy: "overwrite",
-    symlinkAdvice: FRESH_SYMLINK_ADVICE,
-  };
-}
-
-/** Adopt mode's primary destination for `spec`: its `claudeSegments`, written additively. */
-function adoptClaudeDestination(spec: SkillSpec): SkillDestination {
-  return {
-    segments: spec.claudeSegments,
-    policy: "additive",
-    symlinkAdvice: undefined,
-  };
-}
-
-/** Adopt mode's fallback destination for `spec`: its CLI-owned `fallbackSegments`. */
-function cliOwnedDestination(spec: SkillSpec): SkillDestination {
-  return {
-    segments: spec.fallbackSegments,
-    policy: "cli-owned",
-    symlinkAdvice: undefined,
-  };
-}
+const FRESH_DESTINATION: SkillDestination = {
+  segments: CLAUDE_DEST_SEGMENTS,
+  policy: "overwrite",
+  symlinkAdvice: FRESH_SYMLINK_ADVICE,
+};
+const ADOPT_CLAUDE_DESTINATION: SkillDestination = {
+  segments: CLAUDE_DEST_SEGMENTS,
+  policy: "additive",
+  symlinkAdvice: undefined,
+};
+const CLI_OWNED_DESTINATION: SkillDestination = {
+  segments: GROUNDWORK_DEST_SEGMENTS,
+  policy: "cli-owned",
+  symlinkAdvice: undefined,
+};
 
 /** Whether a policy removes an existing entry at a payload name before its `"wx"` write. */
 function replacesExistingEntries(policy: WritePolicy): boolean {
@@ -331,7 +297,6 @@ function replacesExistingEntries(policy: WritePolicy): boolean {
  * check (a race) is likewise left to the write.
  */
 function assertNoDirectoryAtPayloadNames(
-  spec: SkillSpec,
   destDir: string,
   payload: readonly PayloadFile[],
   alreadyCurrent: ReadonlySet<string>,
@@ -348,7 +313,7 @@ function assertNoDirectoryAtPayloadNames(
         lstatSync(dest, { throwIfNoEntry: false })?.isDirectory() === true;
     } catch (cause) {
       if (replacesExistingEntries(policy)) {
-        throw installError(spec, untouched("could not inspect", dest), cause);
+        throw installError(untouched("could not inspect", dest), cause);
       }
       // Additive: unjudgeable, not refused -- the "wx" write reports the
       // real error, and nothing is ever removed on this path.
@@ -356,7 +321,6 @@ function assertNoDirectoryAtPayloadNames(
     }
     if (isDirectory) {
       throw installError(
-        spec,
         `could not write ${dest}`,
         new Error(
           `${dest} is a directory, not a file this install can replace; nothing was removed or written`,
@@ -378,12 +342,11 @@ function assertNoDirectoryAtPayloadNames(
  * a project's own `.claude/` copy, `"stale"` for the CLI-owned staging.
  */
 function removeStaleSkillEntry(
-  spec: SkillSpec,
   destDir: string,
   label: "existing" | "stale",
 ): string | undefined {
-  const staleEntry = join(destDir, spec.entryFile);
-  return wrapFs(spec, `could not remove the ${label} ${staleEntry}`, () => {
+  const staleEntry = join(destDir, CUSTOMIZE_SKILL_ENTRY_FILE);
+  return wrapFs(`could not remove the ${label} ${staleEntry}`, () => {
     if (lstatSync(staleEntry, { throwIfNoEntry: false }) === undefined) {
       return undefined;
     }
@@ -490,7 +453,6 @@ function rollBack(written: readonly string[]): {
 function failureClauses(args: {
   readonly dest: string;
   readonly destDir: string;
-  readonly entryFile: string;
   readonly policy: WritePolicy;
   readonly leftBehind: readonly LeftBehind[];
   readonly createdUnknown: boolean;
@@ -502,7 +464,7 @@ function failureClauses(args: {
     leftBehind.length > 0
       ? ` (could not remove: ${leftBehind.map((l) => `${l.path} (${l.code})`).join(", ")})`
       : "";
-  const skillPath = join(destDir, args.entryFile);
+  const skillPath = join(destDir, CUSTOMIZE_SKILL_ENTRY_FILE);
   const skillLeftBehind = leftBehind.some((l) => l.path === skillPath);
   const unknownIsSkill = createdUnknown && dest === skillPath;
   // Either way a possibly-truncated SKILL.md sits at the destination, and
@@ -523,13 +485,12 @@ function failureClauses(args: {
           : "Claude Code will load a truncated skill"
       }`
     : "";
-  return `${notRemoved}${unknown}${skillLeft}${replacedClause(policy, args.entryFile, args.skillRemoved, args.replaced, skillMaybeLeft)}`;
+  return `${notRemoved}${unknown}${skillLeft}${replacedClause(policy, args.skillRemoved, args.replaced, skillMaybeLeft)}`;
 }
 
 /** The "removed and not restored" clause for a replacing policy's pre-existing entries; `""` when none were removed. */
 function replacedClause(
   policy: WritePolicy,
-  entryFile: string,
   skillRemoved: string | undefined,
   replaced: readonly string[],
   skillMaybeLeft: boolean,
@@ -549,7 +510,7 @@ function replacedClause(
         ...(skillRemoved === undefined
           ? []
           : [
-              `the existing ${entryFile} (${skillRemoved}, removed before any data file was rewritten)`,
+              `the existing SKILL.md (${skillRemoved}, removed before any data file was rewritten)`,
             ]),
         ...(replaced.length > 0 ? [`the previous ${replaced.join(", ")}`] : []),
       ];
@@ -601,7 +562,7 @@ function replacedClause(
  * this run writes is refused ({@link assertNoDirectoryAtPayloadNames}), as
  * is -- under a replacing policy -- a payload name whose `lstat` fails,
  * leaving every existing entry untouched. Writes then follow
- * `spec.writeOrder`, the entry file (`SKILL.md`) last; for the policies
+ * {@link CUSTOMIZE_SKILL_WRITE_ORDER}, `SKILL.md` last; for the policies
  * that replace existing entries, {@link removeStaleSkillEntry} establishes
  * that order's no-`SKILL.md`-yet precondition first. Names in
  * `alreadyCurrent` are not rechecked before the `SKILL.md` write: one
@@ -625,12 +586,11 @@ function replacedClause(
  * clause already says what to do. Every failure -- a symlink refusal, a
  * directory at a payload name, a raw `lstat`/`mkdir` error such as
  * `ENOTDIR`, a write error -- is thrown as one "could not install the
- * /<name> skill" `Error` carrying the underlying message and the raw
+ * /customize skill" `Error` carrying the underlying message and the raw
  * error as `cause`; the public entry point appends its own remediation
  * ({@link withRemediation}).
  */
-function copySkillFiles(
-  spec: SkillSpec,
+function copyCustomizeSkillFiles(
   targetDir: string,
   destination: SkillDestination,
   payload: readonly PayloadFile[],
@@ -638,7 +598,6 @@ function copySkillFiles(
 ): InstallPluginResult {
   const { segments, policy, symlinkAdvice } = destination;
   const destDir = wrapFs(
-    spec,
     `could not prepare ${join(targetDir, ...segments)}`,
     () => {
       let dir = targetDir;
@@ -654,21 +613,14 @@ function copySkillFiles(
   // Fresh mode's re-run over its own, still-current output touches nothing.
   if (
     policy === "overwrite" &&
-    classifyExistingSkill(spec, destDir, payload).kind === "current"
+    classifyExistingSkill(destDir, payload).kind === "current"
   ) {
     return { filesWritten: [] };
   }
 
-  assertNoDirectoryAtPayloadNames(
-    spec,
-    destDir,
-    payload,
-    alreadyCurrent,
-    policy,
-  );
+  assertNoDirectoryAtPayloadNames(destDir, payload, alreadyCurrent, policy);
   const skillRemoved = replacesExistingEntries(policy)
     ? removeStaleSkillEntry(
-        spec,
         destDir,
         policy === "overwrite" ? "existing" : "stale",
       )
@@ -699,7 +651,6 @@ function copySkillFiles(
       const clauses = failureClauses({
         dest,
         destDir,
-        entryFile: spec.entryFile,
         policy,
         leftBehind,
         createdUnknown: failure.created === "unknown",
@@ -707,7 +658,6 @@ function copySkillFiles(
         replaced,
       });
       throw installError(
-        spec,
         `could not write ${dest}${occupied}; removed the ${removed} file(s) written by this run${clauses}`,
         failure.cause,
       );
@@ -720,51 +670,7 @@ function copySkillFiles(
 }
 
 /**
- * Installs the skill `spec` describes into `<targetDir>/<spec.claudeSegments>`
- * -- fresh-bootstrap mode's install, where the directory is normally new
- * (`--force` may point it at a non-empty one or an earlier install). Behaves
- * exactly as {@link installCustomizeSkill} documents, with `spec`'s name,
- * files, write order (entry file last), source locations and destination in
- * place of `/customize`'s: every failure message starts "could not install
- * the /<name> skill: " and ends, once, with fresh mode's `--fresh --force`
- * retry advice.
- *
- * @throws `Error` (a plain one, before anything is read or written) when
- * `spec` is malformed ({@link assertValidSkillSpec}); otherwise as
- * {@link installCustomizeSkill}. A `spec.sourceFile` that throws or returns
- * a non-string is an install failure like an unreadable source file (its
- * error as `cause`, nothing written). Only the validated frozen copy of
- * `spec` is used, so a later change to the caller's arrays has no effect.
- *
- * @example
- * ```ts
- * import { installSkill } from "./plugin.js";
- * import { CUSTOMIZE_SKILL } from "./skill-spec.js";
- *
- * installSkill(CUSTOMIZE_SKILL, "/work/app").filesWritten.at(-1);
- * // ".claude/skills/customize/SKILL.md"
- * ```
- */
-export function installSkill(
-  spec: SkillSpec,
-  targetDir: string,
-  sourceDir?: string,
-): InstallPluginResult {
-  // Only the frozen copy is used from here on, never the caller's object.
-  const validated = assertValidSkillSpec(spec);
-  return withRemediation(FRESH_REMEDIATION, () =>
-    copySkillFiles(
-      validated,
-      targetDir,
-      freshDestination(validated),
-      readSkillPayload(validated, resolveSourceDir(validated, sourceDir)),
-    ),
-  );
-}
-
-/**
- * Installs the `/customize` skill into `<targetDir>/.claude/skills/customize/`
- * ({@link installSkill} over {@link CUSTOMIZE_SKILL}). Used by
+ * Installs the skill into `<targetDir>/.claude/skills/customize/`. Used by
  * fresh-bootstrap mode, where the directory is normally new (`--force` may
  * point it at a non-empty one or an earlier install). An earlier install
  * that is already byte-identical to this payload is left untouched
@@ -800,7 +706,13 @@ export function installCustomizeSkill(
   targetDir: string,
   sourceDir?: string,
 ): InstallPluginResult {
-  return installSkill(CUSTOMIZE_SKILL, targetDir, sourceDir);
+  return withRemediation(FRESH_REMEDIATION, () =>
+    copyCustomizeSkillFiles(
+      targetDir,
+      FRESH_DESTINATION,
+      readCustomizeSkillPayload(resolveSourceDir(sourceDir)),
+    ),
+  );
 }
 
 type InstallLocation = "claude" | "groundwork" | "already-present";
@@ -880,11 +792,7 @@ type FileComparison =
  * error): a fault is not evidence about the entry, so it is never guessed
  * to be foreign or stale.
  */
-function regularFileMatches(
-  spec: SkillSpec,
-  path: string,
-  bytes: Buffer,
-): FileComparison {
+function regularFileMatches(path: string, bytes: Buffer): FileComparison {
   let existing: Buffer;
   try {
     existing = readFileSync(path);
@@ -896,7 +804,7 @@ function regularFileMatches(
     if (code !== undefined && UNREADABLE_CODES.has(code)) {
       return { kind: "unreadable", code };
     }
-    throw installError(spec, untouched("could not read", path), error);
+    throw installError(untouched("could not read", path), error);
   }
   return existing.equals(bytes) ? { kind: "match" } : { kind: "mismatch" };
 }
@@ -937,7 +845,6 @@ type ExistingSkill =
  * same way a failing `lstat` does ({@link regularFileMatches}).
  */
 function classifyExistingSkill(
-  spec: SkillSpec,
   existingDir: string,
   payload: readonly PayloadFile[],
 ): ExistingSkill {
@@ -945,16 +852,14 @@ function classifyExistingSkill(
   let entryLoadable = false;
   for (const { name, bytes } of payload) {
     const installedPath = join(existingDir, name);
-    const stat = wrapFs(
-      spec,
-      untouched("could not inspect", installedPath),
-      () => lstatSync(installedPath, { throwIfNoEntry: false }),
+    const stat = wrapFs(untouched("could not inspect", installedPath), () =>
+      lstatSync(installedPath, { throwIfNoEntry: false }),
     );
     if (stat === undefined) {
       continue;
     }
     const verdict: FileComparison = stat.isFile()
-      ? regularFileMatches(spec, installedPath, bytes)
+      ? regularFileMatches(installedPath, bytes)
       : { kind: "mismatch" };
     if (verdict.kind === "unreadable") {
       // No ", so" clause here: installGuarded appends its own.
@@ -970,7 +875,7 @@ function classifyExistingSkill(
       };
     }
     alreadyCurrent.add(name);
-    entryLoadable ||= name === spec.entryFile;
+    entryLoadable ||= name === CUSTOMIZE_SKILL_ENTRY_FILE;
   }
   if (alreadyCurrent.size === payload.length) {
     return { kind: "current" };
@@ -978,53 +883,48 @@ function classifyExistingSkill(
   if (entryLoadable) {
     return {
       kind: "foreign",
-      reason: `${join(existingDir, spec.entryFile)} already exists without the rest of this CLI's current payload`,
+      reason: `${join(existingDir, CUSTOMIZE_SKILL_ENTRY_FILE)} already exists without the rest of this CLI's current payload`,
     };
   }
   return { kind: "installable", alreadyCurrent };
 }
 
-/** The body of {@link installSkillGuarded}, before its adopt-mode remediation is appended. */
+/** The body of {@link installCustomizeSkillGuarded}, before its adopt-mode remediation is appended. */
 function installGuarded(
-  spec: SkillSpec,
   targetDir: string,
   sourceDir: string,
 ): GuardedInstallResult {
-  const payload = readSkillPayload(spec, sourceDir);
-  const existingDir = join(targetDir, ...spec.claudeSegments);
-  // Always `/`-separated, as the message has always spelled it.
-  const fallbackLabel = `${spec.fallbackSegments.join("/")}/`;
+  const payload = readCustomizeSkillPayload(sourceDir);
+  const existingDir = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
   const installToGroundwork = (
     reason: string,
     fallbackCause: "entry" | "component",
   ): GuardedInstallResult => {
     let filesWritten: string[];
     try {
-      ({ filesWritten } = copySkillFiles(
-        spec,
+      ({ filesWritten } = copyCustomizeSkillFiles(
         targetDir,
-        cliOwnedDestination(spec),
+        CLI_OWNED_DESTINATION,
         payload,
       ));
     } catch (cause) {
       // Already an installError; this adds only why the fallback
       // destination was being written at all.
       throw installError(
-        spec,
-        `${reason}, so it fell back to ${fallbackLabel}, and that install failed too`,
+        `${reason}, so it fell back to .groundwork/customize/, and that install failed too`,
         cause,
       );
     }
     return {
       filesWritten,
       location: "groundwork",
-      fallbackReason: `${reason}, so the /${spec.name} skill was installed into ${fallbackLabel} instead`,
+      fallbackReason: `${reason}, so the /customize skill was installed into .groundwork/customize/ instead`,
       fallbackCause,
     };
   };
 
-  const unusable = wrapFs(spec, `could not inspect ${existingDir}`, () =>
-    firstUnusableComponent(targetDir, spec.claudeSegments),
+  const unusable = wrapFs(`could not inspect ${existingDir}`, () =>
+    firstUnusableComponent(targetDir, CLAUDE_DEST_SEGMENTS),
   );
   if (unusable !== undefined) {
     return installToGroundwork(unusable, "component");
@@ -1033,17 +933,16 @@ function installGuarded(
   // Throws its own wrapped error naming a path it could not lstat or read;
   // a regular file whose read is refused (EACCES/EPERM) comes back
   // "foreign" instead.
-  const existing = classifyExistingSkill(spec, existingDir, payload);
+  const existing = classifyExistingSkill(existingDir, payload);
   switch (existing.kind) {
     case "current":
       return { filesWritten: [], location: "already-present" };
     case "foreign":
       return installToGroundwork(existing.reason, "entry");
     case "installable": {
-      const { filesWritten } = copySkillFiles(
-        spec,
+      const { filesWritten } = copyCustomizeSkillFiles(
         targetDir,
-        adoptClaudeDestination(spec),
+        ADOPT_CLAUDE_DESTINATION,
         payload,
         existing.alreadyCurrent,
       );
@@ -1057,50 +956,8 @@ function installGuarded(
 }
 
 /**
- * Adopt-mode install of the skill `spec` describes: purely additive, never
- * overwrites or removes a project entry under `<spec.claudeSegments>`;
- * falls back to the CLI-owned `<spec.fallbackSegments>`. Behaves exactly as
- * {@link installCustomizeSkillGuarded} documents, with `spec`'s name, files,
- * write order (entry file last), source locations and destinations in place
- * of `/customize`'s: every failure message starts "could not install the
- * /<name> skill: " and ends, once, with adopt mode's fix-and-re-run advice.
- *
- * @throws `Error` (a plain one, before anything is read or written) when
- * `spec` is malformed ({@link assertValidSkillSpec}); otherwise as
- * {@link installCustomizeSkillGuarded}. A `spec.sourceFile` that throws or
- * returns a non-string is an install failure like an unreadable source file
- * (its error as `cause`, nothing written). Only the validated frozen copy of
- * `spec` is used, so a later change to the caller's arrays has no effect.
- *
- * @example
- * ```ts
- * import { installSkillGuarded } from "./plugin.js";
- * import { CUSTOMIZE_SKILL } from "./skill-spec.js";
- *
- * const { location } = installSkillGuarded(CUSTOMIZE_SKILL, "/work/app");
- * // "claude" | "groundwork" | "already-present"
- * ```
- */
-export function installSkillGuarded(
-  spec: SkillSpec,
-  targetDir: string,
-  sourceDir?: string,
-): GuardedInstallResult {
-  // Only the frozen copy is used from here on, never the caller's object.
-  const validated = assertValidSkillSpec(spec);
-  return withRemediation(ADOPT_REMEDIATION, () =>
-    installGuarded(
-      validated,
-      targetDir,
-      resolveSourceDir(validated, sourceDir),
-    ),
-  );
-}
-
-/**
- * Adopt-mode install of `/customize` ({@link installSkillGuarded} over
- * {@link CUSTOMIZE_SKILL}): purely additive, never overwrites or removes a
- * project entry under `.claude/skills/customize/`.
+ * Adopt-mode install: purely additive, never overwrites or removes a project
+ * entry under `.claude/skills/customize/`.
  *
  * - If `.claude`, `.claude/skills` or `.claude/skills/customize` is a
  *   symlink or not a directory, the skill is written to
@@ -1157,5 +1014,7 @@ export function installCustomizeSkillGuarded(
   targetDir: string,
   sourceDir?: string,
 ): GuardedInstallResult {
-  return installSkillGuarded(CUSTOMIZE_SKILL, targetDir, sourceDir);
+  return withRemediation(ADOPT_REMEDIATION, () =>
+    installGuarded(targetDir, resolveSourceDir(sourceDir)),
+  );
 }

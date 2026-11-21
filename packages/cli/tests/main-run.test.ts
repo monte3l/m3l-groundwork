@@ -18,13 +18,11 @@ import {
   existsSync,
   symlinkSync,
   lstatSync,
-  readlinkSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ManifestError, parseManifest } from "../src/manifest.js";
 import type { Inventory } from "../src/inventory.js";
 import type * as InventoryModule from "../src/inventory.js";
 import type * as ReportModule from "../src/report.js";
@@ -108,21 +106,6 @@ describe("main", () => {
       expect(gitInitMock).toHaveBeenCalledWith(emptyTarget);
       expect(runInstallMock).toHaveBeenCalledWith(emptyTarget);
     });
-
-    it.each(["MyApp", "My App"])(
-      "bootstraps a directory named %j and writes a manifest that round-trips through parseManifest",
-      (dirName) => {
-        const target = join(targetDir, dirName);
-
-        main([target, "--skip-install"]);
-
-        const text = readFileSync(
-          join(target, ".groundwork", "manifest.json"),
-          "utf8",
-        );
-        expect(parseManifest(text).tokens["PROJECT_NAME"]).toBe(dirName);
-      },
-    );
 
     it("skips the install step when --skip-install is passed", () => {
       const emptyTarget = join(targetDir, "sub2");
@@ -212,31 +195,6 @@ describe("main", () => {
           expect(gitInitMock).not.toHaveBeenCalled();
         },
       );
-
-      it.each(["a&b", "it's", "a;b", "$(id)", "a`b`", "-dash"])(
-        "refuses the directory-derived default name %j as a usage error telling the user to pass --name, creating nothing",
-        (dirName) => {
-          const target = join(targetDir, dirName);
-
-          let thrown: unknown;
-          try {
-            main([target, "--skip-install"]);
-          } catch (error) {
-            thrown = error;
-          }
-
-          expect(thrown).toBeInstanceOf(CliUsageError);
-          expect((thrown as Error).message).toContain("--name");
-          expect(existsSync(target)).toBe(false);
-          expect(gitInitMock).not.toHaveBeenCalled();
-        },
-      );
-
-      it("keeps an explicit --name working for a directory whose own name is unsafe", () => {
-        const target = join(targetDir, "a&b");
-        main([target, "--skip-install", "--name", "widgets"]);
-        expect(existsSync(join(target, "package.json"))).toBe(true);
-      });
 
       it("names the available packs when an unknown pack is requested", () => {
         const target = join(targetDir, "never-written-unknown");
@@ -633,269 +591,6 @@ describe("main", () => {
     });
   });
 
-  describe("fresh mode install manifest", () => {
-    interface ManifestOnDisk {
-      schemaVersion: number;
-      cliVersion: string;
-      tokens: Record<string, string>;
-      packs: string[];
-      files: Record<string, { sha256: string; origin: string }>;
-      jsonKeys: Record<string, Record<string, string>>;
-    }
-
-    function readOnDisk(dir: string): ManifestOnDisk {
-      return JSON.parse(
-        readFileSync(join(dir, ".groundwork", "manifest.json"), "utf8"),
-      ) as ManifestOnDisk;
-    }
-
-    function sha(path: string): string {
-      return createHash("sha256").update(readFileSync(path)).digest("hex");
-    }
-
-    /** Every file under dir, relative, `/`-separated, skipping `.groundwork`. */
-    function listFiles(root: string): string[] {
-      const found: string[] = [];
-      const visit = (current: string, prefix: string): void => {
-        for (const entry of readdirSync(current, { withFileTypes: true })) {
-          const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-          if (rel === ".groundwork") continue;
-          if (entry.isDirectory()) visit(join(current, entry.name), rel);
-          else found.push(rel);
-        }
-      };
-      visit(root, "");
-      return found.sort();
-    }
-
-    it("writes .groundwork/manifest.json recording the baseline files, tokens and CLI version", () => {
-      const target = join(targetDir, "manifest-basic");
-      const logSpy = vi
-        .spyOn(console, "log")
-        .mockImplementation(() => undefined);
-
-      main([target, "--name", "widgets", "--skip-install"]);
-      const lines = logSpy.mock.calls.map(([line]) => String(line));
-      logSpy.mockRestore();
-
-      const manifest = readOnDisk(target);
-      const cliPackage = JSON.parse(
-        readFileSync(
-          join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
-          "utf8",
-        ),
-      ) as { version: string };
-      expect(manifest.schemaVersion).toBe(1);
-      expect(manifest.cliVersion).toBe(cliPackage.version);
-      expect(manifest.tokens["PROJECT_NAME"]).toBe("widgets");
-      expect(manifest.tokens["YEAR"]).toMatch(/^\d{4}$/);
-      expect(manifest.packs).toEqual([]);
-      expect(lines).toContain("wrote .groundwork/manifest.json");
-    });
-
-    it("lists exactly the files emitted, each emitted with the sha256 of the bytes on disk", () => {
-      const target = join(targetDir, "manifest-files");
-
-      main([target, "--skip-install"]);
-
-      const manifest = readOnDisk(target);
-      expect(Object.keys(manifest.files).sort()).toEqual(listFiles(target));
-      expect(Object.keys(manifest.files)).toContain("package.json");
-      for (const [rel, entry] of Object.entries(manifest.files)) {
-        expect(entry.origin).toBe("emitted");
-        expect(entry.sha256).toBe(sha(join(target, rel)));
-      }
-    });
-
-    it("excludes the /customize skill's own files from files", () => {
-      const target = join(targetDir, "manifest-skill");
-      installCustomizeSkillMock.mockImplementationOnce(
-        (): InstallPluginResult => {
-          mkdirSync(join(target, ".claude", "skills", "customize"), {
-            recursive: true,
-          });
-          writeFileSync(
-            join(target, ".claude", "skills", "customize", "SKILL.md"),
-            "skill",
-          );
-          return { filesWritten: [".claude/skills/customize/SKILL.md"] };
-        },
-      );
-
-      main([target, "--skip-install"]);
-
-      expect(
-        existsSync(join(target, ".claude", "skills", "customize", "SKILL.md")),
-      ).toBe(true);
-      expect(
-        Object.hasOwn(
-          readOnDisk(target).files,
-          ".claude/skills/customize/SKILL.md",
-        ),
-      ).toBe(false);
-    });
-
-    it("records the installed packs and hashes pack-merged shared files in their final form", () => {
-      const target = join(targetDir, "manifest-packs");
-
-      main([target, "--skip-install", "--pack", "harness-extras"]);
-
-      const manifest = readOnDisk(target);
-      expect(manifest.packs).toEqual(["harness-extras"]);
-      expect(Object.keys(manifest.files).sort()).toEqual(listFiles(target));
-      for (const [rel, entry] of Object.entries(manifest.files)) {
-        expect(entry.sha256).toBe(sha(join(target, rel)));
-      }
-      // Pinned by hand: the baseline declares a verify script.
-      expect(
-        Object.hasOwn(
-          manifest.jsonKeys["package.json"] ?? {},
-          "/scripts/verify",
-        ),
-      ).toBe(true);
-    });
-
-    it("writes the manifest after the packs and before git init", () => {
-      const target = join(targetDir, "manifest-order");
-      let manifestExistedAtGitInit: boolean | undefined;
-      gitInitMock.mockImplementationOnce(() => {
-        manifestExistedAtGitInit = existsSync(
-          join(target, ".groundwork", "manifest.json"),
-        );
-      });
-
-      main([target, "--skip-install", "--pack", "harness-extras"]);
-
-      expect(manifestExistedAtGitInit).toBe(true);
-    });
-
-    it("fails with a ManifestError cause, without git init, when the manifest write fails after a successful emit", () => {
-      const target = join(targetDir, "manifest-fails");
-      mkdirSync(join(target, ".groundwork", "manifest.json.tmp"), {
-        recursive: true,
-      });
-      writeFileSync(
-        join(target, ".groundwork", "manifest.json.tmp", "keep"),
-        "x",
-      );
-      vi.spyOn(console, "log").mockImplementation(() => undefined);
-      let thrown: unknown;
-      try {
-        main([target, "--fresh", "--force", "--skip-install"]);
-      } catch (error) {
-        thrown = error;
-      } finally {
-        vi.restoreAllMocks();
-      }
-
-      expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).cause).toBeInstanceOf(ManifestError);
-      expect(existsSync(join(target, "package.json"))).toBe(true);
-      expect(gitInitMock).not.toHaveBeenCalled();
-      expect(runInstallMock).not.toHaveBeenCalled();
-    });
-
-    describe("refuses before the first write when .groundwork or the manifest path is unusable", () => {
-      /** Every entry under `root` with its kind and, for a file, its bytes; symlinks are recorded, never followed. */
-      function snapshot(root: string): string[] {
-        const lines: string[] = [];
-        const walk = (current: string, rel: string): void => {
-          for (const entry of readdirSync(current, { withFileTypes: true })) {
-            const relPath = rel === "" ? entry.name : `${rel}/${entry.name}`;
-            const abs = join(current, entry.name);
-            if (entry.isSymbolicLink()) {
-              lines.push(`${relPath} -> ${readlinkSync(abs)}`);
-            } else if (entry.isDirectory()) {
-              lines.push(`${relPath}/`);
-              walk(abs, relPath);
-            } else {
-              lines.push(`${relPath} = ${readFileSync(abs, "utf8")}`);
-            }
-          }
-        };
-        walk(root, "");
-        return lines.sort();
-      }
-
-      function plant(kind: string, target: string): string {
-        mkdirSync(target, { recursive: true });
-        writeFileSync(join(target, "existing.txt"), "keep me");
-        const groundwork = join(target, ".groundwork");
-        if (kind === "file") {
-          writeFileSync(groundwork, "not a directory");
-          return groundwork;
-        }
-        if (kind === "symlink") {
-          const elsewhere = join(target, "..", `${basename(target)}-elsewhere`);
-          mkdirSync(elsewhere);
-          symlinkSync(elsewhere, groundwork);
-          return groundwork;
-        }
-        mkdirSync(join(groundwork, "manifest.json"), { recursive: true });
-        writeFileSync(join(groundwork, "manifest.json", "keep"), "inner");
-        return join(groundwork, "manifest.json");
-      }
-
-      it.each([["file"], ["symlink"], ["manifest-dir"]])(
-        "with .groundwork as a %s: nothing is written, no mock runs, the error names the path and the --fresh --force retry once",
-        (kind) => {
-          const target = join(targetDir, `preflight-${kind}`);
-          const offending = plant(kind, target);
-          const before = snapshot(target);
-          vi.spyOn(console, "log").mockImplementation(() => undefined);
-          let thrown: unknown;
-          try {
-            main([target, "--fresh", "--force", "--skip-install"]);
-          } catch (error) {
-            thrown = error;
-          } finally {
-            vi.restoreAllMocks();
-          }
-
-          expect(thrown).toBeInstanceOf(Error);
-          expect(thrown).not.toBeInstanceOf(CliUsageError);
-          expect((thrown as Error).message).toContain(offending);
-          let retryMarkers = 0;
-          for (let c: unknown = thrown; c instanceof Error; c = c.cause) {
-            retryMarkers += c.message.match(/--fresh --force/g)?.length ?? 0;
-          }
-          expect(retryMarkers).toBe(1);
-
-          expect(snapshot(target)).toEqual(before);
-          expect(existsSync(join(target, "package.json"))).toBe(false);
-          expect(installCustomizeSkillMock).not.toHaveBeenCalled();
-          expect(gitInitMock).not.toHaveBeenCalled();
-          expect(runInstallMock).not.toHaveBeenCalled();
-        },
-      );
-    });
-
-    it("is left byte-identical by a later adopt run on the same directory", () => {
-      const target = join(targetDir, "manifest-adopt");
-      vi.spyOn(console, "log").mockImplementation(() => undefined);
-      try {
-        main([target, "--skip-install"]);
-        const before = readFileSync(
-          join(target, ".groundwork", "manifest.json"),
-        );
-
-        main([target, "--adopt"]);
-
-        expect(
-          readFileSync(join(target, ".groundwork", "manifest.json")).equals(
-            before,
-          ),
-        ).toBe(true);
-        // Adopt did run: it wrote its own inventory beside the manifest.
-        expect(existsSync(join(target, ".groundwork", "inventory.json"))).toBe(
-          true,
-        );
-      } finally {
-        vi.restoreAllMocks();
-      }
-    });
-  });
-
   describe("adopt mode", () => {
     it("auto-detects adopt for a directory containing package.json and writes .groundwork/ only", () => {
       const projectDir = join(targetDir, "existing-project");
@@ -1130,193 +825,26 @@ describe("main", () => {
       }
     });
 
-    describe("--pack narrows the adopt survey", () => {
-      function makeProject(name: string): string {
-        const projectDir = join(targetDir, name);
-        mkdirSync(projectDir);
-        writeFileSync(
-          join(projectDir, "package.json"),
-          JSON.stringify({ name: "acme", type: "module" }),
-        );
-        return projectDir;
-      }
+    // Contract 1: --pack in adopt mode is rejected up front as a usage
+    // error, rather than silently ignored while the survey proceeds to
+    // stage every pack regardless (the OLD contract, dropped by this fix --
+    // see the previous test for its replacement covering the no--pack
+    // case).
+    it("rejects --pack in adopt mode as a usage error, rather than silently ignoring it", () => {
+      const projectDir = join(targetDir, "existing-project3-pack-usage");
+      mkdirSync(projectDir);
+      writeFileSync(
+        projectDir + "/package.json",
+        JSON.stringify({ name: "acme", type: "module" }),
+      );
 
-      function readInventory(projectDir: string): Inventory {
-        return JSON.parse(
-          readFileSync(
-            join(projectDir, ".groundwork", "inventory.json"),
-            "utf8",
-          ),
-        ) as Inventory;
-      }
-
-      it("surveys and stages only the named pack, in the inventory, on disk and in the report", () => {
-        const projectDir = makeProject("pack-one");
-
-        main([projectDir, "--pack", "harness-extras"]);
-
-        const inventory = readInventory(projectDir);
-        expect(inventory.packs.map((p) => p.name)).toEqual(["harness-extras"]);
-        expect(inventory.stagedPacks.map((p) => p.name)).toEqual([
-          "harness-extras",
-        ]);
-        expect(
-          readdirSync(join(projectDir, ".groundwork", "packs")).sort(),
-        ).toEqual(["harness-extras"]);
-
-        const report = readFileSync(
-          join(projectDir, ".groundwork", "adoption-report.md"),
-          "utf8",
-        );
-        const packHeadings = report
-          .split("\n")
-          .filter((line) => /^### [a-z][a-z0-9-]*$/.test(line));
-        expect(packHeadings).toContain("### harness-extras");
-        expect(packHeadings).not.toContain("### quality");
-        expect(packHeadings).not.toContain("### service");
-      });
-
-      it("surveys and stages exactly the named packs when --pack is repeated", () => {
-        const projectDir = makeProject("pack-two");
-
-        main([projectDir, "--pack", "quality", "--pack", "harness-extras"]);
-
-        const inventory = readInventory(projectDir);
-        expect(inventory.packs.map((p) => p.name).sort()).toEqual([
-          "harness-extras",
-          "quality",
-        ]);
-        expect(inventory.stagedPacks.map((p) => p.name).sort()).toEqual([
-          "harness-extras",
-          "quality",
-        ]);
-        expect(
-          readdirSync(join(projectDir, ".groundwork", "packs")).sort(),
-        ).toEqual(["harness-extras", "quality"]);
-      });
-
-      it("accepts a pack whose modes lack adopt (licensing is fresh-only) and still surveys and stages it", () => {
-        const projectDir = makeProject("pack-fresh-only");
-
-        main([projectDir, "--pack", "licensing"]);
-
-        const inventory = readInventory(projectDir);
-        expect(inventory.packs.map((p) => p.name)).toEqual(["licensing"]);
-        expect(inventory.packs[0]?.modes).not.toContain("adopt");
-        expect(inventory.stagedPacks.map((p) => p.name)).toEqual(["licensing"]);
-        expect(readdirSync(join(projectDir, ".groundwork", "packs"))).toEqual([
-          "licensing",
-        ]);
-      });
-
-      it("rejects an unknown pack with CliUsageError listing the available packs, creating no .groundwork/", () => {
-        const projectDir = makeProject("pack-unknown");
-
-        let thrown: unknown;
-        try {
-          main([projectDir, "--pack", "nope"]);
-        } catch (error) {
-          thrown = error;
-        }
-
-        expect(thrown).toBeInstanceOf(CliUsageError);
-        const message = (thrown as Error).message;
-        expect(message).toContain('unknown pack "nope"');
-        expect(message).toContain("harness-extras");
-        expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
-      });
-
-      it("rejects an unknown pack before touching an existing .groundwork/, leaving the previous inventory and report intact", () => {
-        const projectDir = makeProject("pack-unknown-existing");
-        main([projectDir]);
-        const groundwork = join(projectDir, ".groundwork");
-        const inventoryBefore = readFileSync(
-          join(groundwork, "inventory.json"),
-          "utf8",
-        );
-        const reportBefore = readFileSync(
-          join(groundwork, "adoption-report.md"),
-          "utf8",
-        );
-        const packsBefore = readdirSync(join(groundwork, "packs")).sort();
-
-        expect(() =>
-          main([projectDir, "--pack", "harness-extras", "--pack", "nope"]),
-        ).toThrow(CliUsageError);
-
-        expect(readFileSync(join(groundwork, "inventory.json"), "utf8")).toBe(
-          inventoryBefore,
-        );
-        expect(
-          readFileSync(join(groundwork, "adoption-report.md"), "utf8"),
-        ).toBe(reportBefore);
-        expect(readdirSync(join(groundwork, "packs")).sort()).toEqual(
-          packsBefore,
-        );
-      });
-
-      it("replaces a previous wider staging on a narrowed re-run, and a later plain run restores every pack", () => {
-        const projectDir = makeProject("pack-rerun");
-        const packsDir = join(projectDir, ".groundwork", "packs");
-
-        main([projectDir]);
-        const allPacks = readInventory(projectDir)
-          .packs.map((p) => p.name)
-          .sort();
-        expect(allPacks.length).toBeGreaterThan(1);
-        expect(readdirSync(packsDir).sort()).toEqual(allPacks);
-
-        main([projectDir, "--pack", "quality"]);
-        const narrowed = readInventory(projectDir);
-        expect(readdirSync(packsDir)).toEqual(["quality"]);
-        expect(narrowed.packs.map((p) => p.name)).toEqual(["quality"]);
-        expect(narrowed.stagedPacks.map((p) => p.name)).toEqual(["quality"]);
-
-        main([projectDir]);
-        const restored = readInventory(projectDir);
-        expect(readdirSync(packsDir).sort()).toEqual(allPacks);
-        expect(restored.packs.map((p) => p.name).sort()).toEqual(allPacks);
-        expect(restored.stagedPacks.map((p) => p.name).sort()).toEqual(
-          allPacks,
-        );
-      });
-
-      it("still rejects --force alongside --pack in adopt mode", () => {
-        const projectDir = makeProject("pack-force");
-
-        expect(() =>
-          main([projectDir, "--pack", "harness-extras", "--force"]),
-        ).toThrow(/--force has no effect in adopt mode/);
-        expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
-      });
-
-      it("still rejects --adopt --pack against a missing target directory", () => {
-        const missing = join(targetDir, "does-not-exist");
-
-        expect(() =>
-          main([missing, "--adopt", "--pack", "harness-extras"]),
-        ).toThrow(/does not exist/);
-        expect(existsSync(missing)).toBe(false);
-      });
-
-      it("describes --pack as narrowing the adopt survey in the usage text, no longer calling it rejected", () => {
-        const logSpy = vi
-          .spyOn(console, "log")
-          .mockImplementation(() => undefined);
-        try {
-          main(["--help"]);
-          const usage = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
-          const packLine = usage
-            .split("\n")
-            .find((line) => line.includes("--pack <name>"));
-          expect(packLine).toMatch(/narrow/i);
-          expect(usage).not.toContain(
-            "--pack and --force are rejected in adopt mode",
-          );
-        } finally {
-          logSpy.mockRestore();
-        }
-      });
+      expect(() => main([projectDir, "--pack", "harness-extras"])).toThrow(
+        CliUsageError,
+      );
+      expect(() => main([projectDir, "--pack", "harness-extras"])).toThrow(
+        /no effect in adopt mode/,
+      );
+      expect(existsSync(join(projectDir, ".groundwork"))).toBe(false);
     });
 
     it("stages absent baseline files at .groundwork/baseline/ as <path>.staged, each with a sha256 matching the staged bytes, without touching the project", () => {

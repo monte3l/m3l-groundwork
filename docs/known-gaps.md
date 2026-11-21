@@ -31,28 +31,10 @@
   and unbounded work, with anything needing profiling reported as
   `NOT CHECKED`) and an `api-doc` skill that writes an OpenAPI description
   from the routes the code defines; recommended only for the `service` kind.
-- **The upgrade flow is only partly built.** Fresh mode writes a manifest of
-  what it emitted, and `--upgrade` compares it with your files and the new
-  release, stages a plan under `.groundwork/upgrade/` and installs the
-  `/upgrade` skill, which applies it in Claude Code and records it in the
-  manifest with `--upgrade --stamp` (run it straight away when there is
-  nothing to apply). The scripted `--apply` step is designed in
-  [`decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md) and not
-  built. `--upgrade` does not refresh the `/customize` copy: the manifest
-  does not record that copy's hash, so the CLI cannot tell an unchanged copy
-  from an edited one. For the same reason it never refreshes an older
-  `/upgrade` copy: after the first install, a release whose skill text changed
-  lands in `.groundwork/upgrade-skill/` and must be copied over
-  `.claude/skills/upgrade/` by hand. Fixing either needs a manifest schema
-  change that records the skill copy's hash. A project with no manifest
-  (anything bootstrapped or adopted before it existed) is refused by
-  `--upgrade`; for it, taking a new release is still the indirect re-run of the
-  CLI in adopt mode followed by `/customize`. `--upgrade` takes its packs from
-  the manifest; to add one to an existing project, run the CLI with
-  `--pack <name>` (adopt mode).
-- **Manifest JSON keys carry no origin.** A key `--upgrade --stamp` keeps with
-  its old hash stays a three-way base under the new CLI version, until a
-  manifest schema change adds a per-key origin.
+- **No standalone "add a pack to an already-bootstrapped project" flag.**
+  Today that path is: re-run the CLI against the now-non-empty directory
+  (it auto-detects adopt mode), then run `/customize`. Works, but is
+  indirect -- a dedicated additive install mode is real future work.
 - **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it.
   Re-checked 2026-10-01: the original blocker is gone, since `pnpm/setup@v3`
   (2026-09-20) has a `node-version-file` input and auto-detects

@@ -38,10 +38,7 @@ jobs:
           # BlueOak-1.0.0; spdx-exceptions' data file is CC-BY-3.0. All
           # permissive; this repo never redistributes npm, it only shells
           # out to it in a CI job that installs with --ignore-scripts.
-          # Python-2.0 and BSD-2-Clause-Views cover the toolchain a scaffold
-          # emits: argparse (through commitlint's js-yaml) and uri-js (through
-          # ESLint's ajv 6). Both are permissive and build-time only.
-          allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0, BlueOak-1.0.0, Artistic-2.0, CC-BY-3.0, Python-2.0, BSD-2-Clause-Views
+          allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0, BlueOak-1.0.0, Artistic-2.0, CC-BY-3.0
           # A copyleft or platform-specific package that is acceptable for a
           # tool the project only runs (never ships) is exempted by package
           # URL, not by adding its license above. Those exemptions are data

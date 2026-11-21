@@ -4,10 +4,8 @@
 /**
  * `handleFatal` is `bin/m3l-groundwork.mjs`'s own top-level catch handler,
  * extracted so it can be unit-tested: it decides the process exit code
- * (whatever its `classify` callback returns for a non-zero ExitCode; a throwing
- * or out-of-range classifier counts as a runtime failure, 1) and prints the
- * report -- `formatErrorChain(error)` for any other code, the name-prefixed
- * (and, with debug, stack-bearing) form for a runtime failure -- via `io.print`, falling back up to three times on a channel the caller
+ * (2 for a usage error, 1 otherwise) and prints `formatErrorChain(error)`
+ * via `io.print`, falling back up to three times on a channel the caller
  * can't make throw the same way (`io.printRaw`) -- first the same formatted
  * chain (so the cause chain survives even when `print` is what failed),
  * then the raw stack, then a fixed placeholder -- so a failure inside the
@@ -18,7 +16,6 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { formatErrorChain } from "../src/format-error.js";
 import { handleFatal } from "../src/fatal.js";
-import { EXIT_CODES, type ExitCode } from "../src/exit-codes.js";
 
 interface FatalIo {
   setExitCode(code: number): void;
@@ -59,7 +56,7 @@ describe("handleFatal", () => {
     vi.restoreAllMocks();
   });
 
-  it("types as documented: (error, io, classify, debug?) => ExitCode, with io carrying print AND printRaw", () => {
+  it("types as documented: (error, io, isUsageError, debug?) => void, with io carrying print AND printRaw", () => {
     expectTypeOf(handleFatal).toEqualTypeOf<
       (
         error: unknown,
@@ -68,33 +65,33 @@ describe("handleFatal", () => {
           print(text: string): void;
           printRaw(text: string): void;
         },
-        classify: (error: unknown) => Exclude<ExitCode, 0>,
+        isUsageError: (error: unknown) => boolean,
         debug?: boolean,
-      ) => Exclude<ExitCode, 0>
+      ) => void
     >();
   });
 
-  it("sets exit code 2 and prints the real formatErrorChain output via print when classify returns usage (2)", () => {
+  it("sets exit code 2 and prints the real formatErrorChain output via print when isUsageError returns true", () => {
     const { io, prints, getExitCode } = makeIo();
     const error = new Error("bad arguments");
 
-    handleFatal(error, io, () => EXIT_CODES.usage);
+    handleFatal(error, io, () => true);
 
     expect(getExitCode()).toBe(2);
     expect(prints).toEqual([formatErrorChain(error)]);
   });
 
-  it("sets exit code 1 and prints the real formatErrorChain output via print when classify returns runtime (1)", () => {
+  it("sets exit code 1 and prints the real formatErrorChain output via print when isUsageError returns false", () => {
     const { io, prints, getExitCode } = makeIo();
     const error = new Error("boom", { cause: new Error("root cause") });
 
-    handleFatal(error, io, () => EXIT_CODES.runtime);
+    handleFatal(error, io, () => false);
 
     expect(getExitCode()).toBe(1);
     expect(prints).toEqual([formatErrorChain(error)]);
   });
 
-  it("sets exit code 1 when classify itself throws, and still prints the formatted chain via print", () => {
+  it("sets exit code 1 when isUsageError itself throws, and still prints the formatted chain via print", () => {
     const { io, prints, getExitCode } = makeIo();
     const error = new Error("boom");
 
@@ -122,7 +119,7 @@ describe("handleFatal", () => {
       },
     };
 
-    handleFatal(new Error("x"), io, () => EXIT_CODES.runtime);
+    handleFatal(new Error("x"), io, () => false);
 
     expect(calls[0]).toBe("setExitCode:1");
     const firstPrintIndex = calls.findIndex((c) => c.startsWith("print"));
@@ -149,7 +146,7 @@ describe("handleFatal", () => {
     };
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime);
+      handleFatal(error, io, () => false);
     }).not.toThrow();
 
     expect(printCallCount).toBe(1);
@@ -181,7 +178,7 @@ describe("handleFatal", () => {
     };
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime);
+      handleFatal(error, io, () => false);
     }).not.toThrow();
 
     expect(printCallCount).toBe(1);
@@ -205,7 +202,7 @@ describe("handleFatal", () => {
       },
     };
 
-    handleFatal("a raw string failure", io, () => EXIT_CODES.runtime);
+    handleFatal("a raw string failure", io, () => false);
 
     expect(rawPrints).toEqual(["a raw string failure"]);
   });
@@ -231,7 +228,7 @@ describe("handleFatal", () => {
     };
 
     expect(() => {
-      handleFatal(value, io, () => EXIT_CODES.runtime);
+      handleFatal(value, io, () => false);
     }).not.toThrow();
 
     expect(printCallCount).toBe(1);
@@ -260,7 +257,7 @@ describe("handleFatal", () => {
     };
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime);
+      handleFatal(error, io, () => false);
     }).not.toThrow();
 
     expect(printCallCount).toBe(1);
@@ -290,7 +287,7 @@ describe("handleFatal", () => {
     };
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime);
+      handleFatal(error, io, () => false);
     }).not.toThrow();
 
     expect(printCallCount).toBe(1);
@@ -304,7 +301,7 @@ describe("handleFatal", () => {
   it("passes a non-blank report to io.print for an Error with an empty message", () => {
     const { io, prints } = makeIo();
 
-    handleFatal(new Error(), io, () => EXIT_CODES.runtime);
+    handleFatal(new Error(), io, () => false);
 
     expect(prints).toHaveLength(1);
     expect(prints[0]?.trim()).not.toBe("");
@@ -333,7 +330,7 @@ describe("handleFatal", () => {
     };
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime);
+      handleFatal(error, io, () => false);
     }).not.toThrow();
 
     expect(printCallCount).toBe(1);
@@ -367,7 +364,7 @@ describe("handleFatal", () => {
     };
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime);
+      handleFatal(error, io, () => false);
     }).not.toThrow();
 
     expect(printCallCount).toBe(1);
@@ -392,7 +389,7 @@ describe("handleFatal", () => {
     };
 
     expect(() => {
-      handleFatal(new Error("boom"), io, () => EXIT_CODES.usage);
+      handleFatal(new Error("boom"), io, () => true);
     }).not.toThrow();
 
     expect(exitCode).toBe(2);
@@ -416,7 +413,7 @@ describe("handleFatal: name-prefixed top line for a non-usage Error", () => {
     const { io, prints } = makeIo();
     const error = new TypeError("Cannot read properties of null");
 
-    handleFatal(error, io, () => EXIT_CODES.runtime);
+    handleFatal(error, io, () => false);
 
     expect(prints[0]).toBe("TypeError: Cannot read properties of null");
   });
@@ -424,7 +421,7 @@ describe("handleFatal: name-prefixed top line for a non-usage Error", () => {
   it("does not prefix when the top message is blank -- the name is already the whole line, so it must not become 'TypeError: TypeError'", () => {
     const { io, prints } = makeIo();
 
-    handleFatal(new TypeError(""), io, () => EXIT_CODES.runtime);
+    handleFatal(new TypeError(""), io, () => false);
 
     expect(prints[0]).toBe("TypeError");
   });
@@ -432,7 +429,7 @@ describe("handleFatal: name-prefixed top line for a non-usage Error", () => {
   it("does not prefix a non-Error thrown value", () => {
     const { io, prints } = makeIo();
 
-    handleFatal("a raw string failure", io, () => EXIT_CODES.runtime);
+    handleFatal("a raw string failure", io, () => false);
 
     expect(prints[0]).toBe("a raw string failure");
   });
@@ -441,7 +438,7 @@ describe("handleFatal: name-prefixed top line for a non-usage Error", () => {
     const { io, prints, getExitCode } = makeIo();
     const error = new TypeError("bad arguments");
 
-    handleFatal(error, io, () => EXIT_CODES.usage);
+    handleFatal(error, io, () => true);
 
     expect(getExitCode()).toBe(2);
     expect(prints).toEqual([formatErrorChain(error)]);
@@ -452,7 +449,7 @@ describe("handleFatal: name-prefixed top line for a non-usage Error", () => {
     const error = new Error("boom");
     error.name = "Bad\u001bName";
 
-    handleFatal(error, io, () => EXIT_CODES.runtime);
+    handleFatal(error, io, () => false);
 
     expect(prints[0]).toBe("Bad\\x1bName: boom");
   });
@@ -468,14 +465,14 @@ describe("handleFatal: name-prefixed top line for a non-usage Error", () => {
     });
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime);
+      handleFatal(error, io, () => false);
     }).not.toThrow();
 
     expect(getExitCode()).toBe(1);
     expect(prints[0]).toBeTruthy();
   });
 
-  it("does not throw when the classifier itself throws (counts as a runtime failure), and still name-prefixes the report", () => {
+  it("does not throw when the classifier itself throws (counts as non-usage), and still name-prefixes the report", () => {
     const { io, prints, getExitCode } = makeIo();
     const error = new TypeError("boom");
 
@@ -495,7 +492,7 @@ describe("handleFatal: name-prefixed top line for a non-usage Error", () => {
       cause: new Error("root cause"),
     });
 
-    handleFatal(error, io, () => EXIT_CODES.runtime);
+    handleFatal(error, io, () => false);
 
     expect(prints[0]).toBe(
       ["TypeError: top failure", "  caused by: root cause"].join("\n"),
@@ -522,7 +519,7 @@ describe("handleFatal: debug stack trace", () => {
     const error = new Error("boom");
     error.stack = "Error: boom\n    at frameOne\n    at frameTwo";
 
-    handleFatal(error, io, () => EXIT_CODES.runtime);
+    handleFatal(error, io, () => false);
 
     expect(prints[0]).toBe(formatErrorChain(error));
     expect(prints[0]).not.toContain("frameOne");
@@ -533,7 +530,7 @@ describe("handleFatal: debug stack trace", () => {
     const error = new Error("boom");
     error.stack = "Error: boom\n    at frameOne";
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, false);
+    handleFatal(error, io, () => false, false);
 
     expect(prints[0]).toBe(formatErrorChain(error));
   });
@@ -543,7 +540,7 @@ describe("handleFatal: debug stack trace", () => {
     const error = new Error("boom with stack");
     error.stack = "Error: boom with stack\n    at frameOne\n    at frameTwo";
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     expect(text.startsWith(formatErrorChain(error))).toBe(true);
@@ -560,7 +557,7 @@ describe("handleFatal: debug stack trace", () => {
     ].join("\n");
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     const occurrences = text.split("Cannot read properties of null").length - 1;
@@ -574,7 +571,7 @@ describe("handleFatal: debug stack trace", () => {
     error.stack = `${error.name}: ${error.message}\n    at fn (file.js:1:1)\n    at other (file.js:2:2)`;
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     const occurrences = text.split("at step 3").length - 1;
@@ -588,7 +585,7 @@ describe("handleFatal: debug stack trace", () => {
     const error = new Error("bad arguments");
     error.stack = "Error: bad arguments\n    at frameOne";
 
-    handleFatal(error, io, () => EXIT_CODES.usage, true);
+    handleFatal(error, io, () => true, true);
 
     expect(getExitCode()).toBe(2);
     expect(prints).toEqual([formatErrorChain(error)]);
@@ -604,7 +601,7 @@ describe("handleFatal: debug stack trace", () => {
     error.stack = ["Error: boom", ...frames].join("\n");
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     const chainText = formatErrorChain(error);
@@ -623,7 +620,7 @@ describe("handleFatal: debug stack trace", () => {
       "Error: boom\n    at somewhere\u001b[31m (colorized)\u001b[0m";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     expect(text).toContain("\\x1b");
@@ -636,7 +633,7 @@ describe("handleFatal: debug stack trace", () => {
     const { io, prints } = makeIo();
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime, true);
+      handleFatal(error, io, () => false, true);
     }).not.toThrow();
 
     expect(prints[0]).toBe(formatErrorChain(error));
@@ -648,7 +645,7 @@ describe("handleFatal: debug stack trace", () => {
     const { io, prints } = makeIo();
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime, true);
+      handleFatal(error, io, () => false, true);
     }).not.toThrow();
 
     expect(prints[0]).toBe(formatErrorChain(error));
@@ -665,7 +662,7 @@ describe("handleFatal: debug stack trace", () => {
     const { io, prints, getExitCode } = makeIo();
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime, true);
+      handleFatal(error, io, () => false, true);
     }).not.toThrow();
 
     expect(getExitCode()).toBe(1);
@@ -688,7 +685,7 @@ describe("handleFatal: debug stack trace", () => {
       },
     };
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     expect(rawPrints).toHaveLength(1);
     expect(rawPrints[0]).toContain("at frameOne");
@@ -716,7 +713,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
       "Weird header line that doesn't match\n    at frameOne\n    at frameTwo";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     expect(text).not.toContain("Weird header line");
@@ -730,7 +727,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
       "Completely custom stack with no frames at all\nsecond custom line";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     expect(text).toContain("Completely custom stack with no frames at all");
@@ -749,7 +746,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     const { io, prints, getExitCode } = makeIo();
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime, true);
+      handleFatal(error, io, () => false, true);
     }).not.toThrow();
 
     expect(getExitCode()).toBe(1);
@@ -772,7 +769,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     const { io, prints, getExitCode } = makeIo();
 
     expect(() => {
-      handleFatal(error, io, () => EXIT_CODES.runtime, true);
+      handleFatal(error, io, () => false, true);
     }).not.toThrow();
 
     expect(getExitCode()).toBe(1);
@@ -786,7 +783,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     error.stack = "Error: boom\n    at frameOne";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     // The header ("Error: boom") was matched and stripped by position, so
@@ -802,7 +799,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     error.stack = "Error\n    at frameOne";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     const lines = text.split("\n");
@@ -818,7 +815,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     error.stack = "123: boom\nSecondLine";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     // stackHeader returns undefined for a non-string name, so the
@@ -833,7 +830,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     error.stack = "456: Error\nSecondLine";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     expect(text).toContain("456: Error\nSecondLine");
@@ -845,7 +842,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     error.stack = "boom\n    at frameOne";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     // "boom" is the computed header (name === ""), matched and stripped by
@@ -860,7 +857,7 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
     error.stack = "Error: boom\n    at frameOne\n\n\n";
     const { io, prints } = makeIo();
 
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
+    handleFatal(error, io, () => false, true);
 
     const text = prints[0] ?? "";
     expect(text.endsWith("    at frameOne")).toBe(true);
@@ -870,103 +867,9 @@ describe("handleFatal: debug stack trace -- header/frame-fallback edge cases", (
   it("prints no stack at all when the thrown value is not an Error, even with debug true", () => {
     const { io, prints } = makeIo();
 
-    handleFatal("a raw string failure", io, () => EXIT_CODES.runtime, true);
+    handleFatal("a raw string failure", io, () => false, true);
 
     expect(prints).toEqual([formatErrorChain("a raw string failure")]);
     expect(prints[0]).not.toContain("    at ");
-  });
-
-  it.each([
-    ["pending", EXIT_CODES.pending],
-    ["drift", EXIT_CODES.drift],
-    ["usage", EXIT_CODES.usage],
-  ])(
-    "sets the %s code the classifier returns and prints without name or stack, even with debug",
-    (_label, code) => {
-      const { io, prints, getExitCode } = makeIo();
-      const error = new TypeError("boom");
-
-      handleFatal(error, io, () => code, true);
-
-      expect(getExitCode()).toBe(code);
-      expect(prints).toEqual([formatErrorChain(error)]);
-    },
-  );
-
-  it("types classify's parameter as excluding the ok code (a fatal path never exits 0)", () => {
-    expectTypeOf<Parameters<typeof handleFatal>[2]>().returns.toEqualTypeOf<
-      1 | 2 | 3 | 4
-    >();
-  });
-
-  it.each([
-    ["0 (ok)", 0],
-    ["undefined", undefined],
-    ["NaN", Number.NaN],
-    ["an out-of-range number (5)", 5],
-    ["a string", "2"],
-  ])(
-    "treats a classifier returning %s like a throwing one: exit code 1 and the runtime report",
-    (_label, bad) => {
-      const { io, prints, getExitCode } = makeIo();
-      const error = new TypeError("boom");
-      error.stack = "TypeError: boom\n    at frameOne\n    at frameTwo";
-
-      handleFatal(error, io, () => bad as never, true);
-
-      expect(getExitCode()).toBe(1);
-      expect(prints).toHaveLength(1);
-      expect(prints[0]).toMatch(/^TypeError: boom/);
-      expect(prints[0]).toContain("    at frameOne");
-    },
-  );
-
-  it("sets the runtime code and prints the name and, with debug, the stack frames for code 1", () => {
-    const { io, prints, getExitCode } = makeIo();
-    const error = new TypeError("boom");
-    error.stack = "TypeError: boom\n    at frameOne";
-
-    handleFatal(error, io, () => EXIT_CODES.runtime, true);
-
-    expect(getExitCode()).toBe(1);
-    expect(prints[0]).toMatch(/^TypeError: boom/);
-    expect(prints[0]).toContain("    at frameOne");
-  });
-});
-
-describe("handleFatal: returns the exit code it set", () => {
-  it.each([
-    ["usage", EXIT_CODES.usage],
-    ["runtime", EXIT_CODES.runtime],
-  ])("returns %s when the classifier says so", (_name, code) => {
-    const { io, getExitCode } = makeIo();
-    const returned = handleFatal(new Error("x"), io, () => code);
-    expect(returned).toBe(code);
-    expect(returned).toBe(getExitCode());
-  });
-
-  it("returns 1 when the classifier throws", () => {
-    const { io, getExitCode } = makeIo();
-    const returned = handleFatal(new Error("x"), io, () => {
-      throw new Error("classifier boom");
-    });
-    expect(returned).toBe(1);
-    expect(getExitCode()).toBe(1);
-  });
-
-  it.each([
-    ["0", 0],
-    ["NaN", Number.NaN],
-    ["an out-of-range number", 5],
-    ["undefined", undefined],
-  ])("returns 1 when the classifier returns %s", (_name, bad) => {
-    const { io, getExitCode } = makeIo();
-    const returned = handleFatal(
-      new Error("x"),
-      io,
-      () => bad as unknown as Exclude<ExitCode, 0>,
-    );
-    expect(returned).toBe(1);
-    expect(getExitCode()).toBe(1);
   });
 });

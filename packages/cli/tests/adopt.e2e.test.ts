@@ -135,7 +135,7 @@ describe("adopt mode end-to-end", () => {
         readFileSync(inventoryPath, "utf8"),
       ) as Inventory;
 
-      expect(inventory.schemaVersion).toBe(7);
+      expect(inventory.schemaVersion).toBe(6);
       expect(inventory.survey.toolchain.testRunner.tool).toBe("jest");
       expect(
         inventory.survey.harness.agents.some(
@@ -148,8 +148,8 @@ describe("adopt mode end-to-end", () => {
         ),
       ).toBe(true);
 
-      // With no --pack flag (none was passed here) every pack under
-      // templates/packs/ is surveyed, and each is staged, unapplied, each file
+      // Every pack under templates/packs/ is surveyed regardless of any
+      // --pack flag (none was passed here) and staged, unapplied, each file
       // under an inert .staged name -- never the bare unsuffixed name.
       expect(inventory.packs.some((p) => p.name === "harness-extras")).toBe(
         true,
@@ -263,52 +263,6 @@ describe("adopt mode end-to-end", () => {
           projectDir,
           ".groundwork",
           "baseline",
-          file.staged,
-        );
-        expect(existsSync(stagedAbsPath)).toBe(true);
-        expect(file.sha256).toBe(
-          createHash("sha256")
-            .update(readFileSync(stagedAbsPath))
-            .digest("hex"),
-        );
-      }
-
-      // Schema 7: every identical/divergent conflict carries the sha256 of the
-      // real project file's bytes (the same hash the pre-run snapshot took),
-      // an absent one carries null.
-      for (const c of inventory.conflicts) {
-        if (c.status === "absent") {
-          expect(c.targetSha256).toBeNull();
-        } else {
-          expect(c.targetSha256).toBe(before.get(c.relPath));
-        }
-      }
-      expect(
-        inventory.conflicts.find((c) => c.relPath === "package.json")
-          ?.targetSha256,
-      ).toBe(before.get("package.json"));
-
-      // Divergent baseline files are staged as inert copies too, for the
-      // headless --apply step; identical and absent files never are.
-      expect(inventory.stagedDivergent.dir).toBe(
-        ".groundwork/baseline-divergent",
-      );
-      expect(inventory.stagedDivergent.suffix).toBe(".staged");
-      const divergentConflictPaths = inventory.conflicts
-        .filter((c) => c.status === "divergent")
-        .map((c) => c.relPath)
-        .sort();
-      expect(divergentConflictPaths).toContain("package.json");
-      expect(divergentConflictPaths).toContain("tsconfig.json");
-      expect(inventory.stagedDivergent.files.map((f) => f.path).sort()).toEqual(
-        divergentConflictPaths,
-      );
-      for (const file of inventory.stagedDivergent.files) {
-        expect(file.staged).toBe(`${file.path}.staged`);
-        const stagedAbsPath = join(
-          projectDir,
-          ".groundwork",
-          "baseline-divergent",
           file.staged,
         );
         expect(existsSync(stagedAbsPath)).toBe(true);

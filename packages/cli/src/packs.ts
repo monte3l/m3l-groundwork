@@ -8,8 +8,7 @@
  * (`observeWiring`; `pack-stage.ts`'s `stagePacks` stages them, inert) and
  * defers installation to `/customize`, which reads a project's real gate
  * runner before translating a pack's wiring (see inventory.ts). Both modes call `loadPack` for every
- * pack they handle (fresh mode: each `--pack`; adopt mode: each `--pack`,
- * or every pack when none is named)
+ * pack they handle (fresh mode: each `--pack`; adopt mode: every pack)
  * before writing anything, and `loadPack` refuses a prototype-sensitive
  * key in `wiring.settings`, `wiring.settingsTopLevel` or
  * `wiring.packageScripts`, so such a pack is neither installed nor staged.
@@ -93,22 +92,8 @@ export function listPackNames(root: string = packsRootDir()): string[] {
     .sort();
 }
 
-/**
- * A valid pack name: a bare lowercase identifier, no separators, no `..`. A
- * pack's own `name` becomes a path segment under `.groundwork/packs/`, and a
- * `--pack` value a directory name under `templates/packs/`. The one
- * definition `loadPack`, `--pack` parsing (`main.ts`) and the manifest's
- * `packs` check (`manifest.ts`) share.
- *
- * @example
- * ```ts
- * import { PACK_NAME_PATTERN } from "./packs.js";
- *
- * PACK_NAME_PATTERN.test("harness-extras"); // true
- * PACK_NAME_PATTERN.test("../x"); // false
- * ```
- */
-export const PACK_NAME_PATTERN: RegExp = /^[a-z][a-z0-9-]*$/;
+/** A pack's own `name` becomes a path segment under `.groundwork/packs/`, so it must be a bare lowercase identifier: no separators, no `..`. */
+const PACK_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 const CAP_KEYS = [
   "agents",

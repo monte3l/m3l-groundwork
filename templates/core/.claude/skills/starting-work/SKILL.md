@@ -98,19 +98,15 @@ surface the decisions still open.
 
 If `.claude/skills/working-in-worktrees/` exists (an optional add-on, not
 part of this baseline), use its start mode for this step instead of a bare
-branch switch — it gets the same branch, plus an isolated worktree and its
+`git switch -c` — it gets the same branch, plus an isolated worktree and its
 own installed dependencies in one move. Otherwise:
 
-Start in a worktree off `origin/main`, never a branch switch in the main
-checkout, where the `guard-shared-checkout` hook blocks the commit:
-`EnterWorktree`, or `git worktree add ../<repo>.wt/<branch> -b <branch> origin/main`.
-
 ```bash
-git worktree add ../<repo>.wt/<slug> -b feat/<slug> origin/main   # or fix/<slug>
+git switch -c feat/<slug>   # or fix/<slug>
 ```
 
-Verify you are in the new worktree, on a branch that is neither `main` nor
-detached-on-`main`, before handing back; if not, loop back to Step 4 rather than proceeding into a write that the
+Verify `HEAD` is neither `main` nor detached-on-`main` before handing back;
+if it is, loop back to Step 4 rather than proceeding into a write that the
 guard will reject. When **resuming an existing feature branch** that may
 have fallen behind, resync it with `origin/main` before working (or defer to
 the resync step in `creating-prs`) so the branch does not drift from the

@@ -11,6 +11,4 @@ what is a decision, and what is a limit or an issue, is the org's
 A record is not edited once it is accepted. A later decision that replaces it
 says so, and the old one is marked superseded with a link forward.
 
-| Record                                         | Status   |
-| ---------------------------------------------- | -------- |
-| [0001](0001-upgrade-flow.md): the upgrade flow | proposed |
+No decision is recorded here yet.

@@ -16,11 +16,9 @@ argument-hint: "[start <slug> | status | sync <slug> | finish <slug> | fan-out]"
 
 Once this pack is installed, `guard-worktree-only.mjs` blocks a src/tests
 write outside a linked worktree under `.claude/worktrees/` -- on any branch,
-for any caller. A worktree anywhere else, such as a sibling
-`../<repo>.wt/<branch>` made with a plain `git worktree add`, is not enough
-by itself: it is isolated, but not inside one the guard will accept. This
-skill creates the worktree under `.claude/worktrees/`, and `starting-work`
-hands off to it when it is installed.
+for any caller. `starting-work`'s plain `git switch -c` is no longer enough
+by itself: it puts you on the right branch, but not inside a worktree the
+guard will accept. This skill is the missing piece.
 
 Hub-only. Never dispatched as a spoke's own tool.
 

@@ -13,14 +13,6 @@ it, in **adopt mode** -- it first reconciles the CLI's survey against the
 real repo. Either way it then runs a live guidance sweep over official
 TypeScript and Anthropic sources.
 
-It also carries the `/upgrade` skill. When a newer release of the CLI is out,
-`npx @monte3l/groundwork@latest --upgrade .` stages an upgrade plan under
-`.groundwork/upgrade/`, and `/upgrade` applies it: the files only upstream
-changed in one confirmed batch, then each conflict one at a time (keep yours,
-take the new release's, or review a proposed merge). It then has the CLI
-record the new release with `--upgrade --stamp` and runs your checks. It
-never commits.
-
 This package is never published to npm -- it's a private workspace package,
 built and typechecked like any other, but distributed only through the
 central `monte3l/m3l-plugins` Claude Code marketplace (this repository ships no
@@ -87,13 +79,9 @@ in the version this plugin's `plugin.json` currently displays.
 ## What it runs, fetches and writes
 
 The plugin is skill text and metadata. It ships **no hooks, no MCP servers and
-no scripts**: Claude Code loads the `/customize` and `/upgrade` skills under
-`skills/` and nothing else runs on install. Everything below happens only
-while you run `/customize`. `/upgrade` writes only the paths its plan lists
-and `.groundwork/upgrade/decisions.json`, after you confirm each step. It runs
-`git status`, `gh release` (when installed) for the release notes, `npx` to
-rebuild the old release for a three-way merge and to stamp the manifest, then
-`pnpm install` and your checks. It never runs a git write. In adopt mode it confirms with you what to add and how to
+no scripts**: Claude Code loads the `/customize` skill under `skills/` and
+nothing else runs on install. Everything below happens only while you run
+`/customize`. In adopt mode it confirms with you what to add and how to
 resolve conflicts before it edits anything; in a freshly bootstrapped project
 it acts on the answers you give in its interview.
 

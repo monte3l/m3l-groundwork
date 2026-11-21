@@ -22,19 +22,6 @@
  * `pnpm verify` and in no gate at all, which is exactly the drift this file
  * exists to prevent.
  *
- * How bin/verify.mjs treats a step's outcome lives in verify-policy.json, a
- * plain JSON object read the same way (and likewise editable without a JS
- * parser): `{"version": 1, "testsBlocking": true, "ciSkipGroups": []}`.
- * `testsBlocking: false` turns a failing `test`-group step into a warning;
- * `ciSkipGroups` may only list "test" (the one group that is safe to leave to
- * local runs), skipped when the `CI` environment variable is set (to anything
- * but "", "false" or "0"). A missing file means those defaults. A present file
- * must carry all three keys: a partial file does not fall back to defaults,
- * and a malformed one (wrong version, a missing or wrong-typed key, any group
- * but "test" in `ciSkipGroups`, an unknown key) is a hard failure at import
- * time, before any step runs. ci.yml and lefthook.yml never change for either
- * setting.
- *
  * Each step's `cmd` is the argv array to run (via `node:child_process`
  * `spawnSync`, stdio inherited so failures are visible directly).
  */
@@ -150,79 +137,6 @@ function readPackSteps() {
 }
 
 export const VERIFY_STEPS = [...CORE_STEPS, ...readPackSteps()];
-
-const POLICY_DEFAULTS = { version: 1, testsBlocking: true, ciSkipGroups: [] };
-const POLICY_KEYS = Object.keys(POLICY_DEFAULTS);
-
-/** The only group `ciSkipGroups` may list: every other gate always runs in CI. */
-const CI_SKIPPABLE_GROUP = "test";
-
-/**
- * Reads and validates verify-policy.json. Absence means POLICY_DEFAULTS; a
- * present file must carry every key (a partial file is malformed, not merged
- * with the defaults), and anything malformed throws, naming the file.
- * `version` is checked first so a file from a newer policy format reports
- * that, not the new keys it introduced.
- */
-function readPolicy() {
-  const path = fileURLToPath(new URL("./verify-policy.json", import.meta.url));
-  let raw;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch (error) {
-    if (error?.code === "ENOENT") return POLICY_DEFAULTS;
-    throw new Error(`verify-policy.json: cannot read ${path}`, {
-      cause: error,
-    });
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`verify-policy.json: failed to parse ${path}`, {
-      cause: error,
-    });
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("verify-policy.json must be a JSON object");
-  }
-  if (parsed.version !== 1) {
-    throw new Error(
-      `verify-policy.json: "version" must be 1, got ${JSON.stringify(parsed.version)}`,
-    );
-  }
-  // Object.keys sees an own "__proto__" or "constructor" key (JSON.parse
-  // creates both as plain own properties), so neither slips past this check.
-  for (const key of Object.keys(parsed)) {
-    if (!POLICY_KEYS.includes(key)) {
-      throw new Error(
-        `verify-policy.json: unknown key "${key}" -- known: ${POLICY_KEYS.join(", ")}`,
-      );
-    }
-  }
-  if (typeof parsed.testsBlocking !== "boolean") {
-    throw new Error('verify-policy.json: "testsBlocking" must be a boolean');
-  }
-  if (!Array.isArray(parsed.ciSkipGroups)) {
-    throw new Error('verify-policy.json: "ciSkipGroups" must be an array');
-  }
-  for (const group of parsed.ciSkipGroups) {
-    if (group !== CI_SKIPPABLE_GROUP) {
-      throw new Error(
-        `verify-policy.json: "ciSkipGroups" may only list "${CI_SKIPPABLE_GROUP}", got ${JSON.stringify(group)}`,
-      );
-    }
-  }
-  return parsed;
-}
-
-/**
- * The validated verify-policy.json (or its defaults when the file is
- * absent). Read at import time so a malformed file fails before any step
- * runs.
- */
-export const VERIFY_POLICY = readPolicy();
 
 /** Look up one step by id, or `undefined` if no step has that id. */
 export function findStep(id) {

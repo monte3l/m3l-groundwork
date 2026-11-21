@@ -95,11 +95,6 @@ export default {
         "decision-record skeleton with placeholders, copied rather than read",
     },
     {
-      glob: "docs/decisions/0001-upgrade-flow.md",
-      reason:
-        "decision record, read on GitHub from the Decisions page rather than rendered as its own page",
-    },
-    {
       glob: "CLAUDE.md",
       reason: "instructions for coding agents, not reader-facing",
     },

@@ -10,22 +10,4 @@
 #     - pkg:npm/%40img/sharp-libvips-linux-x64
 #
 # Keep at least one key: the action fails on an empty file.
-#
-# Starting entries: lightningcss and its platform builds come in through the
-# test runner's bundler, carry a file-level copyleft licence, and are only used
-# to build and test: nothing here modifies or ships them. A package URL without
-# a version covers every version, so a bump does not need a new entry, but a
-# new platform build does. Delete them if the project drops that toolchain.
-allow-dependencies-licenses:
-  - pkg:npm/lightningcss
-  - pkg:npm/lightningcss-android-arm64
-  - pkg:npm/lightningcss-darwin-arm64
-  - pkg:npm/lightningcss-darwin-x64
-  - pkg:npm/lightningcss-freebsd-x64
-  - pkg:npm/lightningcss-linux-arm-gnueabihf
-  - pkg:npm/lightningcss-linux-arm64-gnu
-  - pkg:npm/lightningcss-linux-arm64-musl
-  - pkg:npm/lightningcss-linux-x64-gnu
-  - pkg:npm/lightningcss-linux-x64-musl
-  - pkg:npm/lightningcss-win32-arm64-msvc
-  - pkg:npm/lightningcss-win32-x64-msvc
+allow-dependencies-licenses: []

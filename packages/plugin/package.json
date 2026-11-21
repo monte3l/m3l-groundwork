@@ -2,7 +2,7 @@
   "name": "@monte3l/groundwork-plugin",
   "version": "0.0.0",
   "private": true,
-  "description": "A Claude Code plugin providing the /customize skill: it interviews you about a project bootstrapped by @monte3l/groundwork and tailors it to your answers, and the /upgrade skill: it applies the plan groundwork --upgrade stages when you take a new release. Installed through the Claude Code marketplace, not npm.",
+  "description": "A Claude Code plugin providing the /customize skill: it interviews you about a project bootstrapped by @monte3l/groundwork and tailors it to your answers. Installed through the Claude Code marketplace, not npm.",
   "keywords": [
     "claude-code",
     "claude-code-plugin",

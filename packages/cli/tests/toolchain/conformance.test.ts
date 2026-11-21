@@ -8,12 +8,7 @@ import { summarizeToolchainConformance } from "../../src/toolchain/conformance.j
 const conflict = (
   relPath: string,
   status: FileConflict["status"],
-): FileConflict => ({
-  relPath,
-  status,
-  keyDiffs: undefined,
-  targetSha256: null,
-});
+): FileConflict => ({ relPath, status, keyDiffs: undefined });
 
 describe("summarizeToolchainConformance", () => {
   it("counts only toolchain-scoped files", () => {

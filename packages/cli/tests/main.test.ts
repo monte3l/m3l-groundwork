@@ -143,22 +143,6 @@ describe("parseArgs (CliUsageError)", () => {
     );
   });
 
-  it("sets the upgrade option only when --upgrade is passed", () => {
-    expect(parseArgs(["/tmp/some-project", "--upgrade"]).upgrade).toBe(true);
-    expect(parseArgs(["/tmp/some-project"]).upgrade).toBe(false);
-  });
-
-  it.each(["--adopt", "--fresh"])(
-    "throws CliUsageError naming --upgrade and %s as mutually exclusive",
-    (other) => {
-      const argv = ["/tmp/x", "--upgrade", other];
-      expect(() => parseArgs(argv)).toThrow(CliUsageError);
-      expect(() => parseArgs(argv)).toThrow(/mutually exclusive/);
-      expect(() => parseArgs(argv)).toThrow(/--upgrade/);
-      expect(() => parseArgs(argv)).toThrow(other);
-    },
-  );
-
   it("throws CliUsageError when --name's following token looks like another flag rather than a value", () => {
     expect(() => parseArgs(["/tmp/x", "--name", "--force"])).toThrow(
       CliUsageError,

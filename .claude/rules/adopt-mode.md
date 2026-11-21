@@ -26,9 +26,8 @@ paths:
   silently dropped -- a survey that looks complete but isn't is worse than
   one that admits a gap. Adopt mode writes two report files
   (`.groundwork/inventory.json`, `.groundwork/adoption-report.md`), the
-  inert staged copies of the baseline additions, the divergent baseline
-  files and the packs (`.groundwork/baseline/`,
-  `.groundwork/baseline-divergent/`, `.groundwork/packs/`), plus one
+  inert staged copies of the baseline additions and the packs
+  (`.groundwork/baseline/`, `.groundwork/packs/`), plus one
   guarded, purely-additive copy of the `/customize` skill
   (`installCustomizeSkillGuarded` in `plugin.ts`; `customize-paths.ts` owns
   where it writes). It decides presence by `lstat`, never overwrites or
@@ -74,12 +73,3 @@ paths:
   staged grader files when the project has no `bin/check-harness.mjs`. Any
   `CLAUDE.md` text that names a `.claude/` file must use the full
   `.claude/...` path, because `claudemd-refs` matches that literal.
-- **`--pack <name>` narrows the survey; it never installs.** With no `--pack`,
-  adopt surveys and stages every pack. With one or more, `runAdopt` loads only
-  the named packs, so `inventory.packs`, `inventory.stagedPacks`,
-  `.groundwork/packs/` and the report's pack section all hold exactly that set
-  and `/customize` offers just those. An unknown name is a usage error raised in
-  `assertAdoptUsage`, before anything under `.groundwork/` is touched. A pack's
-  `modes` does not gate this: adopt stages a fresh-only pack when it is named.
-  No inventory schema change: the narrowed set looks like an inventory from a
-  repository with fewer packs, which Step 0's "same set" checks already accept.
