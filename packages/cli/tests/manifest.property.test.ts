@@ -62,10 +62,32 @@ const relPath = fc
   .array(pathSegment, { minLength: 1, maxLength: 3 })
   .map((parts) => parts.join("/"));
 
+/** A strict semantic version, optionally with a prerelease and build part. */
+const semver = fc
+  .tuple(
+    fc.nat(999),
+    fc.nat(999),
+    fc.nat(999),
+    fc.option(fc.stringMatching(/^[0-9A-Za-z][0-9A-Za-z.-]{0,5}$/), {
+      nil: undefined,
+    }),
+    fc.option(fc.stringMatching(/^[0-9A-Za-z][0-9A-Za-z.-]{0,5}$/), {
+      nil: undefined,
+    }),
+  )
+  .map(
+    ([major, minor, patch, pre, build]) =>
+      `${String(major)}.${String(minor)}.${String(patch)}${pre === undefined ? "" : `-${pre}`}${build === undefined ? "" : `+${build}`}`,
+  );
+
 const manifestArb: fc.Arbitrary<Manifest> = fc.record({
   schemaVersion: fc.constant(1 as const),
-  cliVersion: fc.string({ minLength: 1, maxLength: 10 }),
-  tokens: fc.dictionary(safeKey, fc.string({ maxLength: 8 }), { maxKeys: 3 }),
+  cliVersion: semver,
+  tokens: fc.dictionary(
+    safeKey.filter((k) => k !== "PROJECT_NAME"),
+    fc.string({ maxLength: 8 }),
+    { maxKeys: 3 },
+  ),
   packs: fc.array(packName, { maxLength: 3 }),
   files: fc.dictionary(
     relPath,

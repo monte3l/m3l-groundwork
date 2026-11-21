@@ -35,18 +35,24 @@ import type * as StageModule from "../src/upgrade/stage.js";
 import type { InstallPluginResult } from "../src/plugin.js";
 import { snapshotTree } from "./upgrade-plan-fixture.js";
 
-const { gitInitMock, runInstallMock, installSkillMock, installGuardedMock } =
-  vi.hoisted(() => ({
-    gitInitMock: vi.fn(),
-    runInstallMock: vi.fn(),
-    installSkillMock: vi.fn((): InstallPluginResult => ({
-      filesWritten: [],
-    })),
-    installGuardedMock: vi.fn(() => ({
-      filesWritten: [],
-      location: "claude" as const,
-    })),
-  }));
+const {
+  gitInitMock,
+  runInstallMock,
+  installSkillMock,
+  installGuardedMock,
+  installUpgradeSkillMock,
+} = vi.hoisted(() => ({
+  gitInitMock: vi.fn(),
+  runInstallMock: vi.fn(),
+  installUpgradeSkillMock: vi.fn(),
+  installSkillMock: vi.fn((): InstallPluginResult => ({
+    filesWritten: [],
+  })),
+  installGuardedMock: vi.fn(() => ({
+    filesWritten: [],
+    location: "claude" as const,
+  })),
+}));
 
 vi.mock("../src/git.js", () => ({
   gitInit: gitInitMock,
@@ -55,6 +61,7 @@ vi.mock("../src/git.js", () => ({
 vi.mock("../src/plugin.js", () => ({
   installCustomizeSkill: installSkillMock,
   installCustomizeSkillGuarded: installGuardedMock,
+  installSkillGuarded: installUpgradeSkillMock,
 }));
 
 // Wrap (never replace) the plan and staging entry points to count calls.
@@ -177,6 +184,14 @@ describe("main --upgrade --stamp", () => {
       filesWritten: [],
       location: "claude",
     });
+    installUpgradeSkillMock.mockReset();
+    installUpgradeSkillMock.mockReturnValue({
+      filesWritten: [
+        ".claude/skills/upgrade/SKILL.md",
+        ".claude/skills/upgrade/step-3-conflicts.md",
+      ],
+      location: "claude",
+    });
     calls.render = 0;
     calls.compute = 0;
     calls.stage = 0;
@@ -200,6 +215,7 @@ describe("main --upgrade --stamp", () => {
       calls.render = 0;
       calls.compute = 0;
       calls.stage = 0;
+      installUpgradeSkillMock.mockClear();
       const out = recordingOut();
 
       const result = main(stampArgs(), "linux", out);
@@ -225,6 +241,7 @@ describe("main --upgrade --stamp", () => {
       );
       expect(changed).toEqual([".groundwork/manifest.json"]);
       expect(calls).toEqual({ render: 0, compute: 0, stage: 0 });
+      expect(installUpgradeSkillMock).not.toHaveBeenCalled();
     });
 
     it("leaves an unapplied safe-update pending: the old hash is kept, marked merged", () => {

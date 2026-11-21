@@ -18,7 +18,8 @@
  * defers installation to `/customize`; see `runAdopt`. The third,
  * **upgrade**, runs only when `--upgrade` asks for it: it plans an upgrade of
  * a project that has a `.groundwork/manifest.json` against this release and
- * writes the plan only under `.groundwork/upgrade/`; see `runUpgrade`. Its
+ * writes the plan only under `.groundwork/upgrade/`, then installs the
+ * `/upgrade` skill that applies it; see `runUpgrade`. Its
  * stamp step, `--upgrade --stamp`, records an applied plan in the manifest
  * and writes nothing else; see `runUpgradeStamp`.
  */
@@ -50,7 +51,9 @@ import {
 import {
   installCustomizeSkill,
   installCustomizeSkillGuarded,
+  installSkillGuarded,
 } from "./plugin.js";
+import { plannedSkillPaths, UPGRADE_SKILL } from "./skill-spec.js";
 import type { GuardedInstallResult, InstallPluginResult } from "./plugin.js";
 import {
   CLAUDE_DEST_SEGMENTS,
@@ -105,7 +108,11 @@ import {
   packsRootDir,
 } from "./packs.js";
 import { STAGED_PACKS_DIR, planPackStaging, stagePacks } from "./pack-stage.js";
-import { NPM_NAME_MAX_LENGTH, NPM_NAME_PATTERN } from "./npm-name.js";
+import {
+  NPM_NAME_MAX_LENGTH,
+  NPM_NAME_PATTERN,
+  isSafeProjectName,
+} from "./npm-name.js";
 import { renderReport } from "./report.js";
 import type { RequiredTokenKey } from "./tokens.js";
 import type { ModeDetection } from "./mode.js";
@@ -120,6 +127,7 @@ import {
   UPGRADE_PLAN_FILE,
   UPGRADE_RELATIVE_DIR,
   UPGRADE_REPORT_FILE,
+  UPGRADE_SKILL_FALLBACK_RELATIVE_DIR,
 } from "./upgrade/paths.js";
 import { inspectPreviousUpgrade, stageUpgrade } from "./upgrade/stage.js";
 import type { StagedUpgrade } from "./upgrade/stage.js";
@@ -159,7 +167,8 @@ const USAGE = [
   "  --adopt                 Force adopt mode, even if the target looks empty",
   "  --fresh                 Force fresh-bootstrap mode, even if the target looks pre-existing",
   "  --upgrade               Plan an upgrade of a project that has .groundwork/manifest.json;",
-  "                          writes only under .groundwork/upgrade/",
+  "                          writes the plan under .groundwork/upgrade/ and installs",
+  "                          the /upgrade skill that applies it",
   "  --stamp                 With --upgrade: record the applied plan in",
   "                          .groundwork/manifest.json; writes nothing else",
   "  --pack <name>           Install a pack from templates/packs/ (fresh mode), or narrow",
@@ -185,7 +194,10 @@ const USAGE = [
   "",
   "--upgrade is never auto-detected and takes none of --adopt, --fresh,",
   "--name, --force, --pack, --skip-install or --json: the project name and",
-  "packs come from the manifest, and it never writes a project file.",
+  "packs come from the manifest, and it never writes a project file: besides",
+  "the plan it writes only the /upgrade skill, into .claude/skills/upgrade/",
+  "(or .groundwork/upgrade-skill/ when .claude/skills/upgrade/ already holds",
+  "a different copy, including one left by an earlier release).",
   "--upgrade --stamp, run once the plan is applied (or straight away when",
   "--upgrade reports nothing to apply), re-hashes the plan's files and",
   "writes only the manifest.",
@@ -662,6 +674,17 @@ function runFresh(
   // after the baseline, the packs and the skill are written.
   assertSafeManifestDestination(options.targetDir);
 
+  // A name derived from the directory never went through --name's check, but
+  // the manifest refuses one outside the safe-character allowlist
+  // (isSafeProjectName, which parseManifest also applies): refuse it here,
+  // after the destination guards (their refusals come first) and before the
+  // first write, rather than after the project is written.
+  if (!isSafeProjectName(options.projectName)) {
+    throw new CliUsageError(
+      `the project name ${JSON.stringify(options.projectName)} (taken from the target directory's name) holds a character a project name may not (a quote, a shell metacharacter, a control character or a leading dash) -- pass --name <project-name>\n\n${USAGE}`,
+    );
+  }
+
   mkdirSync(options.targetDir, { recursive: true });
 
   const result = emitTemplate(templatesCoreDir(), options.targetDir, tokens);
@@ -884,6 +907,36 @@ function assertAdoptUsage(options: CliOptions): void {
 }
 
 /**
+ * The write-scope check both adopt and upgrade mode run over what they wrote:
+ * every path in `paths` (absolute, or relative to `targetDir`) must resolve
+ * inside one of `scope.roots` ({@link isPathContained}, so a sibling sharing
+ * a root's name as a prefix is rejected) or equal one of `scope.files`, both
+ * relative to `targetDir`. Lexical only: it never touches the filesystem.
+ *
+ * @throws `AssertionError` naming `label` and the first path out of scope.
+ */
+function assertWriteScope(
+  targetDir: string,
+  paths: readonly string[],
+  scope: {
+    readonly roots: readonly string[];
+    readonly files: readonly string[];
+  },
+  label: string,
+): void {
+  const roots = scope.roots.map((root) => resolve(targetDir, root));
+  const files = new Set(scope.files.map((file) => resolve(targetDir, file)));
+  for (const path of paths) {
+    const resolved = resolve(targetDir, path);
+    assert.ok(
+      files.has(resolved) ||
+        roots.some((root) => isPathContained(resolved, root)),
+      `${label} wrote outside its scope: ${resolved}`,
+    );
+  }
+}
+
+/**
  * Adopt mode's write-scope invariant (docs/assurance-case.md's trust
  * boundary around the adopted project): every path it writes resolves under
  * `<targetDir>/.groundwork/` or the guarded `/customize` install at
@@ -911,17 +964,36 @@ export function assertAdoptWriteScope(
   targetDir: string,
   paths: readonly string[],
 ): void {
-  const allowedRoots = [
-    resolve(targetDir, GROUNDWORK_DEST_SEGMENTS[0]),
-    resolve(targetDir, ...CLAUDE_DEST_SEGMENTS),
-  ];
-  for (const path of paths) {
-    const resolved = resolve(targetDir, path);
-    assert.ok(
-      allowedRoots.some((root) => isPathContained(resolved, root)),
-      `adopt mode wrote outside its scope: ${resolved}`,
-    );
-  }
+  assertWriteScope(
+    targetDir,
+    paths,
+    {
+      roots: [GROUNDWORK_DEST_SEGMENTS[0], join(...CLAUDE_DEST_SEGMENTS)],
+      files: [],
+    },
+    "adopt mode",
+  );
+}
+
+/**
+ * Upgrade mode's write-scope invariant for the `/upgrade` skill install:
+ * every path the installer reports writing must be one of
+ * `plannedSkillPaths(UPGRADE_SKILL)` exactly -- not merely somewhere under
+ * `.claude/skills/upgrade/` or `.groundwork/upgrade-skill/` -- so the install
+ * can never touch the staged plan, the manifest or any project file.
+ *
+ * @throws `AssertionError` naming the first path out of scope.
+ */
+function assertUpgradeSkillWriteScope(
+  targetDir: string,
+  paths: readonly string[],
+): void {
+  assertWriteScope(
+    targetDir,
+    paths,
+    { roots: [], files: plannedSkillPaths(UPGRADE_SKILL) },
+    "upgrade mode",
+  );
 }
 
 /** The previous run's files `runAdopt` deletes at its point of no return, in deletion order. */
@@ -1602,21 +1674,121 @@ function runUpgradeStamp(
   return undefined;
 }
 
+/** The `/upgrade` skill's primary install directory, `/`-separated, for messages. */
+const UPGRADE_SKILL_CLAUDE_DIR: string = UPGRADE_SKILL.claudeSegments.join("/");
+
+/** The apply-case advice every `/upgrade` Next line ends with. */
+const UPGRADE_APPLY_ADVICE =
+  "run /upgrade to apply the plan (or apply the staged files by hand, then run --upgrade --stamp)";
+
+/**
+ * Installs the `/upgrade` skill with the guarded installer and checks what it
+ * wrote against {@link assertUpgradeSkillWriteScope}. Runs only after the plan
+ * is committed, so a throw from the installer becomes an `Error` saying the
+ * plan was staged and that re-running `--upgrade` retries the install (the
+ * installer's error as `cause`); the staged plan stays. An `AssertionError`,
+ * from the installer or from the scope check (installer/`skill-spec.ts`
+ * drift), is a bug that a re-run does not fix, and propagates unchanged.
+ */
+function installUpgradeSkill(targetDir: string): GuardedInstallResult {
+  let result: GuardedInstallResult;
+  try {
+    result = installSkillGuarded(UPGRADE_SKILL, targetDir);
+  } catch (cause) {
+    // A broken invariant is a bug, not something a re-run fixes: it keeps
+    // its identity, as in adopt mode's rethrowAfterPointOfNoReturn.
+    if (cause instanceof assert.AssertionError) throw cause;
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(
+      `the upgrade plan was staged under ${UPGRADE_RELATIVE_DIR}/, but the /upgrade skill could not be installed (${reason}) -- re-run --upgrade to retry the skill install, then run /upgrade in Claude Code`,
+      { cause },
+    );
+  }
+  assertUpgradeSkillWriteScope(targetDir, result.filesWritten);
+  return result;
+}
+
+/** The status lines for an `/upgrade` install result, the fallback reason indented under its line. */
+function upgradeSkillInstallLines(result: GuardedInstallResult): string[] {
+  switch (result.location) {
+    case "already-present":
+      return [
+        `the /upgrade skill is already present in ${UPGRADE_SKILL_CLAUDE_DIR}`,
+      ];
+    case "claude":
+    case "groundwork": {
+      const where =
+        result.location === "claude"
+          ? UPGRADE_SKILL_CLAUDE_DIR
+          : UPGRADE_SKILL_FALLBACK_RELATIVE_DIR;
+      const lines = [
+        `installed the /upgrade skill into ${where} (${String(result.filesWritten.length)} files)`,
+      ];
+      if (result.fallbackReason !== undefined) {
+        lines.push(`  ${result.fallbackReason}`);
+      }
+      return lines;
+    }
+    default: {
+      const exhaustive: never = result.location;
+      throw new Error(`unhandled install location: ${String(exhaustive)}`);
+    }
+  }
+}
+
+/**
+ * The `Next:` line for a plan with something to apply. After a fallback the
+ * fresh copy sits where Claude Code never loads a skill from, so the line
+ * says to put it in place first: by replacing the project's own copy
+ * (`"entry"`), or by fixing the `.claude` path the fallback reason named
+ * (`"component"`). A `"groundwork"` result without a cause is a contract
+ * violation and throws rather than guessing.
+ */
+function upgradeApplyNextStep(result: GuardedInstallResult): string {
+  if (result.location !== "groundwork") {
+    return `Next: open this project in Claude Code and ${UPGRADE_APPLY_ADVICE}`;
+  }
+  const staged = `the current /upgrade skill is at ${UPGRADE_SKILL_FALLBACK_RELATIVE_DIR}/, but Claude Code does not load skills from there`;
+  const cause = result.fallbackCause;
+  switch (cause) {
+    case "entry":
+      return `Next: ${staged} -- replace the project-local ${UPGRADE_SKILL_CLAUDE_DIR}/ copy with it, then open this project in Claude Code and ${UPGRADE_APPLY_ADVICE}`;
+    case "component":
+      return `Next: ${staged} -- fix or replace the .claude path named above so ${UPGRADE_SKILL_CLAUDE_DIR}/ is a real directory and copy the skill there, then open this project in Claude Code and ${UPGRADE_APPLY_ADVICE}`;
+    case undefined:
+      throw new Error(
+        'unhandled fallback cause: undefined (a "groundwork" install result must carry fallbackCause)',
+      );
+    default: {
+      const exhaustive: never = cause;
+      throw new Error(`unhandled fallback cause: ${String(exhaustive)}`);
+    }
+  }
+}
+
 /**
  * Upgrade mode: reads the project's `.groundwork/manifest.json`, renders this
  * release for it into a temporary directory (`renderRelease`), classifies
  * every baseline path and JSON key (`computePlan`) and stages the plan, its
  * report and the new copies under `.groundwork/upgrade/` (`stageUpgrade`).
- * The rendered release is always disposed of. Never writes a project file or
- * the manifest, and exits normally whatever the plan holds, conflicts
- * included: applying it is a later step. Its last `Next:` line points at
- * `--upgrade --stamp` either way: after applying by hand, or straight away
- * when `nothingToApply` holds for the plan.
+ * The rendered release is always disposed of. Once the plan is committed it
+ * installs the `/upgrade` skill with the guarded installer
+ * (`installSkillGuarded(UPGRADE_SKILL, ...)`) into `.claude/skills/upgrade/`,
+ * or `.groundwork/upgrade-skill/` when that path already holds a different
+ * copy (one left by an earlier release included) or is not a real directory. Never
+ * writes another project file or the manifest, and exits normally whatever
+ * the plan holds, conflicts included: applying it is the skill's job. Its
+ * last `Next:` line says to run `/upgrade` (or apply by hand, then
+ * `--upgrade --stamp`), or, when `nothingToApply` holds for the plan, to run
+ * `--upgrade --stamp` straight away.
  *
  * @throws {@link CliUsageError} with the adopt advice, before anything is
  *   written, when the project has no manifest; the `ManifestError` unchanged
  *   when the manifest cannot be read or parsed; the plan or staging module's
- *   `Error` otherwise.
+ *   `Error` otherwise, before the skill install; an `Error` saying the plan
+ *   was staged when the skill install fails (the installer's error as
+ *   `cause`); an `AssertionError` when the installer reports a path outside
+ *   the skill's planned paths.
  */
 function runUpgrade(
   options: CliOptions,
@@ -1656,10 +1828,14 @@ function runUpgrade(
   out.info(
     `wrote ${UPGRADE_RELATIVE_DIR}/ (${UPGRADE_PLAN_FILE}, ${UPGRADE_REPORT_FILE} and ${String(count)} staged ${count === 1 ? "file" : "files"})`,
   );
+  // After the plan is committed and the release disposed: a failed install
+  // leaves a complete plan, and the error says so.
+  const skill = installUpgradeSkill(targetDir);
+  for (const line of upgradeSkillInstallLines(skill)) out.info(line);
   out.info(
     nothingToApply(plan.files)
       ? "Next: nothing to apply -- run --upgrade --stamp to record the new release in the manifest"
-      : `Next: read ${UPGRADE_RELATIVE_DIR}/${UPGRADE_REPORT_FILE}, apply the staged files you want by hand, then run --upgrade --stamp to record them -- the /upgrade skill that applies a plan is not available yet`,
+      : upgradeApplyNextStep(skill),
   );
   return undefined;
 }

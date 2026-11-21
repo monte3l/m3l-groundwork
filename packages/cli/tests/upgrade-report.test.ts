@@ -180,10 +180,13 @@ describe("renderUpgradeReport", () => {
     expect(headings(report)).toEqual(["Summary", "Safe to apply", "Next step"]);
   });
 
-  it("states plainly in Next step that /upgrade is not available, nothing changed, and where the staged copies are", () => {
+  it("states plainly in Next step to run /upgrade, where the plan was written, and where the staged copies are", () => {
     const next = section(renderUpgradeReport(FULL), "Next step") ?? "";
-    expect(next).toMatch(/\/upgrade.*not available yet/is);
-    expect(next).toMatch(/nothing in the project has been changed/i);
+    expect(next).toContain("Run `/upgrade` in Claude Code to apply this plan.");
+    expect(next).not.toMatch(/not available yet/i);
+    expect(next).toContain(
+      "This run wrote this plan only under `.groundwork/upgrade/`; the `/upgrade` skill is installed separately, as the console output says.",
+    );
     expect(next).toContain(".groundwork/upgrade/staged/");
     expect(next).not.toMatch(/nothing to apply/i);
   });
@@ -222,6 +225,37 @@ describe("renderUpgradeReport", () => {
       expect(next).toContain(
         "There is nothing to apply: every baseline file is current, or differs only by a change you made or a file you deleted, which an upgrade keeps.\n\nRun `npx @monte3l/groundwork --upgrade --stamp .` to record the new release in `.groundwork/manifest.json`: nothing needs applying first.",
       );
+    },
+  );
+
+  it.each([
+    ["current only", [file("a", "current")]],
+    [
+      "current, local-only, user-deleted and gone",
+      [
+        file("a", "current"),
+        file("b", "local-only"),
+        file("c", "user-deleted"),
+        file("d", "gone"),
+      ],
+    ],
+  ])(
+    "renders the nothing-to-apply Next step exactly, without telling the reader to run /upgrade to apply (%s)",
+    (_name, files) => {
+      const next = (
+        section(renderUpgradeReport(planOf(files)), "Next step") ?? ""
+      ).trim();
+      expect(next).toBe(
+        [
+          "There is nothing to apply: every baseline file is current, or differs only by a change you made or a file you deleted, which an upgrade keeps.",
+          "",
+          "Run `npx @monte3l/groundwork --upgrade --stamp .` to record the new release in `.groundwork/manifest.json`: nothing needs applying first.",
+          "",
+          "This run wrote this plan only under `.groundwork/upgrade/`; the `/upgrade` skill is installed separately, as the console output says.",
+        ].join("\n"),
+      );
+      expect(next).not.toContain("to apply this plan");
+      expect(next).not.toContain("Run `/upgrade`");
     },
   );
 
@@ -266,7 +300,7 @@ describe("renderUpgradeReport", () => {
 const KEY_INTRO =
   "The JSON files below are compared key by key; each key that is not current is listed with its class. A file's own class above decides what happens to it.";
 const NOT_YET =
-  "The `/upgrade` skill that applies a plan is not available yet, so nothing in the project has been changed: this run wrote only under `.groundwork/upgrade/`.";
+  "Run `/upgrade` in Claude Code to apply this plan. This run wrote this plan only under `.groundwork/upgrade/`; the `/upgrade` skill is installed separately, as the console output says.";
 const REMOVED_INTRO =
   "The new release no longer ships these files. A `remove` file is unchanged since it was written; an `orphan-edited` one holds your changes.";
 const REMOVED_STEP =

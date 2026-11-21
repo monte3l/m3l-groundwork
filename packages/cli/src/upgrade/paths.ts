@@ -67,3 +67,31 @@ export const UPGRADE_PLAN_FILE = "plan.json";
  * ```
  */
 export const UPGRADE_REPORT_FILE = "upgrade-report.md";
+
+/**
+ * The `/upgrade` skill's fallback directory name under `.groundwork/`, used
+ * when `.claude/skills/upgrade/` cannot take the copy. A sibling of
+ * {@link UPGRADE_DIR_NAME}, never inside it: `--upgrade` replaces the staging
+ * directory wholesale on every run, which would discard the skill copy.
+ *
+ * @example
+ * ```ts
+ * import { UPGRADE_SKILL_FALLBACK_DIR_NAME } from "./upgrade/paths.js";
+ *
+ * const dir = `.groundwork/${UPGRADE_SKILL_FALLBACK_DIR_NAME}`; // ".groundwork/upgrade-skill"
+ * ```
+ */
+export const UPGRADE_SKILL_FALLBACK_DIR_NAME = "upgrade-skill";
+
+/**
+ * The `/upgrade` skill's fallback directory, relative to the project root,
+ * `/`-separated.
+ *
+ * @example
+ * ```ts
+ * import { UPGRADE_SKILL_FALLBACK_RELATIVE_DIR } from "./upgrade/paths.js";
+ *
+ * console.log(`copy ${UPGRADE_SKILL_FALLBACK_RELATIVE_DIR}/ into place`);
+ * ```
+ */
+export const UPGRADE_SKILL_FALLBACK_RELATIVE_DIR: string = `.groundwork/${UPGRADE_SKILL_FALLBACK_DIR_NAME}`;

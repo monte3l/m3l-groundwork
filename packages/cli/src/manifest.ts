@@ -28,6 +28,7 @@ import { basename, join } from "node:path";
 import { assertDirectoryComponent, assertFileDestination } from "./fs-guard.js";
 import { parseJsonc } from "./jsonc.js";
 import { isPrototypeSensitiveKey } from "./merge-json.js";
+import { NPM_NAME_MAX_LENGTH, isSafeProjectName } from "./npm-name.js";
 import { PACK_NAME_PATTERN } from "./packs.js";
 
 /**
@@ -98,7 +99,9 @@ export interface Manifest {
 
 /**
  * A manifest that cannot be built, parsed, read or written. Carries the
- * underlying failure as `cause` where there is one.
+ * underlying failure as `cause` where there is one. A validation message
+ * names the offending field but never quotes a `cliVersion` or
+ * `PROJECT_NAME` it refused: the manifest may come from a hostile clone.
  *
  * @example
  * ```ts
@@ -400,6 +403,16 @@ const TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
 ]);
 const FILE_ENTRY_KEYS: ReadonlySet<string> = new Set(["sha256", "origin"]);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+/**
+ * A strict semantic version: `major.minor.patch`, an optional
+ * `-prerelease` and `+build`, nothing else. The `/upgrade` skill substitutes
+ * `cliVersion` into an `npx @monte3l/groundwork@<version>` command, so it must
+ * carry no space or shell metacharacter.
+ */
+const STRICT_SEMVER_PATTERN =
+  /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+/** The token the `/upgrade` skill passes to `--name`; checked with fresh mode's own rule. */
+const PROJECT_NAME_TOKEN = "PROJECT_NAME";
 
 function invalid(detail: string): ManifestError {
   return new ManifestError(`invalid ${MANIFEST_RELATIVE_PATH}: ${detail}`);
@@ -485,13 +498,24 @@ function parseFileEntry(value: unknown, field: string): ManifestFileEntry {
  * a non-object document; a `schemaVersion` other than
  * {@link MANIFEST_SCHEMA_VERSION}; a missing or ill-typed field; an unknown
  * top-level or file-entry key; a `sha256` that is not 64 lowercase hex
- * characters; an `origin` other than `emitted`/`merged`; an empty
- * `cliVersion`; a pack name not matching {@link PACK_NAME_PATTERN}; a
+ * characters; an `origin` other than `emitted`/`merged`; a `cliVersion`
+ * that is not a strict semantic version (`major.minor.patch`, optional
+ * `-prerelease` and `+build`); a `tokens.PROJECT_NAME`, when present, that
+ * fails the safe-character allowlist (`isSafeProjectName`, `npm-name.ts`; an
+ * absent one is left to the plan step's required-token check); a pack name not matching {@link PACK_NAME_PATTERN}; a
  * `jsonKeys` key that is not a JSON Pointer (does not start with `/`); a
  * `__proto__`/`constructor`/`prototype` key anywhere (a pointer such as
  * `/__proto__` is an ordinary key); and a path key that is absolute, has an
  * empty, `.` or `..` segment, or contains a backslash. The result is a fresh
  * object built from the validated values only.
+ *
+ * The manifest is committed to the project's repository, so in a hostile
+ * clone it is attacker-controlled input, and the `/upgrade` skill puts
+ * `cliVersion` and `PROJECT_NAME` into the `npx` command that rebuilds the
+ * old base (the version after the package name, the name after `--name`):
+ * the version check keeps anything but a plain version out, and the name
+ * allowlist keeps quotes, shell metacharacters, control characters and a
+ * leading dash out. No message quotes the refused value.
  *
  * @example
  * ```ts
@@ -529,12 +553,28 @@ export function parseManifest(text: string): Manifest {
     );
   }
 
+  // The value is never quoted in a message: the manifest is committed to the
+  // repo, so in a hostile clone it is attacker-controlled text.
   const cliVersion = top.get("cliVersion");
   if (typeof cliVersion !== "string" || cliVersion === "") {
     throw invalid("cliVersion must be a non-empty string");
   }
+  if (!STRICT_SEMVER_PATTERN.test(cliVersion)) {
+    throw invalid(
+      "cliVersion must be a strict semantic version (major.minor.patch, with an optional -prerelease and +build)",
+    );
+  }
 
   const tokens = stringRecord(top.get("tokens"), "tokens");
+  // Absent is allowed here: the plan step checks the required token keys.
+  if (Object.hasOwn(tokens, PROJECT_NAME_TOKEN)) {
+    const name = tokens[PROJECT_NAME_TOKEN];
+    if (name === undefined || !isSafeProjectName(name)) {
+      throw invalid(
+        `tokens.${PROJECT_NAME_TOKEN} must be 1 to ${String(NPM_NAME_MAX_LENGTH)} letters, digits, spaces or one of . _ @ / + ~ - (not starting with -)`,
+      );
+    }
+  }
 
   const rawPacks = top.get("packs");
   if (

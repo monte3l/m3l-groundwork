@@ -63,7 +63,7 @@ In outline:
    means a fresh bootstrap: skip to Step 1, unless `git rev-list -n1 HEAD`
    shows the repository has commits (the folder may be gitignored), in which
    case ask first. A `.groundwork/` holding only `manifest.json` is a fresh
-   bootstrap. Note that an `upgrade/` directory beside it does not change that. A `.groundwork/` holding only tracked report files (and
+   bootstrap. Note that an `upgrade/` directory beside it does not change that, and neither does `upgrade-skill/`. A `.groundwork/` holding only tracked report files (and
    `manifest.json`) is a
    clone of an adopted project: re-run the CLI. Any other `.groundwork/` with
    no inventory means an interrupted CLI run, and an unreadable inventory is invalid: in both cases
@@ -288,7 +288,7 @@ retargeted gate reported as not exercised), an **Assumed, not answered** list
 `guard-readonly-bash` with its reason. Rewrite the adoption report's
 `## Next step` to point at this file. Never write it in fresh mode: a
 `.groundwork/` directory with no inventory and anything beside `manifest.json`
-and `upgrade/` reads as an interrupted adopt run.
+and `upgrade/` (plus `upgrade-skill/`) reads as an interrupted adopt run.
 
 **Adopt mode only: ask once about `.gitignore`.** The CLI never edits the
 project's `.gitignore`. Recommend tracking the two reports and the manifest

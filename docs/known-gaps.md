@@ -33,12 +33,18 @@
   from the routes the code defines; recommended only for the `service` kind.
 - **The upgrade flow is only partly built.** Fresh mode writes a manifest of
   what it emitted, and `--upgrade` compares it with your files and the new
-  release and stages a plan under `.groundwork/upgrade/`. Nothing applies that
-  plan yet: the `/upgrade` skill and `--apply` are designed in
+  release, stages a plan under `.groundwork/upgrade/` and installs the
+  `/upgrade` skill, which applies it in Claude Code and records it in the
+  manifest with `--upgrade --stamp` (run it straight away when there is
+  nothing to apply). The scripted `--apply` step is designed in
   [`decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md) and not
-  built, so the plan is applied by hand and then recorded in the manifest with
-  `--upgrade --stamp` (or straight away when there is nothing to apply). A
-  project with no manifest
+  built. `--upgrade` does not refresh the `/customize` copy: the manifest
+  does not record that copy's hash, so the CLI cannot tell an unchanged copy
+  from an edited one. For the same reason it never refreshes an older
+  `/upgrade` copy: after the first install, a release whose skill text changed
+  lands in `.groundwork/upgrade-skill/` and must be copied over
+  `.claude/skills/upgrade/` by hand. Fixing either needs a manifest schema
+  change that records the skill copy's hash. A project with no manifest
   (anything bootstrapped or adopted before it existed) is refused by
   `--upgrade`; for it, taking a new release is still the indirect re-run of the
   CLI in adopt mode followed by `/customize`. `--upgrade` takes its packs from

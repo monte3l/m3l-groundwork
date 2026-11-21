@@ -24,7 +24,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ManifestError } from "../src/manifest.js";
+import { ManifestError, parseManifest } from "../src/manifest.js";
 import type { Inventory } from "../src/inventory.js";
 import type * as InventoryModule from "../src/inventory.js";
 import type * as ReportModule from "../src/report.js";
@@ -108,6 +108,21 @@ describe("main", () => {
       expect(gitInitMock).toHaveBeenCalledWith(emptyTarget);
       expect(runInstallMock).toHaveBeenCalledWith(emptyTarget);
     });
+
+    it.each(["MyApp", "My App"])(
+      "bootstraps a directory named %j and writes a manifest that round-trips through parseManifest",
+      (dirName) => {
+        const target = join(targetDir, dirName);
+
+        main([target, "--skip-install"]);
+
+        const text = readFileSync(
+          join(target, ".groundwork", "manifest.json"),
+          "utf8",
+        );
+        expect(parseManifest(text).tokens["PROJECT_NAME"]).toBe(dirName);
+      },
+    );
 
     it("skips the install step when --skip-install is passed", () => {
       const emptyTarget = join(targetDir, "sub2");
@@ -197,6 +212,31 @@ describe("main", () => {
           expect(gitInitMock).not.toHaveBeenCalled();
         },
       );
+
+      it.each(["a&b", "it's", "a;b", "$(id)", "a`b`", "-dash"])(
+        "refuses the directory-derived default name %j as a usage error telling the user to pass --name, creating nothing",
+        (dirName) => {
+          const target = join(targetDir, dirName);
+
+          let thrown: unknown;
+          try {
+            main([target, "--skip-install"]);
+          } catch (error) {
+            thrown = error;
+          }
+
+          expect(thrown).toBeInstanceOf(CliUsageError);
+          expect((thrown as Error).message).toContain("--name");
+          expect(existsSync(target)).toBe(false);
+          expect(gitInitMock).not.toHaveBeenCalled();
+        },
+      );
+
+      it("keeps an explicit --name working for a directory whose own name is unsafe", () => {
+        const target = join(targetDir, "a&b");
+        main([target, "--skip-install", "--name", "widgets"]);
+        expect(existsSync(join(target, "package.json"))).toBe(true);
+      });
 
       it("names the available packs when an unknown pack is requested", () => {
         const target = join(targetDir, "never-written-unknown");
