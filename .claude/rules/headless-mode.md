@@ -22,7 +22,9 @@ adopt survey, the success and error shapes of `report` v1
 (`headless/report.ts` plus `schemas/report.v1.schema.json`), and the
 `answers` v1 contract (`headless/contract.ts` plus
 `schemas/answers.v1.schema.json`); both schemas ship in the tarball; and the
-adopt survey's pending document under `--json` (`headless/pending.ts`). Each
+adopt survey's pending document under `--json` (`headless/pending.ts`); and
+the pure adopt apply planner (`headless/actions.ts`, not wired into any CLI
+path yet; see "Adopt apply planner"). Each
 is marked **(shipped)** below. Everything else
 is design only; the paths above are where it will land. Update this file as
 each piece ships, and drop this line when the last one does.
@@ -99,12 +101,14 @@ each piece ships, and drop this line when the last one does.
   surrogate; a schema engine that is neither per-code-unit nor per-code-point
   ECMA-262 may not), and a first segment other than `.git`, `.groundwork` or
   `git~1` (the NTFS 8.3 short name of `.git`), compared case-insensitively.
-  Only the first segment is protected: a nested `sub/.git/hooks/...` is
-  allowed by design, and the `--apply` PR must decide it explicitly. Paths
+  The validator protects only the first segment: a nested
+  `sub/.git/hooks/...` passes it, and the adopt apply planner rejects it
+  instead (a `.git` or `git~1` segment at any depth, folded, is exit 2). Paths
   are unique per array after NFC normalization, upper-casing and then
   lower-casing (so `ſ`, `ı` and the Kelvin sign fold to `s`, `i`, `k`);
   uniqueness is per collection, so the same path may appear in both
-  `additions` and `conflicts`, and the `--apply` PR must define the rule.
+  `additions` and `conflicts` and still validate; the adopt apply planner
+  rejects it (exit 2, naming both pointers).
   `takeKeys` is
   allowed only with `merge-keys`. `answers.v1.schema.json` is the structural
   (`partial`) shape; `headless-schemas.test.ts` keeps its property names,
@@ -136,8 +140,9 @@ each piece ships, and drop this line when the last one does.
   (`status` `error` for exit 1, `usage` for exit 2, `mode`/`phase` and every
   `artifacts` path `null` **even when the failed run had already written
   files** (a failed `pending.json` write leaves a complete `inventory.json` on
-  disk; the error message names what exists, and a typed error that carries the
-  written artifacts is planned for the apply step), `pending` empty, `error.chain` the
+  disk; the error message names what exists. Decided, to come in the
+  `--apply` PR: a partial apply failure throws a typed error that carries the
+  artifacts already written), `pending` empty, `error.chain` the
   message then each chained value's as strings, through `format-error.ts`'s
   `errorMessageChain`: cycle-safe, depth-capped, never throws). `dryRun` is
   always `false` and `changes`, `handoff` and `drift` are always empty until
@@ -181,6 +186,41 @@ each piece ships, and drop this line when the last one does.
   its hash still matches what the baseline emitted; any other state is a
   handoff. A change to `templates/core` also needs the harness and toolchain
   graders to agree (`.claude/rules/harness-graders.md`).
+- **Adopt apply planner (shipped, not wired).** `planAdoptActions(inventory,
+answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
+  neither input, never throws on a validated answers document (even for an
+  older inventory), and its only I/O is `io.sha256OfTarget(path)`, which
+  returns a `TargetState` (`absent` only for `ENOENT`, `file` with its
+  sha256, or `unreadable` with a code: a directory, a symlink, a permission
+  error), called only for an `add`, `take` or `merge-keys` and only after
+  every usage check passed. No CLI path calls it yet; `--apply` will. It
+  returns actions sorted by path in code-point order (`install-staged`,
+  `take-divergent`, `merge-keys` with `stagedPath`, the staged `sha256` and,
+  for `merge-keys`, `takeKeys`; `keep`, `skip`, `delegate` with only `path`)
+  and handoff entries (one per `delegate`, plus non-empty `missedNotes`
+  verbatim), or every usage error (exit 2: a `mode` other than `adopt`, at
+  `/mode`; a pack in `packs.install` the inventory did not survey, or two
+  installed packs shipping the same folded path; an exact path answered
+  twice in one collection; a path the inventory does not list as absent or
+  divergent, an inventory path left undecided, a missing staged copy,
+  including an inventory too old to carry `stagedDivergent`; `merge-keys` on
+  a whole-file difference or with a key the survey did not find different, a
+  `.git`/`git~1` segment at any depth, a path in both `additions` and
+  `conflicts`, or colliding with a file of an installed pack, after folding),
+  or, only when there is no usage error, every drifted path in path order
+  (exit 4). Bytes come only from `inventory.stagedBaseline` (`add`) and
+  `inventory.stagedDivergent` (`take`, `merge-keys`), never from the
+  template. An `add` is drift unless the target is `absent`; a `take` or
+  `merge-keys` is drift unless the target is a regular file with the
+  survey's hash, so a divergent conflict with `targetSha256: null` is always
+  drift with `expected: null`, while `keep` and `delegate` plan normally.
+  `actual` in a drift entry is the file's hash, or `null` for anything else.
+  Recorded for the `--apply` PR that wires it: reject an inventory with
+  `schemaVersion` below 7 at load; containment-check every `stagedPath`
+  inside its staging directory and re-verify the staged copy's sha256 before
+  writing it; create a new file with exclusive create (`wx`), never a
+  truncating open; and wrap a throw from `io` in a typed error that names the
+  path.
 - **Apply is a journal, not a promise of atomicity.** Stage under
   `.groundwork/headless/txn/`, back up, rename, roll back on failure, write
   `applied.json` last, and recover a leftover `txn/` on the next run. An
@@ -213,7 +253,8 @@ each piece ships, and drop this line when the last one does.
   Consumer contract: `targetSha256: null` on an `absent` conflict means
   nothing is there (a write is safe), but on a `divergent` conflict it means
   the file could not be read -- the drift is undetermined, so `--apply` must
-  refuse to `take` it and never treat `null` as "no drift". `--apply` trusts
+  refuse to `take` it and never treat `null` as "no drift" (decided: drift,
+  exit 4, `expected: null`; the planner above implements it). `--apply` trusts
   only `inventory.stagedDivergent` and ignores any leftover
   `.groundwork/baseline-divergent/` directory (an older CLI run after a v7
   run leaves one behind). Staged divergent copies are the UTF-8 decode and

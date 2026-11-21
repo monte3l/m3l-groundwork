@@ -144,13 +144,17 @@ const MAX_PATH_LENGTH = 4096;
 /** A basis hash: a lowercase hex SHA-256 digest. */
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 /**
+ * The folded spellings of a `.git` segment: `.git` itself and `git~1`, its
+ * NTFS 8.3 short name.
+ */
+const GIT_SEGMENTS: ReadonlySet<string> = new Set([".git", "git~1"]);
+/**
  * First path segments no answers document may write under, compared after
- * {@link foldPath}. `git~1` is the NTFS 8.3 short name of `.git`.
+ * {@link foldPath}: every {@link GIT_SEGMENTS} spelling and `.groundwork`.
  */
 const PROTECTED_ROOTS: ReadonlySet<string> = new Set([
-  ".git",
+  ...GIT_SEGMENTS,
   ".groundwork",
-  "git~1",
 ]);
 
 type ProjectKind = (typeof PROJECT_KINDS)[number];
@@ -640,10 +644,33 @@ function segmentProblem(segment: string): string | undefined {
 /**
  * The comparison key a case-insensitive, normalizing file system sees: NFC,
  * then upper case, then lower case, so that `ſ` meets `s`, `ı` meets `i` and
- * the Kelvin sign meets `k`.
+ * the Kelvin sign meets `k`. Two paths with the same key can name one file.
+ *
+ * @example
+ * ```ts
+ * import { foldPath } from "./headless/contract.js";
+ *
+ * foldPath("README.md") === foldPath("readme.md"); // true
+ * ```
  */
-function foldPath(path: string): string {
+export function foldPath(path: string): string {
   return path.normalize("NFC").toUpperCase().toLowerCase();
+}
+
+/**
+ * Whether one path segment names `.git` on a case-insensitive or NTFS file
+ * system: `.git` or its 8.3 short name `git~1`, compared after
+ * {@link foldPath}. A segment that merely contains `.git` (`.github`) does not.
+ *
+ * @example
+ * ```ts
+ * import { isGitSegment } from "./headless/contract.js";
+ *
+ * "sub/.GIT/config".split("/").some((s) => isGitSegment(s)); // true
+ * ```
+ */
+export function isGitSegment(segment: string): boolean {
+  return GIT_SEGMENTS.has(foldPath(segment));
 }
 
 /**
