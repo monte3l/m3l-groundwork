@@ -1,5 +1,40 @@
 # @monte3l/groundwork
 
+## [1.4.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.3.1...@monte3l/groundwork@1.4.0) (2026-11-21)
+
+
+### Features
+
+* add --json for machine-readable fresh and adopt runs ([918b3a9](https://github.com/monte3l/m3l-groundwork/commit/918b3a9eda46681c2537f14621c70e2b68102bb5))
+* add inventory schema v7 for drift detection and divergent copies ([a8cdf86](https://github.com/monte3l/m3l-groundwork/commit/a8cdf86c8de69d87b1e2e58e53ded980c07496a7))
+* add the answers v1 contract, validator and JSON Schemas ([572db3b](https://github.com/monte3l/m3l-groundwork/commit/572db3be3741730c99b6b877fe0b691b2124f004))
+* **cli:** add --upgrade --stamp, which records an applied upgrade in the manifest ([21cd338](https://github.com/monte3l/m3l-groundwork/commit/21cd33864089474f48d7f80331017ccd54860fcc))
+* **cli:** add --upgrade, which stages a plan for a project with a manifest ([#342](https://github.com/monte3l/m3l-groundwork/issues/342)) ([bfdcacc](https://github.com/monte3l/m3l-groundwork/commit/bfdcacca5dee6101cc3c4b7340c9fd6e52eaf730))
+* **cli:** add `--adopt --apply <answers.json> --dry-run` to plan a headless adopt ([54088d5](https://github.com/monte3l/m3l-groundwork/commit/54088d5e783a90985dd959d25c2a859c2d490e97))
+* **cli:** add the /upgrade skill and install it from --upgrade ([9248bd9](https://github.com/monte3l/m3l-groundwork/commit/9248bd97445dfc7a25698cfe88b5935f5a11b252))
+* **cli:** add the pure classifier for an upgrade plan ([f58e6b1](https://github.com/monte3l/m3l-groundwork/commit/f58e6b1b8fd9d0a83dafebc93d4758f676b0f354))
+* **cli:** compute an upgrade plan from a manifest and a rendered release ([244ca00](https://github.com/monte3l/m3l-groundwork/commit/244ca006325b964c9d1538c43d76dba9de1320c5))
+* **cli:** give a path gone upstream and locally its own class ([344677b](https://github.com/monte3l/m3l-groundwork/commit/344677b44974449f8967b10a7c13b86a7c4aba00))
+* **cli:** key manifest JSON by pointer and refuse unsafe manifest paths ([b6f7581](https://github.com/monte3l/m3l-groundwork/commit/b6f7581c8e4cf523109e5539743464cfac93bd02))
+* **cli:** let adopt mode narrow its pack survey with --pack ([77587e9](https://github.com/monte3l/m3l-groundwork/commit/77587e9ee3b70b9ab9b5e7309efd2c79dade5068)), closes [#318](https://github.com/monte3l/m3l-groundwork/issues/318)
+* **cli:** record what fresh mode emitted in .groundwork/manifest.json ([7eb9196](https://github.com/monte3l/m3l-groundwork/commit/7eb91964954f16c0b1b0d1e7960c56aafcebf0b0))
+* report the manifest path in the --json artifacts ([d56b520](https://github.com/monte3l/m3l-groundwork/commit/d56b52098bffa44fc2d9d04a0ce74cdbcd312adf))
+* **templates:** add a verify policy file for warn-only tests and CI skips ([e9b9bdb](https://github.com/monte3l/m3l-groundwork/commit/e9b9bdbb4fd7f811e65252b67e8d93accd5542b4))
+* write a pending answers document for adopt --json ([#340](https://github.com/monte3l/m3l-groundwork/issues/340)) ([e558835](https://github.com/monte3l/m3l-groundwork/commit/e558835a6d654e77c7de9c85ee4faf5dd3c4a014))
+
+
+### Bug Fixes
+
+* **cli:** let /customize and the adopt report handle the manifest ([f59408c](https://github.com/monte3l/m3l-groundwork/commit/f59408c61e4ca8720f27601a6c72badf08fab4ce))
+* **cli:** refuse a manifest whose version or project name could carry shell syntax ([936f114](https://github.com/monte3l/m3l-groundwork/commit/936f11425f4c2cc875d5b7c752f41ebe1fa0324c))
+* **cli:** tell the user to run --upgrade --stamp when a plan has nothing to apply ([20feb86](https://github.com/monte3l/m3l-groundwork/commit/20feb864abe6380bc2c4b9d0aaf818100ef01169))
+* **cli:** validate tokens and refuse mismatched releases when planning an upgrade ([fa08780](https://github.com/monte3l/m3l-groundwork/commit/fa087801e7f240a26f223a9fd95a3727d137f7d3))
+* point branch advice at a worktree ([ba2f845](https://github.com/monte3l/m3l-groundwork/commit/ba2f8456cbbf2a2808ef8ee5e5382987365a47f2))
+* say why a sibling worktree does not satisfy the worktrees pack guard ([040be53](https://github.com/monte3l/m3l-groundwork/commit/040be53352bd945164071b7a75bfa0c65a5fd03c))
+* **templates:** allow BlueOak-1.0.0 in the dependency-review template ([#339](https://github.com/monte3l/m3l-groundwork/issues/339)) ([754e0ab](https://github.com/monte3l/m3l-groundwork/commit/754e0abdfbad6c964f9435dc95603de76c067c4e))
+* **templates:** cover the rest of the toolchain's licenses in dependency review ([07f038c](https://github.com/monte3l/m3l-groundwork/commit/07f038c90716e839f76de58f85b9b6755b9e6b76))
+* **templates:** read a JSONC file without a stat first ([96f5f06](https://github.com/monte3l/m3l-groundwork/commit/96f5f06e9e69f9f863446ff50725d64827340c10))
+
 ## [1.3.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.3.0...@monte3l/groundwork@1.3.1) (2026-11-20)
 
 
