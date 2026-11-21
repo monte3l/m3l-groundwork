@@ -8,15 +8,17 @@
  * returned. Only its dry run is wired (`--adopt --apply --dry-run`, via
  * `./apply-plan.ts`); a writing `--apply` is still to come.
  *
- * Order of a real run: take the apply lock; roll back a journal an earlier
- * run left behind; verify every staged source and every target (nothing is
+ * Order of a real run: take the apply lock; make sure
+ * `.groundwork/headless/.gitignore` exists; roll back a journal an earlier
+ * run left behind (only one this uid wrote and no one else can write);
+ * verify every staged source and every target (nothing is
  * written until all of them pass); create `.groundwork/headless/txn/` with
  * an owner-only backup of every file to be replaced and the journal, all
  * fsynced (best effort) before the first project write; run each write
  * (each file's bytes fsynced as it is written); fsync the directories the
  * writes created or renamed into; then delete the journal (the commit
- * point), fsync `txn/`, remove it and write
- * `.groundwork/headless/applied.json` last. A failure before the commit
+ * point), fsync `txn/`, write `.groundwork/headless/applied.json` and
+ * remove `txn/` last. A failure before the commit
  * point rolls every landed step back in reverse; a rollback that cannot
  * restore a path keeps `txn/` for the next run to recover. Removing `txn/`
  * always deletes the journal first, so a half-removed `txn/` never holds a
@@ -46,11 +48,13 @@ import {
   replaceFile,
   serializeJournal,
   undoStep,
+  untrustedReason,
   writePathProblem,
 } from "./internal/apply-journal.js";
 import type {
   InstallOwnership,
   JournalStep,
+  RegularFile,
   UndoResult,
   WriteKind,
 } from "./internal/apply-journal.js";
@@ -63,8 +67,14 @@ const APPLIED_SCHEMA = "groundwork.applied";
 const APPLIED_SCHEMA_VERSION = 1;
 /** Permission bits for the files this module writes under `.groundwork/headless/`. */
 const RECORD_MODE = 0o644;
-/** Permission bits for a backup: owner-only, since it may hold a private file's bytes. */
-const BACKUP_MODE = 0o600;
+/**
+ * Permission bits for a backup and the journal: owner-only, since a backup
+ * may hold a private file's bytes and a recovery trusts only what this
+ * process's uid wrote and no one else can write (`untrustedReason`).
+ */
+const OWNER_ONLY_MODE = 0o600;
+/** What `.groundwork/headless/.gitignore` holds: the run's scratch, never to be committed. */
+const HEADLESS_GITIGNORE = "txn/\nlock\n";
 /** How a refusal that touched nothing ends; a recovery note rewrites it (see `withRecoveryNote`). */
 const NOTHING_WRITTEN = " -- nothing was written";
 
@@ -135,12 +145,6 @@ interface Landed {
   file: InstallProgress;
   /** For a replacing step: whether the rename over the target happened. */
   replaced: boolean;
-}
-
-/** What a leftover journal's recovery did, for the warning and a later failure's message. */
-interface Recovery {
-  readonly warning: string;
-  readonly restored: readonly string[];
 }
 
 function messageOf(error: unknown): string {
@@ -523,7 +527,7 @@ function reasonsCause(reasons: readonly string[]): AggregateError {
  *   names what it did restore; `txn/` is kept), and for a successful
  *   rollback whose `txn/` cleanup then fails.
  */
-function recoverLeftover(root: string): Recovery | undefined {
+function recoverLeftover(root: string): string | undefined {
   const txnDir = join(root, HEADLESS_DIR, "txn");
   const journalPath = join(txnDir, "journal.json");
   const txn = lstatSync(txnDir, { throwIfNoEntry: false });
@@ -536,28 +540,49 @@ function recoverLeftover(root: string): Recovery | undefined {
   }
   if (lstatSync(journalPath, { throwIfNoEntry: false }) === undefined) {
     rmSync(txnDir, { recursive: true, force: true });
-    return {
-      warning: `removed a leftover ${HEADLESS_DIR}/txn with no journal: the previous run either stopped before its first project write or got past its commit point without finishing, so its changes may have landed without ${HEADLESS_DIR}/applied.json recording them -- check the project for them and record any that landed by hand`,
-      restored: [],
-    };
+    return `removed a leftover ${HEADLESS_DIR}/txn with no journal: the previous run either stopped before its first project write, or got past its commit point (its changes may have landed) and could not finish cleaning up, so they may have landed without being written to ${HEADLESS_DIR}/applied.json -- check that applied.json lists the paths of that run's changes (every successful run overwrites it, so an earlier run's record may be what is there); otherwise check the project for them and record any that landed by hand`;
   }
-  let steps: readonly JournalStep[] | undefined;
+  let journal: RegularFile;
   try {
-    steps = parseJournal(
-      readRegularNoFollow(journalPath).bytes.toString("utf8"),
-    );
+    // No-follow: a symlink or a non-file at journal.json is refused here.
+    journal = readRegularNoFollow(journalPath);
   } catch (cause) {
     throw new ApplyError(
       `could not read the leftover apply journal ${journalPath} -- ${advice}`,
       { cause },
     );
   }
+  const journalDistrust = untrustedReason(journal);
+  if (journalDistrust !== undefined) {
+    throw new ApplyError(
+      `refusing a leftover apply journal this CLI cannot trust: ${journalPath} (${journalDistrust}); nothing was touched -- ${advice}`,
+    );
+  }
+  const steps = parseJournal(journal.bytes.toString("utf8"));
   if (steps === undefined) {
     throw new ApplyError(
       `refusing a leftover apply journal that is not one this CLI wrote: ${journalPath} -- ${advice}`,
     );
   }
   const backupDir = join(txnDir, "backup");
+  for (const step of steps) {
+    if (step.before === null) continue;
+    const backupPath = join(backupDir, step.before.backup);
+    const backup = lstatSync(backupPath, { throwIfNoEntry: false });
+    // A missing backup is not refused here: the undo reports it as a
+    // leftover, or does not need it when the target already holds the original.
+    if (backup === undefined) continue;
+    // Path-based on purpose: undoReplace verifies the backup's hash against
+    // the trusted journal when it reads it.
+    const backupDistrust = backup.isFile()
+      ? untrustedReason(backup)
+      : "it is not a regular file (a symlink or another non-file)";
+    if (backupDistrust !== undefined) {
+      throw new ApplyError(
+        `refusing the leftover apply journal ${journalPath}: its backup ${backupPath} cannot be trusted (${backupDistrust}); nothing was touched -- ${advice}`,
+      );
+    }
+  }
   const report = undoAll(
     steps.map((step) => ({
       path: step.path,
@@ -591,7 +616,7 @@ function recoverLeftover(root: string): Recovery | undefined {
       { cause },
     );
   }
-  return { warning: done, restored: report.restored };
+  return done;
 }
 
 /**
@@ -614,7 +639,7 @@ function openTransaction(root: string, steps: readonly PreparedStep[]): void {
         const backup = join(backupDir, String(step.index));
         writeFileSync(backup, step.before.bytes, {
           flag: "wx",
-          mode: BACKUP_MODE,
+          mode: OWNER_ONLY_MODE,
         });
         fsyncPath(backup, "file");
       }
@@ -622,7 +647,7 @@ function openTransaction(root: string, steps: readonly PreparedStep[]): void {
     replaceFile(
       join(txnDir, "journal.json"),
       serializeJournal(steps.map(journalStepOf)),
-      RECORD_MODE,
+      OWNER_ONLY_MODE,
     );
     fsyncPath(backupDir, "dir");
     fsyncPath(txnDir, "dir");
@@ -713,17 +738,23 @@ function ownershipOf(progress: InstallProgress): InstallOwnership {
 function rollBack(root: string, landed: readonly Landed[]): UndoReport {
   const backupDir = join(root, HEADLESS_DIR, "txn", "backup");
   return undoAll(
-    landed.map(({ step, createdDirs, file }) => ({
+    landed.map(({ step, createdDirs, file, replaced }) => ({
       path: step.path,
-      undo: () =>
-        step.before === null
-          ? undoStep(
-              root,
-              backupDir,
-              { ...step, createdDirs },
-              ownershipOf(file),
-            )
-          : undoStep(root, backupDir, step, "hash"),
+      undo: (): UndoResult => {
+        if (step.before === null) {
+          return undoStep(
+            root,
+            backupDir,
+            { ...step, createdDirs },
+            ownershipOf(file),
+          );
+        }
+        // A replace whose rename never happened changed nothing: whatever is
+        // at the target now (an edit, a deletion) is someone else's.
+        return replaced
+          ? undoStep(root, backupDir, step, "hash")
+          : { status: "unchanged", keptDirs: [] };
+      },
     })),
   );
 }
@@ -815,14 +846,6 @@ async function runTransaction(
   fsyncPath(txnDir, "dir");
   const written = steps.map((step) => step.path);
   const changes = changesOf(steps);
-  const warnings: string[] = [];
-  try {
-    rmSync(txnDir, { recursive: true, force: true });
-  } catch (cause) {
-    warnings.push(
-      `every write landed, but ${HEADLESS_DIR}/txn could not be removed (${messageOf(cause)}); its journal is already gone, so the next run removes it with a warning`,
-    );
-  }
   try {
     replaceFile(
       join(root, HEADLESS_DIR, "applied.json"),
@@ -830,37 +853,104 @@ async function runTransaction(
       RECORD_MODE,
     );
   } catch (cause) {
+    try {
+      rmSync(txnDir, { recursive: true, force: true });
+    } catch {
+      // Best-effort: the journal is already gone, so a txn/ left here is
+      // removed by the next run with a warning that these changes may have
+      // landed unrecorded -- which the error below already says.
+    }
     throw new ApplyError(
       `every write landed (${written.join(", ")}), but ${HEADLESS_DIR}/applied.json could not be written: ${messageOf(cause)} -- the project is changed and stays changed; record these changes by hand (in the commit or the report), since no later run records them for you`,
       { written, rolledBack: false, leftovers: [], cause },
+    );
+  }
+  const warnings: string[] = [];
+  try {
+    rmSync(txnDir, { recursive: true, force: true });
+  } catch (cause) {
+    warnings.push(
+      `every write landed and ${HEADLESS_DIR}/applied.json records them, but ${HEADLESS_DIR}/txn could not be removed (${messageOf(cause)}); its journal is already gone, so the next run removes it with a warning`,
     );
   }
   return { changes, warnings };
 }
 
 /**
- * `error` re-reported for a run whose recovery restored `restored` before
- * the plan failed: the project did change, so a refusal's "nothing was
- * written" no longer holds and the restored paths are named. The original
- * error is chained as the `cause`.
+ * `error` re-reported for a run whose recovery acted before the plan failed
+ * (`recovery` is its warning: restored or already-original paths, or a
+ * journal-less `txn/` removed): `.groundwork/headless/` or the project did
+ * change, so a refusal's "nothing was written" no longer holds and what the
+ * recovery did is named. The original error is chained as the `cause`.
  */
-function withRecoveryNote(
-  error: ApplyError,
-  restored: readonly string[],
-): ApplyError {
+function withRecoveryNote(error: ApplyError, recovery: string): ApplyError {
   const message = error.message.endsWith(NOTHING_WRITTEN)
     ? `${error.message.slice(0, -NOTHING_WRITTEN.length)} -- nothing of this run's plan was written`
     : error.message;
-  return new ApplyError(
-    `${message} (before the plan, a leftover journal of an interrupted earlier apply was rolled back, restoring ${restored.join(", ")})`,
-    {
-      written: error.written,
-      rolledBack: error.rolledBack,
-      leftovers: error.leftovers,
-      leftoverReasons: error.leftoverReasons,
-      cause: error,
-    },
-  );
+  return new ApplyError(`${message} (before the plan, this run ${recovery})`, {
+    written: error.written,
+    rolledBack: error.rolledBack,
+    leftovers: error.leftovers,
+    leftoverReasons: error.leftoverReasons,
+    cause: error,
+  });
+}
+
+/**
+ * Makes sure `.groundwork/headless/.gitignore` keeps the run's scratch
+ * (`txn/`, `lock`) out of git -- a committed `txn/` could be recovered by a
+ * later clone's run. Created with exclusive create, so an existing file is
+ * never overwritten: one identical to what this writes is left alone
+ * silently, anything else (a different file, a non-file, a failed create)
+ * is left alone and returned as a warning. Called under the lock, before
+ * anything else, so it lands even when the run then fails.
+ */
+function ensureHeadlessGitignore(root: string): string | undefined {
+  const shown = `${HEADLESS_DIR}/.gitignore`;
+  const path = join(root, HEADLESS_DIR, ".gitignore");
+  try {
+    writeFileSync(path, HEADLESS_GITIGNORE, { flag: "wx", mode: RECORD_MODE });
+    return undefined;
+  } catch (cause) {
+    if (errnoCode(cause) !== "EEXIST") {
+      return `could not create ${shown} (${messageOf(cause)}); make sure git ignores ${HEADLESS_DIR}/txn/ and ${HEADLESS_DIR}/lock, which must never be committed`;
+    }
+  }
+  let same = false;
+  try {
+    same =
+      readRegularNoFollow(path).bytes.toString("utf8") === HEADLESS_GITIGNORE;
+  } catch {
+    // A non-file or unreadable .gitignore is not ours to touch; it is
+    // reported through the warning below, like a different one.
+  }
+  return same
+    ? undefined
+    : `left ${shown} as it is (it is not the one this CLI writes): make sure it ignores txn/ and lock, which must never be committed`;
+}
+
+/**
+ * A dry run's warning when `.groundwork/headless/txn/` exists (with a
+ * journal or without): an earlier apply is unfinished, so the project may be
+ * half-applied and a real run would recover it before its plan. The dry run
+ * itself neither recovers nor reads it.
+ */
+function pendingTxnWarnings(root: string): string[] {
+  const txnDir = join(root, HEADLESS_DIR, "txn");
+  let pending: boolean;
+  try {
+    pending = lstatSync(txnDir, { throwIfNoEntry: false }) !== undefined;
+  } catch (cause) {
+    throw new ApplyError(
+      `could not check for a leftover apply journal under ${txnDir}: ${messageOf(cause)}${NOTHING_WRITTEN}`,
+      { cause },
+    );
+  }
+  return pending
+    ? [
+        `an unfinished earlier apply left ${HEADLESS_DIR}/txn behind, so the project may be half-applied: this dry run planned against the tree as it is, but a real apply first recovers that leftover (rolling it back, or refusing it), which can change the plan`,
+      ]
+    : [];
 }
 
 /**
@@ -872,6 +962,9 @@ function withRecoveryNote(
  * `schemaVersion` 1, `changes`) is written last -- only when something was
  * written. The whole run holds the apply lock (`withApplyLock`).
  *
+ * - Holding the lock, it first makes sure `.groundwork/headless/.gitignore`
+ *   ignores `txn/` and `lock` (exclusive create; an existing file is never
+ *   overwritten, and one that differs is a warning); it is not a `change`.
  * - `install-staged` creates the file with exclusive create (`wx`), making
  *   missing parent directories only after verification; `take-divergent`
  *   replaces a regular file through a same-directory temp file and a
@@ -884,16 +977,21 @@ function withRecoveryNote(
  * - A rollback removes an installed file only while it holds the staged
  *   bytes (a partially written one whatever it holds; one whose open
  *   failed never); a file edited since, or a replaced target deleted since,
- *   is a leftover, kept as it is and never recreated.
+ *   is a leftover, kept as it is and never recreated. A replace whose
+ *   rename never happened changed nothing and is left as it is.
  * - A journal a previous run left behind is rolled back first, with one
  *   warning listing the restored and already-original paths; one that is
- *   not exactly what this module writes is refused. If the plan then fails,
- *   its error names the paths the recovery restored.
+ *   not exactly what this module writes, or that (or one of its backups) is
+ *   not a regular file owned by this uid and free of group/world write
+ *   bits (POSIX only), is refused. If the plan then fails, its error says
+ *   what the recovery did.
  * - A target the answers validator's segment rules refuse, under
  *   `.groundwork/` or inside a `.git` directory is refused.
- * - `txn/` that cannot be removed after the commit point is a warning.
+ * - After the commit point `applied.json` is written before `txn/` is
+ *   removed; a `txn/` that cannot be removed then is a warning.
  * - `dryRun` verifies and computes the same `changes` but takes no lock,
- *   recovers nothing and creates nothing.
+ *   recovers nothing and creates nothing; a pending `txn/` is a warning
+ *   that the project may be half-applied.
  * - `io.beforeStep` runs right before each project write.
  *
  * @throws {@link ApplyError} for every refusal and failure: `written` lists
@@ -925,10 +1023,12 @@ export async function applyAdoptActions(
 ): Promise<ApplyResult> {
   const { root, actions, dryRun = false, io = {} } = params;
   if (dryRun) {
-    return { changes: changesOf(prepareSteps(root, actions)), warnings: [] };
+    const changes = changesOf(prepareSteps(root, actions));
+    return { changes, warnings: pendingTxnWarnings(root) };
   }
   return withApplyLock(root, async (): Promise<ApplyResult> => {
-    let recovery: Recovery | undefined;
+    const gitignore = ensureHeadlessGitignore(root);
+    let recovery: string | undefined;
     try {
       recovery = recoverLeftover(root);
     } catch (cause) {
@@ -939,7 +1039,9 @@ export async function applyAdoptActions(
         { cause },
       );
     }
-    const warnings = recovery === undefined ? [] : [recovery.warning];
+    const warnings = [gitignore, recovery].filter(
+      (warning): warning is string => warning !== undefined,
+    );
     try {
       const steps = prepareSteps(root, actions);
       if (steps.length === 0) return { changes: [], warnings };
@@ -949,12 +1051,8 @@ export async function applyAdoptActions(
         warnings: [...warnings, ...result.warnings],
       };
     } catch (error) {
-      if (
-        error instanceof ApplyError &&
-        recovery !== undefined &&
-        recovery.restored.length > 0
-      ) {
-        throw withRecoveryNote(error, recovery.restored);
+      if (error instanceof ApplyError && recovery !== undefined) {
+        throw withRecoveryNote(error, recovery);
       }
       throw error;
     }

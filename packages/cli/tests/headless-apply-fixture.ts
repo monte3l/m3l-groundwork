@@ -55,7 +55,16 @@ export interface Env {
   readonly dispose: () => void;
 }
 
-export function makeEnv(): Env {
+/** What `.groundwork/headless/.gitignore` holds once the executor has made it. */
+export const HEADLESS_GITIGNORE = "txn/\nlock\n";
+
+/**
+ * A temp project. The executor creates `.groundwork/headless/.gitignore` as
+ * soon as it holds the lock, so it is pre-created here (identical to what the
+ * executor writes) and a before/after tree snapshot only differs by what a
+ * run really changed. Pass `{ gitignore: false }` to start without it.
+ */
+export function makeEnv(options: { gitignore?: boolean } = {}): Env {
   const made: string[] = [];
   const fresh = (): string => {
     const dir = mkdtempSync(join(tmpdir(), "hl-apply-x-"));
@@ -64,6 +73,12 @@ export function makeEnv(): Env {
   };
   const root = fresh();
   mkdirSync(join(root, ".groundwork", "headless"), { recursive: true });
+  if (options.gitignore !== false) {
+    writeFileSync(
+      join(root, ".groundwork", "headless", ".gitignore"),
+      HEADLESS_GITIGNORE,
+    );
+  }
   const abs = (rel: string, base = root): string => join(base, rel);
   const put = (rel: string, data: string | Buffer, base = root): void => {
     mkdirSync(dirname(abs(rel, base)), { recursive: true });

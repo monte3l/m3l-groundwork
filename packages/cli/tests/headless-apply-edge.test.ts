@@ -671,7 +671,7 @@ describe("applyAdoptActions: recovering a leftover journal", () => {
 });
 
 describe("applyAdoptActions: dryRun beside a leftover journal", () => {
-  it("neither recovers nor warns: the journal, the backup and the tree stay as they are", async () => {
+  it("neither recovers nor reads it, only warns once that the project may be half-applied: the journal, the backup and the tree stay as they are", async () => {
     env.put("a.txt", "taken");
     env.put("b.txt", "target");
     env.writeJournal([replaceStep("a.txt", "original", "taken")], {
@@ -684,7 +684,9 @@ describe("applyAdoptActions: dryRun beside a leftover journal", () => {
       actions,
       dryRun: true,
     });
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("unfinished");
+    expect(result.warnings[0]).toContain("half-applied");
     expect(result.changes.map((c) => c.path)).toEqual(["b.txt"]);
     expect(snapshotTree(env.root)).toEqual(before);
     expect(existsSync(env.headless("txn/journal.json"))).toBe(true);
@@ -698,7 +700,9 @@ describe("applyAdoptActions: dryRun beside a leftover journal", () => {
       dryRun: true,
     });
     expect(result.changes).toHaveLength(1);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("unfinished");
+    expect(result.warnings[0]).toContain("half-applied");
   });
 });
 

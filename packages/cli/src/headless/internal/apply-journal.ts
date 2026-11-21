@@ -83,10 +83,11 @@ const TEMP_MODE = 0o600;
 const READ_FLAGS =
   constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
-/** A regular file's bytes and permission bits, read without following a symlink. */
+/** A regular file's bytes, mode bits and owner, read without following a symlink. */
 export interface RegularFile {
   readonly bytes: Buffer;
   readonly mode: number;
+  readonly uid: number;
 }
 
 /** Thrown by {@link readRegularNoFollow} when the path opened is not a regular file. */
@@ -109,7 +110,11 @@ export function readRegularNoFollow(path: string): RegularFile {
     if (!stat.isFile()) {
       throw new NotRegularFileError(`${path} is not a regular file`);
     }
-    return { bytes: readFileSync(fd), mode: stat.mode & 0o7777 };
+    return {
+      bytes: readFileSync(fd),
+      mode: stat.mode & 0o7777,
+      uid: stat.uid,
+    };
   } finally {
     try {
       closeSync(fd);
@@ -230,6 +235,33 @@ export function createFile(
  * recorded mode carrying one is refused as tampered.
  */
 export const PERMISSION_BITS = 0o777;
+
+/** Group- and world-write bits: a leftover journal or backup carrying either is not trusted. */
+const SHARED_WRITE_BITS = 0o022;
+
+/**
+ * Why a leftover `txn/` regular file (the journal or a backup), given its
+ * owner and mode, is not trusted, or `undefined` when it is. Trusted means
+ * what this executor writes: owned by this process's uid and neither group-
+ * nor world-writable, so another local user could not have planted or
+ * edited it to steer a recovery's writes. (That it is a regular file, not a
+ * symlink, is the caller's check.) Windows has neither POSIX ownership nor
+ * these bits, so the check is skipped there.
+ */
+export function untrustedReason(stat: {
+  readonly uid: number;
+  readonly mode: number;
+}): string | undefined {
+  if (process.platform === "win32") return undefined;
+  const uid = process.getuid?.();
+  if (uid !== undefined && stat.uid !== uid) {
+    return `it is owned by uid ${String(stat.uid)}, not by this process's uid ${String(uid)}`;
+  }
+  if ((stat.mode & SHARED_WRITE_BITS) !== 0) {
+    return `it is group- or world-writable (mode ${(stat.mode & PERMISSION_BITS).toString(8)})`;
+  }
+  return undefined;
+}
 
 /**
  * Replaces `path` with `bytes` through a temp file in the same directory
