@@ -5,7 +5,8 @@
  * The transactional executor behind `--adopt --apply`
  * (`.claude/rules/headless-mode.md`, "Apply is a journal"):
  * {@link applyAdoptActions} carries out the actions `planAdoptActions`
- * returned. Not wired into any CLI path yet.
+ * returned. Only its dry run is wired (`--adopt --apply --dry-run`, via
+ * `./apply-plan.ts`); a writing `--apply` is still to come.
  *
  * Order of a real run: take the apply lock; roll back a journal an earlier
  * run left behind; verify every staged source and every target (nothing is
