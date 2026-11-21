@@ -33,7 +33,10 @@ Run any task with `pnpm <script>`.
 | `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                          |
 
 Run `pnpm verify` before considering any task done — it reproduces CI
-locally.
+locally. `bin/lib/verify-policy.json` (`testsBlocking`, `ciSkipGroups`) is
+the one place to make test failures warn-only or skip the `test` group in CI;
+never edit `ci.yml` or `lefthook.yml` for either. With `ciSkipGroups:
+["test"]`, CI runs a subset of what local `pnpm verify` runs.
 
 ## Git Workflow
 
