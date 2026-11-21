@@ -603,6 +603,111 @@ describe("parseManifest", () => {
   });
 
   it.each([
+    "1.2.3",
+    "0.0.0",
+    "10.20.30",
+    "1.2.3-rc.1",
+    "1.2.3+build",
+    "1.2.3-rc.1+build.5",
+  ])("accepts the strict semver cliVersion %j", (version) => {
+    const raw = rawManifest();
+    raw["cliVersion"] = version;
+    expect(parseRaw(raw).cliVersion).toBe(version);
+  });
+
+  it.each([
+    "1.2",
+    "v1.2.3",
+    "1.2.3; curl evil.example",
+    "1.2.3 --yes",
+    "1.2.3\n",
+    "$(id)",
+    "latest",
+    " 1.2.3",
+    "1.2.3 ",
+    "1.2.3-rc 1",
+    "1.2.3+b`id`",
+    "1.2.3&&id",
+  ])(
+    "rejects the cliVersion %j naming the field and never quoting the value",
+    (version) => {
+      const raw = rawManifest();
+      raw["cliVersion"] = version;
+      const error = thrownBy(() => parseRaw(raw));
+      expect(error).toBeInstanceOf(ManifestError);
+      const message = (error as Error).message;
+      expect(message).toContain("cliVersion");
+      expect(message).not.toContain(version);
+    },
+  );
+
+  it.each([
+    "widgets",
+    "my-app",
+    "MyApp",
+    "My App",
+    "@scope/pkg",
+    "a.b_c-d",
+    "my+app~1",
+    "café",
+    "日本語",
+    "a".repeat(214),
+  ])("accepts the PROJECT_NAME %j", (name) => {
+    const raw = rawManifest();
+    raw["tokens"] = { PROJECT_NAME: name, YEAR: "2026" };
+    expect(parseRaw(raw).tokens["PROJECT_NAME"]).toBe(name);
+  });
+
+  it.each([
+    "",
+    "-a",
+    "--yes",
+    "a'b",
+    'a"b',
+    "a`b`",
+    "a$b",
+    "$(id)",
+    "a;b",
+    "a&b",
+    "a|b",
+    "a<b",
+    "a>b",
+    "a(b)",
+    "a\\b",
+    "a\nb",
+    "a\tb",
+    "a\0b",
+    "a\u001bb",
+    "a\u007fb",
+    "a".repeat(215),
+  ])(
+    "rejects the PROJECT_NAME %j naming tokens.PROJECT_NAME and never quoting the value",
+    (name) => {
+      const raw = rawManifest();
+      raw["tokens"] = { PROJECT_NAME: name, YEAR: "2026" };
+      const error = thrownBy(() => parseRaw(raw));
+      expect(error).toBeInstanceOf(ManifestError);
+      const message = (error as Error).message;
+      expect(message).toContain("tokens.PROJECT_NAME");
+      if (name.length > 1) expect(message).not.toContain(name);
+    },
+  );
+
+  it("does not require a PROJECT_NAME token to be present", () => {
+    const raw = rawManifest();
+    raw["tokens"] = { YEAR: "2026" };
+    expect(parseRaw(raw).tokens).toEqual({ YEAR: "2026" });
+  });
+
+  it("round-trips a manifest built from a name fresh mode accepts", () => {
+    const m = {
+      ...validManifest(),
+      tokens: { PROJECT_NAME: "My App @acme/widgets-1.x_y", YEAR: "2026" },
+    };
+    expect(parseManifest(serializeManifest(m))).toEqual(m);
+  });
+
+  it.each([
     ["cliVersion", 1],
     ["cliVersion", undefined],
     ["tokens", []],

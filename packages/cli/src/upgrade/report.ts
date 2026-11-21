@@ -151,21 +151,25 @@ function nextStepLines(
   staged: boolean,
   removed: boolean,
 ): string[] {
-  const lines = [
-    "",
-    "## Next step",
-    "",
-    `The \`/upgrade\` skill that applies a plan is not available yet, so nothing in the project has been changed: this run wrote only under \`${UPGRADE_RELATIVE_DIR}/\`.`,
-  ];
+  const wroteOnly = `This run wrote this plan only under \`${UPGRADE_RELATIVE_DIR}/\`; the \`/upgrade\` skill is installed separately, as the console output says.`;
   if (nothing) {
-    lines.push(
+    return [
+      "",
+      "## Next step",
       "",
       "There is nothing to apply: every baseline file is current, or differs only by a change you made or a file you deleted, which an upgrade keeps.",
       "",
       "Run `npx @monte3l/groundwork --upgrade --stamp .` to record the new release in `.groundwork/manifest.json`: nothing needs applying first.",
-    );
-    return lines;
+      "",
+      wroteOnly,
+    ];
   }
+  const lines = [
+    "",
+    "## Next step",
+    "",
+    `Run \`/upgrade\` in Claude Code to apply this plan. ${wroteOnly}`,
+  ];
   if (staged) {
     lines.push(
       "",
@@ -191,12 +195,15 @@ function nextStepLines(
  * Needs a decision (the conflicts), Safe to apply (safe updates and
  * additions), Removed upstream (removals and edited orphans) and Key-level
  * changes (every JSON key whose class is not `current`), each omitted when
- * empty, and always a Next step that says the `/upgrade` skill is not
- * available yet and nothing in the project has been changed. When
- * {@link nothingToApply} holds, the Next step says there is nothing to apply
- * and that `--upgrade --stamp` still records the new release in the
- * manifest; otherwise it says what to apply by hand and to run
- * `--upgrade --stamp` once that is done. Paths and
+ * empty, and always a Next step. When {@link nothingToApply} holds, the Next
+ * step says there is nothing to apply and that `--upgrade --stamp` still
+ * records the new release in the manifest, and never tells the reader to run
+ * `/upgrade`; otherwise it says to run `/upgrade` in Claude Code to apply the
+ * plan, what to apply by hand instead, and to run `--upgrade --stamp` once
+ * that is done. Both end or begin with the same sentence: the run wrote the
+ * plan only under `.groundwork/upgrade/`, and the skill is installed
+ * separately (the report is written before the install, so it cannot say
+ * where). Paths and
  * pointers are sorted, so the output does not depend on the plan's entry
  * order.
  *

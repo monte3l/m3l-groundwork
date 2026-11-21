@@ -15,6 +15,7 @@ import {
   CUSTOMIZE_SKILL_WRITE_ORDER,
   GROUNDWORK_DEST_SEGMENTS,
 } from "./customize-paths.js";
+import { UPGRADE_SKILL_FALLBACK_DIR_NAME } from "./upgrade/paths.js";
 import { join } from "node:path";
 
 export { plannedSkillPaths } from "./customize-paths.js";
@@ -82,6 +83,31 @@ export const CUSTOMIZE_SKILL: SkillSpec = {
     CUSTOMIZE_SKILL_DIR_FILE_NAMES.has(fileName)
       ? join(sourceDir, "skills", "customize", fileName)
       : join(sourceDir, "src", fileName),
+};
+
+/**
+ * The `/upgrade` skill: `SKILL.md` and its step file are read from the
+ * plugin source's `skills/upgrade/`; it installs into
+ * `.claude/skills/upgrade/`, falling back to `.groundwork/upgrade-skill/`
+ * (`upgrade/paths.ts`'s {@link UPGRADE_SKILL_FALLBACK_DIR_NAME}), a sibling
+ * of the `.groundwork/upgrade/` staging directory that `--upgrade` replaces
+ * wholesale.
+ *
+ * @example
+ * ```ts
+ * import { UPGRADE_SKILL } from "./skill-spec.js";
+ *
+ * UPGRADE_SKILL.fallbackSegments.join("/"); // ".groundwork/upgrade-skill"
+ * ```
+ */
+export const UPGRADE_SKILL: SkillSpec = {
+  name: "upgrade",
+  entryFile: "SKILL.md",
+  writeOrder: ["step-3-conflicts.md", "SKILL.md"],
+  claudeSegments: [".claude", "skills", "upgrade"],
+  fallbackSegments: [".groundwork", UPGRADE_SKILL_FALLBACK_DIR_NAME],
+  sourceFile: (sourceDir, fileName) =>
+    join(sourceDir, "skills", "upgrade", fileName),
 };
 
 /** Whether `name` is one plain path component: not empty, `.` or `..`, and free of `/` and `\`. */

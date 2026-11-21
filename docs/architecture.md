@@ -125,15 +125,18 @@ Decision record: [`docs/decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-
 Contract: `.claude/rules/upgrade-mode.md`. Built so far: the manifest, the
 classifier, the plan computation, `--upgrade`, which stages the plan, and
 `--upgrade --stamp`, which records an applied plan in the manifest (or straight
-away when there is nothing to apply). Not built:
-the `/upgrade` skill and `--apply`.
+away when there is nothing to apply), and the `/upgrade` skill, which
+`--upgrade` installs into `.claude/skills/upgrade/` (or
+`.groundwork/upgrade-skill/` when that path already holds a different copy).
+Not built:
+`--apply`.
 
 ```
   fresh / adopt ──▶ .groundwork/manifest.json  (tracked: version, tokens,
                                                 packs, sha256 per file/key)
                               │
   new CLI release ──▶ groundwork --upgrade   offline, writes only
-                              │              .groundwork/upgrade/
+                              │              .groundwork/upgrade/ + the skill
                               ▼
                     plan.json (commit marker) + report + .staged copies
                               │
@@ -143,7 +146,9 @@ the `/upgrade` skill and `--apply`.
 ```
 
 The split follows the two-phase rule. The CLI hashes, classifies and stages,
-so the plan is reproducible. The skill reads a diff and proposes a merge, which
+so the plan is reproducible, and it records every hash in the manifest. The
+skill never records a hash; it only checks, read-only, that a file still
+matches the plan before it overwrites or deletes it. The skill reads a diff and proposes a merge, which
 needs judgment. A file's old content is not stored: the skill rebuilds it by
 running the old CLI version through `npx`.
 
