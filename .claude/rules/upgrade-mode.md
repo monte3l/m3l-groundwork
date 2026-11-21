@@ -48,7 +48,12 @@ file as each piece ships, and drop this line when the last one does.
   list of `{path, staged, sha256}`, with no timestamps or absolute paths, so two
   runs on the same inputs are byte-identical. Until the `/upgrade` skill ships,
   the report's Next step (and the run's `Next:` line) says to apply the
-  staged files by hand and then run `--upgrade --stamp`. The pack list comes from the manifest. Adding a pack
+  staged files by hand and then run `--upgrade --stamp`; when nothing is
+  listed under Needs a decision, Safe to apply or Removed upstream
+  (`nothingToApply` in `upgrade/report.ts`, the one predicate both read), it
+  says there is nothing to apply and that `--upgrade --stamp` still records
+  the new release in the manifest (and drops the entries for files gone from
+  both the release and the project). The pack list comes from the manifest. Adding a pack
   to an existing project is `--pack <name>` in adopt mode
   ([#318](https://github.com/monte3l/m3l-groundwork/issues/318)), which needs no
   manifest. The skill's stamp step records the new pack in the manifest like any

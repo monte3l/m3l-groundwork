@@ -115,7 +115,7 @@ import { errnoCode } from "./survey/internal/read-guard.js";
 import type { AnswersV1 } from "./headless/contract.js";
 import { computePlan, renderRelease } from "./upgrade/plan.js";
 import type { UpgradePlan } from "./upgrade/plan.js";
-import { countClasses } from "./upgrade/report.js";
+import { countClasses, nothingToApply } from "./upgrade/report.js";
 import {
   UPGRADE_PLAN_FILE,
   UPGRADE_RELATIVE_DIR,
@@ -174,8 +174,9 @@ const USAGE = [
   "--upgrade is never auto-detected and takes none of --adopt, --fresh,",
   "--name, --force, --pack, --skip-install or --json: the project name and",
   "packs come from the manifest, and it never writes a project file.",
-  "--upgrade --stamp, run once the plan is applied, re-hashes the plan's",
-  "files and writes only the manifest.",
+  "--upgrade --stamp, run once the plan is applied (or straight away when",
+  "--upgrade reports nothing to apply), re-hashes the plan's files and",
+  "writes only the manifest.",
 ].join("\n");
 
 // --name takes a single value; --pack is repeatable. Every other
@@ -1551,7 +1552,9 @@ function runUpgradeStamp(
  * report and the new copies under `.groundwork/upgrade/` (`stageUpgrade`).
  * The rendered release is always disposed of. Never writes a project file or
  * the manifest, and exits normally whatever the plan holds, conflicts
- * included: applying it is a later step.
+ * included: applying it is a later step. Its last `Next:` line points at
+ * `--upgrade --stamp` either way: after applying by hand, or straight away
+ * when `nothingToApply` holds for the plan.
  *
  * @throws {@link CliUsageError} with the adopt advice, before anything is
  *   written, when the project has no manifest; the `ManifestError` unchanged
@@ -1597,7 +1600,9 @@ function runUpgrade(
     `wrote ${UPGRADE_RELATIVE_DIR}/ (${UPGRADE_PLAN_FILE}, ${UPGRADE_REPORT_FILE} and ${String(count)} staged ${count === 1 ? "file" : "files"})`,
   );
   out.info(
-    `Next: read ${UPGRADE_RELATIVE_DIR}/${UPGRADE_REPORT_FILE}, apply the staged files you want by hand, then run --upgrade --stamp to record them -- the /upgrade skill that applies a plan is not available yet`,
+    nothingToApply(plan.files)
+      ? "Next: nothing to apply -- run --upgrade --stamp to record the new release in the manifest"
+      : `Next: read ${UPGRADE_RELATIVE_DIR}/${UPGRADE_REPORT_FILE}, apply the staged files you want by hand, then run --upgrade --stamp to record them -- the /upgrade skill that applies a plan is not available yet`,
   );
   return undefined;
 }

@@ -124,7 +124,8 @@ A third CLI mode and a second skill, for projects that already ran groundwork.
 Decision record: [`docs/decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md).
 Contract: `.claude/rules/upgrade-mode.md`. Built so far: the manifest, the
 classifier, the plan computation, `--upgrade`, which stages the plan, and
-`--upgrade --stamp`, which records an applied plan in the manifest. Not built:
+`--upgrade --stamp`, which records an applied plan in the manifest (or straight
+away when there is nothing to apply). Not built:
 the `/upgrade` skill and `--apply`.
 
 ```

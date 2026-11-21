@@ -201,6 +201,16 @@ describe("main --upgrade", () => {
       60_000,
     );
 
+    it("ends with a Next line that points at --upgrade --stamp as nothing to apply", () => {
+      buildProject();
+      const out = recordingOut();
+      upgrade(out);
+      const next = out.infoLines.filter((l) => l.startsWith("Next:"));
+      expect(next).toEqual([
+        "Next: nothing to apply -- run --upgrade --stamp to record the new release in the manifest",
+      ]);
+    });
+
     it("prints the whole one-line summary and the staging location through out.info", () => {
       buildProject();
       const out = recordingOut();
@@ -366,6 +376,17 @@ describe("main --upgrade", () => {
       upgrade(out);
       expect(planOnDisk().staged).toHaveLength(1);
       expect(out.infoLines.join("\n")).toMatch(/\b1 staged file\)/);
+    });
+
+    it("ends with the apply-case Next line when a file is staged", () => {
+      tamper();
+      const out = recordingOut();
+      upgrade(out);
+      const next = out.infoLines.filter((l) => l.startsWith("Next:"));
+      expect(next).toHaveLength(1);
+      expect(next[0]).toContain("apply the staged files you want by hand");
+      expect(next[0]).toContain("/upgrade skill");
+      expect(next[0]).not.toContain("nothing to apply");
     });
 
     it("lists the decisions and removals in the report", () => {

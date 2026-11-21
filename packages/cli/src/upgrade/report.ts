@@ -82,6 +82,25 @@ export function countClasses(
   });
 }
 
+/**
+ * Whether `files` holds nothing to apply: no entry is listed under Needs a
+ * decision, Safe to apply or Removed upstream, so every baseline file is
+ * current or differs only by the user's own change or deletion. The report's
+ * Next step and the CLI's `Next:` line both read it; such a plan still needs
+ * `--upgrade --stamp` to record the new release in the manifest.
+ *
+ * @example
+ * ```ts
+ * import { nothingToApply } from "./upgrade/report.js";
+ *
+ * nothingToApply([{ path: "a", class: "current" }]); // true
+ * nothingToApply([{ path: "b", class: "add" }]); // false
+ * ```
+ */
+export function nothingToApply(files: readonly PlanFile[]): boolean {
+  return files.every((entry) => SECTION_OF[entry.class] === "unlisted");
+}
+
 function summaryLines(files: readonly PlanFile[]): string[] {
   const rows = countClasses(files).map(
     ([cls, count]) => `| ${cls} | ${String(count)} |`,
@@ -127,17 +146,23 @@ function keyLevelLines(jsonKeys: UpgradePlan["jsonKeys"]): string[] {
   ];
 }
 
-function nextStepLines(staged: boolean, removed: boolean): string[] {
+function nextStepLines(
+  nothing: boolean,
+  staged: boolean,
+  removed: boolean,
+): string[] {
   const lines = [
     "",
     "## Next step",
     "",
     `The \`/upgrade\` skill that applies a plan is not available yet, so nothing in the project has been changed: this run wrote only under \`${UPGRADE_RELATIVE_DIR}/\`.`,
   ];
-  if (!staged && !removed) {
+  if (nothing) {
     lines.push(
       "",
       "There is nothing to apply: every baseline file is current, or differs only by a change you made or a file you deleted, which an upgrade keeps.",
+      "",
+      "Run `npx @monte3l/groundwork --upgrade --stamp .` to record the new release in `.groundwork/manifest.json`: nothing needs applying first.",
     );
     return lines;
   }
@@ -167,7 +192,11 @@ function nextStepLines(staged: boolean, removed: boolean): string[] {
  * additions), Removed upstream (removals and edited orphans) and Key-level
  * changes (every JSON key whose class is not `current`), each omitted when
  * empty, and always a Next step that says the `/upgrade` skill is not
- * available yet and nothing in the project has been changed. Paths and
+ * available yet and nothing in the project has been changed. When
+ * {@link nothingToApply} holds, the Next step says there is nothing to apply
+ * and that `--upgrade --stamp` still records the new release in the
+ * manifest; otherwise it says what to apply by hand and to run
+ * `--upgrade --stamp` once that is done. Paths and
  * pointers are sorted, so the output does not depend on the plan's entry
  * order.
  *
@@ -210,7 +239,11 @@ export function renderUpgradeReport(plan: UpgradePlan): string {
       removed,
     ),
     ...keyLevelLines(plan.jsonKeys),
-    ...nextStepLines(decision.length + safe.length > 0, removed.length > 0),
+    ...nextStepLines(
+      nothingToApply(plan.files),
+      decision.length + safe.length > 0,
+      removed.length > 0,
+    ),
   ];
   return `${lines.join("\n")}\n`;
 }
