@@ -127,11 +127,10 @@ dependency -- there isn't one (`packages/cli/package.json`'s
 - **Least common mechanism.** Fresh mode and adopt mode don't share a
   generic "write into the target directory" facility. Adopt mode's only
   writes are `.groundwork/inventory.json`, `.groundwork/adoption-report.md`,
-  inert `.staged` copies under `.groundwork/baseline/` and
-  `.groundwork/baseline-divergent/`, and the staged pack
+  inert `.staged` copies under `.groundwork/baseline/`, and the staged pack
   files under `.groundwork/packs/` (inert `.staged` copies too, `pack.json`
-  included). All three staging directories are written to a temp sibling and
-  swapped in by rename, never half-written, and each refuses to run if
+  included). Both staging directories are written to a temp sibling and
+  swapped in by rename, never half-written, and both refuse to run if
   `.groundwork` or a staging directory is a symlink. The one other write is
   a guarded, additive `/customize` copy -- there is no code path by
   which surveying an arbitrary, untrusted project can reach the same
@@ -218,10 +217,7 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   adopt mode never removes or replaces an entry the project owns under
   `.claude/skills/customize/`. It replaces files remove-then-`wx` only in the
   CLI-owned `.groundwork/customize/` and, in fresh mode under `--force`, in
-  `.claude/skills/customize/`. `--upgrade` copies the `/upgrade` skill with the
-  same installer, so the same holds for `.claude/skills/upgrade/` and its
-  CLI-owned fallback `.groundwork/upgrade-skill/`, and `--upgrade` checks the
-  paths that install wrote against exactly those two directories. There is,
+  `.claude/skills/customize/`. There is,
   however, a time-of-check-to-time-of-use gap between those `lstat` checks and the
   later `rmSync` calls and writes: a local attacker able to swap a directory for a symlink in
   that window is outside the threat model this tool accepts, which assumes

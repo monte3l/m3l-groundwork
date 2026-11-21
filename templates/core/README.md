@@ -19,7 +19,7 @@ pnpm install
 pnpm verify
 ```
 
-`pnpm verify` runs every check CI runs, in one command, so you can catch
+`pnpm verify` runs the same checks CI runs, in one command, so you can catch
 a failure locally before pushing. In order: format check, lint, the Claude
 Code harness grader, the TypeScript toolchain grader, knip (unused code and
 dependencies), typecheck, build, tests with coverage, a package-exports check,

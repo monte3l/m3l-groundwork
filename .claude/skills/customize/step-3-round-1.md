@@ -17,17 +17,10 @@
   the actual edit to Round 2's `typescript-guidance` sweep, which has full
   authority over that file and access to current bundler-resolution
   guidance you don't have without a live source.
-- **Tests mandatory = warn only**: set `"testsBlocking": false` in
-  `bin/lib/verify-policy.json`, which makes a failing `test`-group step a
-  warning in `pnpm verify`, the `lefthook.yml` lane and the `ci.yml` job alike.
-  Leave both YAML files alone. Only if the project's `bin/verify.mjs` does not
-  read `VERIFY_POLICY` (an adopted project that kept its own `bin/`), change the `test` lane in
-  `lefthook.yml` and `ci.yml` from a hard failure to a non-blocking report.
-- **CI depth = minimal**: set `"ciSkipGroups": ["test"]` in
-  `bin/lib/verify-policy.json`, so CI skips the `test` group's coverage gate
-  while a local `pnpm verify` still runs it; minimal keeps only
-  format/lint/typecheck/build. If `bin/verify.mjs` does not read it, drop the `test` lane's
-  coverage gate from `ci.yml` by hand.
+- **Tests mandatory = warn only**: change the `test` lane in `lefthook.yml`
+  and `ci.yml` from a hard failure to a non-blocking report.
+- **CI depth = minimal**: drop the `test` lane's coverage gate from CI
+  (still run locally); minimal keeps only format/lint/typecheck/build.
   **CI depth = thorough**: note this for Round 2 — `harness-guidance` may
   recommend additional current-best-practice lanes (e.g. a scheduled
   dependency audit) beyond what the baseline ships.

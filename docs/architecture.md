@@ -83,8 +83,8 @@ date.
   JavaScript. Fresh mode installs a requested pack directly; adopt mode
   only surveys and stages it under `.groundwork/packs/` for `/customize` to
   install after confirmation. Every staged pack file, and each `pack.json`,
-  carries a `.staged` suffix (so no project tool discovers it), and all surveyed
-  packs are staged together into a temp sibling directory and swapped in by rename (never half-written)
+  carries a `.staged` suffix (so no project tool discovers it), and all packs
+  are staged together into a temp sibling directory and swapped in by rename (never half-written)
   (`pack-stage.ts`, built on the swap/sweep helpers in `staging.ts` that
   `baseline-stage.ts` shares). `inventory.stagedPacks` records each file's
   original path and `sha256`.
@@ -117,40 +117,6 @@ id -- that's what lets a new gate join every lane at once without touching
 either file, and it's also what a structural check (`gate-lane-parity`,
 part of the toolchain grader, which scrapes both YAML files as text and
 fails if either names a step directly or matrices the lanes) verifies.
-
-## Upgrade flow (planned)
-
-A third CLI mode and a second skill, for projects that already ran groundwork.
-Decision record: [`docs/decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md).
-Contract: `.claude/rules/upgrade-mode.md`. Built so far: the manifest, the
-classifier, the plan computation, `--upgrade`, which stages the plan, and
-`--upgrade --stamp`, which records an applied plan in the manifest (or straight
-away when there is nothing to apply), and the `/upgrade` skill, which
-`--upgrade` installs into `.claude/skills/upgrade/` (or
-`.groundwork/upgrade-skill/` when that path already holds a different copy).
-Not built:
-`--apply`.
-
-```
-  fresh / adopt ──▶ .groundwork/manifest.json  (tracked: version, tokens,
-                                                packs, sha256 per file/key)
-                              │
-  new CLI release ──▶ groundwork --upgrade   offline, writes only
-                              │              .groundwork/upgrade/ + the skill
-                              ▼
-                    plan.json (commit marker) + report + .staged copies
-                              │
-                              ▼
-                    /upgrade skill (copied in by the CLI): batch the safe
-                    set, 3-way proposal per conflict, then --upgrade --stamp
-```
-
-The split follows the two-phase rule. The CLI hashes, classifies and stages,
-so the plan is reproducible, and it records every hash in the manifest. The
-skill never records a hash; it only checks, read-only, that a file still
-matches the plan before it overwrites or deletes it. The skill reads a diff and proposes a merge, which
-needs judgment. A file's old content is not stored: the skill rebuilds it by
-running the old CLI version through `npx`.
 
 ## Design system
 
@@ -210,33 +176,20 @@ maintainer checklist.
 ## Inventory schema
 
 Adopt mode writes `.groundwork/inventory.json`, the machine-readable handoff
-`/customize`'s Step 0 reads. The current `schemaVersion` is **7**
+`/customize`'s Step 0 reads. The current `schemaVersion` is **6**
 (`INVENTORY_SCHEMA_VERSION` in `packages/cli/src/inventory.ts`). The survey is
 an index, not an interpretation: it records facts the CLI can establish
 offline and never a verdict. Anything it could not parse goes into
 `survey.undetermined`. `/customize` tolerates an older inventory: below 3 there
 is no harness grade, below 4 no toolchain grade, below 5 no `stagedBaseline`,
-below 6 no `survey.harness.pluginLayout`, and below 7 no
-`conflicts[].targetSha256` or `stagedDivergent`. The file is written atomically,
+and below 6 no `survey.harness.pluginLayout`. The file is written atomically,
 so its presence means the run completed.
-
-`conflicts[].targetSha256` is `null` in two cases a consumer must tell apart
-by `status`. On an `absent` conflict, `null` means nothing is there, so a
-write is safe. On a `divergent` conflict, `null` means the comparison could
-not read the file: the drift is undetermined, so `--apply` must refuse to
-`take` that file and must never treat `null` as "no drift". `--apply` trusts
-only the files `stagedDivergent` lists and ignores any other
-`.groundwork/baseline-divergent/` directory (an older CLI run after a v7 run
-leaves one behind). A staged divergent copy is the UTF-8 decode and re-encode
-of the token-substituted template, which would change a binary template's
-bytes; `templates/core` has none today, and `--apply take` must keep that in
-mind if one is added.
 
 ### Top level
 
 | Field                  | Type   | Meaning                                                                            |
 | ---------------------- | ------ | ---------------------------------------------------------------------------------- |
-| `schemaVersion`        | number | The schema version, currently 7.                                                   |
+| `schemaVersion`        | number | The schema version, currently 6.                                                   |
 | `cliVersion`           | string | The CLI's own `package.json` version, or `"unknown"` when it cannot be read.       |
 | `generatedAt`          | string | ISO 8601 timestamp of when the inventory was built.                                |
 | `modeSignal`           | string | The fact that selected the mode, such as `found package.json` or `--adopt forced`. |
@@ -250,28 +203,25 @@ mind if one is added.
 | `toolchainGrade`       | object | Wiring integrity and rubric quality of the TypeScript toolchain.                   |
 | `toolchainConformance` | object | How far the toolchain files have drifted from the baseline's.                      |
 | `stagedBaseline`       | object | The absent baseline files, staged as inert copies.                                 |
-| `stagedDivergent`      | object | The divergent baseline files, staged as inert token-substituted copies.            |
-| `stagedPacks`          | array  | Every surveyed pack, staged as inert copies.                                       |
+| `stagedPacks`          | array  | Every pack, staged as inert copies.                                                |
 
 Every `relPath` in `conflicts` and `packs[].fileConflicts`, and every path in
-`stagedBaseline`, `stagedDivergent` and `stagedPacks`, uses `/` on every platform.
+`stagedBaseline` and `stagedPacks`, uses `/` on every platform.
 
 ### Conflicts, grades and staging
 
-| Field                                        | Type           | Meaning                                                                                                            |
-| -------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `conflicts[].relPath`                        | string         | The baseline file's path relative to the project root.                                                             |
-| `conflicts[].status`                         | string         | `absent`, `identical` or `divergent`.                                                                              |
-| `conflicts[].keyDiffs`                       | string[]       | For `package.json` and `tsconfig*.json` only, the top-level keys that differ.                                      |
-| `conflicts[].targetSha256`                   | string \| null | sha256 of the project file's bytes the comparison read; `null` when absent or unreadable.                          |
-| `harnessGrade`, `toolchainGrade`             | object         | `findings`, `structural` and `rubric` tallies, and `rubricScore` (1 minus failed over checked).                    |
-| `harnessConformance`, `toolchainConformance` | object         | `identical`, `divergent` and `absent` counts plus `divergentFiles` and `absentFiles`. Information, never a defect. |
-| `stagedBaseline.dir`                         | string         | Project-relative staging directory, `.groundwork/baseline`.                                                        |
-| `stagedBaseline.suffix`                      | string         | The suffix every staged file carries, `.staged`.                                                                   |
-| `stagedBaseline.files[]`                     | array          | Each file's `path` (install path), `staged` (name inside `dir`) and `sha256` of the staged bytes.                  |
-| `stagedDivergent`                            | object         | Same shape as `stagedBaseline`, `dir` `.groundwork/baseline-divergent`; feeds the headless `--apply` step.         |
-| `stagedPacks[].name`, `dir`, `suffix`        | string         | A pack's manifest name, its staging directory `.groundwork/packs/<name>`, and `.staged`.                           |
-| `stagedPacks[].manifest`, `files[]`          | object         | The staged `pack.json` and the pack's `files/` tree, each as `path`, `staged` and `sha256`.                        |
+| Field                                        | Type     | Meaning                                                                                                            |
+| -------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `conflicts[].relPath`                        | string   | The baseline file's path relative to the project root.                                                             |
+| `conflicts[].status`                         | string   | `absent`, `identical` or `divergent`.                                                                              |
+| `conflicts[].keyDiffs`                       | string[] | For `package.json` and `tsconfig*.json` only, the top-level keys that differ.                                      |
+| `harnessGrade`, `toolchainGrade`             | object   | `findings`, `structural` and `rubric` tallies, and `rubricScore` (1 minus failed over checked).                    |
+| `harnessConformance`, `toolchainConformance` | object   | `identical`, `divergent` and `absent` counts plus `divergentFiles` and `absentFiles`. Information, never a defect. |
+| `stagedBaseline.dir`                         | string   | Project-relative staging directory, `.groundwork/baseline`.                                                        |
+| `stagedBaseline.suffix`                      | string   | The suffix every staged file carries, `.staged`.                                                                   |
+| `stagedBaseline.files[]`                     | array    | Each file's `path` (install path), `staged` (name inside `dir`) and `sha256` of the staged bytes.                  |
+| `stagedPacks[].name`, `dir`, `suffix`        | string   | A pack's manifest name, its staging directory `.groundwork/packs/<name>`, and `.staged`.                           |
+| `stagedPacks[].manifest`, `files[]`          | object   | The staged `pack.json` and the pack's `files/` tree, each as `path`, `staged` and `sha256`.                        |
 
 ### Survey
 

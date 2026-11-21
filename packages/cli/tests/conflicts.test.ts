@@ -22,7 +22,6 @@ import {
 import type * as FsModule from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import { planConflicts } from "../src/conflicts.js";
 import {
   SurveyReadError,
@@ -65,10 +64,6 @@ beforeEach(() => {
   lstatSyncMock.mockImplementation(actualLstatSync);
 });
 
-function sha256Hex(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
-
 describe("planConflicts", () => {
   let templateRoot: string;
   let targetDir: string;
@@ -89,12 +84,7 @@ describe("planConflicts", () => {
       PROJECT_NAME: "acme",
     });
     expect(result).toEqual([
-      {
-        relPath: "CLAUDE.md",
-        status: "absent",
-        keyDiffs: undefined,
-        targetSha256: null,
-      },
+      { relPath: "CLAUDE.md", status: "absent", keyDiffs: undefined },
     ]);
   });
 
@@ -105,12 +95,7 @@ describe("planConflicts", () => {
       PROJECT_NAME: "acme",
     });
     expect(result).toEqual([
-      {
-        relPath: "README.md",
-        status: "identical",
-        keyDiffs: undefined,
-        targetSha256: sha256Hex("# acme\n"),
-      },
+      { relPath: "README.md", status: "identical", keyDiffs: undefined },
     ]);
   });
 
@@ -163,7 +148,6 @@ describe("planConflicts", () => {
       relPath: "package.json",
       status: "identical",
       keyDiffs: [],
-      targetSha256: sha256Hex(JSON.stringify({ name: "acme" })),
     });
   });
 
@@ -203,12 +187,7 @@ describe("planConflicts", () => {
       PROJECT_NAME: "acme",
     });
     expect(result).toEqual([
-      {
-        relPath: "acme/nested/file.ts",
-        status: "absent",
-        keyDiffs: undefined,
-        targetSha256: null,
-      },
+      { relPath: "acme/nested/file.ts", status: "absent", keyDiffs: undefined },
     ]);
   });
 
@@ -234,12 +213,7 @@ describe("planConflicts", () => {
     writeFileSync(join(targetDir, ".gitignore"), "node_modules/\n");
     const result = planConflicts(templateRoot, targetDir, {});
     expect(result).toEqual([
-      {
-        relPath: ".gitignore",
-        status: "identical",
-        keyDiffs: undefined,
-        targetSha256: sha256Hex("node_modules/\n"),
-      },
+      { relPath: ".gitignore", status: "identical", keyDiffs: undefined },
     ]);
   });
 
@@ -262,7 +236,6 @@ describe("planConflicts", () => {
         relPath: "tools/release/package-lock.json",
         status: "identical",
         keyDiffs: undefined,
-        targetSha256: sha256Hex("{}\n"),
       },
     ]);
   });
@@ -304,12 +277,7 @@ describe("planConflicts", () => {
 
         expect(thrown).toBeUndefined();
         expect(result).toEqual([
-          {
-            relPath: "README.md",
-            status: "divergent",
-            keyDiffs: undefined,
-            targetSha256: null,
-          },
+          { relPath: "README.md", status: "divergent", keyDiffs: undefined },
         ]);
       },
     );
@@ -343,7 +311,6 @@ describe("planConflicts", () => {
             relPath: "package.json",
             status: "divergent",
             keyDiffs: undefined,
-            targetSha256: null,
           },
         ]);
       },
@@ -840,12 +807,7 @@ describe("planConflicts: blockedAbsentNote's lstat fails with an errno other tha
     writeFileSync(join(templateRoot, "CLAUDE.md"), "# hi\n");
     const result = planConflicts(templateRoot, targetDir, {});
     expect(result).toEqual([
-      {
-        relPath: "CLAUDE.md",
-        status: "absent",
-        keyDiffs: undefined,
-        targetSha256: null,
-      },
+      { relPath: "CLAUDE.md", status: "absent", keyDiffs: undefined },
     ]);
   });
 });

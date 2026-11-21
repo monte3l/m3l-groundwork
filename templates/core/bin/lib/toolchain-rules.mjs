@@ -397,16 +397,16 @@ function unresolvableCode(error) {
 /**
  * Reads and parses a JSONC file. A missing (`ENOENT`/`ENOTDIR`), unreadable
  * (`EACCES`/`EPERM`), unresolvable (`ELOOP`), not-a-regular-file (`EISDIR`)
- * or unparseable file is reported, not thrown. The read itself reports the
- * errno, so a file under a directory this process cannot search is reported
- * with its errno rather than as absent, and no `stat` or `existsSync` runs
- * first: a check followed by a read is a race, and the read already fails the
- * same way. Any other failure (`EIO`, `EMFILE`, ...) throws an `Error` naming
- * the path, with the original as `cause`.
+ * or unparseable file is reported, not thrown. The existence check is a real
+ * `stat`, never `existsSync`, so a file under a directory this process cannot
+ * search is reported with its errno rather than as absent. Any other failure
+ * (`EIO`, `EMFILE`, ...) throws an `Error` naming the path, with the original
+ * as `cause`.
  */
 function readJsonc(path) {
   let content;
   try {
+    statSync(path);
     content = readFileSync(path, "utf8");
   } catch (error) {
     if (isAbsentError(error)) {

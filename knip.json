@@ -7,10 +7,7 @@
   // wrangler is installed on the fly by docs.yml's deploy job from
   // tools/deploy, never a dependency of this workspace; knip 6.38+
   // flags the node_modules/.bin/wrangler path in that workflow.
-  // mkfifo is a POSIX system binary, not a dependency: manifest.test.ts
-  // shells out to it to make a FIFO (Node has no API for one), and skips the
-  // test when it is not available.
-  "ignoreBinaries": ["verify", "build", "wrangler", "mkfifo"],
+  "ignoreBinaries": ["verify", "build", "wrangler"],
   "workspaces": {
     ".": {
       "entry": [

@@ -2,7 +2,7 @@
   "name": "m3l-groundwork-customize",
   "version": "1.3.1",
   "displayName": "m3l-groundwork /customize",
-  "description": "Adds the /customize skill: interviews a bootstrapped project's owner, tailors the baseline to their answers, then checks the result against current official TypeScript and Anthropic guidance. Also adds the /upgrade skill, which applies the upgrade plan groundwork --upgrade stages, one confirmed step at a time.",
+  "description": "Adds the /customize skill: interviews a bootstrapped project's owner, tailors the baseline to their answers, then checks the result against current official TypeScript and Anthropic guidance.",
   "author": {
     "name": "Enrico Lionello"
   },

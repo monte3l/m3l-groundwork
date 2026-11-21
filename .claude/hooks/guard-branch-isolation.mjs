@@ -162,9 +162,8 @@ if (isEntryPoint()) {
 
     process.stderr.write(
       `Blocked: refusing to write \`${filePath}\` while ${location} is \`main\` ` +
-        `(or detached on the \`main\` commit). Implementation work must run in ` +
-        `a worktree off origin/main -- use EnterWorktree, or ` +
-        `\`git worktree add ../<repo>.wt/<branch> -b <branch> origin/main\`.\n`,
+        `(or detached on the \`main\` commit). Implementation work must run on ` +
+        `an isolated branch/worktree -- run \`git switch -c feat/<slug>\` first.\n`,
     );
     process.exit(2);
   }

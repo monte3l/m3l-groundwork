@@ -92,55 +92,28 @@ describe("resolveMode", () => {
   const detected = { mode: "fresh", signal: "irrelevant" } as const;
 
   it("passes through the detected mode when no flags are set", () => {
-    expect(
-      resolveMode(detected, { adopt: false, fresh: false, upgrade: false }),
-    ).toEqual(detected);
+    expect(resolveMode(detected, { adopt: false, fresh: false })).toEqual(
+      detected,
+    );
   });
 
   it("forces adopt when --adopt is passed", () => {
-    expect(
-      resolveMode(detected, { adopt: true, fresh: false, upgrade: false }),
-    ).toEqual({
+    expect(resolveMode(detected, { adopt: true, fresh: false })).toEqual({
       mode: "adopt",
       signal: "--adopt forced",
     });
   });
 
   it("forces fresh when --fresh is passed", () => {
-    expect(
-      resolveMode(detected, { adopt: false, fresh: true, upgrade: false }),
-    ).toEqual({
+    expect(resolveMode(detected, { adopt: false, fresh: true })).toEqual({
       mode: "fresh",
       signal: "--fresh forced",
     });
   });
 
   it("throws when both --adopt and --fresh are passed", () => {
-    expect(() =>
-      resolveMode(detected, { adopt: true, fresh: true, upgrade: false }),
-    ).toThrow(/mutually exclusive/);
+    expect(() => resolveMode(detected, { adopt: true, fresh: true })).toThrow(
+      /mutually exclusive/,
+    );
   });
-
-  it("forces upgrade when --upgrade is passed, whatever was detected", () => {
-    expect(
-      resolveMode(detected, { adopt: false, fresh: false, upgrade: true }),
-    ).toEqual({ mode: "upgrade", signal: "--upgrade forced" });
-    expect(
-      resolveMode(
-        { mode: "adopt", signal: "found package.json" },
-        { adopt: false, fresh: false, upgrade: true },
-      ),
-    ).toEqual({ mode: "upgrade", signal: "--upgrade forced" });
-  });
-
-  it.each([
-    [{ adopt: true, fresh: false, upgrade: true }],
-    [{ adopt: false, fresh: true, upgrade: true }],
-    [{ adopt: true, fresh: true, upgrade: true }],
-  ])(
-    "throws when --upgrade is combined with another mode flag: %j",
-    (flags) => {
-      expect(() => resolveMode(detected, flags)).toThrow(/mutually exclusive/);
-    },
-  );
 });

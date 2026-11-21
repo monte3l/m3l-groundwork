@@ -134,11 +134,6 @@ function baseInventory(
       suffix: ".staged",
       files: [],
     },
-    stagedDivergent: {
-      dir: ".groundwork/baseline-divergent",
-      suffix: ".staged",
-      files: [],
-    },
     stagedPacks: [],
     ...overrides,
   };
@@ -281,7 +276,6 @@ describe("renderReport", () => {
       expect(report).toContain(".groundwork/*\n");
       expect(report).toContain("!.groundwork/adoption-report.md");
       expect(report).toContain("!.groundwork/customization-report.md");
-      expect(report).toContain("!.groundwork/manifest.json");
       expect(report.split(".groundwork/*\n")).toHaveLength(2);
     }
   });
@@ -292,9 +286,6 @@ describe("renderReport", () => {
     expect(report).toContain("re-run");
     expect(report).toContain("/customize");
     expect(report).not.toContain("notices and asks");
-    expect(report).toContain(
-      "a clone of the project holds the two reports and the manifest (when one was written) but no `.groundwork/inventory.json`",
-    );
   });
 
   it("reports no harness found when .claude/ is absent", () => {
@@ -529,20 +520,9 @@ describe("renderReport", () => {
             relPath: "package.json",
             status: "divergent",
             keyDiffs: ["type", "scripts"],
-            targetSha256: null,
           },
-          {
-            relPath: "README.md",
-            status: "absent",
-            keyDiffs: undefined,
-            targetSha256: null,
-          },
-          {
-            relPath: "tsconfig.json",
-            status: "identical",
-            keyDiffs: [],
-            targetSha256: null,
-          },
+          { relPath: "README.md", status: "absent", keyDiffs: undefined },
+          { relPath: "tsconfig.json", status: "identical", keyDiffs: [] },
         ],
       }),
     );
@@ -561,30 +541,18 @@ describe("renderReport", () => {
     const report = renderReport(
       baseInventory(templateRoot, {
         conflicts: [
-          {
-            relPath: "README.md",
-            status: "absent",
-            keyDiffs: undefined,
-            targetSha256: null,
-          },
+          { relPath: "README.md", status: "absent", keyDiffs: undefined },
           {
             relPath: "eslint.config.js",
             status: "absent",
             keyDiffs: undefined,
-            targetSha256: null,
           },
           {
             relPath: "docs/architecture.md",
             status: "absent",
             keyDiffs: undefined,
-            targetSha256: null,
           },
-          {
-            relPath: "package.json",
-            status: "identical",
-            keyDiffs: [],
-            targetSha256: null,
-          },
+          { relPath: "package.json", status: "identical", keyDiffs: [] },
         ],
         // Only 3 of the 3 absent conflicts actually staged (this fixture
         // intentionally keeps the counts equal in SHAPE but distinguishes
@@ -613,17 +581,11 @@ describe("renderReport", () => {
     const report = renderReport(
       baseInventory(templateRoot, {
         conflicts: [
-          {
-            relPath: "README.md",
-            status: "absent",
-            keyDiffs: undefined,
-            targetSha256: null,
-          },
+          { relPath: "README.md", status: "absent", keyDiffs: undefined },
           {
             relPath: "eslint.config.js",
             status: "absent",
             keyDiffs: undefined,
-            targetSha256: null,
           },
         ],
         stagedBaseline: {
@@ -644,17 +606,11 @@ describe("renderReport", () => {
     const report = renderReport(
       baseInventory(templateRoot, {
         conflicts: [
-          {
-            relPath: "README.md",
-            status: "absent",
-            keyDiffs: undefined,
-            targetSha256: null,
-          },
+          { relPath: "README.md", status: "absent", keyDiffs: undefined },
           {
             relPath: "eslint.config.js",
             status: "absent",
             keyDiffs: undefined,
-            targetSha256: null,
           },
         ],
         stagedBaseline: {
@@ -900,7 +856,6 @@ describe("renderReport", () => {
                 relPath: "bin/file-budget-baseline.json",
                 status: "divergent",
                 keyDiffs: undefined,
-                targetSha256: null,
               },
             ],
           }),

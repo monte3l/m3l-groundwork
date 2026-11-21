@@ -30,7 +30,6 @@ import {
   STAGED_BASELINE_DIR,
   STAGED_SUFFIX,
   plannedBaselineStagingPaths,
-  stageDivergentBaseline,
   stageBaselineAdditions,
 } from "../src/baseline-stage.js";
 
@@ -404,7 +403,6 @@ describe("stageBaselineAdditions", () => {
         relPath: "does/not/exist.txt",
         status: "absent",
         keyDiffs: undefined,
-        targetSha256: null,
       };
 
       expect(() =>
@@ -432,7 +430,6 @@ describe("stageBaselineAdditions", () => {
           relPath: "ghost.txt",
           status: "absent",
           keyDiffs: undefined,
-          targetSha256: null,
         };
         const mixedConflicts = [
           ...firstConflicts.filter((c) => c.status === "absent"),
@@ -476,7 +473,6 @@ describe("stageBaselineAdditions", () => {
           relPath: ".gitignore",
           status: "absent",
           keyDiffs: undefined,
-          targetSha256: null,
         };
 
         let thrown: unknown;
@@ -512,7 +508,6 @@ describe("stageBaselineAdditions", () => {
           relPath: "../escape.txt",
           status: "absent",
           keyDiffs: undefined,
-          targetSha256: null,
         };
 
         let thrown: unknown;
@@ -689,7 +684,6 @@ describe("stageBaselineAdditions", () => {
         relPath: "ghost.txt",
         status: "absent",
         keyDiffs: undefined,
-        targetSha256: null,
       };
 
       expect(() =>
@@ -706,7 +700,6 @@ describe("stageBaselineAdditions", () => {
         relPath: ".gitignore",
         status: "absent",
         keyDiffs: undefined,
-        targetSha256: null,
       };
 
       let thrown: unknown;
@@ -729,7 +722,6 @@ describe("stageBaselineAdditions", () => {
         relPath: "../escape.txt",
         status: "absent",
         keyDiffs: undefined,
-        targetSha256: null,
       };
 
       expect(() =>
@@ -825,74 +817,5 @@ describe("stageBaselineAdditions", () => {
       expect(entry).toBeDefined();
       expect(entry?.staged).toBe("c:foo.staged");
     });
-  });
-});
-
-describe("stale work-dir sweep scoping between the two baseline stagers", () => {
-  let templateRoot: string;
-  let targetDir: string;
-  let groundworkDir: string;
-
-  beforeEach(() => {
-    templateRoot = mkdtempSync(join(tmpdir(), "baseline-sweep-template-"));
-    targetDir = mkdtempSync(join(tmpdir(), "baseline-sweep-target-"));
-    groundworkDir = mkdtempSync(join(tmpdir(), "baseline-sweep-groundwork-"));
-    writeFileSync(join(templateRoot, "only.txt"), "same everywhere\n");
-  });
-
-  afterEach(() => {
-    rmSync(templateRoot, { recursive: true, force: true });
-    rmSync(targetDir, { recursive: true, force: true });
-    rmSync(groundworkDir, { recursive: true, force: true });
-  });
-
-  function seed(name: string): string {
-    const dir = join(groundworkDir, name);
-    mkdirSync(join(dir, "x"), { recursive: true });
-    writeFileSync(join(dir, "x", "leftover.txt"), "leftover\n");
-    return dir;
-  }
-
-  function runAbsent(): void {
-    const conflicts = planConflicts(templateRoot, targetDir, {});
-    stageBaselineAdditions(templateRoot, conflicts, groundworkDir, {});
-  }
-
-  function runDivergent(): void {
-    const conflicts = planConflicts(templateRoot, targetDir, {});
-    stageDivergentBaseline(templateRoot, conflicts, groundworkDir, {});
-  }
-
-  it("the absent stager leaves a stale divergent work dir alone but removes its own", () => {
-    const divergent = seed(".baseline-divergent-ABC123");
-    const own = seed(".baseline-ABC123");
-    runAbsent();
-    expect(existsSync(divergent)).toBe(true);
-    expect(existsSync(own)).toBe(false);
-  });
-
-  it("the divergent stager leaves a stale absent work dir alone but removes its own", () => {
-    const absent = seed(".baseline-ABC123");
-    const own = seed(".baseline-divergent-ABC123");
-    runDivergent();
-    expect(existsSync(absent)).toBe(true);
-    expect(existsSync(own)).toBe(false);
-  });
-
-  it.each([
-    ["absent", runAbsent],
-    ["divergent", runDivergent],
-  ])("the %s sweep does not remove a bare .baseline- entry", (_n, run) => {
-    const bare = seed(".baseline-");
-    const bareDivergent = seed(".baseline-divergent-");
-    run();
-    expect(existsSync(bare)).toBe(true);
-    expect(existsSync(bareDivergent)).toBe(true);
-  });
-
-  it("the baseline sweep spares a name with an extra dash such as .baseline-my-notes", () => {
-    const notes = seed(".baseline-my-notes");
-    runAbsent();
-    expect(existsSync(notes)).toBe(true);
   });
 });

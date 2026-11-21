@@ -117,13 +117,12 @@ They stay two separate phases on purpose, rather than one -- see
 ## Two modes
 
 The mode is auto-detected from the target directory; `--fresh` and `--adopt`
-override it. A third mode, `--upgrade`, is never auto-detected: you ask for it
-(see [Upgrading to a new release](#upgrading-to-a-new-release)).
+override it.
 
-| Mode      | When                                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                         |
-| --------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fresh** | The target is empty or missing          | Writes the full baseline, installs any `--pack`, installs the `/customize` skill, runs `git init`, then `pnpm install`.                                                                                                                                                                                                                                                                                              |
-| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`), of the ones the project has in a different form (`.groundwork/baseline-divergent/`) and of the packs (`.groundwork/packs/`). It writes only under `.groundwork/`, plus one guarded copy of the `/customize` skill, and never overwrites a project file. |
+| Mode      | When                                    | What it does                                                                                                                                                                                                                                                                                                                    |
+| --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fresh** | The target is empty or missing          | Writes the full baseline, installs any `--pack`, installs the `/customize` skill, runs `git init`, then `pnpm install`.                                                                                                                                                                                                         |
+| **Adopt** | The target already looks like a project | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and of the packs (`.groundwork/packs/`). It writes only under `.groundwork/`, plus one guarded copy of the `/customize` skill, and never overwrites a project file. |
 
 That copy lands at `.claude/skills/customize/`, or at `.groundwork/customize/`
 when something already there blocks it. It is where the real work happens: it reads the survey, confirms
@@ -154,169 +153,25 @@ the wiring contract.
 
 In fresh mode `--pack` installs a pack directly. In adopt mode the CLI only
 surveys which packs apply and stages them under `.groundwork/packs/` (and
-the baseline files it would add under `.groundwork/baseline/`, plus the ones
-your project has in a different form under `.groundwork/baseline-divergent/`);
-`/customize` installs from there after you confirm. With no `--pack`, adopt
-mode surveys and stages every pack. With one or more, it surveys and stages
-only the packs you name, so `npx @monte3l/groundwork . --pack harness-extras` on an
-existing project offers `/customize` just that pack. This is how you add a pack
-to an already-bootstrapped project. A pack that lists only fresh mode (such as
-`licensing`) is staged the same way but never installed automatically; its
-`adoptNotes` say how to install it by hand. It still writes nothing outside
-`.groundwork/`, and an unknown name fails before anything is written.
-
-## Upgrading to a new release
-
-> [!NOTE]
-> The upgrade flow is partly built. Fresh mode writes the manifest (step 1
-> below), `--upgrade` (step 2) writes a plan and installs `/upgrade` (step 3),
-> and `--upgrade --stamp` records the result. The scripted `--apply` step, and
-> a plan for a project with no manifest, do not exist yet. The design is in
-> [`docs/decisions/0001-upgrade-flow.md`](docs/decisions/0001-upgrade-flow.md).
-> A project with no manifest takes a new release the way
-> [`docs/known-gaps.md`](docs/known-gaps.md) describes: re-run the CLI in the
-> project (it is detected as adopt mode) and then `/customize`.
-
-The flow has three parts:
-
-1. **A manifest.** `.groundwork/manifest.json`, committed to git, records the
-   CLI version, the project name, the packs and a hash of each file groundwork
-   emitted. Fresh mode writes it today. `/customize` will write it after an
-   adopt.
-2. **`npx @monte3l/groundwork@latest --upgrade .`** compares the manifest, your
-   files and the new baseline, offline. It writes the plan under
-   `.groundwork/upgrade/`: `plan.json`, `upgrade-report.md` and staged copies of
-   the new files (`staged/`). Then it installs the `/upgrade` skill into
-   `.claude/skills/upgrade/`. If that path already holds a different copy
-   (including one an earlier release installed), or is not a real directory,
-   it leaves it alone and puts the new copy in `.groundwork/upgrade-skill/`
-   instead: copy it into `.claude/skills/upgrade/` before you run `/upgrade`. It never touches any
-   other project file, and it refuses a project that has no manifest. It
-   also refuses (exit 1, writing nothing) a manifest whose `cliVersion` is
-   not a plain semantic version, or whose project name holds anything but
-   letters, digits, spaces and `. _ @ / + ~ -` (or starts with `-`): the
-   manifest is committed, so a cloned repository could carry one crafted to
-   inject into the command `/upgrade` runs. For the same reason, fresh mode
-   refuses to take its default project name from a directory whose name has a
-   character outside that list (a quote, a shell metacharacter, a control
-   character or a leading dash), before writing anything, unless you pass
-   `--name`.
-3. **`/upgrade`**, run in Claude Code, applies the plan: the files only
-   upstream changed in one batch you confirm, then each conflict one at a
-   time, then it runs `--upgrade --stamp` for you. For scripted runs, a
-   separate `--apply <answers.json>` step will do the same without a
-   conversation. Only these steps write project files, they run only when you
-   ask, and they refuse if your tree changed since the plan was made.
-
-You can also apply the staged files you want by hand, then run
-**`npx @monte3l/groundwork@latest --upgrade --stamp .`** to record the result.
-It re-hashes the files the plan lists and writes only
-`.groundwork/manifest.json`, with the new CLI version. A file you took from the
-release is recorded as the release's copy. Any other file it keeps, one you
-kept your own way or a change you did not apply or declined, is recorded as
-merged unless it already matches the new release, so the next upgrade compares
-that file two-way instead of proposing the same change again. JSON keys have no
-such marker yet: a key you kept keeps its old hash and is still compared
-three-way. It refuses a project with no plan, and a plan that no longer matches
-the manifest: one made from another CLI version, or one where any file or JSON
-key's recorded hash differs from the manifest's. Run `--upgrade` again for a
-fresh plan.
-
-A plan with nothing to apply (every file current, or different only by your own
-change or deletion) still needs `--upgrade --stamp`: until you run it, the
-manifest keeps the old CLI version. Stamping also drops the entries for files
-gone from both the release and the project. The report's Next step and the run's
-`Next:` line both say so.
-
-For each file it compares what groundwork last wrote, what you have now and what
-the new release writes:
-
-| What changed                              | What happens                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------- |
-| Only upstream changed it                  | Updated in one batch you confirm                                    |
-| Only you changed it                       | Left alone                                                          |
-| Both changed it                           | Shown as upstream change next to your change, with a merge proposed |
-| New upstream                              | Added in the batch                                                  |
-| Removed upstream, and you never edited it | Deleted in the batch                                                |
-| Removed upstream, and you edited it       | Reported, never deleted                                             |
-
-`package.json` and the tsconfig files are compared key by key, so a bumped
-`typescript` version updates unless you changed that key.
-
-A project bootstrapped before the manifest existed has none, and `--upgrade`
-refuses it with advice to re-run the CLI in adopt mode and then `/customize`.
-A two-way plan for such a project, which would also write the first manifest,
-is planned. Upgrades run only when you ask. Nothing checks for a new release
-for you.
+the baseline files it would add under `.groundwork/baseline/`);
+`/customize` installs from there after you confirm.
 
 ## Flags
 
-| Flag                     | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--name <project-name>`  | Override the project name (default: the target directory's basename).                                                                                                                                                                                                                                                                                                                                                                         |
-| `--skip-install`         | Skip the final `pnpm install` (fresh mode only).                                                                                                                                                                                                                                                                                                                                                                                              |
-| `--force`                | Overwrite a non-empty target directory (fresh mode only).                                                                                                                                                                                                                                                                                                                                                                                     |
-| `--adopt`                | Force adopt mode, even if the target looks empty.                                                                                                                                                                                                                                                                                                                                                                                             |
-| `--fresh`                | Force fresh mode, even if the target looks like an existing project.                                                                                                                                                                                                                                                                                                                                                                          |
-| `--upgrade`              | Plan an upgrade of a project that has a manifest: render the new release, compare it, write the plan under `.groundwork/upgrade/` and install the `/upgrade` skill that applies it. It changes no other project file and cannot be combined with `--adopt`, `--fresh`, `--name`, `--force`, `--pack`, `--skip-install` or `--json`.                                                                                                           |
-| `--stamp`                | With `--upgrade`: record an applied plan in `.groundwork/manifest.json`, re-hashing the files the plan lists. It writes nothing else, and is refused without `--upgrade`.                                                                                                                                                                                                                                                                     |
-| `--apply <answers.json>` | With `--adopt` and `--dry-run`: check a completed pending document against the survey and print what applying it would change. Fill in every decision and leave an empty `pending` list first: a decision still `null` exits 3 and lists what is missing. It writes nothing, takes none of `--name`, `--force`, `--pack` or `--skip-install`, and is refused without `--adopt`. Writing (`--apply` without `--dry-run`) is not available yet. |
-| `--dry-run`              | With `--apply`: plan only. Refused without `--apply`.                                                                                                                                                                                                                                                                                                                                                                                         |
-| `--pack <name>`          | Install an opt-in pack from `templates/packs/` in fresh mode, or narrow the survey to the named packs in adopt mode (repeatable).                                                                                                                                                                                                                                                                                                             |
-| `--list-packs`           | Print every available pack and exit.                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `--json`                 | Write one machine-readable JSON document to stdout and every human-readable line to stderr (see below).                                                                                                                                                                                                                                                                                                                                       |
-| `--help`, `--version`    | Print usage, or the CLI's version.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Flag                    | Effect                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `--name <project-name>` | Override the project name (default: the target directory's basename).         |
+| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                              |
+| `--force`               | Overwrite a non-empty target directory (fresh mode only).                     |
+| `--adopt`               | Force adopt mode, even if the target looks empty.                             |
+| `--fresh`               | Force fresh mode, even if the target looks like an existing project.          |
+| `--pack <name>`         | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable). |
+| `--list-packs`          | Print every available pack and exit.                                          |
+| `--help`, `--version`   | Print usage, or the CLI's version.                                            |
 
 An unexpected failure (anything that is not a bad invocation) prints its
 error name before the message, for example `TypeError: ...`. Set `M3L_DEBUG`
 to any non-empty value to also print its stack trace.
-
-### Machine-readable output
-
-For scripts and CI, the `--json` flag keeps stdout to exactly one line of JSON. Every
-status line, warning and error message goes to stderr instead, and `git init`
-and `pnpm install` have their output redirected to stderr too.
-
-- A fresh run or an adopt survey writes a `groundwork.report` document
-  (`schemaVersion: 1`) with `status: "ok"`, `exitCode: 0`, `mode`, `phase`
-  (`apply` for fresh, `survey` for adopt), `target`, `artifacts.inventory`
-  (`.groundwork/inventory.json` in adopt mode), `artifacts.manifest`
-  (`.groundwork/manifest.json` in fresh mode, `null` in adopt mode), the packs'
-  `setupSteps`, `warnings` and adopt mode's `nextStep`.
-- An adopt survey run with `--json` also writes
-  `.groundwork/headless/pending.json`: a `groundwork.answers` document with
-  safe defaults filled in and every decision the survey could not make
-  (project kind, runtime, how to resolve each baseline file that differs)
-  left `null` and listed in `pending`. The report's `artifacts.pending` names
-  that file and its `pending` holds the same entries; the run still exits
-  `0`. Without `--json` the file is never written, and any re-run of the
-  survey deletes a previous one.
-- `--adopt --apply <answers.json> --dry-run` reads that pending document once
-  you have filled in every `null` decision and plans the adoption without
-  writing anything: no project file, nothing under `.groundwork/`. Its report
-  has `phase: "apply"`, `dryRun: true` and `changes` (each file it would write,
-  with `action`, `class`, `sha256Before` and `sha256After`) plus `handoff`
-  (conflicts you delegated to `/customize`, and your missed notes); `status` is
-  `ok`, or `noop` when nothing would be written, both exit `0`. Decisions still
-  `null` give `status: "pending"` and exit `3`, listing each in `pending`. If
-  `.groundwork/inventory.json` or a project file changed after the survey, it
-  gives `status: "drift"` and exit `4`, with `drift` entries (`path`,
-  `expected`, `actual` hashes): re-run the survey and answer the new pending
-  document. Without `--json` it prints the same plan as plain text.
-- A failure still exits `1` or `2` (see
-  [Exit codes](#exit-codes-and-failure-behaviour)) and writes the same document
-  with `status` `error` or `usage`, the matching `exitCode`, and
-  `error.message` plus `error.chain` (the message, then each underlying cause).
-  A bad flag gets this envelope too.
-- `--version --json` writes `{"schema":"groundwork.version","schemaVersion":1,"cliVersion":...}`
-  and `--list-packs --json` writes a `groundwork.packs` document listing each
-  pack's `name`, `modes` and `description`. `--help` always prints the usage
-  text.
-- The package ships a JSON Schema (draft 2020-12) for the report,
-  `schemas/report.v1.schema.json`, and one for the `groundwork.answers`
-  document that unattended runs will read, `schemas/answers.v1.schema.json`.
-  Load them by file path inside the installed package; they are not exposed
-  through the package `exports` map.
 
 ## Requirements
 
@@ -376,8 +231,7 @@ my-new-project/
 ├── .github/workflows/     # ci, dependency-review, security-audit
 ├── .claude/               # agents, skills, hooks, rules, settings.json
 ├── CLAUDE.md              # the agent-facing project guide
-├── docs/research/         # living trackers for the guidance sweeps
-└── .groundwork/           # manifest.json: what this run emitted, with hashes
+└── docs/research/         # living trackers for the guidance sweeps
 ```
 
 `pnpm verify` runs the same five [groups](docs/glossary.md#verify-group)
@@ -467,31 +321,23 @@ table, conventions, and known gaps.
 ### Exit codes and failure behaviour
 
 Exit `2` is a bad invocation, raised before anything is written. Exit `1` is
-everything else that goes wrong at run time. With `--json` the exit codes are
-the same, and stdout also carries the error document described under
-[Machine-readable output](#machine-readable-output).
+everything else that goes wrong at run time.
 
-| Situation                                                                                                                                                                                          | Exit | What happens / what to do                                                                                                                                                                         |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unrecognized flag, missing flag value, repeated `--name`, missing or extra target argument                                                                                                         | 2    | Prints the error and the usage text.                                                                                                                                                              |
-| `--adopt` with `--fresh`                                                                                                                                                                           | 2    | The two are mutually exclusive.                                                                                                                                                                   |
-| `--upgrade` with `--adopt` or `--fresh`, or with `--name`, `--force`, `--pack`, `--skip-install` or `--json`                                                                                       | 2    | `--upgrade` is its own mode and takes none of those. A missing target directory is refused too.                                                                                                   |
-| `--upgrade` on a project with no `.groundwork/manifest.json`                                                                                                                                       | 2    | Writes nothing. Re-run the CLI in adopt mode (`npx @monte3l/groundwork .`) and then `/customize`.                                                                                                 |
-| `--stamp` without `--upgrade`, or `--upgrade --stamp` with no `.groundwork/upgrade/plan.json`                                                                                                      | 2    | Writes nothing. Run `--upgrade` first.                                                                                                                                                            |
-| `--apply` without `--adopt` or without `--dry-run`, `--dry-run` without `--apply`, or `--apply` with `--name`, `--force`, `--pack` or `--skip-install`                                             | 2    | Writes nothing. Writing is not available yet, so `--apply` needs `--dry-run`.                                                                                                                     |
-| `--apply` answers file missing, not a regular file, over 8 MiB, not JSON, not a valid adopt answers document, or naming a path the survey does not list; or no usable `.groundwork/inventory.json` | 2    | Writes nothing. Without a usable inventory, run `--adopt --json` first.                                                                                                                           |
-| `--apply` with `--dry-run`, when the executor refuses the plan (an `ApplyError`): for example a staged copy changed since the survey                                                               | 1    | Writes nothing. Re-run `--adopt --json` to refresh the survey and its staged copies, then complete the new pending document.                                                                      |
-| `--name` is not a valid npm package name, or a `--pack` value is not a valid pack name                                                                                                             | 2    | Prints the rule it broke and the usage text.                                                                                                                                                      |
-| Unknown `--pack`                                                                                                                                                                                   | 2    | Lists the available packs.                                                                                                                                                                        |
-| `--pack` for a pack without fresh mode                                                                                                                                                             | 2    | Says the pack does not support fresh mode and lists its modes.                                                                                                                                    |
-| Adopt mode with `--adopt` and a missing target directory or `--force`                                                                                                                              | 2    | Adopt never writes project files; run `/customize` to reconcile instead.                                                                                                                          |
-| Windows, fresh mode                                                                                                                                                                                | 1    | Refuses before writing anything: Linux and macOS only. Adopt mode, `--help`, `--version` and `--list-packs` still run.                                                                            |
-| Fresh target is not empty and `--force` is absent                                                                                                                                                  | 1    | Refuses; pass `--force` to overwrite, or `--adopt` to survey it.                                                                                                                                  |
-| Fresh mode, `/customize` skill install fails                                                                                                                                                       | 1    | The project is already written and `git init` and `pnpm install` did not run. Re-run with `--fresh --force` plus your original `--name`, `--pack` and `--skip-install`; a plain re-run adopts it. |
-| Fresh mode, `git init` fails                                                                                                                                                                       | 1    | The project is left written. Run `git init` (and `pnpm install` unless `--skip-install`) yourself.                                                                                                |
-| Fresh mode, `pnpm install` fails                                                                                                                                                                   | 1    | The project is left written without dependencies. Run `pnpm install` there yourself.                                                                                                              |
-| Adopt mode fails after it starts deleting the previous run's files                                                                                                                                 | 1    | The message names which of `inventory.json`, `adoption-report.md` and `adoption-decisions.json` were removed; fix the cause and re-run. A removed `adoption-decisions.json` is not recreated.     |
-| A pack's manifest fails to load                                                                                                                                                                    | 1    | A broken install, not a bad invocation.                                                                                                                                                           |
+| Situation                                                                                  | Exit | What happens / what to do                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unrecognized flag, missing flag value, repeated `--name`, missing or extra target argument | 2    | Prints the error and the usage text.                                                                                                                                                              |
+| `--adopt` with `--fresh`                                                                   | 2    | The two are mutually exclusive.                                                                                                                                                                   |
+| `--name` is not a valid npm package name, or a `--pack` value is not a valid pack name     | 2    | Prints the rule it broke and the usage text.                                                                                                                                                      |
+| Unknown `--pack`                                                                           | 2    | Lists the available packs.                                                                                                                                                                        |
+| `--pack` for a pack without fresh mode                                                     | 2    | Says the pack does not support fresh mode and lists its modes.                                                                                                                                    |
+| Adopt mode with `--adopt` and a missing target directory, `--force` or `--pack`            | 2    | Adopt never writes project files and surveys every pack itself; run `/customize` to install a pack.                                                                                               |
+| Windows, fresh mode                                                                        | 1    | Refuses before writing anything: Linux and macOS only. Adopt mode, `--help`, `--version` and `--list-packs` still run.                                                                            |
+| Fresh target is not empty and `--force` is absent                                          | 1    | Refuses; pass `--force` to overwrite, or `--adopt` to survey it.                                                                                                                                  |
+| Fresh mode, `/customize` skill install fails                                               | 1    | The project is already written and `git init` and `pnpm install` did not run. Re-run with `--fresh --force` plus your original `--name`, `--pack` and `--skip-install`; a plain re-run adopts it. |
+| Fresh mode, `git init` fails                                                               | 1    | The project is left written. Run `git init` (and `pnpm install` unless `--skip-install`) yourself.                                                                                                |
+| Fresh mode, `pnpm install` fails                                                           | 1    | The project is left written without dependencies. Run `pnpm install` there yourself.                                                                                                              |
+| Adopt mode fails after it starts deleting the previous run's files                         | 1    | The message names which of `inventory.json`, `adoption-report.md` and `adoption-decisions.json` were removed; fix the cause and re-run. A removed `adoption-decisions.json` is not recreated.     |
+| A pack's manifest fails to load                                                            | 1    | A broken install, not a bad invocation.                                                                                                                                                           |
 
 A flag value that starts with `-` counts as missing, and `--pack` is the only value
 flag you can repeat. `--help`, `--version` and `--list-packs` exit `0`, but an
@@ -555,13 +401,11 @@ examples. From 1.0.0, the public API is:
    `/customize` can't read is a breaking change.
 3. **`.groundwork/adoption-report.md`'s section headings**, listed under
    [Report headings](#report-headings).
-4. **`.groundwork/packs/`, `.groundwork/baseline/` and
-   `.groundwork/baseline-divergent/` staging layouts**, and pack names.
-   Baseline files are staged as inert copies with a `.staged` suffix appended
-   to each name (so no project tool discovers them), listed with their
-   original path and a `sha256` in `inventory.json`'s `stagedBaseline` (files
-   the project lacks) and `stagedDivergent` (files it has in a different
-   form, staged with tokens substituted). Packs follow the same convention:
+4. **`.groundwork/packs/` and `.groundwork/baseline/` staging layouts**, and
+   pack names. Baseline files are staged as inert copies with a `.staged`
+   suffix appended to each name (so no project tool discovers them), listed
+   with their original path and a `sha256` in `inventory.json`'s
+   `stagedBaseline`. Packs follow the same convention:
    `.groundwork/packs/<name>/pack.json.staged` and
    `.groundwork/packs/<name>/files/<path>.staged`, listed with their original
    path and a `sha256` in `inventory.json`'s `stagedPacks`. All packs are

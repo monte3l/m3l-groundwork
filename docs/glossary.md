@@ -77,15 +77,6 @@ deletes any old `inventory.json` first and writes it last, atomically, so a
 In this repo: [`CLAUDE.md`](../CLAUDE.md#architecture-notes), the adopt mode
 contract; `packages/cli/src/main.ts`.
 
-### Manifest
-
-The `.groundwork/manifest.json` that fresh mode writes: a tracked record of
-which CLI version, project name and packs produced a project, with a hash of
-each emitted file. It is what will let an upgrade tell a file you edited from a
-file upstream changed. `--upgrade` reads it today and stages a plan; applying
-the plan is not built yet.
-In this repo: [`docs/decisions/0001-upgrade-flow.md`](decisions/0001-upgrade-flow.md).
-
 ### /customize
 
 The Claude Code skill this project ships as its adaptive phase: for a fresh
@@ -267,9 +258,6 @@ file outside `templates/**`; see `bin/check-license-headers.mjs`.
 Adopt mode's inert copy of the baseline additions, written under
 `.groundwork/baseline/` with a `.staged` suffix so no project tool can
 discover the files as live source; `/customize` strips the suffix on install.
-The baseline files the project already has in a different form are staged the
-same way, with tokens substituted, under `.groundwork/baseline-divergent/`
-(`inventory.stagedDivergent`), for the headless `--apply` step.
 In this repo: [`CLAUDE.md`](../CLAUDE.md#architecture-notes), the adopt mode
 contract; `inventory.stagedBaseline` in `.groundwork/inventory.json`.
 

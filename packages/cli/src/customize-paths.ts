@@ -7,8 +7,6 @@
  * destinations before `plugin.ts` writes anything. Pure data, no I/O.
  */
 import { join } from "node:path";
-// Type-only: erased at runtime, so this adds no import cycle.
-import type { SkillSpec } from "./skill-spec.js";
 
 /**
  * The skill's entry file: it lives under the plugin source's
@@ -146,41 +144,9 @@ export const CLAUDE_DEST_SEGMENTS = [".claude", "skills", "customize"] as const;
 export const GROUNDWORK_DEST_SEGMENTS = [".groundwork", "customize"] as const;
 
 /**
- * Every path, relative to the project root, that either of a skill's install
- * locations could write -- `claudeSegments` first, then `fallbackSegments`,
- * each listing the entry file first and then the rest in write order -- so a
- * caller can scope-check them before anything is written. Also re-exported
- * by `skill-spec.ts`; it lives here because `skill-spec.ts` builds
- * `CUSTOMIZE_SKILL` from this module's constants, so this module must not
- * import that one back at runtime.
- *
- * @example
- * ```ts
- * import { CUSTOMIZE_SKILL, plannedSkillPaths } from "./skill-spec.js";
- *
- * plannedSkillPaths(CUSTOMIZE_SKILL);
- * // [".claude/skills/customize/SKILL.md", ..., ".groundwork/customize/step-3-round-1.md"]
- * ```
- */
-export function plannedSkillPaths(
-  spec: Pick<
-    SkillSpec,
-    "entryFile" | "writeOrder" | "claudeSegments" | "fallbackSegments"
-  >,
-): readonly string[] {
-  const names = [
-    spec.entryFile,
-    ...spec.writeOrder.filter((name) => name !== spec.entryFile),
-  ];
-  return [spec.claudeSegments, spec.fallbackSegments].flatMap((segments) =>
-    names.map((name) => join(...segments, name)),
-  );
-}
-
-/**
- * Every path, relative to the project root, that either `/customize` install
- * location could write -- so a caller can scope-check them before anything
- * is written. {@link plannedSkillPaths} over the `/customize` constants.
+ * Every path, relative to the project root, that either install location
+ * could write -- so a caller can scope-check them before anything is
+ * written.
  *
  * @example
  * ```ts
@@ -191,10 +157,7 @@ export function plannedSkillPaths(
  * ```
  */
 export function plannedCustomizeSkillPaths(): readonly string[] {
-  return plannedSkillPaths({
-    entryFile: CUSTOMIZE_SKILL_ENTRY_FILE,
-    writeOrder: CUSTOMIZE_SKILL_WRITE_ORDER,
-    claudeSegments: CLAUDE_DEST_SEGMENTS,
-    fallbackSegments: GROUNDWORK_DEST_SEGMENTS,
-  });
+  return [CLAUDE_DEST_SEGMENTS, GROUNDWORK_DEST_SEGMENTS].flatMap((segments) =>
+    CUSTOMIZE_SKILL_FILE_NAMES.map((name) => join(...segments, name)),
+  );
 }
