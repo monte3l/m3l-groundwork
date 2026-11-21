@@ -193,12 +193,15 @@ file as each piece ships, and drop this line when the last one does.
   shared with the other modes: they are defined in
   [`headless-mode.md`](headless-mode.md). Link to it, do not copy the table.
 - **The skill reaches the project through the CLI.** `--upgrade` copies
-  `/upgrade` in with the guarded installer `/customize` uses
-  (`installCustomizeSkillGuarded` in `plugin.ts`, paths in
-  `customize-paths.ts`): `lstat` presence checks, never overwrite a changed
-  copy (it goes to `.groundwork/upgrade/skill/`), `SKILL.md` last, rollback on
-  failure. Generalise that function to take a skill name; do not fork it. The
-  same run refreshes an unchanged `/customize` copy.
+  `/upgrade` in with the guarded installer `/customize` uses: `lstat`
+  presence checks, never overwrite a changed copy (it goes to
+  `.groundwork/upgrade/skill/`), `SKILL.md` last, rollback on failure. That
+  installer is already generic: `installSkill` and `installSkillGuarded` in
+  `plugin.ts` take a `SkillSpec` (`skill-spec.ts`: name, entry file, write
+  order, both destinations, where each file is read from), and
+  `installCustomizeSkill`/`installCustomizeSkillGuarded` are thin wrappers
+  over `CUSTOMIZE_SKILL`. `/upgrade` needs only its own `SkillSpec`; do not
+  fork the installer. The same run refreshes an unchanged `/customize` copy.
 - **The skill rebuilds an old base with a released CLI.**
   `npx @monte3l/groundwork@<old> --fresh --skip-install --name <n> --pack ... <tmp>`
   needs no new flag for the base itself; the recorded tailoring is replayed on
