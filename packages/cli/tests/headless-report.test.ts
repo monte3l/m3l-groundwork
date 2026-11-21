@@ -54,9 +54,9 @@ describe("ReportV1 type", () => {
   it("pins the discriminating fields", () => {
     expectTypeOf<ReportV1["schema"]>().toEqualTypeOf<"groundwork.report">();
     expectTypeOf<ReportV1["schemaVersion"]>().toEqualTypeOf<1>();
-    expectTypeOf<ReportV1["dryRun"]>().toEqualTypeOf<false>();
+    expectTypeOf<ReportV1["dryRun"]>().toEqualTypeOf<boolean>();
     expectTypeOf<ReportV1["status"]>().toEqualTypeOf<
-      "ok" | "error" | "usage"
+      "ok" | "noop" | "pending" | "drift" | "error" | "usage"
     >();
     expectTypeOf<ReportV1["mode"]>().toEqualTypeOf<"fresh" | "adopt" | null>();
     expectTypeOf<ReportV1["phase"]>().toEqualTypeOf<

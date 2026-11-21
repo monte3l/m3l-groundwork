@@ -119,8 +119,17 @@ export const CONFLICT_RESOLUTIONS = [
 
 /** An upgrade conflict's resolutions: every one but `merge-keys`. */
 const UPGRADE_RESOLUTIONS = ["keep", "take", "delegate"] as const;
-/** What an adopt addition can do with a staged file. */
-const ADDITION_ACTIONS = ["add", "skip"] as const;
+/**
+ * What an adopt addition can do with a staged file.
+ *
+ * @example
+ * ```ts
+ * import { ADDITION_ACTIONS } from "./headless/contract.js";
+ *
+ * const choices = [...ADDITION_ACTIONS]; // a pending entry's `choices`
+ * ```
+ */
+export const ADDITION_ACTIONS = ["add", "skip"] as const;
 /** What an upgrade does with a file the new baseline no longer ships. */
 const REMOVAL_POLICIES = ["keep", "delete"] as const;
 

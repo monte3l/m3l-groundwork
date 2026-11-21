@@ -5,15 +5,18 @@
  * The `groundwork.report` v1 document a `--json` run writes to stdout
  * (`.claude/rules/headless-mode.md`, "report v1"). Pure builders only: the
  * bin script decides when to write one. A fresh run reports `phase: "apply"`,
- * an adopt survey `phase: "survey"`. `pending` carries the entries of the
- * pending document an `--adopt --json` survey wrote (empty otherwise);
- * `changes`, `handoff` and `drift` are always empty until `--apply` ships.
- * Every field is present and none is `undefined`, in a fixed key order, so
- * the serialized document is byte-stable for the same input.
+ * an adopt survey `phase: "survey"`, and an `--adopt --apply --dry-run`
+ * plan `phase: "apply"` with `dryRun: true`. `pending` carries the entries
+ * of the pending document an `--adopt --json` survey wrote, or the decisions
+ * an `--apply` run found still open (empty otherwise); `changes`, `handoff`
+ * and `drift` are filled only by an `--apply` run. Every field is present
+ * and none is `undefined`, in a fixed key order, so the serialized document
+ * is byte-stable for the same input.
  */
 import { EXIT_CODES, type ExitCode } from "../exit-codes.js";
 import { errorMessageChain } from "../format-error.js";
 import type { RunResult } from "../run-result.js";
+import type { ApplyDryRunOutcome } from "./apply-plan.js";
 import type { PendingEntry } from "./contract.js";
 
 /** Where a fresh/adopt run left its `.groundwork/` artifacts, relative to `target`; `null` when not written. */
@@ -30,6 +33,27 @@ interface ReportArtifacts {
 interface ReportError {
   readonly message: string;
   readonly chain: readonly string[];
+}
+
+/** One file an `--apply` run writes (or, under `--dry-run`, would write); `sha256Before` is `null` for a new file. */
+interface ReportChange {
+  readonly path: string;
+  readonly action: "install-staged" | "take-divergent" | "merge-keys";
+  readonly class: "addition" | "conflict";
+  readonly sha256Before: string | null;
+  readonly sha256After: string | null;
+}
+
+/** Work an `--apply` run hands to the skill's headless branch: a delegated conflict, or the owner's missed notes. */
+type ReportHandoff =
+  | { readonly kind: "delegate"; readonly path: string }
+  | { readonly kind: "missed-notes"; readonly notes: string };
+
+/** A path whose state no longer matches what the answers were made against; `actual` is `null` unless a regular file is there. */
+interface ReportDrift {
+  readonly path: string;
+  readonly expected: string | null;
+  readonly actual: string | null;
 }
 
 /**
@@ -50,15 +74,15 @@ export interface ReportV1 {
   readonly cliVersion: string;
   readonly mode: "fresh" | "adopt" | null;
   readonly phase: "apply" | "survey" | null;
-  readonly dryRun: false;
-  readonly status: "ok" | "error" | "usage";
+  readonly dryRun: boolean;
+  readonly status: "ok" | "noop" | "pending" | "drift" | "error" | "usage";
   readonly exitCode: ExitCode;
   readonly target: string | null;
   readonly artifacts: ReportArtifacts;
-  readonly changes: readonly never[];
+  readonly changes: readonly ReportChange[];
   readonly pending: readonly PendingEntry[];
-  readonly handoff: readonly never[];
-  readonly drift: readonly never[];
+  readonly handoff: readonly ReportHandoff[];
+  readonly drift: readonly ReportDrift[];
   readonly setupSteps: RunResult["setupSteps"];
   readonly warnings: readonly string[];
   readonly nextStep: string | null;
@@ -73,7 +97,15 @@ interface ReportContext {
 /** Adopt mode's inventory, relative to the target. */
 const INVENTORY_PATH = ".groundwork/inventory.json";
 
-/** Assembles a report in its fixed key order from the fields that vary between runs. */
+/** The apply-only fields of every report not built from an `--apply` run. */
+const NO_APPLY: Pick<ReportV1, "dryRun" | "changes" | "handoff" | "drift"> = {
+  dryRun: false,
+  changes: [],
+  handoff: [],
+  drift: [],
+};
+
+/** Assembles a report in its fixed key order from the fields that vary between runs; `apply` defaults to {@link NO_APPLY}. */
 function baseReport(
   cliVersion: string,
   fields: Pick<
@@ -93,6 +125,7 @@ function baseReport(
     readonly manifest: string | null;
     readonly pendingPath: string | null;
   },
+  apply: Pick<ReportV1, "dryRun" | "changes" | "handoff" | "drift"> = NO_APPLY,
 ): ReportV1 {
   return {
     schema: "groundwork.report",
@@ -100,7 +133,7 @@ function baseReport(
     cliVersion,
     mode: fields.mode,
     phase: fields.phase,
-    dryRun: false,
+    dryRun: apply.dryRun,
     status: fields.status,
     exitCode: fields.exitCode,
     target: fields.target,
@@ -112,10 +145,10 @@ function baseReport(
       commitMsg: null,
       prBody: null,
     },
-    changes: [],
+    changes: apply.changes,
     pending: fields.pending,
-    handoff: [],
-    drift: [],
+    handoff: apply.handoff,
+    drift: apply.drift,
     setupSteps: fields.setupSteps,
     warnings: fields.warnings,
     nextStep: fields.nextStep,
@@ -215,4 +248,58 @@ export function buildErrorReport(
     nextStep: null,
     error: { message, chain },
   });
+}
+
+/**
+ * The report of an `--adopt --apply --dry-run` run that reached an outcome
+ * (`runApplyDryRun` in `./apply-plan.ts`): mode `adopt`, phase `apply`,
+ * `dryRun` true, the outcome's `status` and `exitCode` (`ok` or
+ * `noop` with 0, `pending` with 3, `drift` with 4), and its `changes`,
+ * `pending`, `handoff`, `drift` and `warnings` copied through. Every
+ * `artifacts` path is `null` (a dry run writes nothing, and `pending` lists
+ * open decisions without a pending document), `setupSteps` is empty and
+ * `nextStep` and `error` are `null`. Same key order as every other report.
+ *
+ * @example
+ * ```ts
+ * import { runApplyDryRun } from "./headless/apply-plan.js";
+ * import { buildApplyReport } from "./headless/report.js";
+ *
+ * const outcome = await runApplyDryRun({
+ *   targetDir: "/work/acme",
+ *   applyPath: "answers.json",
+ * });
+ * const report = buildApplyReport(outcome, { cliVersion: "1.2.3" });
+ * process.stdout.write(`${JSON.stringify(report)}\n`);
+ * process.exitCode = report.exitCode;
+ * ```
+ */
+export function buildApplyReport(
+  outcome: ApplyDryRunOutcome,
+  ctx: ReportContext,
+): ReportV1 {
+  return baseReport(
+    ctx.cliVersion,
+    {
+      mode: "adopt",
+      phase: "apply",
+      status: outcome.status,
+      exitCode: outcome.exitCode,
+      target: outcome.target,
+      inventory: null,
+      manifest: null,
+      pendingPath: null,
+      pending: outcome.pending,
+      setupSteps: [],
+      warnings: outcome.warnings,
+      nextStep: null,
+      error: null,
+    },
+    {
+      dryRun: true,
+      changes: outcome.changes,
+      handoff: outcome.handoff,
+      drift: outcome.drift,
+    },
+  );
 }

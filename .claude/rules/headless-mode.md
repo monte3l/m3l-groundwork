@@ -23,10 +23,12 @@ adopt survey, the success and error shapes of `report` v1
 `answers` v1 contract (`headless/contract.ts` plus
 `schemas/answers.v1.schema.json`); both schemas ship in the tarball; and the
 adopt survey's pending document under `--json` (`headless/pending.ts`); and
-the pure adopt apply planner (`headless/actions.ts`, not wired into any CLI
-path yet; see "Adopt apply planner"); and its transactional executor and
-apply lock (`headless/apply.ts`, `headless/lock.ts`, `headless/errors.ts`,
-also not wired; see "Apply is a journal"). Each
+the pure adopt apply planner (`headless/actions.ts`; see "Adopt apply
+planner"); its transactional executor and apply lock (`headless/apply.ts`,
+`headless/lock.ts`, `headless/errors.ts`; see "Apply is a journal"); and the
+read-only `--adopt --apply <answers.json> --dry-run` that wires the two
+together (`headless/apply-plan.ts`; see "Adopt apply dry run"). Writing
+(`--apply` without `--dry-run`) is still to come. Each
 is marked **(shipped)** below. Everything else
 is design only; the paths above are where it will land. Update this file as
 each piece ships, and drop this line when the last one does.
@@ -45,13 +47,13 @@ each piece ships, and drop this line when the last one does.
 - **Exit codes** (shipped as `EXIT_CODES`; checked in this order: usage, load the plan, drift,
   completeness, apply). Only these are part of the contract:
 
-  | Code | Meaning                                                               |
-  | ---- | --------------------------------------------------------------------- |
-  | 0    | Done, or nothing to do (`status` is `ok` or `noop`)                   |
-  | 1    | Runtime error                                                         |
-  | 2    | Usage error, or an answers/inventory/CLI schema-version mismatch      |
-  | 3    | Decisions pending; the pending document was written                   |
-  | 4    | Drift: the tree changed since the survey or plan, nothing was written |
+  | Code | Meaning                                                                                          |
+  | ---- | ------------------------------------------------------------------------------------------------ |
+  | 0    | Done, or nothing to do (`status` is `ok` or `noop`)                                              |
+  | 1    | Runtime error                                                                                    |
+  | 2    | Usage error, or an answers/inventory/CLI schema-version mismatch                                 |
+  | 3    | Decisions pending (a survey wrote the pending document; `--apply` lists them in the report only) |
+  | 4    | Drift: the tree changed since the survey or plan, nothing was written                            |
 
 - **`--json` keeps stdout pure (shipped for fresh and the adopt survey).** One
   report document on stdout, human text on stderr (`createOut({ json: true })`;
@@ -64,7 +66,13 @@ each piece ships, and drop this line when the last one does.
   no report itself. `--version --json` and `--list-packs --json` print their
   own single-line `groundwork.version` and `groundwork.packs` documents;
   `--help` is the one exception and always prints the usage text.
-  `--dry-run` (not built) writes nothing, not even under `.groundwork/`.
+  `--dry-run` (shipped, with `--adopt --apply` only) writes nothing, not even
+  under `.groundwork/`: no lock, no `txn/`, no `pending.json`, whatever the
+  exit code. `bin/m3l-groundwork.mjs` calls `runCli()`, which runs every
+  other mode synchronously exactly as `main()` does and returns a `Promise`
+  only for `--apply`; the bin awaits it, sets the outcome's exit code and,
+  under `--json`, writes `buildApplyReport`. `main()` itself refuses
+  `--apply` with a plain `Error` (call `runCli()`).
 - **`answers` v1** (`schema: "groundwork.answers"`, `schemaVersion: 1`). One
   file for every mode; the pending document uses the same schema under a
   `partial` profile that allows `null`. Sections: `mode`, `basis`
@@ -122,8 +130,9 @@ each piece ships, and drop this line when the last one does.
   `additions[].action`, `upgrade.applySafe` and `upgrade.removals` decided,
   and `pending` empty. `interview.testsMandatory`, `ciDepth` and
   `keepAgents` may stay `null` under `complete`: `null` means "use the
-  baseline default". Not built yet: `--apply` reading a pending or answers
-  document (the adopt survey writes one, see "Pending location").
+  baseline default". `--adopt --apply <file> --dry-run` reads a completed
+  adopt pending document (see "Adopt apply dry run"); fresh and upgrade
+  answers are not read yet.
 - **`report` v1** (`schema: "groundwork.report"`, `schemaVersion: 1`):
   `cliVersion`, `mode` (`fresh`, `adopt`, `upgrade` or `null`), `phase`
   (`survey`, `plan`, `apply`, `stamp` or `null`; both are `null` in an error
@@ -146,11 +155,18 @@ each piece ships, and drop this line when the last one does.
   `--apply` PR: a partial apply failure throws a typed error that carries the
   artifacts already written), `pending` empty, `error.chain` the
   message then each chained value's as strings, through `format-error.ts`'s
-  `errorMessageChain`: cycle-safe, depth-capped, never throws). `dryRun` is
-  always `false` and `changes`, `handoff` and `drift` are always empty until
-  `--apply` ships; `pending` holds `PendingEntry` objects, non-empty only for
-  an `--adopt --json` survey (see "Pending location"); the `noop`, `pending`
-  and `drift` statuses and the `plan` and `stamp` phases are not produced yet.
+  `errorMessageChain`: cycle-safe, depth-capped, never throws), and
+  `buildApplyReport` for an `--adopt --apply --dry-run` outcome: `mode`
+  `adopt`, `phase` `apply`, `dryRun: true`, `status` `ok`/`noop` (exit 0),
+  `pending` (exit 3) or `drift` (exit 4), `changes`, `handoff` (`{kind:
+"delegate", path}` or `{kind: "missed-notes", notes}`), `drift` (`{path,
+expected, actual}`, hashes or `null`), `pending` and `warnings` copied
+  from the outcome, every `artifacts` path `null`. Every other builder keeps
+  `dryRun: false` and `changes`, `handoff` and `drift` empty; `pending` is
+  otherwise non-empty only for an `--adopt --json` survey (see "Pending
+  location"); the `plan` and `stamp` phases are not produced yet. The schema
+  gained the `handoff` and `drift` entry shapes additively (`schemaVersion`
+  stays 1).
 - **Pending location.** Adopt and upgrade write
   `.groundwork/headless/pending.json`. Fresh must leave the target untouched,
   so its pending document goes only in the report, plus `--pending-out <path>`.
@@ -188,14 +204,51 @@ each piece ships, and drop this line when the last one does.
   its hash still matches what the baseline emitted; any other state is a
   handoff. A change to `templates/core` also needs the harness and toolchain
   graders to agree (`.claude/rules/harness-graders.md`).
-- **Adopt apply planner (shipped, not wired).** `planAdoptActions(inventory,
+- **Adopt apply dry run (shipped).** `--adopt --apply <answers.json>
+--dry-run` (`runApplyDryRun` in `headless/apply-plan.ts`) needs `--adopt`
+  and `--dry-run` (`--apply` alone is "writing is not available yet", exit
+  2), takes none of `--name`, `--force`, `--pack` or `--skip-install`, and
+  composes with `--json`. In order: read the answers file (a regular file of
+  at most 8 MiB, opened non-blocking; a missing, non-regular, oversized or
+  non-JSON file, an open/read failure with `ENOENT`, `EACCES`, `EISDIR`,
+  `ENOTDIR` or `ELOOP`, one failing `validateAnswers` under `partial`, a
+  `mode` other than `adopt` or no `basis.inventorySha256` is exit 2, never
+  chaining the `JSON.parse` error; any other read failure is exit 1 with the
+  cause chained); load `.groundwork/inventory.json` (a symlinked
+  `.groundwork` is refused by `lstat`, the file is opened without following
+  a symlink and capped at 8 MiB; absent, non-regular, oversized, garbled,
+  malformed -- the message names the first failing field, such as
+  `stagedDivergent.files` or `conflicts[2].targetSha256`, which must be a
+  string or `null` -- below schema 7 or above this CLI's is exit 2 saying to
+  run `--adopt --json` first; any other read failure exit 1); compare the
+  sha256 of its raw bytes with the basis -- a mismatch is `drift`, exit 4,
+  with one entry `{path: ".groundwork/inventory.json", expected, actual}`,
+  checked before completeness; validate under `complete` -- issues only at
+  decision pointers (`/interview/kind`, `/interview/runtime`,
+  `/adopt/conflicts/N/resolution`, `/adopt/additions/N/action`, plus the
+  `/pending` list those leave non-empty) are `pending`, exit 3, any other
+  issue exit 2; the pending list is walked from the partial-validated
+  document, not the validator's capped error list, so it holds one
+  `PendingEntry` per `null` decision however many there are (the answers'
+  own entry at that pointer when it lists one, else one built with the
+  field's choices); `planAdoptActions` with a real `PlanIo` (one
+  `O_NOFOLLOW` read hashed raw; `absent` only for `ENOENT`) -- its usage
+  errors are exit 2 listing every pointer, its drift exit 4; then
+  `applyAdoptActions({ dryRun: true })` for `changes`, whose `ApplyError`
+  propagates unchanged (exit 1 envelope). A changed project file is found
+  only by the planner, after the completeness check, so pending decisions
+  plus a changed project file exits 3, not 4. A staged copy that changed
+  after the survey is caught by the executor's verification as an
+  `ApplyError`, exit 1, not drift. Human mode prints the plan
+  (changed paths, handoff, drift or pending) through `Out`.
+- **Adopt apply planner (shipped; wired into the dry run).** `planAdoptActions(inventory,
 answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
   neither input, never throws on a validated answers document (even for an
   older inventory), and its only I/O is `io.sha256OfTarget(path)`, which
   returns a `TargetState` (`absent` only for `ENOENT`, `file` with its
   sha256, or `unreadable` with a code: a directory, a symlink, a permission
   error), called only for an `add`, `take` or `merge-keys` and only after
-  every usage check passed. No CLI path calls it yet; `--apply` will. It
+  every usage check passed. `--adopt --apply --dry-run` calls it. It
   returns actions sorted by path in code-point order (`install-staged`,
   `take-divergent`, `merge-keys` with `stagedPath`, the staged `sha256` and,
   for `merge-keys`, `takeKeys`; `keep`, `skip`, `delegate` with only `path`)
@@ -217,17 +270,15 @@ answers, io)` in `headless/actions.ts` is pure: it writes nothing, mutates
   survey's hash, so a divergent conflict with `targetSha256: null` is always
   drift with `expected: null`, while `keep` and `delegate` plan normally.
   `actual` in a drift entry is the file's hash, or `null` for anything else.
-  Recorded for the `--apply` PR that wires it: reject an inventory with
-  `schemaVersion` below 7 at load; containment-check every `stagedPath`
-  inside its staging directory and re-verify the staged copy's sha256 before
-  writing it; create a new file with exclusive create (`wx`), never a
-  truncating open; and wrap a throw from `io` in a typed error that names the
-  path.
+  The dry run rejects an inventory with `schemaVersion` below 7 at load and
+  its `PlanIo` never throws (every read failure is a `TargetState`); the
+  executor containment-checks every `stagedPath`, re-verifies the staged
+  copy's sha256 and creates a new file with exclusive create (`wx`).
 - **Apply is a journal, not a promise of atomicity.** Stage under
   `.groundwork/headless/txn/`, back up, rename, roll back on failure, write
   `applied.json` last, and recover a leftover `txn/` on the next run. An
   O_EXCL lock at `.groundwork/headless/lock` keeps parallel fleet runs apart.
-  **Shipped, not wired:** `applyAdoptActions({ root, actions, dryRun?, io? })`
+  **Shipped; only its dry run is wired (`--adopt --apply --dry-run`):** `applyAdoptActions({ root, actions, dryRun?, io? })`
   (`headless/apply.ts`) resolves to `{ changes, warnings }`, `changes` sorted
   by path, one per written file (`install-staged` an `addition`,
   `take-divergent` and `merge-keys` a `conflict`, with `sha256Before` and

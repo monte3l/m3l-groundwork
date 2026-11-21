@@ -4,7 +4,9 @@
 
 /**
  * The published CLI's entry point: `npx @monte3l/groundwork <target-dir>`
- * resolves here. Delegates straight to the built `main()` and turns a
+ * resolves here. Delegates straight to the built `runCli()` (`main()` plus
+ * the one asynchronous mode, `--adopt --apply --dry-run`, awaited only when
+ * it returns a Promise) and turns a
  * `CliUsageError` into exit code 2 (`EXIT_CODES.usage`, a bad invocation),
  * any other thrown error into exit code 1 (`EXIT_CODES.runtime`, a runtime
  * failure) -- see `packages/cli/src/main.ts` and `packages/cli/src/exit-codes.ts`.
@@ -21,7 +23,9 @@
  * With `--json` (scanned for in argv before `main()` parses it, so a usage
  * error is covered too), stdout carries exactly one `groundwork.report` v1
  * document (`dist/headless/report.js`): `buildReport(result)` after a
- * completed fresh/adopt run, or -- after `handleFatal` has printed the human
+ * completed fresh/adopt run, `buildApplyReport(outcome)` after an
+ * `--apply --dry-run` outcome (whose `exitCode` -- 0, 3 or 4 -- also becomes
+ * the process exit code, with or without `--json`), or -- after `handleFatal` has printed the human
  * report to stderr and set the exit code -- `buildErrorReport(error, code)`
  * with the code `handleFatal` returned. Should serializing that envelope
  * fail anyway (`resolveCliVersion` throwing, say), a minimal literal
@@ -31,10 +35,14 @@
  * inside `main()`; `--help` prints usage text.
  */
 import process from "node:process";
-import { main, CliUsageError } from "../dist/main.js";
+import { runCli, CliUsageError } from "../dist/main.js";
 import { EXIT_CODES } from "../dist/exit-codes.js";
 import { handleFatal } from "../dist/fatal.js";
-import { buildErrorReport, buildReport } from "../dist/headless/report.js";
+import {
+  buildApplyReport,
+  buildErrorReport,
+  buildReport,
+} from "../dist/headless/report.js";
 import { resolveCliVersion } from "../dist/inventory.js";
 import { paint } from "../dist/term.js";
 
@@ -56,9 +64,14 @@ const cliVersionOrUnknown = () => {
 };
 
 let result;
+let applyOutcome;
 let failed = false;
 try {
-  result = main(argv);
+  const ran = runCli(argv);
+  // Only --adopt --apply --dry-run returns a Promise; every other mode ran
+  // synchronously above, exactly as before.
+  if (ran instanceof Promise) applyOutcome = await ran;
+  else result = ran;
 } catch (error) {
   failed = true;
   const code = handleFatal(
@@ -109,4 +122,16 @@ if (json && !failed && result !== undefined) {
   console.log(
     JSON.stringify(buildReport(result, { cliVersion: resolveCliVersion() })),
   );
+}
+// An --apply --dry-run outcome sets its own exit code (0 ok/noop, 3 pending,
+// 4 drift) and, under --json, its report; same unguarded write as above.
+if (!failed && applyOutcome !== undefined) {
+  process.exitCode = applyOutcome.exitCode;
+  if (json) {
+    console.log(
+      JSON.stringify(
+        buildApplyReport(applyOutcome, { cliVersion: resolveCliVersion() }),
+      ),
+    );
+  }
 }
