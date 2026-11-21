@@ -1,5 +1,18 @@
 # @monte3l/groundwork
 
+## [1.3.2](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.3.1...@monte3l/groundwork@1.3.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **ci:** ignore the license-list test in ScanCode ([3b6e4b9](https://github.com/monte3l/m3l-groundwork/commit/3b6e4b9e1d8673adfd0f7a6a93d35059a9264041))
+* point branch advice at a worktree ([c0ca34b](https://github.com/monte3l/m3l-groundwork/commit/c0ca34befcbf8d465fe967b8ff62ef44f87e1e61))
+* say why a sibling worktree does not satisfy the worktrees pack guard ([3e33e98](https://github.com/monte3l/m3l-groundwork/commit/3e33e98993b09819a6397919edd77de1d9f9622e))
+* **templates:** allow BlueOak-1.0.0 in the dependency-review template ([ae4058d](https://github.com/monte3l/m3l-groundwork/commit/ae4058da61bd78dec82ae6b8609601533ff7605c))
+* **templates:** cover the rest of the toolchain's licenses in dependency review ([304f0f0](https://github.com/monte3l/m3l-groundwork/commit/304f0f078e49b6f618a1d11e52c80e9343540661))
+* **templates:** read a JSONC file without a stat first ([d948399](https://github.com/monte3l/m3l-groundwork/commit/d948399ca0e056640115d0a85d337cbfac99e779))
+* **test:** build the npm-only license ids from parts ([2cb5216](https://github.com/monte3l/m3l-groundwork/commit/2cb5216ff8624b7d86d256e7ad18df9a3ecbd15b))
+
 ## [1.3.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.3.0...@monte3l/groundwork@1.3.1) (2026-11-20)
 
 
