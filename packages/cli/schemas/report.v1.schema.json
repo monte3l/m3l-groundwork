@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://groundwork.monte3l.com/schemas/report.v1.schema.json",
   "title": "groundwork.report v1",
-  "description": "The one JSON document a --json run of @monte3l/groundwork writes to stdout. Every field is always present, in this order. changes is always empty, and handoff and drift have no defined entry shape yet, until --apply ships. pending is empty except for an adopt survey run with --json, which lists the decisions it wrote to .groundwork/headless/pending.json (artifacts.pending).",
+  "description": "The one JSON document a --json run of @monte3l/groundwork writes to stdout. Every field is always present, in this order. changes, handoff and drift are filled only by an --adopt --apply --dry-run run (phase apply, dryRun true), and are empty otherwise. pending lists the decisions an adopt survey run with --json wrote to .groundwork/headless/pending.json (artifacts.pending), or the decisions an --apply run found still undecided (status pending, exit code 3); it is empty otherwise.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -66,15 +66,17 @@
         "required": ["path", "action", "class", "sha256Before", "sha256After"],
         "properties": {
           "path": { "type": "string" },
-          "action": { "type": "string" },
-          "class": { "type": "string" },
+          "action": {
+            "enum": ["install-staged", "take-divergent", "merge-keys"]
+          },
+          "class": { "enum": ["addition", "conflict"] },
           "sha256Before": { "type": ["string", "null"] },
           "sha256After": { "type": ["string", "null"] }
         }
       }
     },
     "pending": {
-      "description": "The decisions still missing: the same PendingEntry objects as the pending list of the answers document named by artifacts.pending, in the same order. Empty when no pending document was written.",
+      "description": "The decisions still missing. For an adopt survey: the same PendingEntry objects as the pending list of the answers document named by artifacts.pending, in the same order. For an --apply run (artifacts.pending null): one entry per decision the answers file still leaves null. Empty otherwise.",
       "type": "array",
       "items": {
         "type": "object",
@@ -93,8 +95,52 @@
         }
       }
     },
-    "handoff": { "type": "array" },
-    "drift": { "type": "array" },
+    "handoff": {
+      "description": "Work an --apply run hands to the /customize skill's headless branch: a delegated conflict (path), or the owner's missed notes (notes). Empty for every other run.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind"],
+        "properties": {
+          "kind": { "enum": ["delegate", "missed-notes"] },
+          "path": { "type": "string" },
+          "notes": { "type": "string" }
+        },
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "required": ["kind", "path"],
+            "properties": {
+              "kind": { "const": "delegate" },
+              "path": { "type": "string" }
+            }
+          },
+          {
+            "additionalProperties": false,
+            "required": ["kind", "notes"],
+            "properties": {
+              "kind": { "const": "missed-notes" },
+              "notes": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "drift": {
+      "description": "Paths whose state no longer matches what the --apply answers were made against: .groundwork/inventory.json itself for a stale basis, or a project file. expected and actual are lowercase hex sha256 digests; actual is null unless a regular file is there, expected is null when the survey could not read the file. Empty for every other run.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "expected", "actual"],
+        "properties": {
+          "path": { "type": "string" },
+          "expected": { "type": ["string", "null"] },
+          "actual": { "type": ["string", "null"] }
+        }
+      }
+    },
     "setupSteps": {
       "type": "array",
       "items": {

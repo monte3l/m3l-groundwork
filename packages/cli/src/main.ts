@@ -125,6 +125,11 @@ import { inspectPreviousUpgrade, stageUpgrade } from "./upgrade/stage.js";
 import type { StagedUpgrade } from "./upgrade/stage.js";
 import { UpgradeStampError, stampUpgrade } from "./upgrade/stamp.js";
 import type { StampResult } from "./upgrade/stamp.js";
+import { CliUsageError } from "./usage-error.js";
+import { runApplyDryRun } from "./headless/apply-plan.js";
+import type { ApplyDryRunOutcome } from "./headless/apply-plan.js";
+
+export { CliUsageError } from "./usage-error.js";
 
 export interface CliOptions {
   targetDir: string;
@@ -140,6 +145,9 @@ export interface CliOptions {
   listPacks: boolean;
   packs: string[];
   json: boolean;
+  /** The `--apply` answers file, as given (not resolved); `null` without `--apply`. */
+  apply: string | null;
+  dryRun: boolean;
 }
 
 const USAGE = [
@@ -156,6 +164,10 @@ const USAGE = [
   "                          .groundwork/manifest.json; writes nothing else",
   "  --pack <name>           Install a pack from templates/packs/ (fresh mode), or narrow",
   "                          the survey to the named packs (adopt mode); repeatable",
+  "  --apply <answers.json>  With --adopt and --dry-run: check a completed pending",
+  "                          document against the survey and print what applying",
+  "                          it would change; writes nothing",
+  "  --dry-run               With --apply: plan only (writing is not available yet)",
   "  --list-packs            Print every available pack and exit",
   "  --json                  Write one machine-readable JSON report to stdout and",
   "                          every human-readable line to stderr",
@@ -176,11 +188,16 @@ const USAGE = [
   "packs come from the manifest, and it never writes a project file.",
   "--upgrade --stamp, run once the plan is applied, re-hashes the plan's",
   "files and writes only the manifest.",
+  "",
+  "--adopt --apply <answers.json> --dry-run takes the pending document an",
+  "--adopt --json survey wrote, once completed, and takes none of --name,",
+  "--force, --pack or --skip-install. It exits 3 while decisions are still",
+  "null and 4 when the project changed after the survey.",
 ].join("\n");
 
-// --name takes a single value; --pack is repeatable. Every other
+// --name and --apply take a single value; --pack is repeatable. Every other
 // recognized flag is a bare boolean.
-const VALUE_FLAGS = new Set(["--name"]);
+const VALUE_FLAGS = new Set(["--name", "--apply"]);
 const REPEATABLE_VALUE_FLAGS = new Set(["--pack"]);
 const HELP_FLAGS = new Set(["--help", "-h"]);
 const VERSION_FLAGS = new Set(["--version", "-v"]);
@@ -200,27 +217,12 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--fresh",
   "--upgrade",
   "--stamp",
+  "--dry-run",
   ...JSON_FLAGS,
   ...LIST_PACKS_FLAGS,
   ...HELP_FLAGS,
   ...VERSION_FLAGS,
 ]);
-
-/**
- * Thrown for a bad invocation (unknown flag, missing target dir, missing flag
- * value, contradictory mode flags) -- distinguished from a runtime error so the
- * CLI exits 2, not 1.
- *
- * @example
- * ```sh
- * npx @monte3l/groundwork ./my-app --bogus
- * # stderr: unrecognized option: --bogus (followed by the usage text)
- * echo $? # 2 -- a runtime failure exits 1 instead
- * ```
- */
-export class CliUsageError extends Error {
-  override readonly name = "CliUsageError";
-}
 
 interface TokenizedArgv {
   positional: string[];
@@ -324,6 +326,55 @@ function assertUpgradeFlags(
   }
 }
 
+/** Why each flag `--apply` rejects has no effect there, in the order they are checked. */
+const APPLY_REJECTED_FLAGS: readonly (readonly [string, string])[] = [
+  [
+    "--force",
+    "--apply never overwrites a project file the survey did not plan",
+  ],
+  ["--name", "the project name comes from the survey"],
+  ["--pack", "the packs come from the answers file's packs.install"],
+  ["--skip-install", "--apply installs nothing"],
+];
+
+/**
+ * Rejects `--apply`/`--dry-run` combinations this release cannot run, as
+ * usage errors whose first line names the problem: `--dry-run` without
+ * `--apply`, `--apply` without `--adopt` (fresh and upgrade mode take no
+ * answers file), `--apply` with a flag it ignores, and `--apply` without
+ * `--dry-run` (writing is not available yet).
+ */
+function assertApplyFlags(
+  flags: ReadonlySet<string>,
+  values: ReadonlyMap<string, string>,
+  repeatableValues: ReadonlyMap<string, readonly string[]>,
+): void {
+  const apply = values.has("--apply");
+  if (flags.has("--dry-run") && !apply) {
+    throw new CliUsageError(
+      `--dry-run needs --apply: --adopt --apply <answers.json> --dry-run is the only dry run\n\n${USAGE}`,
+    );
+  }
+  if (!apply) return;
+  if (!flags.has("--adopt")) {
+    throw new CliUsageError(
+      `--apply needs --adopt: only adopt mode takes an answers file (--adopt --apply <answers.json> --dry-run)\n\n${USAGE}`,
+    );
+  }
+  for (const [flag, reason] of APPLY_REJECTED_FLAGS) {
+    if (flags.has(flag) || values.has(flag) || repeatableValues.has(flag)) {
+      throw new CliUsageError(
+        `--apply cannot be combined with ${flag} -- ${reason}\n\n${USAGE}`,
+      );
+    }
+  }
+  if (!flags.has("--dry-run")) {
+    throw new CliUsageError(
+      `--apply without --dry-run: writing is not available yet; add --dry-run to print the plan\n\n${USAGE}`,
+    );
+  }
+}
+
 /** Parses argv into structured options. Throws with USAGE on a missing target dir, unless --help/--version/--list-packs is present. */
 export function parseArgs(argv: string[]): CliOptions {
   const { positional, flags, values, repeatableValues } = tokenizeArgv(argv);
@@ -348,6 +399,8 @@ export function parseArgs(argv: string[]): CliOptions {
       listPacks,
       packs: [],
       json,
+      apply: null,
+      dryRun: false,
     };
   }
 
@@ -356,6 +409,8 @@ export function parseArgs(argv: string[]): CliOptions {
       `--adopt and --fresh are mutually exclusive\n\n${USAGE}`,
     );
   }
+  // Before the upgrade checks, so `--upgrade --apply` names --apply first.
+  assertApplyFlags(flags, values, repeatableValues);
   const upgrade = flags.has("--upgrade");
   const stamp = flags.has("--stamp");
   if (stamp && !upgrade) {
@@ -411,6 +466,8 @@ export function parseArgs(argv: string[]): CliOptions {
     listPacks: false,
     packs,
     json,
+    apply: values.get("--apply") ?? null,
+    dryRun: flags.has("--dry-run"),
   };
 }
 
@@ -1603,34 +1660,77 @@ function runUpgrade(
 }
 
 /**
- * Runs the CLI. `platform` is injectable so fresh mode's Windows refusal
- * (a runtime error, exit 1, raised before anything is written) is
- * unit-testable on any OS; it defaults to `process.platform`. Adopt mode,
- * upgrade mode and `--help`/`--version`/`--list-packs` run on every platform.
- * `out` receives every fresh/adopt/upgrade status line; by default it is
- * `createOut` in human mode, or in json mode when `--json` is given (every
- * line on stderr). Returns the run's {@link RunResult}, or `undefined` for
- * `--help`/`--version`/`--list-packs` and for an `--upgrade` plan or stamp
- * (which refuse `--json`, so they have no report to build). Under `--json`, a fresh/adopt run
- * prints no report itself -- the bin script builds it from the returned
- * result -- while `--version` and `--list-packs` print one single-line JSON
- * document each (`groundwork.version`, `groundwork.packs`); `--help` always
- * prints the usage text.
- *
- * @example
- * ```ts
- * import { main } from "./main.js";
- * const result = main(["my-app", "--skip-install"]);
- * console.log(result?.mode); // "fresh"
- * ```
+ * The human-readable summary of an `--apply --dry-run` outcome: the files
+ * the plan would write, the handoff, or the drift or still-open decisions
+ * that stopped it. Every line goes through `out.info`/`out.notice` (stdout
+ * in human mode, stderr under `--json`), the executor's warnings through
+ * `out.warn`.
  */
-export function main(
-  argv: string[],
-  platform: NodeJS.Platform = process.platform,
-  out?: Out,
-): RunResult | undefined {
-  const options = parseArgs(argv);
+function printApplyOutcome(outcome: ApplyDryRunOutcome, out: Out): void {
+  for (const warning of outcome.warnings) out.warn(`warning: ${warning}`);
+  switch (outcome.status) {
+    case "ok":
+    case "noop": {
+      const count = outcome.changes.length;
+      out.info(
+        count === 0
+          ? "apply plan (dry run, nothing written): the answers write no file"
+          : `apply plan (dry run, nothing written): ${String(count)} ${count === 1 ? "file" : "files"} to write`,
+      );
+      for (const change of outcome.changes) {
+        out.info(`  ${change.action} ${change.path}`);
+      }
+      for (const entry of outcome.handoff) {
+        out.info(
+          entry.kind === "delegate"
+            ? `  handed to /customize: ${entry.path}`
+            : `  missed notes for /customize: ${entry.notes}`,
+        );
+      }
+      return;
+    }
+    case "pending":
+      out.notice(
+        `apply plan stopped (dry run, nothing written): ${String(outcome.pending.length)} decision(s) still undecided -- fill them in the answers file and re-run`,
+      );
+      for (const entry of outcome.pending) {
+        out.info(`  ${entry.pointer}: ${entry.reason}`);
+      }
+      return;
+    case "drift":
+      out.notice(
+        "apply plan stopped (dry run, nothing written): the project changed after the survey -- re-run --adopt --json and answer the new pending document",
+      );
+      for (const entry of outcome.drift) {
+        out.info(
+          `  ${entry.path}: expected ${entry.expected ?? "(unreadable)"}, found ${entry.actual ?? "(no regular file)"}`,
+        );
+      }
+      return;
+    default: {
+      const unhandled: never = outcome;
+      throw new Error(`unhandled apply outcome ${JSON.stringify(unhandled)}`);
+    }
+  }
+}
 
+/** `--adopt --apply <file> --dry-run`: plans with `runApplyDryRun`, prints the summary, and resolves to the outcome. */
+async function runApplyMode(
+  targetDir: string,
+  applyPath: string,
+  out: Out,
+): Promise<ApplyDryRunOutcome> {
+  const outcome = await runApplyDryRun({ targetDir, applyPath });
+  printApplyOutcome(outcome, out);
+  return outcome;
+}
+
+/** Runs every mode but `--apply`, from parsed options; see {@link main}. */
+function runParsed(
+  options: CliOptions,
+  platform: NodeJS.Platform,
+  out: Out | undefined,
+): RunResult | undefined {
   if (options.help) {
     console.log(USAGE);
     return;
@@ -1700,4 +1800,78 @@ export function main(
       throw new Error(`unhandled mode ${String(unhandled)}`);
     }
   }
+}
+
+/**
+ * Runs the CLI synchronously. `platform` is injectable so fresh mode's
+ * Windows refusal (a runtime error, exit 1, raised before anything is
+ * written) is unit-testable on any OS; it defaults to `process.platform`.
+ * Adopt mode, upgrade mode and `--help`/`--version`/`--list-packs` run on
+ * every platform. `out` receives every fresh/adopt/upgrade status line; by
+ * default it is `createOut` in human mode, or in json mode when `--json` is
+ * given (every line on stderr). Returns the run's {@link RunResult}, or
+ * `undefined` for `--help`/`--version`/`--list-packs` and for an `--upgrade`
+ * plan or stamp (which refuse `--json`, so they have no report to build).
+ * Under `--json`, a fresh/adopt run prints no report itself -- the bin script
+ * builds it from the returned result -- while `--version` and `--list-packs`
+ * print one single-line JSON document each (`groundwork.version`,
+ * `groundwork.packs`); `--help` always prints the usage text.
+ *
+ * `--adopt --apply <file> --dry-run` is asynchronous and runs only through
+ * {@link runCli}: `main` throws a plain `Error` for it, after the flags
+ * themselves were checked (so a bad `--apply` invocation is still a
+ * {@link CliUsageError}).
+ *
+ * @example
+ * ```ts
+ * import { main } from "./main.js";
+ * const result = main(["my-app", "--skip-install"]);
+ * console.log(result?.mode); // "fresh"
+ * ```
+ */
+export function main(
+  argv: string[],
+  platform: NodeJS.Platform = process.platform,
+  out?: Out,
+): RunResult | undefined {
+  const options = parseArgs(argv);
+  if (options.apply !== null) {
+    throw new Error(
+      "--apply runs asynchronously: call runCli(), not main(), to run it",
+    );
+  }
+  return runParsed(options, platform, out);
+}
+
+/**
+ * The bin script's entry point: {@link main}, plus the one asynchronous
+ * mode. Every mode but `--apply` runs exactly as `main` runs it --
+ * synchronously, returning its {@link RunResult} (or `undefined`) and
+ * throwing synchronously -- so only `--adopt --apply <file> --dry-run`
+ * returns a `Promise`: it resolves to the `runApplyDryRun` outcome
+ * (`./headless/apply-plan.ts`) after printing the plan summary through
+ * `out`, and rejects with its {@link CliUsageError} (exit 2) or any other
+ * error (exit 1). The caller turns the outcome into the exit code (0, 3 or
+ * 4) and, under `--json`, the report (`buildApplyReport`).
+ *
+ * @example
+ * ```ts
+ * import { runCli } from "./main.js";
+ *
+ * const ran = runCli(["./app", "--adopt", "--apply", "a.json", "--dry-run"]);
+ * if (ran instanceof Promise) process.exitCode = (await ran).exitCode;
+ * ```
+ */
+export function runCli(
+  argv: string[],
+  platform: NodeJS.Platform = process.platform,
+  out?: Out,
+): RunResult | undefined | Promise<ApplyDryRunOutcome> {
+  const options = parseArgs(argv);
+  if (options.apply === null) return runParsed(options, platform, out);
+  return runApplyMode(
+    options.targetDir,
+    options.apply,
+    out ?? createOut({ json: options.json }),
+  );
 }
