@@ -153,6 +153,10 @@ function nextStepLines(staged: boolean, removed: boolean): string[] {
       "The files under Removed upstream are no longer in the baseline. Delete them by hand if you no longer need them.",
     );
   }
+  lines.push(
+    "",
+    "Once you have applied the changes you want, run `npx @monte3l/groundwork --upgrade --stamp .` to record the result in `.groundwork/manifest.json`. A change you did not apply is recorded as yours, so the next upgrade compares that file two-way.",
+  );
   return lines;
 }
 
