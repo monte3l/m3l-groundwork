@@ -198,3 +198,16 @@ comment:*)` in `--allowedTools`, and a `Verify Claude posted` step failing
   gate to `VERIFY_STEPS` here (or `CORE_STEPS` in the baseline), not as a
   bespoke script invocation in either YAML file. (The `e2e` lane calls
   `pnpm test:e2e` directly; `gate-lane-parity` only checks verify groups.)
+- **The baseline's `bin/lib/verify-policy.json` decides how outcomes count,
+  again without either YAML file changing.** It is a plain JSON object,
+  `{"version": 1, "testsBlocking": true, "ciSkipGroups": []}`, read by
+  `templates/core/bin/lib/verify-steps.mjs` as `VERIFY_POLICY`.
+  `testsBlocking: false` reports a `test`-group step that ran and exited
+  non-zero as a warning (a spawn error or signal kill still fails), with a
+  final "warning only" summary and a `::warning::` annotation under GitHub
+  Actions. `ciSkipGroups` may list only `"test"`, skipped when `CI` is truthy
+  (never under `--step`), so CI then runs a subset of local `pnpm verify`. A
+  missing file means those defaults; a present one must carry all three keys,
+  and anything malformed (wrong version, missing or wrong-typed key, unknown
+  key, any other group) is a hard failure naming the file before any step
+  runs.
