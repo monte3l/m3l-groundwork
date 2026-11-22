@@ -99,17 +99,16 @@ or new branch in the main checkout itself, so work happens in a worktree off
 ## Agent Operating Model
 
 This repo runs on `templates/core`'s own harness, installed by adopting itself
-(`docs/known-gaps.md`), with `packages/*/src/**` and `packages/*/tests/**` in
-every path-shape rule instead of a flat `src/`/`tests/`.
+(`docs/known-gaps.md`), with `packages/*/{src,tests}/**` in every path-shape rule.
 
 **Hub-and-spoke is mandatory and hook-enforced, deliberately, with no
 project-level opt-out.** The hub plans and dispatches to spokes, and never
 writes `packages/*/src/` or `packages/*/tests/` itself -- enforced
 unconditionally by `.claude/hooks/guard-hub-src-writes.mjs` (blocks any
-Write/Edit whose PreToolUse payload does not carry both a writer-spoke
-`agent_type` and an `agent_id`, i.e. every direct top-level edit, including
-one from a session started with `--agent`) and `guard-branch-isolation.mjs` (the same block
-specifically on `main`), plus `disallowedTools: Agent` on every spoke. For a piece of work with a clear contract:
+Write/Edit whose PreToolUse payload lacks a writer-spoke `agent_type` and an
+`agent_id`, so every direct top-level edit, even from a `--agent` session) and
+`guard-branch-isolation.mjs` (the same block on `main`), plus
+`disallowedTools: Agent` on every spoke. For work with a clear contract:
 
 1. `test-author` writes failing tests from the contract (RED phase), and
    confirms they fail for the right reason.
@@ -125,11 +124,10 @@ The guard also screens `Bash`, only conservatively: a managed deployment, an
 installed mod, a fork subagent or an agent-teams teammate can get around it.
 `onFailure: "block"` (Claude Code 2.1.295 or later) makes the four invariant
 guards fail closed. `permissions.deny` blocks secret reads and lockfile and
-`.git/` edits (list in `.claude/rules/hub-and-spoke.md`). The hooks bound a
-spoke, not its `permissionMode`, which an auto, `acceptEdits` or
-`bypassPermissions` session overrides. Detail and the root
-harness inventory: `.claude/rules/hub-and-spoke.md`; dispatch sizing and
-recovery: `.claude/rules/agent-dispatch.md`.
+`.git/` edits. The hooks bound a spoke, not its `permissionMode`, which an
+auto, `acceptEdits` or `bypassPermissions` session overrides. Detail, the deny
+list and the root harness inventory: `.claude/rules/hub-and-spoke.md`;
+dispatch sizing and recovery: `.claude/rules/agent-dispatch.md`.
 
 Path-scoped rules load on matching files: `.claude/rules/src.md` on
 `packages/*/src/**`, `.claude/rules/tests.md` on tests,
