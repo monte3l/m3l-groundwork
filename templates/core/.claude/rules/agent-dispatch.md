@@ -83,7 +83,23 @@ Sources: [hooks](https://code.claude.com/docs/en/hooks),
 - **What `onFailure: "block"` covers.** A failure is a hook that cannot start,
   times out, exits with any code other than 0 or 2, or prints invalid JSON. It
   has no effect on `Stop`, `SubagentStop`, `TaskCompleted`, `TeammateIdle` or
-  async hooks.
+  async hooks. Each guard still handles bad input itself and exits 0 on
+  purpose. Because `guard-hub-src-writes` is also on `Bash`, a missing `node`
+  blocks every `Bash` call until fixed (run the command with the `!` prefix to
+  get past it). The style guards and `guard-git-push-signed` stay fail-open on
+  purpose: the push guard has its own parser and the remote's signed-commit
+  rule is the authoritative layer.
+- **What `permissions.deny` covers.** It blocks reading `.env`, `.env.*`,
+  `secrets/`, `credentials.json` and `secrets.yaml` (which also covers `cat`,
+  `head` and `tail` on them in `Bash`) and editing `pnpm-lock.yaml`,
+  `package-lock.json`, `yarn.lock` and the repository's `.git/` directory. It
+  does not cover `grep -r`, a script that opens the file itself, a subprocess
+  such as `pnpm install` rewriting the lock file, or a linked worktree, where
+  `.git` is a file.
+- **Overriding the guard deliberately.** Run the command yourself with the `!`
+  prefix at the Claude Code prompt, or edit the hook's registration in
+  `.claude/settings.json`. Hub-and-spoke is a convention backed by a guard that
+  raises the bar, not a proof.
 
 ## Dispatch sizing
 
@@ -168,7 +184,7 @@ Sources: [hooks](https://code.claude.com/docs/en/hooks),
   `guard-branch-isolation.mjs` let a top-level `src/`/`tests/` write through
   unblocked, check `/status`'s "Setting sources" line for a managed source
   before debugging the hook script itself -- a managed `allowManagedHooksOnly`
-  policy (CLAUDE.md's "Agent Operating Model") means only managed hooks
+  policy (see "Managed settings outrank every project file" above) means only managed hooks
   run, with no repo-visible signal that it's active.
 - **A templated dispatch prompt needs a per-target assumption check, not
   just a per-target file-list check.** Verify the template's implicit
