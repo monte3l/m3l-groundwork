@@ -43,7 +43,7 @@ exports.publish = async (manifest, tarball, opts) => {
   fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify({
     name: manifest.name, version: manifest.version, readme: manifest.readme, readmeFilename: manifest.readmeFilename, bytes: tarball.length, opts,
   }) + "\\n");
-  return process.env.FAKE_PUBLISH === "nostage" ? {} : { stageId: "stg-1" };
+  return process.env.FAKE_PUBLISH === "nostage" ? {} : { stageId: process.env.FAKE_STAGE_ID ?? "stg-1" };
 };
 `;
 
@@ -115,9 +115,23 @@ interface RunResult {
   stderr: string;
 }
 
-function run(args: string[], env: Record<string, string>): Promise<RunResult> {
+/**
+ * The `name@version` the current tarball's manifest declares; `run` passes it
+ * as the required `--expect` flag unless the test names its own or opts out.
+ */
+let expectId = "@scope/name@1.0.0";
+
+function run(
+  args: string[],
+  env: Record<string, string>,
+  options: { withExpect?: boolean } = {},
+): Promise<RunResult> {
+  const full =
+    options.withExpect === false || args.includes("--expect")
+      ? args
+      : [...args, "--expect", expectId];
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [script, ...args], {
+    const child = spawn(process.execPath, [script, ...full], {
       env: { PATH: process.env["PATH"] ?? "", ...env },
     });
     let stdout = "";
@@ -165,6 +179,15 @@ describe("npm-stage-publish", () => {
 
   function writeTarball(files: [string, string][]): void {
     writeFileSync(tarball, makeTgz(files));
+    const pkg = files.find(([name]) => name === "package/package.json");
+    const m = JSON.parse(pkg?.[1] ?? "{}") as {
+      name?: string;
+      version?: string;
+    };
+    expectId =
+      m.name !== undefined && m.version !== undefined
+        ? `${m.name}@${m.version}`
+        : "@scope/name@1.0.0";
   }
 
   function baseEnv(extra: Record<string, string> = {}): Record<string, string> {
@@ -198,6 +221,16 @@ describe("npm-stage-publish", () => {
       expect(out).not.toContain(ID_TOKEN);
       expect(out).not.toContain(NPM_TOKEN);
     }
+  }
+
+  /**
+   * The run page must carry the stage id even when the file and summary that
+   * normally carry it could not be written: a `::warning` workflow command.
+   */
+  function expectApproveAnnotation(result: RunResult): void {
+    expect(result.stdout).toMatch(
+      /^::warning title=Staged @scope\/name@1\.0\.0 \(stg-1\)[^\n]*::npm stage approve stg-1$/m,
+    );
   }
 
   function expectFailure(result: RunResult, message: RegExp): void {
@@ -375,7 +408,21 @@ describe("npm-stage-publish", () => {
     expect(result.stdout).toContain("@scope/name@1.0.0 (staged with id stg-1)");
     expect(result.stdout).toContain("npm stage approve stg-1");
     expect(result.stderr).toMatch(/could not write the step summary/);
+    expectApproveAnnotation(result);
     expectNoSecrets(result);
+  });
+
+  it("prints the unrecorded annotation exactly once when both the summary and the ids file are unwritable", async () => {
+    const result = await run(
+      [tarball],
+      baseEnv({
+        GITHUB_STEP_SUMMARY: join(root, "no-such-dir", "summary.md"),
+        STAGED_IDS_FILE: join(root, "no-such-dir", "ids.txt"),
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.match(/^::warning title=Staged /gm)).toHaveLength(1);
   });
 
   it("fails with a GitHub OIDC message when the request URL is not a URL", async () => {
@@ -511,6 +558,127 @@ describe("npm-stage-publish", () => {
     expect(published()[0]?.opts).toMatchObject({ defaultTag: "rc" });
   });
 
+  describe("prerelease and --tag latest", () => {
+    function writePrerelease(): void {
+      writeTarball([
+        [
+          "package/package.json",
+          JSON.stringify({ name: "@scope/name", version: "1.0.0-rc.1" }),
+        ],
+      ]);
+    }
+
+    it("refuses a prerelease explicitly tagged latest before any network call", async () => {
+      writePrerelease();
+      const result = await run([tarball, "--tag", "latest"], baseEnv());
+
+      expectFailure(result, /prerelease/);
+      expect(result.stderr).not.toMatch(/unsupported flag/);
+      expect(githubReqs).toEqual([]);
+      expect(registryReqs).toEqual([]);
+      expect(published()).toEqual([]);
+    });
+
+    it("stages the same prerelease under --tag next", async () => {
+      writePrerelease();
+      const result = await run([tarball, "--tag", "next"], baseEnv());
+
+      expect(result.status).toBe(0);
+      expect(published()[0]?.opts).toMatchObject({ defaultTag: "next" });
+    });
+  });
+
+  describe("--expect", () => {
+    it("fails without --expect before any network call", async () => {
+      const result = await run([tarball], baseEnv(), { withExpect: false });
+
+      expectFailure(result, /--expect/);
+      expect(result.stderr).not.toMatch(/unsupported flag/);
+      expect(githubReqs).toEqual([]);
+      expect(registryReqs).toEqual([]);
+      expect(published()).toEqual([]);
+    });
+
+    it.each([
+      ["name", "@scope/other@1.0.0"],
+      ["version", "@scope/name@1.0.1"],
+    ])(
+      "fails before any network call when the %s differs from the manifest",
+      async (_what, wanted) => {
+        const result = await run([tarball, "--expect", wanted], baseEnv());
+
+        expectFailure(result, /expect/i);
+        // Both sides are named so the operator can see which one is wrong.
+        expect(result.stderr).toContain(wanted);
+        expect(result.stderr).toContain("@scope/name@1.0.0");
+        expect(result.stderr).not.toMatch(/unsupported flag/);
+        expect(githubReqs).toEqual([]);
+        expect(registryReqs).toEqual([]);
+        expect(published()).toEqual([]);
+      },
+    );
+
+    it("stages when --expect equals the manifest's name@version", async () => {
+      const result = await run(
+        [tarball, "--expect", "@scope/name@1.0.0"],
+        baseEnv(),
+      );
+
+      expect(result.status).toBe(0);
+      expect(published()).toHaveLength(1);
+    });
+  });
+
+  describe("NPM_CONFIG_REGISTRY", () => {
+    it("fails through the script's own message when it is not a URL", async () => {
+      const result = await run(
+        [tarball],
+        baseEnv({ NPM_CONFIG_REGISTRY: "not a url" }),
+      );
+
+      expectFailure(result, /^npm-stage-publish: .*registry/im);
+      expect(result.stderr).not.toMatch(/unsupported flag/);
+      // A fail() message, not an uncaught exception with a stack trace.
+      expect(result.stderr).not.toMatch(/TypeError|\n\s+at |node:internal/);
+      expect(githubReqs).toEqual([]);
+      expect(published()).toEqual([]);
+    });
+  });
+
+  describe("registry-returned stage id", () => {
+    it.each([
+      ["a newline", "stg-1\n::notice::injected"],
+      ["a control character", "stg\u0007-1"],
+      ["a workflow-command separator", "stg::1"],
+      ["a space", "stg 1"],
+      ["a slash", "../stg"],
+    ])("refuses an id containing %s", async (_what, stageId) => {
+      const idsFile = join(root, "bad-ids.txt");
+      const result = await run(
+        [tarball],
+        baseEnv({ FAKE_STAGE_ID: stageId, STAGED_IDS_FILE: idsFile }),
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(JSON.stringify(stageId));
+      expect(result.stderr).not.toMatch(/unsupported flag/);
+      expect(result.stdout).not.toContain("staged with id");
+      expect(result.stdout).not.toContain("::notice");
+      expect(result.stdout).not.toContain("npm stage approve");
+      expect(existsSync(idsFile)).toBe(false);
+    });
+
+    it("accepts an id of letters, digits, underscore and hyphen", async () => {
+      const result = await run(
+        [tarball],
+        baseEnv({ FAKE_STAGE_ID: "Stg_1-aZ09" }),
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("npm stage approve Stg_1-aZ09");
+    });
+  });
+
   describe("STAGED_IDS_FILE", () => {
     function idsFile(): string {
       return join(root, "staged-ids.txt");
@@ -553,6 +721,7 @@ describe("npm-stage-publish", () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("(staged with id stg-1)");
       expect(result.stderr).toMatch(/could not record it in .*ids\.txt/);
+      expectApproveAnnotation(result);
       expectNoSecrets(result);
     });
 

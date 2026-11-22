@@ -177,6 +177,7 @@ jobs:
   publish:
     name: Publish to npm
     needs: [prepare, pack]
+    if: needs.prepare.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Gates the staged publish behind a required reviewer (see CLAUDE.md,
@@ -292,9 +293,13 @@ jobs:
         env:
           RELEASE_TOOLS_DIR: ${{ github.workspace }}/tools/release
           STAGED_IDS_FILE: ${{ runner.temp }}/staged-ids.txt
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           tarball="$(find release-assets -name '*.tgz' -print -quit)"
-          node bin/npm-stage-publish.mjs "$tarball" --access public --tag latest
+          # --expect: refuse to stage a tarball whose manifest is not the
+          # release release-please just tagged.
+          node bin/npm-stage-publish.mjs "$tarball" --access public --tag latest \
+            --expect "@monte3l/groundwork@${VERSION}"
       # The stage id to approve is printed here, plus an annotation on the run
       # page. `npm stage approve <id>` (2FA) is still a maintainer step.
       - name: Show the staged ids to approve
@@ -321,7 +326,8 @@ jobs:
               esac
             done < "$STAGED_IDS_FILE"
           else
-            echo "no staged version was recorded by this run"
+            echo "no stage id was recorded by this run -- a version may still have been staged; check with: npm stage list --package @monte3l/groundwork"
+            echo "::warning title=No stage id recorded::A version may still be staged. Run npm stage list --package @monte3l/groundwork before re-running."
           fi
 
   # Publishes the draft last, then dispatches to m3l-plugins so it opens the

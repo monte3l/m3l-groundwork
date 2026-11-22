@@ -29,6 +29,10 @@
  *
  * ## Inputs
  *
+ * `--expect <name>@<version>` is required and must equal the tarball
+ * manifest's `name@version`, checked before any token is requested, so a stale
+ * or mixed-up asset is never staged. A prerelease is refused on `latest`.
+ *
  * `RELEASE_TOOLS_DIR` names the directory holding the `npm ci`-installed
  * libnpmpublish and npm-registry-fetch (the release-tools lockfile).
  * `STAGED_IDS_FILE`, when set, receives one `<name>@<version> <stage id>` line per
@@ -101,6 +105,11 @@ try {
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
+if (parsed.expect === undefined) {
+  fail(
+    "--expect <name>@<version> is required: it names the release this tarball must be",
+  );
+}
 
 const toolsDir = process.env.RELEASE_TOOLS_DIR;
 if (!toolsDir) fail("RELEASE_TOOLS_DIR is not set");
@@ -118,7 +127,14 @@ try {
 
 const registry =
   process.env.NPM_CONFIG_REGISTRY ?? "https://registry.npmjs.org/";
-const registryUrl = new URL(registry);
+let registryUrl;
+try {
+  registryUrl = new URL(registry);
+} catch (error) {
+  fail(
+    `NPM_CONFIG_REGISTRY is not a valid registry URL (${JSON.stringify(registry)}): ${error instanceof Error ? error.message : String(error)}`,
+  );
+}
 const authKey = `//${registryUrl.host}${registryUrl.pathname}:_authToken`;
 
 let manifest;
@@ -145,11 +161,25 @@ if (
   fail(`${parsed.tarball}: package.json has no name and version`);
 }
 
-// npm refuses a prerelease published without an explicit dist-tag, because it
-// would otherwise land on `latest`. Refuse here too, before any token is used.
-if (/^\d+\.\d+\.\d+-/.test(manifest.version) && parsed.tag === undefined) {
+// The caller names the release it means to stage; a tarball that says
+// otherwise (a stale asset, a mixed-up version) is refused before any token
+// is requested.
+const id = `${manifest.name}@${manifest.version}`;
+if (parsed.expect !== id) {
   fail(
-    `${manifest.name}@${manifest.version} is a prerelease: pass --tag so it does not land on latest`,
+    `--expect ${parsed.expect} does not match the tarball's manifest, which is ${id}`,
+  );
+}
+
+// npm refuses a prerelease published without an explicit dist-tag, because it
+// would otherwise land on `latest`. Refuse here too, before any token is used,
+// and refuse an explicit `--tag latest` for the same reason.
+if (
+  /^\d+\.\d+\.\d+-/.test(manifest.version) &&
+  (parsed.tag ?? "latest") === "latest"
+) {
+  fail(
+    `${id} is a prerelease: pass a --tag other than latest so it does not land on latest`,
   );
 }
 
@@ -195,9 +225,37 @@ try {
 
 const stageId = result?.stageId;
 if (typeof stageId !== "string" || stageId === "") {
-  fail(`staging ${manifest.name}@${manifest.version} returned no stage id`);
+  fail(`staging ${id} returned no stage id`);
 }
-const id = `${manifest.name}@${manifest.version}`;
+// The id is echoed into logs, the step summary and a workflow command, so a
+// registry-returned value that could inject a line or a `::` command is
+// refused (and printed only JSON-escaped).
+if (!/^[A-Za-z0-9_-]+$/.test(stageId)) {
+  fail(
+    `staging ${id} returned an unexpected stage id ${JSON.stringify(stageId)} (run npm stage list to find the real one)`,
+  );
+}
+
+/** Set once the unrecorded annotation has been printed. */
+let annotated = false;
+/**
+ * Puts the approve command on the run page as a `::warning` annotation, for
+ * when the file or summary that normally carry the stage id could not be
+ * written. The title is a workflow-command property, so it is escaped as one.
+ */
+function annotateUnrecorded() {
+  // Both best-effort writes can fail in one run; one annotation is enough.
+  if (annotated) return;
+  annotated = true;
+  const title = `Staged ${id} (${stageId}), could not be recorded`
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A")
+    .replace(/:/g, "%3A")
+    .replace(/,/g, "%2C");
+  console.log(`::warning title=${title}::npm stage approve ${stageId}`);
+}
+
 console.log(`+ ${id} (staged with id ${stageId})`);
 console.log(`approve with: npm stage approve ${stageId}`);
 if (process.env.GITHUB_STEP_SUMMARY) {
@@ -212,6 +270,7 @@ if (process.env.GITHUB_STEP_SUMMARY) {
     console.error(
       `npm-stage-publish: staged ${id} (${stageId}) but could not write the step summary: ${error instanceof Error ? error.message : String(error)}`,
     );
+    annotateUnrecorded();
   }
 }
 if (process.env.STAGED_IDS_FILE) {
@@ -224,5 +283,6 @@ if (process.env.STAGED_IDS_FILE) {
     console.error(
       `npm-stage-publish: staged ${id} (${stageId}) but could not record it in ${process.env.STAGED_IDS_FILE}: ${error instanceof Error ? error.message : String(error)}`,
     );
+    annotateUnrecorded();
   }
 }

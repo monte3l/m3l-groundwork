@@ -23,7 +23,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cliDir = join(here, "..");
@@ -41,6 +41,7 @@ function listFiles(dir: string, root: string = dir): string[] {
 describe("published tarball end-to-end", () => {
   let scratch: string;
   let installedBin: string;
+  let packedTarball: string;
 
   beforeEach(() => {
     scratch = mkdtempSync(join(tmpdir(), "m3l-pack-e2e-"));
@@ -55,6 +56,7 @@ describe("published tarball end-to-end", () => {
     if (tarball === undefined) {
       throw new Error("pnpm pack produced no tarball");
     }
+    packedTarball = join(scratch, tarball);
     const extracted = join(scratch, "extracted");
     execFileSync("mkdir", ["-p", extracted]);
     execFileSync("tar", ["xzf", join(scratch, tarball), "-C", extracted]);
@@ -63,6 +65,31 @@ describe("published tarball end-to-end", () => {
 
   afterEach(() => {
     rmSync(scratch, { recursive: true, force: true });
+  });
+
+  it("is parsed by the release tarball reader, which returns the packed name and version", async () => {
+    const reader = (await import(
+      pathToFileURL(
+        join(cliDir, "..", "..", "bin", "lib", "read-tarball-manifest.mjs"),
+      ).href
+    )) as {
+      readTarballManifest: (buf: Buffer) => { name: string; version: string };
+      readTarballReadme: (
+        buf: Buffer,
+      ) => { filename: string; content: string } | undefined;
+    };
+    const bytes = readFileSync(packedTarball);
+    const packed = JSON.parse(
+      readFileSync(
+        join(scratch, "extracted", "package", "package.json"),
+        "utf8",
+      ),
+    ) as { name: string; version: string };
+
+    const manifest = reader.readTarballManifest(bytes);
+    expect(manifest.name).toBe(packed.name);
+    expect(manifest.version).toBe(packed.version);
+    expect(reader.readTarballReadme(bytes)?.filename).toMatch(/^readme/i);
   });
 
   it("removes its vendored copies from the checkout once packing finishes", () => {
