@@ -110,6 +110,20 @@ per-pack `CHANGELOG.md`.
   it with the one tarball `pack` built; `bin/lib/npm-publish-args.mjs` parses
   its arguments and refuses any flag it does not know. It was reached through a
   `pnpm publish` shim while Changesets owned the publish; the shim is gone.
+  The workflow also passes a required `--expect <name>@<version>` (from
+  `needs.prepare.outputs.version`), and the script fails before it asks for a
+  token unless the tarball's own manifest says the same, so `publish` never
+  stages bytes `prepare` did not release. A prerelease version is refused when
+  the effective tag is `latest` (an omitted `--tag` counts as `latest`), a
+  repeated flag is refused, and the tar reader refuses a duplicate
+  `package/package.json`, PAX and GNU long-name headers, a non-octal size and a
+  bad header checksum, so it cannot read a different manifest than npm extracts.
+- **Recovery after staging started.** Use "Re-run failed jobs", not "Re-run all
+  jobs", once the draft Release holds assets: a full re-run re-packs, and if the
+  bytes differ `gh release upload --clobber` puts the new tarball on the draft
+  while npm holds the first one, and staging then fails as a duplicate.
+  `publish` also waits on its environment reviewer inside the workflow-level
+  concurrency group, so every later push to `main` queues behind it.
 - **The tarball is packed once, in `pack`, and every later job takes that file.**
   `pack` and `publish` are separate jobs so the OIDC token is never present where
   build or test code runs. `publish` installs only `tools/release` with
