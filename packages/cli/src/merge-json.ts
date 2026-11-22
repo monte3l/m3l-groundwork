@@ -207,8 +207,8 @@ export function mergeSettingsHooks(
 export type SettingsTopLevelFragment = Record<string, unknown>;
 
 /**
- * Merges a pack's top-level `.claude/settings.json` keys (`statusLine`,
- * `subagentStatusLine` -- settings that are not hook registrations) into an
+ * Merges a pack's top-level `.claude/settings.json` keys (such as
+ * `statusLine` -- settings that are not hook registrations) into an
  * existing settings object. Disjoint from `mergeSettingsHooks`, which owns the
  * `hooks` block: a fragment key of `hooks` is rejected outright rather than
  * silently clobbering it. A key not yet present is appended; one already

@@ -84,7 +84,11 @@ function loadSnapshot(root: string): HarnessSnapshot {
   const skills: SkillSnapshot[] = claudeEntries
     .filter(
       (entry) =>
-        entry.isDirectory && /^\.claude\/skills\/[^/]+$/.test(entry.relPath),
+        entry.isDirectory &&
+        /^\.claude\/skills\/[^/]+$/.test(entry.relPath) &&
+        // A directory carrying a plugin manifest is a project-local plugin
+        // (e.g. the statusline pack's subagent-rows), not a skill.
+        !existsSync(join(entry.path, ".claude-plugin", "plugin.json")),
     )
     .map((dir) => {
       const prefix = `${dir.relPath}/`;

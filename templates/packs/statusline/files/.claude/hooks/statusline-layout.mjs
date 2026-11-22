@@ -1,9 +1,10 @@
 /**
- * Pure presentation primitives shared by both status-line entry points
- * (`statusline.mjs`, `subagent-statusline.mjs`): terminal-width fitting, ANSI
- * colors, and the two small formatters both scripts need. No I/O, no
- * shebang, no direct-run block -- this module is only ever imported, and
- * neither entry point imports the other.
+ * Pure presentation primitives for the status-line entry point
+ * (`statusline.mjs`): terminal-width fitting, ANSI colors, and the small
+ * formatters it needs. The subagent-rows mod keeps a vendored copy of the ones
+ * it uses (`row-format.mjs`; a mod may import only from its own directory).
+ * No I/O, no shebang, no direct-run block -- this module is only ever
+ * imported.
  *
  * Anthropic's own statusLine docs (code.claude.com/docs/en/statusline) state
  * that a statusLine script must read the `COLUMNS`/`LINES` env vars to learn

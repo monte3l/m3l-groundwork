@@ -233,7 +233,7 @@ describe("gradeHarness -- structural defects", () => {
     ]);
   });
 
-  it("counts a script wired through a top-level command key like statusLine as registered, and flags one that is missing", () => {
+  it("counts a script wired through a top-level command key like statusLine as registered", () => {
     writeCleanHarness();
     write(".claude/hooks/statusline.mjs", "// status line\n");
     write(
@@ -256,7 +256,30 @@ describe("gradeHarness -- structural defects", () => {
           type: "command",
           command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.mjs"',
         },
-        subagentStatusLine: {
+      }),
+    );
+    expect(ids(gradeHarness(root), "structural")).toEqual([]);
+  });
+
+  it("flags a script a top-level command key like statusLine names but that is missing", () => {
+    writeCleanHarness();
+    write(
+      ".claude/settings.json",
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/guard.mjs"',
+                  timeout: 30,
+                },
+              ],
+            },
+          ],
+        },
+        statusLine: {
           type: "command",
           command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/missing-sub.mjs"',
         },
@@ -402,5 +425,47 @@ describe("the real templates/core tree", () => {
     expect(
       RULES.slice(firstRubric).every((rule) => rule.level === "rubric"),
     ).toBe(true);
+  });
+});
+
+describe("a plugin shipped under .claude/skills/", () => {
+  const PLUGIN_JSON = JSON.stringify({
+    name: "subagent-rows",
+    version: "1.0.0",
+    description: "Renders subagent rows.",
+    author: { name: "m3l" },
+  });
+
+  it("is not graded as a skill: no 'has no SKILL.md' failure for a directory holding .claude-plugin/plugin.json", () => {
+    writeCleanHarness();
+    write(
+      ".claude/skills/subagent-rows/.claude-plugin/plugin.json",
+      PLUGIN_JSON,
+    );
+    write(
+      ".claude/skills/subagent-rows/hooks/hooks.json",
+      JSON.stringify({ description: "d", modules: ["./register.mjs"] }),
+    );
+    write(
+      ".claude/skills/subagent-rows/hooks/register.mjs",
+      "export function register() {}\n",
+    );
+    const grade = gradeHarness(root);
+    expect(
+      grade.findings.filter((f) => f.subject.includes("subagent-rows")),
+    ).toEqual([]);
+    expect(ids(grade, "structural")).toEqual([]);
+  });
+
+  it("still flags a sibling skill directory that has neither SKILL.md nor a plugin manifest", () => {
+    writeCleanHarness();
+    write(
+      ".claude/skills/subagent-rows/.claude-plugin/plugin.json",
+      PLUGIN_JSON,
+    );
+    write(".claude/skills/not-a-plugin/notes.md", "x\n");
+    expect(ids(gradeHarness(root), "structural")).toEqual([
+      "skill-shape:.claude/skills/not-a-plugin",
+    ]);
   });
 });

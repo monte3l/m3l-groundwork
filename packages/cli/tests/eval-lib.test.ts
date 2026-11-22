@@ -515,6 +515,63 @@ describe("writeSkillPlugin", () => {
     expect(existsSync(join(out, "skills", "skill-a"))).toBe(false);
   });
 
+  it("skips a directory holding .claude-plugin/plugin.json: it is a plugin, not a skill", () => {
+    const skillsDir = join(dir, "src");
+    mkdirSync(join(skillsDir, "real"), { recursive: true });
+    writeFileSync(
+      join(skillsDir, "real", "SKILL.md"),
+      "---\nname: real\n---\n",
+    );
+    mkdirSync(join(skillsDir, "a-plugin", ".claude-plugin"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(skillsDir, "a-plugin", ".claude-plugin", "plugin.json"),
+      "{}",
+    );
+    const out = join(dir, "out");
+    lib.writeSkillPlugin({
+      skillsDir,
+      outDir: out,
+      name: "n",
+      description: "d",
+    });
+    expect(readdirSync(join(out, "skills"))).toEqual(["real"]);
+  });
+
+  it("does not collide a plugin directory with a real skill of the same name", () => {
+    const dirA = join(dir, "a");
+    const dirB = join(dir, "b");
+    mkdirSync(join(dirA, "x", ".claude-plugin"), { recursive: true });
+    writeFileSync(join(dirA, "x", ".claude-plugin", "plugin.json"), "{}");
+    mkdirSync(join(dirB, "x"), { recursive: true });
+    writeFileSync(join(dirB, "x", "SKILL.md"), "---\nname: x\n---\n");
+    const out = join(dir, "out");
+    expect(() => {
+      lib.writeSkillPlugin({
+        skillsDirs: [dirA, dirB],
+        outDir: out,
+        name: "n",
+        description: "d",
+      });
+    }).not.toThrow();
+    expect(existsSync(join(out, "skills", "x", "SKILL.md"))).toBe(true);
+  });
+
+  it("still copies a plain directory without a plugin manifest as a skill", () => {
+    const skillsDir = join(dir, "src");
+    mkdirSync(join(skillsDir, "plain", ".claude-plugin"), { recursive: true });
+    writeFileSync(join(skillsDir, "plain", "notes.txt"), "hi");
+    const out = join(dir, "out");
+    lib.writeSkillPlugin({
+      skillsDir,
+      outDir: out,
+      name: "n",
+      description: "d",
+    });
+    expect(existsSync(join(out, "skills", "plain", "notes.txt"))).toBe(true);
+  });
+
   it("leaves writeHarnessPlugin's manifest byte-identical after the extraction", () => {
     const skillsDir = join(dir, "src");
     mkdirSync(join(skillsDir, "starting-work"), { recursive: true });
@@ -1188,6 +1245,12 @@ describe("the real packs trigger corpus", () => {
   const packSkillNames = packSkillDirs.flatMap((skillsDir) =>
     readdirSync(skillsDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
+      .filter(
+        (entry) =>
+          !existsSync(
+            join(skillsDir, entry.name, ".claude-plugin", "plugin.json"),
+          ),
+      )
       .map((entry) => entry.name),
   );
   const allSkillNames = [

@@ -76,7 +76,6 @@ describe("installPack settings.json formatting", () => {
       "permissions",
       "hooks",
       "statusLine",
-      "subagentStatusLine",
     ]);
   });
 });

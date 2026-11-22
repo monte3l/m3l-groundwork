@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Pure presentation primitives shared by both status-line entry points
- * (`statusline.mjs`, `subagent-statusline.mjs`): terminal-width fitting, ANSI
- * colors, and the two small formatters both scripts need. No shebang, no
+ * Pure presentation primitives for the status-line entry point
+ * (`statusline.mjs`): terminal-width fitting, ANSI
+ * colors, and the small formatters it needs. The subagent-rows mod keeps a
+ * vendored copy of the ones it uses (`row-format.mjs`; a mod may import only
+ * from its own directory). No shebang, no
  * direct-run block -- this module is only ever imported, and neither entry
  * point imports the other. The color constants below are the one exception
  * to "no I/O": they're read from `bin/lib/term.mjs`'s `PALETTE`, which

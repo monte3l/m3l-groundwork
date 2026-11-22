@@ -104,7 +104,7 @@ function writeBrokenHarness(dir: string): void {
       // Registered through a top-level command key rather than the local
       // settings file, since settings.local.json below is deliberately
       // unparseable (H3) and must not be relied on for reachability here.
-      subagentStatusLine: {
+      statusLine: {
         type: "command",
         command: "node .claude/hooks/registered.mjs",
       },
@@ -414,5 +414,33 @@ describe("the TypeScript grader and its emitted .mjs twin", () => {
         sample,
       ).toEqual(plain(parseFrontmatter(sample)));
     }
+  });
+});
+
+describe("a plugin shipped under .claude/skills/ (both graders)", () => {
+  it("is not graded as a skill by either grader, and they agree", () => {
+    writeBrokenHarness(root);
+    write(
+      ".claude/skills/subagent-rows/.claude-plugin/plugin.json",
+      JSON.stringify({ name: "subagent-rows", version: "1.0.0" }),
+    );
+    write(
+      ".claude/skills/subagent-rows/hooks/hooks.json",
+      JSON.stringify({ description: "d", modules: ["./register.mjs"] }),
+    );
+    write(
+      ".claude/skills/subagent-rows/hooks/register.mjs",
+      "export function register() {}\n",
+    );
+
+    const ts = gradeHarness(root);
+    const mjs = emitted.gradeHarness(root) as typeof ts;
+    expect(
+      ts.findings.filter((f) => f.subject.includes("subagent-rows")),
+    ).toEqual([]);
+    expect(
+      mjs.findings.filter((f) => f.subject.includes("subagent-rows")),
+    ).toEqual([]);
+    expect(plain(mjs)).toEqual(plain(ts));
   });
 });

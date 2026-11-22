@@ -11,11 +11,17 @@
  * runs the suite. The end-to-end behaviour (a real bootstrap, real stdin, the
  * emitted project's own lint) lives in packs.e2e.test.ts.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -341,75 +347,369 @@ describe("running as the entry point through a symlinked path", () => {
     });
     expect(out.trimEnd().split("\n")).toHaveLength(5);
   });
-
-  it("subagent-statusline.mjs still emits its override line", () => {
-    const out = execFileSync(
-      "node",
-      [join(linkedHooks, "subagent-statusline.mjs")],
-      {
-        input: JSON.stringify({ tasks: [{ id: "a", name: "reviewer" }] }),
-        encoding: "utf8",
-      },
-    );
-    expect(JSON.parse(out) as { id: string }).toMatchObject({ id: "a" });
-  });
 });
 
+const repoRoot = join(here, "..", "..", "..", "..");
+
 describe.each([
-  ["shipped pack copy", hooksDir],
-  ["root copy", join(here, "..", "..", "..", "..", ".claude", "hooks")],
-])("formatSubagentRow agentType fallback (%s)", (_label, dir) => {
-  type Row = { id: string; content: string } | null;
-  let format: (task: unknown, env?: { now?: number }) => Row;
+  [
+    "shipped pack copy",
+    join(
+      repoRoot,
+      "templates",
+      "packs",
+      "statusline",
+      "files",
+      ".claude",
+      "skills",
+      "subagent-rows",
+    ),
+  ],
+  ["root copy", join(repoRoot, ".claude", "skills", "subagent-rows")],
+])("subagent-rows plugin (%s)", (_label, pluginDir) => {
+  type Props = Record<string, unknown>;
+  type Event = { props: Props; [key: string]: unknown };
+  type Next = (e: Event) => unknown;
+  type Handler = (ctx: unknown, e: Event, next: Next) => unknown;
+  type On = (event: string, matcher: unknown, handler: Handler) => unknown;
+
+  let render: (props: unknown, env?: { now?: number }) => string | null;
+  let register: (on: On) => void;
+  let rowFormat: Record<string, unknown> & {
+    formatTokenCount: (n: number) => string;
+    truncateToWidth: (text: string, maxWidth: number) => string;
+  };
 
   beforeAll(async () => {
     const mod = (await import(
-      pathToFileURL(join(dir, "subagent-statusline.mjs")).href
-    )) as { formatSubagentRow: typeof format };
-    format = mod.formatSubagentRow;
+      pathToFileURL(join(pluginDir, "hooks", "register.mjs")).href
+    )) as { renderAgentRow: typeof render; register: typeof register };
+    render = mod.renderAgentRow;
+    register = mod.register;
+    rowFormat = (await import(
+      pathToFileURL(join(pluginDir, "hooks", "row-format.mjs")).href
+    )) as typeof rowFormat;
   });
 
-  const plain = (row: Row): string => (row?.content ?? "").replace(ANSI, "");
+  const text = (body: string | null): string => (body ?? "").replace(ANSI, "");
 
-  it("uses agentType as the label when name is missing", () => {
-    const row = format({ id: "a", agentType: "code-reviewer" });
-    expect(row?.id).toBe("a");
-    expect(plain(row)).toBe("code-reviewer");
-  });
+  describe("renderAgentRow", () => {
+    it("uses name as the label", () => {
+      expect(text(render({ name: "reviewer", type: "other" }))).toBe(
+        "reviewer",
+      );
+    });
 
-  it("uses agentType as the label when name is empty", () => {
-    expect(plain(format({ id: "a", name: "", agentType: "tester" }))).toBe(
-      "tester",
+    it("falls back to type when name is missing", () => {
+      expect(text(render({ type: "code-reviewer" }))).toBe("code-reviewer");
+    });
+
+    it("falls back to type when name is empty", () => {
+      expect(text(render({ name: "", type: "tester" }))).toBe("tester");
+    });
+
+    it("does not require an id", () => {
+      expect(render({ name: "x" })).not.toBeNull();
+    });
+
+    it.each([
+      ["no name and no type", {}],
+      ["empty name and empty type", { name: "", type: "" }],
+      ["non-string type", { type: 7 }],
+    ])("returns null for %s", (_n, props) => {
+      expect(render(props)).toBeNull();
+    });
+
+    it("renders effort in magenta", () => {
+      const body = render({ name: "x", effort: "high" }) ?? "";
+      expect(body).toContain(`${rowFormat["MAGENTA"] as string}high`);
+      expect(text(body)).toBe("x · high");
+    });
+
+    it("renders tokens/context with a rounded percentage", () => {
+      expect(
+        text(
+          render({ name: "x", tokenCount: 12000, contextWindowSize: 200000 }),
+        ),
+      ).toBe("x · 12k/200k (6%)");
+    });
+
+    it("omits the token segment without a positive context window", () => {
+      expect(
+        text(render({ name: "x", tokenCount: 12000, contextWindowSize: 0 })),
+      ).toBe("x");
+    });
+
+    it.each([
+      [0, "0m", "GREEN"],
+      [14 * 60_000, "14m", "GREEN"],
+      [15 * 60_000, "15m", "YELLOW"],
+      [29 * 60_000, "29m", "YELLOW"],
+      [30 * 60_000, "30m", "RED"],
+      [75 * 60_000, "1h15m", "RED"],
+    ])("elapsed %i ms renders %s in %s", (elapsed, label, color) => {
+      const body =
+        render({ name: "x", startTime: 1000 }, { now: 1000 + elapsed }) ?? "";
+      expect(body).toContain(`${rowFormat[color] as string}${label}`);
+      expect(text(body)).toBe(`x · ${label}`);
+    });
+
+    it("truncates to props.columns when it is a positive number", () => {
+      const props = { name: "a-very-long-subagent-name", columns: 10 };
+      const body = render(props) ?? "";
+      expect(body).toBe(
+        rowFormat.truncateToWidth("a-very-long-subagent-name", 10),
+      );
+      expect(text(body).length).toBeLessThanOrEqual(10);
+    });
+
+    it.each([0, -5, "80", undefined])(
+      "does not truncate when columns is %s",
+      (columns) => {
+        expect(
+          text(render({ name: "a-very-long-subagent-name", columns })),
+        ).toBe("a-very-long-subagent-name");
+      },
     );
   });
 
-  it("keeps name as the label when both are present", () => {
-    const text = plain(
-      format({ id: "a", name: "reviewer", agentType: "other" }),
-    );
-    expect(text).toContain("reviewer");
-    expect(text).not.toContain("other");
+  describe("register", () => {
+    function capture(): {
+      calls: { event: string; matcher: unknown; handler: Handler }[];
+    } {
+      const calls: { event: string; matcher: unknown; handler: Handler }[] = [];
+      register((event, matcher, handler) => {
+        calls.push({ event, matcher, handler });
+      });
+      return { calls };
+    }
+
+    it("registers exactly one ui.render hook for the AgentRow component", () => {
+      const { calls } = capture();
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.event).toBe("ui.render");
+      expect(calls[0]?.matcher).toEqual({ component: "AgentRow" });
+    });
+
+    it("sets props.body and preserves every other prop, including isHidden", () => {
+      const handler = capture().calls[0]?.handler as Handler;
+      const next = vi.fn();
+      const e = {
+        kind: "ui.render",
+        props: { id: "a", name: "reviewer", type: "t", isHidden: false },
+      };
+      handler(undefined, e, next);
+      expect(next).toHaveBeenCalledTimes(1);
+      const passed = next.mock.calls[0]?.[0] as Event;
+      expect(text(passed.props["body"] as string)).toContain("reviewer");
+      expect(passed.props).toMatchObject({
+        id: "a",
+        name: "reviewer",
+        type: "t",
+        isHidden: false,
+      });
+      expect(passed["kind"]).toBe("ui.render");
+    });
+
+    it("never un-hides or hides a row", () => {
+      const handler = capture().calls[0]?.handler as Handler;
+      const next = vi.fn();
+      handler(undefined, { props: { name: "x", isHidden: true } }, next);
+      expect((next.mock.calls[0]?.[0] as Event).props["isHidden"]).toBe(true);
+    });
+
+    it("calls next with the event untouched when there is no usable label", () => {
+      const handler = capture().calls[0]?.handler as Handler;
+      const next = vi.fn();
+      const e = { props: { id: "a", isHidden: false } };
+      handler(undefined, e, next);
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(next.mock.calls[0]?.[0]).toBe(e);
+      expect(Object.hasOwn(e.props, "body")).toBe(false);
+    });
+
+    it("catches a throwing render and still calls next with the event untouched", () => {
+      const handler = capture().calls[0]?.handler as Handler;
+      const next = vi.fn();
+      const hostile = {
+        props: new Proxy(
+          {},
+          {
+            get() {
+              throw new Error("boom");
+            },
+          },
+        ) as Props,
+      };
+      expect(() => handler(undefined, hostile, next)).not.toThrow();
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(next.mock.calls[0]?.[0]).toBe(hostile);
+    });
+
+    it("lets an error thrown by next propagate and calls next exactly once", () => {
+      const handler = capture().calls[0]?.handler as Handler;
+      const failure = new Error("downstream");
+      const next = vi.fn(() => {
+        throw failure;
+      });
+      let thrown: unknown;
+      try {
+        handler(undefined, { props: { name: "reviewer" } }, next);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBe(failure);
+      expect(next).toHaveBeenCalledTimes(1);
+    });
+
+    it("tolerates an undefined props and passes the event on untouched", () => {
+      const handler = capture().calls[0]?.handler as Handler;
+      const next = vi.fn();
+      const e = { kind: "ui.render" } as unknown as Event;
+      expect(() => handler(undefined, e, next)).not.toThrow();
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(next.mock.calls[0]?.[0]).toBe(e);
+    });
   });
 
-  it("still renders the remaining segments after an agentType label", () => {
-    const withName = format(
-      { id: "a", name: "x", tokenCount: 1000, contextWindowSize: 10000 },
-      { now: 0 },
+  describe("renderAgentRow input hardening", () => {
+    it("omits the token segment for a negative tokenCount", () => {
+      expect(
+        text(render({ name: "x", tokenCount: -5, contextWindowSize: 200000 })),
+      ).toBe("x");
+    });
+
+    it("still renders a zero tokenCount", () => {
+      expect(
+        text(render({ name: "x", tokenCount: 0, contextWindowSize: 200000 })),
+      ).toBe("x · 0/200k (0%)");
+    });
+
+    it.each([-1e300, 1e300, Infinity, NaN, 1.5])(
+      "omits the elapsed segment for startTime %s",
+      (startTime) => {
+        expect(text(render({ name: "x", startTime }, { now: 5_000_000 }))).toBe(
+          "x",
+        );
+      },
     );
-    const withType = format(
-      { id: "a", agentType: "x", tokenCount: 1000, contextWindowSize: 10000 },
-      { now: 0 },
+
+    it.each([0.5, NaN, 0, -3])(
+      "does not truncate when columns is %s",
+      (columns) => {
+        expect(
+          text(render({ name: "a-very-long-subagent-name", columns })),
+        ).toBe("a-very-long-subagent-name");
+      },
     );
-    expect(withType).toEqual(withName);
-    expect(plain(withType)).toContain(" · ");
   });
 
+  describe("row-format.mjs parity with statusline-layout.mjs", () => {
+    let original: Record<string, unknown> & {
+      formatTokenCount: (n: number) => string;
+      truncateToWidth: (text: string, maxWidth: number) => string;
+    };
+
+    beforeAll(() => {
+      original = layout as unknown as typeof original;
+    });
+
+    it.each(["DIM", "GREEN", "MAGENTA", "RED", "RESET", "YELLOW"])(
+      "exports the same %s constant",
+      (name) => {
+        expect(typeof rowFormat[name]).toBe("string");
+        expect(rowFormat[name]).toBe(original[name]);
+      },
+    );
+
+    it.each([0, 1, 999, 1000, 12345, 200000, 1_000_000, 2_500_000])(
+      "formatTokenCount(%i) matches",
+      (n) => {
+        expect(rowFormat.formatTokenCount(n)).toBe(
+          original.formatTokenCount(n),
+        );
+      },
+    );
+
+    it.each([
+      ["plain", "hello world", 5],
+      ["fits", "short", 80],
+      ["wide CJK", "日本語のテキストです", 7],
+      ["emoji", "ok 🎉🎉🎉 done", 6],
+      ["ANSI", `${"\x1b[32m"}green text that is long${"\x1b[0m"}`, 8],
+      ["zero width", "abc", 0],
+    ])("truncateToWidth matches for %s", (_n, input, width) => {
+      expect(rowFormat.truncateToWidth(input, width)).toBe(
+        original.truncateToWidth(input, width),
+      );
+    });
+  });
+
+  describe("plugin files", () => {
+    const read = (rel: string): string =>
+      readFileSync(join(pluginDir, rel), "utf8");
+
+    it("plugin.json names the plugin after its directory", () => {
+      const manifest = JSON.parse(read(".claude-plugin/plugin.json")) as {
+        name: string;
+        version: string;
+        description: string;
+        author: unknown;
+      };
+      expect(manifest.name).toBe("subagent-rows");
+      expect(basename(pluginDir)).toBe(manifest.name);
+      expect(typeof manifest.version).toBe("string");
+      expect(typeof manifest.description).toBe("string");
+      expect(manifest.author).toBeDefined();
+    });
+
+    it("hooks.json lists register.mjs as its only module", () => {
+      const hooks = JSON.parse(read("hooks/hooks.json")) as {
+        description: string;
+        modules: string[];
+      };
+      expect(hooks.modules).toEqual(["./register.mjs"]);
+      expect(typeof hooks.description).toBe("string");
+    });
+
+    it.each(["hooks/register.mjs", "hooks/row-format.mjs"])(
+      "%s imports only node:* or files inside the plugin directory",
+      (rel) => {
+        const source = read(rel);
+        const specifiers = [
+          ...source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g),
+        ].map((m) => m[1] as string);
+        const fileDir = dirname(join(pluginDir, rel));
+        for (const spec of specifiers) {
+          if (spec.startsWith("node:")) continue;
+          expect(spec.startsWith("."), `${rel} imports ${spec}`).toBe(true);
+          const resolved = resolve(fileDir, spec);
+          expect(
+            resolved.startsWith(pluginDir + sep),
+            `${rel} imports ${spec}`,
+          ).toBe(true);
+        }
+      },
+    );
+
+    it("register.mjs imports from the vendored row-format.mjs", () => {
+      expect(read("hooks/register.mjs")).toContain("./row-format.mjs");
+    });
+  });
+});
+
+describe("the old subagent-statusline command is gone", () => {
   it.each([
-    ["no name and no agentType", { id: "a" }],
-    ["empty name and empty agentType", { id: "a", name: "", agentType: "" }],
-    ["non-string agentType", { id: "a", agentType: 7 }],
-    ["missing id", { agentType: "tester" }],
-  ])("returns null for %s", (_n, task) => {
-    expect(format(task)).toBeNull();
+    join(hooksDir, "subagent-statusline.mjs"),
+    join(repoRoot, ".claude", "hooks", "subagent-statusline.mjs"),
+  ])("%s does not exist", (path) => {
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it("the repo's .claude/settings.json has no subagentStatusLine key", () => {
+    const settings = JSON.parse(
+      readFileSync(join(repoRoot, ".claude", "settings.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(Object.hasOwn(settings, "subagentStatusLine")).toBe(false);
   });
 });

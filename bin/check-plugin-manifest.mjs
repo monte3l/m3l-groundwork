@@ -26,6 +26,14 @@ if (spawnSync("claude", ["--version"], { stdio: "ignore" }).error) {
 
 const targets = [
   { label: "m3l-groundwork-customize plugin", path: "packages/plugin" },
+  {
+    label: "subagent-rows mod (statusline pack copy)",
+    path: "templates/packs/statusline/files/.claude/skills/subagent-rows",
+  },
+  {
+    label: "subagent-rows mod (root copy)",
+    path: ".claude/skills/subagent-rows",
+  },
 ];
 
 for (const { label, path } of targets) {
