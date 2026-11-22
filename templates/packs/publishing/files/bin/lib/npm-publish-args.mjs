@@ -12,6 +12,8 @@
  * `--json` and `--no-git-checks` are pnpm-only and dropped. Anything not listed
  * is refused rather than guessed at: if changesets ever starts passing a flag
  * this does not understand, publishing must stop, not silently do something else.
+ * A flag given twice is refused for the same reason, instead of taking the
+ * first or the last value.
  *
  * Staged, not direct: a trusted publisher created since 2026-09-03 only allows a
  * staged publish -- a maintainer must separately run `npm stage approve <id>`
@@ -23,7 +25,8 @@ const WITH_VALUE = new Set(["--access", "--tag", "--otp"]);
 
 /**
  * Splits the arguments after `pnpm publish` into the tarball and the
- * `[flag, value]` pairs changesets passes, refusing anything else.
+ * `[flag, value]` pairs changesets passes, refusing anything else, including a
+ * flag given twice.
  *
  * @param {string[]} args the arguments following `pnpm publish`
  * @returns {{ tarball: string, pairs: [string, string][] }}
@@ -40,6 +43,9 @@ function scanPublishArgs(args) {
       const value = args[i + 1];
       if (value === undefined || value.startsWith("--")) {
         throw new Error(`${arg} needs a value`);
+      }
+      if (pairs.some(([flag]) => flag === arg)) {
+        throw new Error(`${arg} was given more than once`);
       }
       pairs.push([arg, value]);
       i += 1;
@@ -69,6 +75,8 @@ function scanPublishArgs(args) {
  *
  * @param {string[]} args the arguments following `pnpm publish`
  * @returns {{ tarball: string, access?: string, tag?: string, otp?: string }}
+ * @throws {Error} on an unknown or repeated flag, a flag without a value, or
+ *   not exactly one tarball
  */
 export function parsePublishArgs(args) {
   const { tarball, pairs } = scanPublishArgs(args);

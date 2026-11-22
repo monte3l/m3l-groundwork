@@ -36,8 +36,14 @@ now the `licensing` pack (`pack-licensing.md`); do not add them back.
   `npm-registry-fetch`**, which `bin/npm-stage-publish.mjs` stages through
   instead of the npm CLI (whose bundled dependencies no override can patch).
   Keep it audit-clean: `npm audit --package-lock-only` in that directory.
-  The scripts in `files/bin/` are token-substituted copies of this repo's own
-  `bin/` ones; change both together.
+  The scripts in `files/bin/` mirror this repo's own `bin/` ones except where
+  the Changesets flow differs: **no `--expect`** (Changesets drives the publish
+  through `pnpm-publish-shim.mjs`, which has no expected `name@version` to pass,
+  and the parser refuses unknown flags, so requiring it would break every pack
+  publish) and the pack-only `pathWithout` export in `npm-publish-args.mjs`.
+  Port every other hardening change to both. Under Changesets the script's
+  stdout is captured, so a `::warning` it prints reaches the run page only on a
+  direct run; the workflow's "no stage id recorded" warning is the fallback.
 - **The workflow file must stay named `release.yml`** in an emitted project:
   the trusted publisher is bound to that filename.
 - **The `budget` in `pack.json` must equal the real `files/` count.**

@@ -230,7 +230,8 @@ jobs:
               echo "::notice title=Staged $id::npm stage approve $stage"
             done < "$STAGED_IDS_FILE"
           else
-            echo "no staged version was recorded by this run"
+            echo "no stage id was recorded by this run -- a version may still have been staged; check with: npm stage list"
+            echo "::warning title=No stage id recorded::A version may still be staged. Run npm stage list before re-running."
           fi
       # npm provenance alone already meets most supply-chain "signed
       # releases" criteria (a Sigstore-backed, OIDC-issued attestation with
