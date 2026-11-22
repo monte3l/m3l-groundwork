@@ -135,6 +135,41 @@ describe("model-pin-currency -- accepts Haiku 5.5 and keeps Haiku 4.5", () => {
   });
 });
 
+describe("model-pin-currency -- accepts Fable 5.2 and keeps Fable 5.1", () => {
+  it.each(["claude-fable-5-2", "claude-fable-5-1"])(
+    "produces no finding for an agent pinned to %s",
+    (id) => {
+      writeAgentPinnedTo(id);
+
+      expect(modelPinFindings(gradeHarness(root))).toEqual([]);
+      expect(modelPinFindings(emitted.gradeHarness(root))).toEqual([]);
+    },
+  );
+
+  it("lists claude-fable-5-2 and claude-fable-5-1 in CURRENT_MODELS", () => {
+    expect(CURRENT_MODELS).toEqual(
+      expect.arrayContaining(["claude-fable-5-2", "claude-fable-5-1"]),
+    );
+  });
+});
+
+describe("model-pin-currency -- limited-availability ids are not current", () => {
+  it("flags claude-mythos-5-2 and leaves it out of CURRENT_MODELS", () => {
+    writeAgentPinnedTo("claude-mythos-5-2");
+
+    const tsFindings = modelPinFindings(gradeHarness(root));
+    expect(tsFindings).toEqual([
+      {
+        subject: ".claude/agents/pinned.md",
+        message:
+          "`model: claude-mythos-5-2` is not a known-current model id or alias",
+      },
+    ]);
+    expect(modelPinFindings(emitted.gradeHarness(root))).toEqual(tsFindings);
+    expect(CURRENT_MODELS).not.toContain("claude-mythos-5-2");
+  });
+});
+
 describe("model-pin-currency -- an id outside CURRENT_MODELS is flagged by name", () => {
   it("flags a still-unlisted id (claude-sonnet-9-9)", () => {
     writeAgentPinnedTo("claude-sonnet-9-9");

@@ -98,6 +98,7 @@ export const CURRENT_MODELS: readonly string[] = [
   "claude-sonnet-5",
   "claude-sonnet-5-5",
   "claude-fable-5-1",
+  "claude-fable-5-2",
   "claude-haiku-5-5",
   "claude-haiku-4-5",
   "claude-haiku-4-5-20251001",
