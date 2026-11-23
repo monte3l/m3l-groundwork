@@ -92,9 +92,15 @@ Sources: [hooks](https://code.claude.com/docs/en/hooks),
   missing `node` blocks every `Bash` call until fixed (run the command with the
   `!` prefix to get past it). The push guard keeps one exception: when it
   cannot work out the outgoing range it lets the push go, because the remote's
-  signed-commit rule is the authoritative layer. It and `bin/lib/signed-range.mjs`
+  signed-commit rule is the authoritative layer. It runs git only in the
+  project's own repository, its worktrees and `CLAUDE_PROJECT_DIR`, so a push
+  aimed at another repository goes unvetted. It and `bin/lib/signed-range.mjs`
   are one unit: with the helper missing or older, a command that looks like a
-  `git push` is blocked and every other command passes.
+  `git push` is blocked and every other command passes. These guards are
+  local, best-effort checks and not a security boundary: a command built at
+  run time (a variable, a sourced script) or a secret split over several lines
+  gets past them, and the remote's signed-commit rule, secret scanning and the
+  DCO check are what hold.
 - **What `permissions.deny` covers.** It blocks reading `.env`, `.env.*`,
   `secrets/`, `credentials.json` and `secrets.yaml` (which also covers `cat`,
   `head` and `tail` on them in `Bash`) and editing `pnpm-lock.yaml`,

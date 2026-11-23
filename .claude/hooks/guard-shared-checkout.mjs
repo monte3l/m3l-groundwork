@@ -27,8 +27,10 @@
  * `if ...; then` or `xargs` does not hide it. Where it cannot tell, it errs
  * towards blocking: a `cd` that may or may not have moved the shell is checked
  * both ways, and a path built from a variable is judged from the hook's `cwd`,
- * unless the same command line set that variable to a literal value
- * (`W=../wt; git -C "$W" commit`), which is then used.
+ * unless the same command line set that variable to a literal value, outright
+ * (`W=../wt; git -C "$W" commit`: not after `&&` or `||`, not inside `if`, `case`
+ * or a brace group), which is then used. A command word that is an expansion
+ * (`$G commit`, `sudo $G commit`, `xargs $G commit`) is judged as a possible git.
  *
  * Blocks by exiting 2 with a message on stderr. It fails open on input it
  * cannot read; settings.json marks it `onFailure: block` for a crash.
@@ -163,6 +165,10 @@ export function simpleCommands(line) {
     if (words.length > 0) {
       commands.push(words);
       seps.push(sep);
+    } else if (next === "\n" && (sep === "&&" || sep === "||" || sep === "|")) {
+      // A newline right after `&&`, `||` or `|` continues the list: the next command
+      // is still joined to the last one by it, so it stays conditional.
+      return;
     }
     words = [];
     sep = next;
@@ -336,12 +342,46 @@ function gitWriteAt(words, at, cwd) {
   return { dir, sub };
 }
 
+/**
+ * Words a shell command may start with that run what follows them: `sudo $G
+ * commit`, `time $G commit`, `env X=1 $G commit`, `xargs $G commit`,
+ * `if true; then $G commit`. The command word is the first one after them, their
+ * options, their `NAME=value` words and a bare number (`timeout 5`, `nice -n 5`).
+ */
+const COMMAND_PREFIXES = new Set([
+  "sudo", "doas", "time", "command", "builtin", "exec", "nohup", "env", "xargs",
+  "nice", "ionice", "timeout", "stdbuf", "setsid", "if", "then", "do", "else",
+  "elif", "while", "until", "!", "{",
+]);
+
+/** The index of the word a simple command runs, after the prefixes above, or -1. */
+function commandWordAt(words) {
+  let afterPrefix = false;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (COMMAND_PREFIXES.has(w.slice(w.lastIndexOf("/") + 1))) {
+      afterPrefix = true;
+    } else if (/^[A-Za-z_]\w*=/.test(w)) {
+      // a `NAME=value` word before the command
+    } else if (!(afterPrefix && (/^-/.test(w) || /^\d+$/.test(w)))) {
+      // Options and numbers belong to a prefix (`nice -n 5`, `timeout 5`); a user name after
+      // `sudo -u` is not skipped, so a command after it is not seen: a limit of a text parser.
+      return i;
+    }
+  }
+  return -1;
+}
+
+/** An expansion (`$G`, `${G}`, a backtick) where a command word is: it may be git. */
+const EXPANSION_WORD = /^(?:\$|`)/;
+
 /** Every writing git command in one simple command, from every `git` word. */
 export function gitWrites(words, cwd) {
   const hits = [];
+  const commandAt = commandWordAt(words);
   words.forEach((word, at) => {
-    // A command word that is an expansion (`$G commit`) may be git.
-    if (!isGit(word) && !(at === 0 && /^\$|`/.test(word))) return;
+    // A command word that is an expansion (`$G commit`, `sudo $G commit`) may be git.
+    if (!isGit(word) && !(at === commandAt && EXPANSION_WORD.test(word))) return;
     const hit = gitWriteAt(words, at, cwd);
     if (hit) hits.push(hit);
   });
@@ -371,6 +411,16 @@ const VARIABLE_WORDS = new Set([
 const isGitWord = (w) => w === "git" || w.endsWith("/git");
 
 /**
+ * Words that open, close or continue a compound command. A literal assignment
+ * inside one (`if false; then W=wt; fi`) may never run, and a line with any of
+ * them is not one the parser models.
+ */
+const CONTROL_WORDS = new Set([
+  "if", "then", "else", "elif", "fi", "case", "esac", "do", "done", "{", "}", "!",
+  "while", "until", "for", "select",
+]);
+
+/**
  * The literal `VAR=value` assignments of a command line that may be trusted,
  * as a Map, or an empty Map. Deliberately conservative: one doubtful thing
  * anywhere in the line clears the whole map, and the guard then judges from
@@ -378,11 +428,13 @@ const isGitWord = (w) => w === "git" || w.endsWith("/git");
  *
  * A name is kept only if (a) it is set once, by a plain literal at an
  * unconditional position of a top-level command (the line start, `;` or a
- * newline, and not piped or backgrounded), and (b) it appears nowhere else in
+ * newline, and not piped or backgrounded, with no `&&` or `||` anywhere before
+ * it, a newline after one included), and (b) it appears nowhere else in
  * the line except as `$NAME` or `${NAME}` in the operand of `git -C` or `cd`,
  * after the assignment. Any other word that contains `=`, any word that is or
  * contains a `source`, `.`, `eval`, `declare`, `read`, `for`, `while`... token,
- * `printf -v`, or an `export` with an expansion, clears the map.
+ * a compound-command keyword (`if`, `then`, `fi`, `case`, `do`, `done`, `{`, `}`,
+ * `!`), `printf -v`, or an `export` with an expansion, clears the map.
  *
  * @param {{ words: string[], sep: string, top: boolean }[]} entries
  * @returns {Map<string, string>}
@@ -390,9 +442,12 @@ const isGitWord = (w) => w === "git" || w.endsWith("/git");
 export function trustedVars(entries, grouped) {
   const none = new Map();
   if (grouped) return none;
+  if (entries.some((entry) => entry.words.some((word) => CONTROL_WORDS.has(word)))) return none;
   const found = [];
   entries.forEach((entry, index) => {
     if (!entry.top || (entry.sep !== ";" && entry.sep !== "\n")) return;
+    // Anything that came before it joined by `&&` or `||` may have decided that this never runs.
+    if (entries.slice(0, index + 1).some((earlier) => earlier.sep === "&&" || earlier.sep === "||")) return;
     const next = entries[index + 1];
     if (next && next.top && (next.sep === "|" || next.sep === "&")) return;
     const assigned = literalAssignment(entry.words);

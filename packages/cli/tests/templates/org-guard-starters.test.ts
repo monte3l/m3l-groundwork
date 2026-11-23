@@ -78,7 +78,7 @@ describe("org guard starters: the push guard and its helper are one unit", () =>
     "signingEnabled",
     "gitRunner",
     "trustedRoots",
-    "isTrustedDir",
+    "dirsToVet",
   ];
 
   it.each([

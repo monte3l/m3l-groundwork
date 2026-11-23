@@ -118,10 +118,18 @@ starters (`guard-secret-writes`, `guard-git-push-signed`,
 `guard-double-background`) also exit 2 themselves on a payload that is not a
 JSON object. `guard-git-push-signed` keeps one exception: when it cannot work
 out the outgoing range it lets the push go, because the `main` ruleset rejects
-unsigned commits at merge. It and `bin/lib/signed-range.mjs` are one unit
-(refresh both together): with the helper missing or older, a command that looks
-like a `git push` is blocked and every other command passes. `guard-secret-writes`
-is also registered for `NotebookEdit`. `guard-hub-src-writes`,
+unsigned commits at merge. It runs git only in the repository the hook runs
+in, its worktrees and `CLAUDE_PROJECT_DIR` (`dirsToVet` in the helper decides),
+so a `git -C DIR push` or `cd DIR && git push` aimed at another repository goes
+unvetted here and the remote's rule holds. It and `bin/lib/signed-range.mjs`
+are one unit (refresh both together; the org's `sync.json` lists the helper
+under `requires`, so a sync never refreshes the guard beside a custom one):
+with the helper missing or older, a command that looks like a `git push` is
+blocked and every other command passes. All of these are local, best-effort
+checks and not a security boundary: a command built at run time (a variable, a
+sourced script) or a secret split over several lines gets past them, and the
+signed-commits ruleset, Gitleaks and the DCO check are what hold.
+`guard-secret-writes` is also registered for `NotebookEdit`. `guard-hub-src-writes`,
 `guard-git-push-signed` and `guard-double-background` are on `Bash`, so a
 missing `node` blocks every `Bash` call until fixed. `permissions.deny` carries `Read(./.env)`,
 `Read(./.env.*)`, `Read(./secrets/**)`, `Read(**/credentials.json)` and

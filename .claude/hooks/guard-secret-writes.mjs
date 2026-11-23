@@ -213,8 +213,16 @@ function afterReference(text, quote) {
   return null;
 }
 
-/** A reference to the environment or a CI secret anywhere in a value. */
-const INNER_REFERENCE = /\$\{|\$\(|\$[A-Za-z_]|process\.env|os\.environ|os\.getenv|System\.getenv|\bgetenv\s*\(|\bENV[[.]|\b(?:secrets|env)\.[A-Za-z_]/;
+/**
+ * A hyphenated identifier made of lowercase words, the way a repository or a package is named
+ * (`m3l-output-governor`, `claude-code-plugin`): every part starts with a letter, and at least one is a
+ * plain word of three letters or more. A random token is not: its parts are hex or base62 noise that
+ * starts with a digit or has no word in it, and a UUID-shaped value is not one.
+ */
+function isHyphenatedName(run) {
+  if (!/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/.test(run)) return false;
+  return run.split("-").some((part) => /^[a-z]{3,}$/.test(part));
+}
 
 // Prefixes of credentials that are tokens whatever else they look like.
 const TOKEN_PREFIX = /^(?:gh[pousr]_|github_pat_|npm_|AKIA|ASIA|sk-|sk_|rk_|xox[abprs]-|glpat-|AIza|ya29\.)/;
@@ -233,6 +241,7 @@ function looksLikeSecretRun(run) {
   if (TOKEN_PREFIX.test(run)) return !isPlaceholderValue(run);
   if (/^(?:[~.]?\/|[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?:\/|$))/.test(run)) return false; // a path or a URL
   if (/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(run) || /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(run)) return false; // a name
+  if (isHyphenatedName(run)) return false; // a repository or package name
   if (!/[A-Za-z]/.test(run) || !/\d/.test(run)) return false;
   return !isPlaceholderValue(run);
 }
@@ -263,10 +272,11 @@ function valueAndTail(rest) {
  * `${X} || "<token>"`), so every quoted string inside the reference, a shell default
  * word and the literals after a default operator are read. A reference with more value
  * stuck to it (`${X}"<token>"`) is that value. Any other value is its first token, and
- * the literals after a default operator that follows it.
+ * the literals after a default operator that follows it. Whatever the first value is, a
+ * placeholder included, the rest of the line is read for a run that looks like a secret.
  *
- * Not read: a second assignment on the line, a secret built by concatenation, and
- * prose after the value.
+ * Not read: a second assignment on the line whose value is short or has no digit, and a
+ * secret built by concatenation.
  *
  * @param {string} rest the text after the `=` or `:`
  * @returns {boolean}
@@ -278,8 +288,10 @@ function valueIsSecret(rest) {
   if (ref === "unclosed" || ref === null) {
     const { value, tail } = valueAndTail(rest);
     if (!isPlaceholderValue(value) || defaultLiterals(tail).some((literal) => !isPlaceholderValue(literal))) return true;
-    // A reference somewhere in the value (`["${X}", "<token>"]`): no structure is trusted there either.
-    return INNER_REFERENCE.test(text) && remainderHasSecret(text);
+    // The first value is a placeholder, a reference somewhere in the value (`["${X}", "<token>"]`) or
+    // not (`changeme <token>`): no structure is trusted, so the whole of the line is read for a run that
+    // looks like a secret.
+    return remainderHasSecret(text);
   }
   const shellDefault = /^:?[-=+?]([^}]*)\}/.exec(ref.scan);
   if (shellDefault && !isPlaceholderValue(shellDefault[1])) return true;

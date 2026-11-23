@@ -30,13 +30,14 @@
  * (`HEAD:refs/heads/x`, `+branch`, `--all`) are what is vetted; a long option is
  * read by its unique prefix as git does, and one it does not know vets every
  * branch. Git runs with the repository's program settings overridden, and only
- * in the repository the hook runs in, its worktrees or CLAUDE_PROJECT_DIR. It is
- * a local, best-effort check, not a security boundary.
+ * in the repository the hook runs in, its worktrees or CLAUDE_PROJECT_DIR; a
+ * directory built at run time (`-C "$W"`, `~`) cannot be placed, so the hook's
+ * own is vetted for it. A command word that is an expansion (`$G push`) is read
+ * as a possible git. It is a local, best-effort check, not a security boundary.
  */
 import process from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import path from "node:path";
 
 // The helper this guard needs. The template sync refreshes each file on its own,
 // so a repository can hold this guard beside an older (or its own changed)
@@ -50,7 +51,7 @@ const HELPER_EXPORTS = [
   "signingEnabled",
   "gitRunner",
   "trustedRoots",
-  "isTrustedDir",
+  "dirsToVet",
 ];
 async function loadHelper() {
   try {
@@ -118,22 +119,24 @@ if (isEntryPoint()) {
     process.stderr.write("[guard-git-push-signed] bin/lib/signed-range.mjs is missing or older than this guard; not checking.\n");
     process.exit(0);
   }
-  const { parseGitPushes, outgoingCommits, unsignedCommits, signingEnabled, gitRunner, trustedRoots, isTrustedDir } = lib;
+  const { parseGitPushes, outgoingCommits, unsignedCommits, signingEnabled, gitRunner, trustedRoots, dirsToVet } = lib;
 
   // Every real push in the command line (a chain, a subshell, `bash -c`, a
-  // `git -C DIR`, a `cd DIR` before it), each vetted where it runs and for the
-  // refs it names, not for `HEAD` of whatever directory the hook started in.
-  // A directory the command line names is vetted only if it is the repository the
-  // hook runs in, one of its worktrees, or inside CLAUDE_PROJECT_DIR: another
-  // repository's own config can name programs that git would run. A push from
-  // anywhere else goes unvetted here, like a range the guard cannot work out.
+  // `git -C DIR`, a `cd DIR` before it, a command word that is an expansion),
+  // each vetted where it runs and for the refs it names, not for `HEAD` of
+  // whatever directory the hook started in. A real directory the command line
+  // names is vetted only if it is the repository the hook runs in, one of its
+  // worktrees, or inside CLAUDE_PROJECT_DIR: another repository's own config can
+  // name programs that git would run. A push from there goes unvetted here, like
+  // a range the guard cannot work out. A directory that cannot be placed (built
+  // from a variable, `~` or a backtick, or no directory) is not "somewhere else":
+  // the hook's own directory is vetted for it.
   const roots = trustedRoots(cwd, process.env.CLAUDE_PROJECT_DIR);
   const bad = [];
   const seen = new Set();
   for (const push of parseGitPushes(typeof command === "string" ? command : "")) {
     if (push.dryRun || push.tips.length === 0) continue;
-    for (const dir of new Set(push.dirs.map((d) => path.resolve(cwd, d)))) {
-      if (!isTrustedDir(dir, roots)) continue;
+    for (const dir of dirsToVet(cwd, push.dirs, roots)) {
       const runGit = gitRunner(dir);
       if (!signingEnabled(runGit)) continue;
       try {

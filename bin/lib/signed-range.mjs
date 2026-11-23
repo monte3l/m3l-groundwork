@@ -8,7 +8,7 @@
  * hook that inspects a `git push` Bash command before it runs.
  */
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -130,6 +130,39 @@ export function isTrustedDir(dir, roots) {
     const rel = path.relative(root, real);
     return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
   });
+}
+
+/**
+ * The directories to vet for the places a push may run in (`GitPush.dirs`, relative to `cwd` or
+ * absolute). A real directory is vetted only when {@link isTrustedDir} says it is the hook's own
+ * repository, one of its worktrees or inside the project: another repository's config can name
+ * programs that git would run, and that push goes unvetted here (the remote's signed-commits rule
+ * still holds). A name that cannot be placed is another matter: an operand built at run time
+ * (`git -C "$W" push`, `-C ~/x`, a backtick) or one that is no directory (`cd` to a place that is not
+ * there) says nothing about where the push goes, so `cwd` is vetted for it instead of letting the push
+ * through unchecked.
+ *
+ * @param {string} cwd the hook's directory
+ * @param {string[]} dirs
+ * @param {string[]} roots from {@link trustedRoots}
+ * @returns {string[]} directories to run git in
+ */
+export function dirsToVet(cwd, dirs, roots) {
+  const out = new Set();
+  for (const d of dirs) {
+    const dir = path.resolve(cwd, d);
+    let placed = !/[$`~]/.test(d);
+    if (placed) {
+      try {
+        placed = statSync(dir).isDirectory();
+      } catch {
+        placed = false;
+      }
+    }
+    if (!placed) out.add(path.resolve(cwd));
+    else if (isTrustedDir(dir, roots)) out.add(dir);
+  }
+  return [...out];
 }
 
 const defaultRunGit = gitRunner();
@@ -331,6 +364,32 @@ function resolveLongOption(name) {
 
 const isGitWord = (w) => w === "git" || w.endsWith("/git");
 
+/** Words a command may start with that run what follows them (`sudo $G push`, `xargs $G push`). */
+const COMMAND_PREFIXES = new Set([
+  "sudo", "doas", "time", "command", "builtin", "exec", "nohup", "env", "xargs",
+  "nice", "ionice", "timeout", "stdbuf", "setsid", "if", "then", "do", "else",
+  "elif", "while", "until", "!", "{",
+]);
+
+/** The index of the word a simple command runs, after the prefixes above, or -1. */
+function commandWordAt(words) {
+  let afterPrefix = false;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (COMMAND_PREFIXES.has(w.slice(w.lastIndexOf("/") + 1))) {
+      afterPrefix = true;
+    } else if (/^[A-Za-z_]\w*=/.test(w)) {
+      // a `NAME=value` word before the command
+    } else if (!(afterPrefix && (/^-/.test(w) || /^\d+$/.test(w)))) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/** An expansion (`$G`, a backtick) where the command word is: it may be git. */
+const EXPANSION_WORD = /^(?:\$|`)/;
+
 /** `base` plus a directory a `cd` or `-C` names: an absolute one replaces it. */
 const joinDir = (base, dir) => (path.isAbsolute(dir) ? dir : path.join(base || ".", dir));
 
@@ -362,8 +421,10 @@ export function parseGitPushes(command) {
       places = [...new Set([...places, ...places.map((p) => joinDir(p, words[1]))])];
       continue;
     }
+    const commandAt = commandWordAt(words);
     words.forEach((word, at) => {
-      if (!isGitWord(word)) return;
+      // A command word that is an expansion (`$G push`) may be git, as the worktree guard also reads it.
+      if (!isGitWord(word) && !(at === commandAt && EXPANSION_WORD.test(word))) return;
       let i = at + 1;
       let dirs = places;
       while (i < words.length && words[i].startsWith("-")) {
