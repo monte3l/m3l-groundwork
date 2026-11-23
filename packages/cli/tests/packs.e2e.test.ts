@@ -98,11 +98,12 @@ describe("harness-extras pack end-to-end", () => {
       const allCommands = Object.values(settings.hooks).flatMap((entries) =>
         entries.flatMap((e) => e.hooks.map((h) => h.command)),
       );
-      // The baseline registers 16 hook commands (1 UserPromptSubmit + 3
-      // PreToolUse[Bash] + 6 PreToolUse[Write|Edit] + 6 PostToolUse, one per
-      // Write/Edit x .ts/.mts/.cts); this pack's wiring.settings adds 3 more
-      // (PreCompact, SessionStart, PreToolUse[Bash]) for 19 total.
-      expect(allCommands).toHaveLength(19);
+      // The baseline registers 17 hook commands (1 UserPromptSubmit + 3
+      // PreToolUse[Bash] + 6 PreToolUse[Write|Edit] + 1 PreToolUse[NotebookEdit]
+      // + 6 PostToolUse, one per Write/Edit x .ts/.mts/.cts); this pack's
+      // wiring.settings adds 3 more (PreCompact, SessionStart,
+      // PreToolUse[Bash]) for 20 total.
+      expect(allCommands).toHaveLength(20);
       expect(
         allCommands.some((c) => c.includes("write-compact-handoff.mjs")),
       ).toBe(true);
