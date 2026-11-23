@@ -98,7 +98,7 @@ if (isEntryPoint()) {
   // A payload that cannot be read cannot be judged, so fail closed. The hook is
   // registered with onFailure: "block", which covers a crash but not a
   // deliberate exit 0, and exit 0 means allow.
-  if (typeof input !== "object" || input === null) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
     process.stderr.write("[guard-git-push-signed] could not read the hook payload; blocking.\n");
     process.exit(2);
   }
