@@ -46,9 +46,20 @@ describe("settings.json hook failure modes", () => {
     "guard-secret-writes.mjs",
     "guard-branch-isolation.mjs",
     "guard-protected-paths.mjs",
+    "guard-git-push-signed.mjs",
+    "guard-double-background.mjs",
   ])("%s fails closed", (script) => {
     const hs = handlersFor("PreToolUse", script);
     expect(hs.length).toBeGreaterThan(0);
+    for (const h of hs) expect(h.onFailure).toBe("block");
+  });
+
+  it("guard-secret-writes.mjs is also registered for NotebookEdit, and fails closed there", () => {
+    const hs = (settings.hooks["PreToolUse"] ?? [])
+      .filter((g) => g.matcher === "NotebookEdit")
+      .flatMap((g) => g.hooks)
+      .filter((h) => (h.command ?? "").includes("guard-secret-writes.mjs"));
+    expect(hs).toHaveLength(1);
     for (const h of hs) expect(h.onFailure).toBe("block");
   });
 
@@ -58,16 +69,14 @@ describe("settings.json hook failure modes", () => {
     for (const h of hs) expect(h.onFailure).toBe("block");
   });
 
-  it.each([
-    "guard-git-push-signed.mjs",
-    "guard-double-background.mjs",
-    "guard-js-extension.mjs",
-    "guard-no-commonjs.mjs",
-  ])("%s stays fail-open (no onFailure key)", (script) => {
-    const hs = handlersFor("PreToolUse", script);
-    expect(hs.length).toBeGreaterThan(0);
-    for (const h of hs) expect(h).not.toHaveProperty("onFailure");
-  });
+  it.each(["guard-js-extension.mjs", "guard-no-commonjs.mjs"])(
+    "%s stays fail-open (no onFailure key)",
+    (script) => {
+      const hs = handlersFor("PreToolUse", script);
+      expect(hs.length).toBeGreaterThan(0);
+      for (const h of hs) expect(h).not.toHaveProperty("onFailure");
+    },
+  );
 
   it("guard-git-push-signed.mjs has no if filter", () => {
     for (const h of handlersFor("PreToolUse", "guard-git-push-signed.mjs")) {

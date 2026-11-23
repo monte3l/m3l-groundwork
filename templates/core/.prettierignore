@@ -8,3 +8,11 @@ CHANGELOG.md
 # checkout under here -- without this, prettier double-visits (and can fail
 # on) that copy's own in-progress state, which is a different session's WIP.
 .claude/worktrees/
+# Verbatim copies of the org's guard starters (monte3l/.github, blueprint/files/).
+# Reformatting one would make it a custom copy that a template sync stops
+# refreshing, and a refresh that Prettier then rejects would fail the Format
+# check. The push guard and its helper are one unit: refresh both together.
+.claude/hooks/guard-double-background.mjs
+.claude/hooks/guard-git-push-signed.mjs
+.claude/hooks/guard-secret-writes.mjs
+bin/lib/signed-range.mjs

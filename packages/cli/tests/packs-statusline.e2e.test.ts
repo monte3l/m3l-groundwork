@@ -113,11 +113,11 @@ describe("statusline pack end-to-end", () => {
         "hooks",
         "statusLine",
       ]);
-      // The pack registers no hook: only the baseline's own 16 commands.
+      // The pack registers no hook: only the baseline's own 17 commands.
       const allCommands = Object.values(settings.hooks).flatMap((entries) =>
         entries.flatMap((e) => e.hooks.map((h) => h.command)),
       );
-      expect(allCommands).toHaveLength(16);
+      expect(allCommands).toHaveLength(17);
       expect(settings.statusLine.command).toContain("statusline.mjs");
 
       // The pack wires no verify step.

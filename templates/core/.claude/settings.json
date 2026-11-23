@@ -32,11 +32,13 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-git-push-signed.mjs\"",
+            "onFailure": "block",
             "timeout": 30
           },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-double-background.mjs\"",
+            "onFailure": "block",
             "timeout": 30
           },
           {
@@ -78,6 +80,17 @@
             "onFailure": "block",
             "timeout": 30
           },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-secret-writes.mjs\"",
+            "onFailure": "block",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-secret-writes.mjs\"",
