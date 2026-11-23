@@ -7,8 +7,10 @@
  * `guard-secret-writes` and `bin/lib/signed-range.mjs`): the root copy and the
  * copy `templates/core` emits are the same file apart from the SPDX header, a
  * guard fails closed on a payload it cannot read, and the push guard and its
- * helper are one unit. `templates/**` is excluded from vitest discovery, so the
- * guards are run by path rather than imported.
+ * helper are one unit. `guard-shell-portability` is the same kind of starter,
+ * but the `harness-extras` pack ships it, because `templates/core` is capped at
+ * 10 hooks. `templates/**` is excluded from vitest discovery, so the guards are
+ * run by path rather than imported.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -38,6 +40,9 @@ const HOOKS = [
   "guard-secret-writes.mjs",
 ];
 
+const PACK_HOOK = "guard-shell-portability.mjs";
+const pack = join(root, "templates", "packs", "harness-extras", "files");
+
 describe("org guard starters: root and emitted copies", () => {
   it.each(HOOKS)(
     "%s is the same file in .claude/hooks and templates/core",
@@ -52,6 +57,44 @@ describe("org guard starters: root and emitted copies", () => {
     expect(body(join(root, "bin", "lib", "signed-range.mjs"))).toBe(
       body(join(core, "bin", "lib", "signed-range.mjs")),
     );
+  });
+});
+
+describe("org guard starters: the harness-extras pack's copy", () => {
+  it(`${PACK_HOOK} is the same file in .claude/hooks and the pack`, () => {
+    expect(body(join(root, ".claude", "hooks", PACK_HOOK))).toBe(
+      body(join(pack, ".claude", "hooks", PACK_HOOK)),
+    );
+  });
+
+  it(`${PACK_HOOK} in the pack exits 2 on text that is not JSON`, () => {
+    const { status, stderr } = spawnSync(
+      "node",
+      [join(pack, ".claude", "hooks", PACK_HOOK)],
+      { input: "this is not json", encoding: "utf8" },
+    );
+    expect(status).toBe(2);
+    expect(stderr).toContain("could not read the hook payload");
+  });
+
+  it(`${PACK_HOOK} is wired in the pack with onFailure block`, () => {
+    const manifest = JSON.parse(
+      readFileSync(
+        join(root, "templates", "packs", "harness-extras", "pack.json"),
+        "utf8",
+      ),
+    ) as {
+      wiring: {
+        settings: {
+          PreToolUse: { hooks: { command?: string; onFailure?: string }[] }[];
+        };
+      };
+    };
+    const wired = manifest.wiring.settings.PreToolUse.flatMap(
+      (g) => g.hooks,
+    ).filter((h) => (h.command ?? "").includes(PACK_HOOK));
+    expect(wired).toHaveLength(1);
+    expect(wired[0]?.onFailure).toBe("block");
   });
 });
 
