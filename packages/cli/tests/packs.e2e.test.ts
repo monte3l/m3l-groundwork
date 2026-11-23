@@ -101,9 +101,9 @@ describe("harness-extras pack end-to-end", () => {
       // The baseline registers 17 hook commands (1 UserPromptSubmit + 3
       // PreToolUse[Bash] + 6 PreToolUse[Write|Edit] + 1 PreToolUse[NotebookEdit]
       // + 6 PostToolUse, one per Write/Edit x .ts/.mts/.cts); this pack's
-      // wiring.settings adds 3 more (PreCompact, SessionStart,
-      // PreToolUse[Bash]) for 20 total.
-      expect(allCommands).toHaveLength(20);
+      // wiring.settings adds 4 more (PreCompact, SessionStart and two
+      // PreToolUse[Bash]) for 21 total.
+      expect(allCommands).toHaveLength(21);
       expect(
         allCommands.some((c) => c.includes("write-compact-handoff.mjs")),
       ).toBe(true);
