@@ -172,6 +172,22 @@ confirmed in Step 0.4:
   other artifacts and state plainly in Step 7 that the gate was not wired,
   rather than inventing a runner the project never asked for.
 
+**Status line theme (both modes), after packs are settled above.** Only when
+the `statusline` pack's own status line is in place, by the same test in both
+modes: the pack's `.claude/hooks/statusline.mjs` was installed and its
+`statusLine` key planted (fresh: by the CLI, so the file exists; adopt: by
+this run). A "keep theirs" decision on an existing `statusline.mjs` or
+`statusline-layout.mjs`, or a skipped `statusLine` key, means do not ask:
+nothing would read the setting. Ask exactly **one**
+question, "Use m3l-design colors for the status line?", whose default answer
+is **no** (the terminal's own ANSI-16 colors). The theme is never enabled by
+default: a dismissed question counts as no. Only on an explicit yes, merge
+`"env": { "GROUNDWORK_STATUSLINE_THEME": "m3l-design" }` into
+`.claude/settings.json`, add-only: create the `env` object if it is absent,
+keep every other key in it, and when `GROUNDWORK_STATUSLINE_THEME` already
+holds another value, show that value and ask before changing it. The pack
+itself never sets this key. Report the choice in Step 7 either way.
+
 **Retarget what you installed (adopt mode).** A staged skill, agent, rule or
 hook still speaks the baseline's tooling. For every one you install, rewrite
 each package-manager command to the project's own (`survey.shape.packageManager`;

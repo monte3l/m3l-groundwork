@@ -15,6 +15,9 @@ export default {
   // Compares the README with the code (packs, flags, requirements, the
   // /customize skill). `build.mjs --check` runs it, so `pnpm verify` does too.
   parity: ["bin/doc-parity.mjs"],
+  // The "Status line" page: the statusline pack's own renderer run over sample
+  // data, so the preview cannot drift from the code.
+  generators: ["bin/docs-statusline-preview.mjs"],
   navGroups: ["Start", "Project", "Security", "Internals"],
   nav: [
     { href: "index.html", label: "Docs" },

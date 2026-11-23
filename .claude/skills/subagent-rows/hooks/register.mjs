@@ -17,17 +17,26 @@
  * A mod may import only files inside its own plugin directory, so the helpers
  * live in `row-format.mjs` rather than being imported from `.claude/hooks/`.
  *
+ * Theme: a mod's hook module has no Node APIs, so no `process.env`
+ * (code.claude.com/docs/en/plugins/mods/api). `$.settings.read({ key })`
+ * (Claude Code v2.1.304+) is the documented way to read settings, so the hook
+ * reads the settings `env` block once, on its first render, and keeps only the
+ * theme keys (`themeEnvFrom`); `$.env.get` is not documented to see settings
+ * `env`. The first row renders with the default palette and later rows use the
+ * theme once the read resolves. The mod cannot see COLORFGBG or NO_COLOR from
+ * the shell, so it assumes a dark terminal unless COLORFGBG is set in that
+ * same settings `env` block. The read is made once per registration and never
+ * retried (a failed read is unlikely to be transient, and retrying on every
+ * render would spam it), so a settings change mid-session keeps the old theme
+ * until the mod reloads.
+ *
  * Invariant: **no subprocess, no network, no I/O.** Advisory only: any error
  * passes the event on unchanged and never touches `isHidden`.
  */
 import {
-  DIM,
-  GREEN,
-  MAGENTA,
-  RED,
-  RESET,
-  YELLOW,
+  PALETTES,
   formatTokenCount,
+  resolvePalette,
   truncateToWidth,
 } from "./row-format.mjs";
 
@@ -63,12 +72,14 @@ export function formatElapsed(elapsedSec) {
 
 /**
  * @param {number} elapsedSec
- * @returns {string} GREEN under 15 minutes, YELLOW at 15-30, RED at 30+.
+ * @param {Readonly<import("./row-format.mjs").Palette>} [palette]
+ * @returns {string} the `success` color under 15 minutes, `warning` at 15-30,
+ *   `danger` at 30+.
  */
-export function elapsedColor(elapsedSec) {
-  if (elapsedSec >= ELAPSED_HIGH_THRESHOLD_SEC) return RED;
-  if (elapsedSec >= ELAPSED_WARN_THRESHOLD_SEC) return YELLOW;
-  return GREEN;
+export function elapsedColor(elapsedSec, palette = PALETTES.default) {
+  if (elapsedSec >= ELAPSED_HIGH_THRESHOLD_SEC) return palette.danger;
+  if (elapsedSec >= ELAPSED_WARN_THRESHOLD_SEC) return palette.warning;
+  return palette.success;
 }
 
 /**
@@ -107,8 +118,13 @@ export function formatEffort(effort) {
 
 /**
  * @param {unknown} props an `AgentRow` event's `props`.
- * @param {{ now?: unknown } | undefined} env `now` overrides `Date.now()` for
- *   deterministic tests.
+ * @param {{
+ *   now?: unknown;
+ *   GROUNDWORK_STATUSLINE_THEME?: unknown;
+ *   COLORFGBG?: unknown;
+ *   NO_COLOR?: unknown;
+ * } | undefined} env `now` overrides `Date.now()` for deterministic tests;
+ *   the other keys pick the palette (`resolvePalette`).
  * @returns {string | null} the row body, or null to leave Claude Code's own
  *   row (no usable `name` or `type`).
  */
@@ -131,10 +147,13 @@ export function renderAgentRow(props, env) {
         : null;
   if (label === null) return null;
 
+  const palette = resolvePalette(env);
   const segments = [label];
 
   const effortText = formatEffort(effort);
-  if (effortText !== null) segments.push(`${MAGENTA}${effortText}${RESET}`);
+  if (effortText !== null) {
+    segments.push(`${palette.accentStrong}${effortText}${palette.reset}`);
+  }
 
   const tokenText = formatTokenFraction(tokenCount, contextWindowSize);
   if (tokenText !== null) segments.push(tokenText);
@@ -143,29 +162,97 @@ export function renderAgentRow(props, env) {
   if (startMs !== null) {
     const nowMs = typeof env?.now === "number" ? env.now : Date.now();
     const elapsedSec = Math.max(0, (nowMs - startMs) / 1000);
-    const color = elapsedColor(elapsedSec);
-    segments.push(`${color}${formatElapsed(elapsedSec)}${RESET}`);
+    const color = elapsedColor(elapsedSec, palette);
+    segments.push(`${color}${formatElapsed(elapsedSec)}${palette.reset}`);
   }
 
-  const body = segments.join(`${DIM} · ${RESET}`);
+  const body = segments.join(`${palette.muted} · ${palette.reset}`);
   return typeof columns === "number" && Number.isInteger(columns) && columns > 0
     ? truncateToWidth(body, columns)
     : body;
+}
+
+/** The settings `env` keys that pick the palette (`resolvePalette`). */
+const THEME_ENV_KEYS = Object.freeze([
+  "GROUNDWORK_STATUSLINE_THEME",
+  "COLORFGBG",
+  "NO_COLOR",
+]);
+
+/**
+ * Picks the theme keys out of a settings `env` block. Only the listed keys are
+ * read (never iterated), so `__proto__` or any other key is never copied.
+ *
+ * @param {unknown} settingsEnv the value of `$.settings.read({ key: "env" })`.
+ * @returns {Record<string, string>} a fresh object holding only the
+ *   string-valued GROUNDWORK_STATUSLINE_THEME, COLORFGBG and NO_COLOR keys;
+ *   `{}` for anything else.
+ */
+export function themeEnvFrom(settingsEnv) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  if (
+    typeof settingsEnv !== "object" ||
+    settingsEnv === null ||
+    Array.isArray(settingsEnv)
+  )
+    return out;
+  const source = /** @type {Record<string, unknown>} */ (settingsEnv);
+  for (const key of THEME_ENV_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+    const value = source[key];
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
 }
 
 /**
  * Entry point Claude Code calls with its hook registrar.
  *
  * @param {(event: string, matcher: { component: string }, handler: (
- *   _$: unknown, e: { props: Record<string, unknown> }, next: (e: unknown) => unknown
+ *   $: { settings: { read: (query: { key: string }) => unknown } },
+ *   e:{ props: Record<string, unknown> }, next: (e: unknown) => unknown
  * ) => unknown) => void} on
  */
 export function register(on) {
-  on("ui.render", { component: "AgentRow" }, (_$, e, next) => {
+  /** @type {Record<string, string>} */
+  let themeEnv = {};
+  let requested = false;
+  on("ui.render", { component: "AgentRow" }, ($, e, next) => {
     /** @type {string | null} */
     let body = null;
+    if (!requested) {
+      requested = true;
+      try {
+        /** @type {unknown} */
+        const read = $.settings.read({ key: "env" });
+        if (
+          typeof read === "object" &&
+          read !== null &&
+          typeof (/** @type {{ then?: unknown }} */ (read).then) === "function"
+        ) {
+          /** @type {PromiseLike<unknown>} */ (read).then(
+            (value) => {
+              try {
+                themeEnv = themeEnvFrom(value);
+              } catch {
+                // advisory: a malformed env keeps the default palette
+              }
+            },
+            () => {
+              // advisory: a rejected read keeps the default palette
+            },
+          );
+        }
+      } catch {
+        // Deliberate: a missing `$` or `$.settings`, a throw, a non-thenable,
+        // a rejection or an empty result all keep `themeEnv = {}` (the
+        // default palette). This mod is advisory, so the theme's status must
+        // never hide or break a row. Never awaited: the first row renders now.
+      }
+    }
     try {
-      body = renderAgentRow(e?.props, { now: Date.now() });
+      body = renderAgentRow(e?.props, { ...themeEnv, now: Date.now() });
     } catch {
       // Advisory only: a failure in this mod's own formatting leaves the row
       // as Claude Code draws it. Only that work is guarded -- `next` runs

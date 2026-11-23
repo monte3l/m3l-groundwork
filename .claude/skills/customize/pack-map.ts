@@ -65,7 +65,9 @@ function recommendStatusline(): PackRecommendation {
       "state. It does occupy five terminal rows. A project that already " +
       "defines statusLine keeps its own value (it is never overwritten) and " +
       "must decide which one to run; a leftover subagentStatusLine key is " +
-      "deprecated and can be removed.",
+      "deprecated and can be removed. It paints with the terminal's own " +
+      "ANSI-16 colors; an m3l-design truecolor palette is opt-in only " +
+      "(GROUNDWORK_STATUSLINE_THEME), never applied by default.",
   };
 }
 
