@@ -38,6 +38,8 @@ const packFile = "packages/cli/tests/pack.e2e.test.ts";
 // runner or laptop gets as many workers as it has cores.
 export default defineConfig({
   test: {
+    // EXPERIMENT: pin the worker pool to the macOS runner's three vCPUs.
+    maxWorkers: 3,
     projects: [
       {
         test: {
