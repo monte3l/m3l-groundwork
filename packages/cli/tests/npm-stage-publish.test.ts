@@ -33,7 +33,7 @@ const binDir = join(
 const script = join(binDir, "npm-stage-publish.mjs");
 
 const ID_TOKEN = "ID-TOKEN";
-const NPM_TOKEN = "NPM-EXCHANGED-TOKEN";
+const exchangedNpmValue = "NPM-EXCHANGED-TOKEN";
 
 /** Fake libnpmpublish: logs what it was given, behaviour chosen by FAKE_PUBLISH. */
 const FAKE_LIBNPMPUBLISH = `
@@ -219,7 +219,7 @@ describe("npm-stage-publish", () => {
   function expectNoSecrets(result: RunResult): void {
     for (const out of [result.stdout, result.stderr]) {
       expect(out).not.toContain(ID_TOKEN);
-      expect(out).not.toContain(NPM_TOKEN);
+      expect(out).not.toContain(exchangedNpmValue);
     }
   }
 
@@ -267,7 +267,7 @@ describe("npm-stage-publish", () => {
 
     registryReqs = [];
     githubReqs = [];
-    registryReply = { status: 200, body: { token: NPM_TOKEN } };
+    registryReply = { status: 200, body: { token: exchangedNpmValue } };
     githubReply = { status: 200, body: { value: ID_TOKEN } };
     registry = await listen(recorder(registryReqs, () => registryReply));
     github = await listen(recorder(githubReqs, () => githubReply));
@@ -322,13 +322,13 @@ describe("npm-stage-publish", () => {
       provenance: true,
       access: "public",
       defaultTag: "next",
-      [`//127.0.0.1:${portOf(registry)}/:_authToken`]: NPM_TOKEN,
+      [`//127.0.0.1:${portOf(registry)}/:_authToken`]: exchangedNpmValue,
     });
     expect(call?.opts).not.toHaveProperty("otp");
 
     const written = readFileSync(summary, "utf8");
     expect(written).toContain("npm stage approve stg-1");
-    expect(written).not.toContain(NPM_TOKEN);
+    expect(written).not.toContain(exchangedNpmValue);
   });
 
   it("defaults the tag to latest and access to null, and forwards an otp", async () => {
@@ -711,7 +711,7 @@ describe("npm-stage-publish", () => {
         "@scope/name@1.0.0 stg-1\n@scope/other@2.0.0 stg-1\n",
       );
       expect(content).not.toContain(ID_TOKEN);
-      expect(content).not.toContain(NPM_TOKEN);
+      expect(content).not.toContain(exchangedNpmValue);
     });
 
     it("still exits 0, prints the stage id and warns when the file is unwritable", async () => {

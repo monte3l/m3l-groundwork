@@ -173,7 +173,7 @@ describe("pack publishing: parsePublishArgs", () => {
 });
 
 const ID_TOKEN = "ID-TOKEN";
-const NPM_TOKEN = "NPM-EXCHANGED-TOKEN";
+const exchangedNpmValue = "NPM-EXCHANGED-TOKEN";
 
 /** Fake libnpmpublish: logs what it was given, behaviour chosen by FAKE_PUBLISH. */
 const FAKE_LIBNPMPUBLISH = `
@@ -335,7 +335,7 @@ describe("pack publishing: npm-stage-publish", () => {
   function expectNoSecrets(result: RunResult): void {
     for (const out of [result.stdout, result.stderr]) {
       expect(out).not.toContain(ID_TOKEN);
-      expect(out).not.toContain(NPM_TOKEN);
+      expect(out).not.toContain(exchangedNpmValue);
     }
   }
 
@@ -385,7 +385,7 @@ describe("pack publishing: npm-stage-publish", () => {
 
     registryReqs = [];
     githubReqs = [];
-    registryReply = { status: 200, body: { token: NPM_TOKEN } };
+    registryReply = { status: 200, body: { token: exchangedNpmValue } };
     githubReply = { status: 200, body: { value: ID_TOKEN } };
     registry = await listen(recorder(registryReqs, () => registryReply));
     github = await listen(recorder(githubReqs, () => githubReply));
