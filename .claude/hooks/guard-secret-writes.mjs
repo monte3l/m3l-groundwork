@@ -72,7 +72,9 @@ function isPlaceholderValue(value) {
   // A value that is only a reference to a variable: `${X}`, `$X`, `${{ secrets.X }}`.
   // A lookup call or index is judged by `afterReference`; matching a prefix here
   // would let a real token that merely starts like one through.
-  if (/^(?:\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|\$\{\{[^}]*\}\})$/.test(v)) return true;
+  const bare = /^(?:\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*))$/.exec(v);
+  if (bare && isRefName(bare[1] ?? bare[2])) return true;
+  if (/^\$\{\{[^}]*\}\}$/.test(v)) return true;
   if (/^<.*>$/.test(v)) return true; // <your-token>
   // A dummy is a marker word set off from the rest by a delimiter (or the whole
   // value), such as `your_token_here` or `example-token`. A marker buried inside
@@ -112,6 +114,23 @@ function firstValue(rest) {
 const isEnvName = (name) =>
   /^[A-Z][A-Z0-9_]*$/.test(name) ||
   (/^[a-z][a-z0-9_]*$/.test(name) && (name.length < 16 || name.includes("_")));
+
+/**
+ * Whether `$NAME` or `${NAME}` is a reference to a variable and not a token with a dollar sign in front.
+ * The name is short (40 characters at most), does not begin like a token (`ghp_`, `sk-`, `AKIA`, ...), and
+ * is an environment variable's name (`isEnvName`) or letters and underscores only (a camelCase name such
+ * as `githubTokenForTests`). A run that mixes letters and digits in no pattern is a value.
+ */
+const isRefName = (name) =>
+  name.length <= 40 && !spelledLikeToken(name) && (isEnvName(name) || /^[A-Za-z_]+$/.test(name));
+
+/**
+ * Whether a name begins like a token (`ghp_...`, `sk-...`, `npm_...`). A short snake_case name of letters
+ * only that happens to start with one (`npm_config_cache`, `sk_live_mode`) is a name, as a token has digits
+ * or is longer.
+ */
+const spelledLikeToken = (name) =>
+  TOKEN_PREFIX.test(name) && !(name.length < 30 && /^[A-Za-z]+(?:_[A-Za-z]+)+$/.test(name));
 
 /**
  * The text of a bracketed reference up to and including its `closer` (what is
@@ -176,6 +195,22 @@ function afterAccess(text, call) {
 }
 
 /**
+ * A JavaScript template literal's interpolation that is a reference and not a value: a name or a
+ * dotted path of names (`${token}`, `${process.env.NPM_TOKEN}`), or a call of one whose arguments are
+ * names and numbers (`${randomToken()}`, `${makeToken(32)}`, `${tokens.make(len, kind)}`). A name has at
+ * most 32 characters and a number at most 4 digits. A body outside this grammar (a string, a template, an
+ * operator, a `$`, a nested call, a longer name or number) is read as a value (`${X || "<token>"}`,
+ * `${fn("<token>")}`, `${a.b.<token>}`).
+ */
+const JS_INTERPOLATION = (() => {
+  // A strict grammar, and nothing else: no `$`, no quote, no operator, no nested `${`, no digit run of five or more.
+  const ident = "[A-Za-z_][A-Za-z0-9_]{0,31}";
+  const path = `${ident}(?:\\.${ident})*`;
+  const arg = `(?:${path}|\\d{1,4})`;
+  return new RegExp(`^\\$\\{\\s*(${path})(\\(\\s*(?:${arg}(?:\\s*,\\s*${arg})*)?\\s*\\))?\\s*\\}`);
+})();
+
+/**
  * A reference to the environment or a CI secret at the start of `text`:
  *  - null when the value does not start with one (`ENV-<token>`, `getenv-<token>`,
  *    `env.<token>` and `os.environ<token>` are values, not references: the head must
@@ -198,9 +233,25 @@ function afterReference(text, quote) {
   };
   const plain = (from, scan = text.slice(from)) => ({ scan, suffix: "", after: text.slice(from) });
   if (text.startsWith("${{")) return bracket(3, "}}");
-  if ((m = /^\$\{[A-Za-z_]\w*(?=[}:])/.exec(text))) return bracket(m[0].length, "}");
+  if ((m = JS_INTERPOLATION.exec(text))) {
+    // A JavaScript template literal's `${...}` whose body is only names and numbers holds no literal.
+    const closed = through(text.slice(2), "}", quote);
+    if (closed === null) return "unclosed";
+    // The body matched a strict grammar (see JS_INTERPOLATION): a path of names, optionally called with
+    // names and numbers of at most four digits. Each name must also be a name: not spelled like a token and
+    // not a run that looks like a secret (16 or more characters of letters and digits). A lone `${NAME}` is
+    // judged as `${NAME}` is (`isRefName`); a name inside a path or call may be a short camelCase name with
+    // a digit and capitals (`accessToken2`, `sha256Hash`). Otherwise it is no reference and the whole is
+    // read as a value.
+    const names = `${m[1]}.${m[2] ?? ""}`.split(/[\s.,()]+/).filter((part) => part !== "" && !/^\d+$/.test(part));
+    const isName = (part) => !spelledLikeToken(part) && (TOKEN_PREFIX.test(part) || !looksLikeSecretRun(part));
+    if (!names.every(isName)) return null;
+    if (m[2] === undefined && !m[1].includes(".") && !isRefName(m[1])) return null;
+    return { ...closed, after: text.slice(m[0].length) };
+  }
+  if ((m = /^\$\{([A-Za-z_]\w*)(?=[}:])/.exec(text))) return isRefName(m[1]) ? bracket(m[0].length, "}") : null;
   if (text.startsWith("$(")) return bracket(2, ")");
-  if ((m = /^\$[A-Za-z_]\w*(?=$|[\s"'`),;}\]])/.exec(text))) return plain(m[0].length);
+  if ((m = /^\$([A-Za-z_]\w*)(?=$|[\s"'`),;}\]])/.exec(text))) return isRefName(m[1]) ? plain(m[0].length) : null;
   if ((m = /^(?:secrets|env)\.([A-Za-z_][\w-]*)(?![\w.-])/.exec(text))) return isEnvName(m[1]) ? plain(m[0].length) : null;
   if ((m = /^(?:process\.env|os\.environ|ENV)(?=[[.])/.exec(text))) {
     const scan = afterAccess(text.slice(m[0].length), false);
@@ -410,7 +461,7 @@ if (isEntryPoint()) {
   // A payload that cannot be read cannot be judged, so fail closed. The hook is
   // registered with onFailure: "block", which covers a crash but not a
   // deliberate exit 0, and exit 0 means allow.
-  if (typeof input !== "object" || input === null) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
     process.stderr.write("[guard-secret-writes] could not read the hook payload; blocking.\n");
     process.exit(2);
   }
