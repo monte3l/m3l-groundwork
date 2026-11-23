@@ -6,3 +6,9 @@
 *.mjs text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.woff2 binary
+# A file that only ever grows at its end (a log, a changelog kept by hand) makes
+# every two open pull requests that add an entry conflict on the same last
+# lines. `merge=union` keeps both sides' lines instead. It does not order them:
+# use it only where a check or a reader copes with that. For example:
+# docs/log.md merge=union

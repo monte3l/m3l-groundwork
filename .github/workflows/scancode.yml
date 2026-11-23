@@ -43,3 +43,28 @@ jobs:
           # MISSING also fails a license the policy does not mention, which
           # makes the policy an allowlist.
           compliance-fail-level: MISSING
+      # The action's last step prints only counts ("MISSING: 1"). Its JSON output
+      # carries a compliance alert on every file, so name the flagged ones, in the
+      # log and in the job summary. A file that names a license only as data goes
+      # in scancode-config.yml by exact path.
+      - name: List the flagged files
+        if: failure() && env.PROJECT_WORK_DIRECTORY != ''
+        run: |
+          shopt -s nullglob
+          for results in "$PROJECT_WORK_DIRECTORY"/output/results-*.json; do
+            [[ "$results" == *.spdx.json ]] && continue
+            # @tsv escapes tabs, newlines and backslashes, so a file name cannot
+            # start a workflow command.
+            flagged="$(jq -r '.files[] | select((.compliance_alert // "") != "" and .compliance_alert != "ok") | [.path, .compliance_alert, (.detected_license_expression_spdx // "unknown")] | @tsv' "$results")"
+            [[ -n "$flagged" ]] || continue
+            {
+              echo "### Files ScanCode flagged"
+              echo
+              echo "| File | Alert | License |"
+              echo "| --- | --- | --- |"
+            } >>"$GITHUB_STEP_SUMMARY"
+            while IFS=$'\t' read -r file alert license; do
+              echo "::error::ScanCode flagged $file ($alert, $license)"
+              echo "| \`$file\` | $alert | \`$license\` |" >>"$GITHUB_STEP_SUMMARY"
+            done <<<"$flagged"
+          done
