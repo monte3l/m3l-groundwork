@@ -29,3 +29,9 @@ templates/core/README.md
 # fail if Prettier reformatted them. Re-sync with bin/sync-design.sh instead.
 design/source/
 design/tokens.css
+# A verbatim copy of the org's worktree guard (the starter in monte3l/.github,
+# blueprint/files/guard-shared-checkout.mjs). The template sync refreshes a copy
+# only if it is byte-identical to an older version of the starter, so
+# reformatting it would make it a custom copy that sync stops refreshing.
+# REUSE.toml covers it for the same reason.
+.claude/hooks/guard-shared-checkout.mjs
