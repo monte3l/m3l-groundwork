@@ -46,6 +46,9 @@ export const CURRENT_MODELS = [
 const SKILL_BODY_LINE_LIMIT = 500;
 const DESCRIPTION_MIN = 40;
 const DESCRIPTION_MAX = 1024;
+// Claude Code cuts `description` + `when_to_use` together at this length in the
+// skill listing (https://code.claude.com/docs/en/skills, frontmatter reference).
+const SKILL_LISTING_MAX = 1536;
 const PROJECT_WALK_DEPTH = 8;
 const BARE_ENTRY_POINT =
   /process\.argv\[1\]\s*===\s*fileURLToPath\(import\.meta\.url\)/;
@@ -696,8 +699,19 @@ const descriptionSubstance = {
       } else if (description.length > DESCRIPTION_MAX) {
         failures.push({
           subject,
-          message: `description is ${description.length} chars; over the ${DESCRIPTION_MAX}-char Agent Skills maximum (Claude Code also truncates description + when_to_use at 1,536 in its skill listing)`,
+          message: `description is ${description.length} chars; over the ${DESCRIPTION_MAX}-char Agent Skills maximum (Claude Code also truncates description + when_to_use at ${SKILL_LISTING_MAX} in its skill listing)`,
         });
+      } else if (!required) {
+        // Only a skill has `when_to_use`; it is appended to the description
+        // in the listing, so a trigger text past the cap is cut off.
+        const whenToUse = fieldText(parsed.fields, "when_to_use") ?? "";
+        const listing = description.length + whenToUse.length;
+        if (listing > SKILL_LISTING_MAX) {
+          failures.push({
+            subject,
+            message: `description + when_to_use is ${listing} chars; Claude Code cuts the skill listing at ${SKILL_LISTING_MAX}, so the end of the trigger text is never seen`,
+          });
+        }
       }
     };
     for (const skill of s.skills) {
@@ -707,6 +721,56 @@ const descriptionSubstance = {
     }
     for (const [file, text] of s.agents) {
       examine(`.claude/agents/${file}`, text, true);
+    }
+    return { checked, failures };
+  },
+};
+
+/** Splits an `allowed-tools` value into its entries: space- or comma-separated, but never inside parentheses (`Bash(git add *)` is one entry). */
+function toolEntries(values) {
+  const entries = [];
+  for (const value of values) {
+    let depth = 0;
+    let current = "";
+    for (const ch of value) {
+      if (ch === "(") depth++;
+      if (ch === ")") depth = Math.max(0, depth - 1);
+      if (depth === 0 && (ch === " " || ch === ",")) {
+        if (current !== "") entries.push(current);
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    if (current !== "") entries.push(current);
+  }
+  return entries;
+}
+
+/** A skill's `allowed-tools` is a grant that skips the permission prompt for the turn it runs; a bare `Bash` grants every shell command, so a scoped pattern (`Bash(git status *)`) says what the skill actually needs. */
+const skillAllowedToolsScope = {
+  id: "skill-allowed-tools-scope",
+  level: "rubric",
+  category: "skills",
+  check: (s) => {
+    const failures = [];
+    let checked = 0;
+    for (const skill of s.skills) {
+      if (skill.skillMd === undefined) continue;
+      const parsed = parseFrontmatter(skill.skillMd);
+      if (!parsed.ok) continue;
+      const values = fieldList(parsed.fields, "allowed-tools");
+      if (values === undefined) continue;
+      checked++;
+      const wide = toolEntries(values).filter(
+        (entry) => entry === "Bash" || entry === "Bash(*)",
+      );
+      if (wide.length > 0) {
+        failures.push({
+          subject: `.claude/skills/${skill.name}`,
+          message: `\`allowed-tools\` pre-approves ${wide.map((e) => `\`${e}\``).join(", ")}, every shell command; scope it, for example \`Bash(git status *)\``,
+        });
+      }
     }
     return { checked, failures };
   },
@@ -903,6 +967,7 @@ export const RULES = [
   claudeMdRefs,
   skillBodySize,
   descriptionSubstance,
+  skillAllowedToolsScope,
   modelPinCurrency,
   agentToolScope,
   agentMcpSource,

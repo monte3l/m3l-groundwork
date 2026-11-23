@@ -39,6 +39,15 @@ paths:
   every arm reachable in its own setup** — exactly right yet prove nothing
   if the discriminating precondition never fires. Enumerate the set
   (`test.each`), not one member of it.
+- **Two CodeQL findings test code keeps producing.** `js/file-system-race`: a
+  check (`existsSync`, `statSync`) followed by a use of the same name. CodeQL's
+  advice is to use file descriptors instead of names: open with
+  `openSync(path, "wx")` or write with `{ flag: "wx" }`, or just read and catch
+  `ENOENT`. `js/incomplete-url-substring-sanitization`: `url.includes("https://…")`
+  passes for a look-alike host; parse with `new URL(x).hostname` and compare it.
+  ESLint bans the second shape when the literal is in the call. No rule can
+  follow a file name from the check to the use, so the first is on you, and
+  CodeQL is the backstop.
 - **Never mock the behavior the test exists to validate** — a stub echoing
   back the outcome under question asserts the stub, not the code, while
   still reading as coverage. Exercise the real collaborator at least once.

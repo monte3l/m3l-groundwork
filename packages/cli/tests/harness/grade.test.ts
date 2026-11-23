@@ -167,6 +167,58 @@ describe("gradeHarness -- structural defects", () => {
     ]);
   });
 
+  // The skill listing cuts `description` + `when_to_use` together at 1,536
+  // characters (code.claude.com/docs/en/skills, frontmatter reference).
+  it("flags a skill whose description and when_to_use together pass the 1,536-char listing cap, and only that", () => {
+    writeCleanHarness();
+    const description = "d".repeat(1000);
+    write(
+      ".claude/skills/long/SKILL.md",
+      `---\nname: long\ndescription: ${description}\nwhen_to_use: ${"w".repeat(537)}\n---\nbody\n`,
+    );
+    write(
+      ".claude/skills/edge/SKILL.md",
+      `---\nname: edge\ndescription: ${description}\nwhen_to_use: ${"w".repeat(536)}\n---\nbody\n`,
+    );
+    write(
+      ".claude/skills/short/SKILL.md",
+      `---\nname: short\ndescription: ${GOOD_DESCRIPTION}\nwhen_to_use: ${"w".repeat(1400)}\n---\nbody\n`,
+    );
+    const grade = gradeHarness(root);
+    expect(idsFor(grade, "description-substance")).toEqual([
+      ".claude/skills/long",
+    ]);
+    expect(
+      grade.findings.find((f) => f.subject === ".claude/skills/long")?.message,
+    ).toContain("1537 chars");
+  });
+
+  it("flags a bare Bash in a skill's allowed-tools, in the string and the list form, and accepts scoped entries", () => {
+    writeCleanHarness();
+    const skill = (name: string, allowed: string): void =>
+      write(
+        `.claude/skills/${name}/SKILL.md`,
+        `---\nname: ${name}\ndescription: ${GOOD_DESCRIPTION}\nallowed-tools: ${allowed}\n---\nbody\n`,
+      );
+    skill("wide-string", "Read Bash Grep");
+    skill("wide-star", "Bash(*), Read");
+    skill("scoped", "Bash(git add *) Bash(git commit *) Read");
+    skill("scoped-comma", "Bash(git status *), Bash(git diff *)");
+    write(
+      ".claude/skills/wide-list/SKILL.md",
+      `---\nname: wide-list\ndescription: ${GOOD_DESCRIPTION}\nallowed-tools:\n  - Read\n  - Bash\n---\nbody\n`,
+    );
+    write(
+      ".claude/skills/none/SKILL.md",
+      `---\nname: none\ndescription: ${GOOD_DESCRIPTION}\n---\nbody\n`,
+    );
+    expect(idsFor(gradeHarness(root), "skill-allowed-tools-scope")).toEqual([
+      ".claude/skills/wide-list",
+      ".claude/skills/wide-star",
+      ".claude/skills/wide-string",
+    ]);
+  });
+
   it("reports an unparseable settings.json once, without cascading into hook findings", () => {
     writeCleanHarness();
     write(".claude/settings.json", "{ not json");

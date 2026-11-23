@@ -130,6 +130,11 @@ function writeBrokenHarness(dir: string): void {
     ".claude/skills/oversized/SKILL.md",
     `---\nname: oversized\ndescription: ${"A".repeat(1100)}\n---\nSee references/missing.md.\n${"line\n".repeat(600)}`,
   );
+  // Both skill-lint rules: a bare `Bash` grant, and a listing past the cap.
+  w(
+    ".claude/skills/wide/SKILL.md",
+    `---\nname: wide\ndescription: ${"B".repeat(1000)}\nwhen_to_use: ${"C".repeat(600)}\nallowed-tools: Read Bash(git status *) Bash\n---\nbody\n`,
+  );
   w(
     ".claude/agents/a.md",
     "---\nname: b\ndescription: short\nmodel: claude-3-opus\n---\n",
