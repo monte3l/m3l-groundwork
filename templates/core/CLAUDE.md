@@ -19,18 +19,18 @@ TypeScript, `strict: true`, ESM only (`"type": "module"`), compiled with
 
 Run any task with `pnpm <script>`.
 
-| Script                         | What it does                                                                                                                                                                                             |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm build`                   | `tsc -b tsconfig.build.json` — emits `dist/`                                                                                                                                                             |
-| `pnpm typecheck`               | `tsc -b --force` over the tooling project (src + tests)                                                                                                                                                  |
-| `pnpm lint`                    | ESLint over the whole repo                                                                                                                                                                               |
-| `pnpm format` / `format:check` | Prettier write / check                                                                                                                                                                                   |
-| `pnpm test` / `test:coverage`  | Vitest, with or without the coverage gate                                                                                                                                                                |
-| `pnpm knip`                    | Unused-dependency / unused-export hygiene; a `verify` step. `knip.json` ignores `@commitlint/config-conventional` and `@commitlint/types`, which are loaded by a string and a JSDoc type knip cannot see |
-| `pnpm check:exports`           | publint + are-the-types-wrong against a packed tarball                                                                                                                                                   |
-| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                          |
-| `pnpm verify`                  | Every gate above plus the `harness`/`toolchain` graders, in `verify-steps.mjs` order; CI runs them as five parallel group lanes                                                                          |
-| `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                                                                                          |
+| Script                         | What it does                                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                   | `tsc -b tsconfig.build.json` — emits `dist/`                                                                                    |
+| `pnpm typecheck`               | `tsc -b --force` over the tooling project (src + tests)                                                                         |
+| `pnpm lint`                    | ESLint over the whole repo                                                                                                      |
+| `pnpm format` / `format:check` | Prettier write / check                                                                                                          |
+| `pnpm test` / `test:coverage`  | Vitest, with or without the coverage gate                                                                                       |
+| `pnpm knip`                    | Unused-dependency / unused-export hygiene; `knip.json` ignores two `@commitlint/*` packages knip cannot see                     |
+| `pnpm check:exports`           | publint + are-the-types-wrong against a packed tarball                                                                          |
+| `pnpm check:node-version`      | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                 |
+| `pnpm verify`                  | Every gate above plus the `harness`/`toolchain` graders, in `verify-steps.mjs` order; CI runs them as five parallel group lanes |
+| `pnpm prepare`                 | Installs the lefthook git hooks                                                                                                 |
 
 Run `pnpm verify` before considering any task done — it reproduces CI
 locally.
@@ -86,61 +86,28 @@ Skills, each in `.claude/skills/<name>/`:
 - `typescript-guidance` / `harness-guidance` — live research and refresh
   sweeps (see Freshness).
 
-**The guard also screens `Bash`, but only conservatively.** The same hook
-blocks a `Bash` command that visibly writes into `src/` or `tests/` (redirects,
-`tee`, `sed -i`, `cp`/`mv` into them, an interpreter snippet that writes there,
-a copy, move or removal of a parent of `src/` such as `rm -rf .`) unless the caller is
-`test-author` or `code-implementer`. It cannot catch an indirect write (a
-script from a project file, an `eval`, a computed path, a build step, a
-formatter or fixer, `git rm`/`git mv`, `tar`/`curl -o`), so hub-and-spoke is a
-convention backed by a guard that raises the bar, not a proof. To override it
-deliberately, run the command yourself with the `!` prefix at the Claude Code
-prompt, or edit the hook's registration in `.claude/settings.json`.
+**The guards raise the bar; they are not a proof.** The hook screens `Bash`
+only for visible writes into `src/`/`tests/`, and an indirect write (a script,
+`eval`, a formatter, `git rm`) gets past it. A managed deployment or an
+installed mod can disable the guards without a trace: on a machine you don't
+control, check `/status` ("Setting sources") and `/plugin`. A call counts as a
+writer spoke only with both `agent_type` and `agent_id`, so a fork subagent is
+treated as the hub unless its payload reports a writer `agent_type`. To override deliberately, run the command yourself with the
+`!` prefix at the Claude Code prompt, or edit the hook's registration in
+`.claude/settings.json`.
 
-**Managed settings and mods can silently disable the guards.** A managed
-deployment (`managed-settings.json`, MDM, a console policy) outranks every file
-here, and `allowManagedHooksOnly` runs only managed hooks. An installed mod
-that handles `tool.check` can approve a call a project `PreToolUse` hook
-blocked, unless managed settings or a Team or Enterprise `/login` is in use. Nothing in the repo can detect
-either: on a machine you don't control, check `/status` ("Setting sources") and
-`/plugin` before trusting `guard-hub-src-writes.mjs` and
-`guard-branch-isolation.mjs`. Detail and sources:
-`.claude/rules/agent-dispatch.md`.
+Four guards (`guard-secret-writes`, `guard-hub-src-writes`,
+`guard-branch-isolation`, `guard-protected-paths`) carry `"onFailure": "block"`
+(Claude Code 2.1.295 or later), so a hook that fails blocks the call, and a
+missing `node` blocks every `Bash` call until fixed. `permissions.deny` blocks
+reading secrets and editing lock files and `.git/`, but not `grep -r` or a
+script that opens the file itself. A session in auto, `acceptEdits` or
+`bypassPermissions` mode overrides a spoke's `permissionMode`, so the hooks,
+not `permissionMode`, bound a spoke.
 
-**The guard keys on `agent_id` as well as `agent_type`.** A call counts as a
-writer spoke only with both present, so one carrying `agent_type` alone is
-treated as the hub and blocked, as is a fork subagent unless its payload
-reports a writer `agent_type` with an `agent_id` (details and versions in
-`.claude/rules/agent-dispatch.md`). An in-process
-agent-teams teammate has a documented `agent_id`, so one built from a writer
-definition that reports that `agent_type` would pass.
-
-**Four guards block when they fail, and a secrets deny rule ships in
-`settings.json`.** `guard-secret-writes`, `guard-hub-src-writes`,
-`guard-branch-isolation` and `guard-protected-paths` carry
-`"onFailure": "block"` (Claude Code 2.1.295 or later): a hook that cannot
-start, times out, exits with any code other than 0 or 2, or prints invalid
-JSON blocks the call instead of letting it through. Each guard still handles
-bad input itself and exits 0 on purpose. Because `guard-hub-src-writes` is also
-on `Bash`, a missing `node` blocks every `Bash` call until fixed (run the
-command with the `!` prefix to get past it). The style guards and
-`guard-git-push-signed` stay fail-open on purpose: the push guard has its own
-parser and the remote's signed-commit rule is the authoritative layer.
-`permissions.deny` blocks reading `.env`, `.env.*`, `secrets/`,
-`credentials.json` and `secrets.yaml` (which also covers `cat`, `head` and
-`tail` on them in `Bash`) and editing `pnpm-lock.yaml`, `package-lock.json`,
-`yarn.lock` and the repository's `.git/` directory. It does not cover `grep -r`,
-a script that opens the file itself, a subprocess such as `pnpm install`
-rewriting the lock file, or a linked worktree, where `.git` is a file.
-
-**A spoke's `permissionMode` can be overridden.** A session in auto,
-`acceptEdits` or `bypassPermissions` mode overrides a spoke's `permissionMode`
-(the field applies only in `default`, `dontAsk` or `plan`), so the hooks, not
-`permissionMode`, bound a spoke. A subagent can spawn subagents three layers
-deep by default; `disallowedTools: Agent` on every spoke keeps the roster flat.
-
-Full dispatch-sizing and recovery guidance: `.claude/rules/agent-dispatch.md`
-(auto-loads when editing `.claude/skills/**` or `.claude/agents/**`).
+Guard limits, overrides, dispatch sizing and recovery:
+`.claude/rules/agent-dispatch.md` (auto-loads when editing
+`.claude/skills/**` or `.claude/agents/**`).
 
 ## Coding, errors & tests
 
@@ -165,13 +132,11 @@ the correct semver impact; new/changed exports have TSDoc and tests. If you
 touched the harness itself (hooks, agents, skills, rules, `settings.json`),
 `pnpm verify`'s `harness` step (`bin/check-harness.mjs`) must stay green: it
 fails on broken wiring and only warns on quality.
-The `toolchain` step (`bin/check-toolchain.mjs`) runs on every
-`pnpm verify`, and must stay green when you touch the TypeScript toolchain
-(`tsconfig*.json`, `eslint.config.js`, `vitest.config.ts`,
-`bin/lib/verify-steps.mjs`, the toolchain pins in `package.json`) the same way: it fails on wiring `tsc` and ESLint do not catch (a build
-project that emits nowhere, a verify step naming a script that does not exist)
-and only warns on quality (a missing strict flag, an option TypeScript has
-deprecated). Never silence it by deleting the check or lowering a threshold --
+The `toolchain` step (`bin/check-toolchain.mjs`) must stay green too when you
+touch the TypeScript toolchain (`tsconfig*.json`, `eslint.config.js`,
+`vitest.config.ts`, `bin/lib/verify-steps.mjs`, the toolchain pins in
+`package.json`): it fails on wiring `tsc` and ESLint do not catch and only warns
+on quality. Never silence it by deleting the check or lowering a threshold --
 fix the config it points at.
 
 ## Forbidden Patterns

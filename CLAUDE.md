@@ -44,40 +44,24 @@ tree is in `docs/repository-layout.md`.
 
 Run any task with `pnpm <script>`.
 
-| Script                                       | What it does                                                                                                                                                                                                                                                                                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm build`                                 | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                                                                                                                                                                    |
-| `pnpm typecheck`                             | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                                                                                                                                                             |
-| `pnpm lint` / `lint:fix`                     | ESLint over the whole repo (excludes `templates/**`), `--max-warnings 0` -- a warning fails the gate the same as an error                                                                                                                                                                                                       |
-| `pnpm format` / `format:check`               | Prettier write / check (covers `templates/**` too -- it's still committed text)                                                                                                                                                                                                                                                 |
-| `pnpm test` / `test:coverage` / `test:watch` | Vitest unit tests, with or without the coverage gate, or in watch mode                                                                                                                                                                                                                                                          |
-| `pnpm test:e2e`                              | Every `*.e2e.test.ts` (`vitest.e2e.config.ts`) -- slow and network-touching (real `pnpm install`s, a packed tarball), run **serially** (`fileParallelism: false`, because `pack.e2e.test.ts` rebuilds `dist/` mid-run). None are part of `pnpm test`; see "Testing" below.                                                      |
-| `pnpm knip`                                  | Unused-dependency / unused-export hygiene, both packages; a `verify` step in the `lint` group                                                                                                                                                                                                                                   |
-| `pnpm check:exports`                         | publint against `packages/cli`'s packed tarball (attw is skipped: the CLI exposes no importable export beyond `./package.json`) -- the one published package                                                                                                                                                                    |
-| `pnpm check:plugin-version`                  | `plugin.json`'s version matches the CLI's, and `packages/plugin/package.json` stays private                                                                                                                                                                                                                                     |
-| `pnpm check:plugin-manifest`                 | Runs Anthropic's `claude plugin validate --strict` against `packages/plugin`; skips cleanly with a warning when the `claude` CLI isn't installed                                                                                                                                                                                |
-| `pnpm check:node-version`                    | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                                                                                                                                                                 |
-| `pnpm check:harness`                         | Grades `templates/core`'s Claude Code harness (`.claude/` + `CLAUDE.md`) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                                                                                 |
-| `pnpm check:toolchain`                       | Grades `templates/core`'s TypeScript toolchain (tsconfig chain, ESLint and vitest config, verify-step wiring, toolchain pins) with the emitted gate's own rule module: structural defects fail, rubric findings warn                                                                                                            |
-| `pnpm check:license-headers`                 | Every tracked file outside `templates/**` carries an SPDX header or is exempted by `REUSE.toml`; `-- --fix` inserts a missing header (see "Definition of Done")                                                                                                                                                                 |
-| `pnpm eval`                                  | **Paid, never in `verify`.** Anthropic's `claude plugin eval` over `/customize`, `templates/core`'s skills (alone and with every pack's skills merged), `typescript-guidance` and the `frontend`/`service` pack agents; needs `claude`, credentials, network, skips cleanly without `claude`. Suites: `.claude/rules/evals.md`  |
-| `pnpm verify`                                | Every gate above (via `bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <name>` runs one of the five groups (`format`, `lint`, `typecheck`, `build`, `test`) -- exactly what `lefthook`'s `pre-push` and each `ci.yml` lane invoke; `--step <id>` is for local debugging only and must never appear in either YAML file |
-
-## Architecture notes
-
-The design record is split by area; each file loads when you edit the files it
-governs. CLI internals (token substitution, `resolveAsset()`, dotfile escaping,
-zero runtime dependencies): `.claude/rules/package-cli.md`. Adopt mode:
-`.claude/rules/adopt-mode.md`. The two grader implementations that must not
-drift: `.claude/rules/harness-graders.md`. `/customize`, `domain-map.ts`,
-`pack-map.ts`: `.claude/rules/package-plugin.md`. The baseline's caps (≤5
-agents, ≤8 skills, ≤10 hooks, ≤3 workflows, ≤12 scripts):
-`.claude/rules/baseline-core.md`. The gate list in `verify-steps.mjs`, CI lanes
-and why there is no automated PR review: `.claude/rules/ci.md`. Also
-`.claude/rules/releases.md`, `.claude/rules/design-system.md`,
-`.claude/rules/docs-site.md` (the docs site is built by the vendored docs kit,
-configured in `docs.config.mjs`), `.claude/rules/environments.md` and the paid
-behavioural evals in `.claude/rules/evals.md`.
+| Script                                       | What it does                                                                                                                                                                            |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                                 | `tsc -b` both packages' `tsconfig.build.json`, emits `dist/`                                                                                                                            |
+| `pnpm typecheck`                             | `tsc -b --force` over both packages' tooling projects (src + tests)                                                                                                                     |
+| `pnpm lint` / `lint:fix`                     | ESLint over the whole repo (excludes `templates/**`), `--max-warnings 0`: a warning fails like an error                                                                                 |
+| `pnpm format` / `format:check`               | Prettier write / check (covers `templates/**` too)                                                                                                                                      |
+| `pnpm test` / `test:coverage` / `test:watch` | Vitest unit tests, with or without the coverage gate, or in watch mode                                                                                                                  |
+| `pnpm test:e2e`                              | Every `*.e2e.test.ts`: slow, network-touching, run **serially** (`pack.e2e.test.ts` rebuilds `dist/` mid-run). Not part of `pnpm test`; see Definition of Done                          |
+| `pnpm knip`                                  | Unused-dependency / unused-export hygiene, both packages                                                                                                                                |
+| `pnpm check:exports`                         | publint against `packages/cli`'s packed tarball (attw skipped: the CLI exposes no importable export beyond `./package.json`)                                                            |
+| `pnpm check:plugin-version`                  | `plugin.json`'s version matches the CLI's, and `packages/plugin/package.json` stays private                                                                                             |
+| `pnpm check:plugin-manifest`                 | `claude plugin validate --strict` against `packages/plugin`; skips with a warning when `claude` isn't installed                                                                         |
+| `pnpm check:node-version`                    | `.node-version` is authoritative; forbids a hardcoded pin in CI                                                                                                                         |
+| `pnpm check:harness`                         | Grades `templates/core`'s `.claude/` + `CLAUDE.md` with the emitted gate's own rule module: structural defects fail, rubric findings warn                                               |
+| `pnpm check:toolchain`                       | Grades `templates/core`'s TypeScript toolchain the same way (tsconfig chain, ESLint/vitest config, verify-step wiring, pins)                                                            |
+| `pnpm check:license-headers`                 | Every tracked file outside `templates/**` has an SPDX header or a `REUSE.toml` glob; `-- --fix` inserts a missing header                                                                |
+| `pnpm eval`                                  | **Paid, never in `verify`.** `claude plugin eval` suites; needs `claude`, credentials and network, skips cleanly without `claude`. Suites: `.claude/rules/evals.md`                     |
+| `pnpm verify`                                | Every gate above (`bin/lib/verify-steps.mjs`). `node bin/verify.mjs --group <format\|lint\|typecheck\|build\|test>` is what `lefthook` and each `ci.yml` lane run; never `--step` there |
 
 ## Git Workflow
 
@@ -129,70 +113,68 @@ auto, `acceptEdits` or `bypassPermissions` session overrides. Detail, the deny
 list and the root harness inventory: `.claude/rules/hub-and-spoke.md`;
 dispatch sizing and recovery: `.claude/rules/agent-dispatch.md`.
 
-Path-scoped rules load on matching files: `.claude/rules/src.md` on
-`packages/*/src/**`, `.claude/rules/tests.md` on tests,
-`.claude/rules/refactoring.md` on both, `.claude/rules/docs.md` on this
-repo's own markdown (`templates/**` excluded: it ships brand-neutral), and one
-per shipped artifact or surface: `.claude/rules/package-cli.md`,
-`.claude/rules/package-plugin.md`, `.claude/rules/baseline-core.md`,
-`.claude/rules/pack-claude-github.md`, `.claude/rules/pack-frontend.md`,
-`.claude/rules/pack-github.md`, `.claude/rules/pack-harness-extras.md`,
-`.claude/rules/pack-licensing.md`, `.claude/rules/pack-publishing.md`,
-`.claude/rules/pack-quality.md`, `.claude/rules/pack-service.md`, `.claude/rules/pack-statusline.md`,
-`.claude/rules/pack-supply-chain.md` and `.claude/rules/pack-worktrees.md`. A
-pack cannot ship a rule of its own (`templates/packs/README.md`), so these
-live here; each names its trigger paths in its frontmatter.
-
 **Forbidden patterns, hook-enforced:** `any` implied by CommonJS constructs,
 a missing `.js` extension on a relative import, a hand-edit to `dist/` or
-`coverage/` (`guard-protected-paths.mjs`), a `packages/*/src/`/`tests/`
-write while on `main`, a secret written to disk (dotenv files, PEM private keys, a fixed list of token shapes and key names;
-`guard-secret-writes.mjs`), an unsigned `git push` when `commit.gpgsign`
-is on (`guard-git-push-signed.mjs`), and stacking `run_in_background: true`
-with a shell-level detach construct in the same Bash call
-(`guard-double-background.mjs`). **Not hook-enforced:** lint
-(`no-explicit-any`) catches an explicit `any`; no `any` in a public API, never
-swallow an error silently, no top-level side effects and never
-`git push --force` are conscious-care rules (the ruleset only blocks a force-push to `main`).
+`coverage/`, a `packages/*/src/`/`tests/` write while on `main`, a secret
+written to disk (`guard-secret-writes.mjs`), an unsigned `git push` when
+`commit.gpgsign` is on, and `run_in_background: true` stacked with a
+shell-level detach construct in one Bash call. **Not hook-enforced:** no `any`
+in a public API (lint catches only an explicit one), never swallow an error
+silently, no top-level side effects, never `git push --force` (the ruleset only
+blocks it on `main`).
+
+## Architecture notes
+
+The design record is split into path-scoped rules that load on matching files,
+so read the one for the area you edit. A pack
+cannot ship a rule of its own (`templates/packs/README.md`), so the pack rules
+live here; each names its trigger paths in its frontmatter.
+
+| Area                                         | Rule                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source, tests, refactors                     | `.claude/rules/src.md`, `.claude/rules/tests.md`, `.claude/rules/refactoring.md`                                                                                                                                                                                                                                                                                                                      |
+| Markdown (`templates/**` excluded)           | `.claude/rules/docs.md`                                                                                                                                                                                                                                                                                                                                                                               |
+| CLI internals, adopt mode, graders           | `.claude/rules/package-cli.md`, `.claude/rules/adopt-mode.md`, `.claude/rules/harness-graders.md` (two implementations that must not drift)                                                                                                                                                                                                                                                           |
+| `/customize`, `domain-map.ts`, `pack-map.ts` | `.claude/rules/package-plugin.md`                                                                                                                                                                                                                                                                                                                                                                     |
+| The baseline and its caps                    | `.claude/rules/baseline-core.md` (≤5 agents, ≤8 skills, ≤10 hooks, ≤3 workflows, ≤12 scripts)                                                                                                                                                                                                                                                                                                         |
+| This repo's harness                          | `.claude/rules/hub-and-spoke.md`, `.claude/rules/agent-dispatch.md`                                                                                                                                                                                                                                                                                                                                   |
+| Git, CI, definition of done                  | `.claude/rules/git-workflow.md`, `.claude/rules/ci.md`, `.claude/rules/definition-of-done.md`, `.claude/rules/environments.md`                                                                                                                                                                                                                                                                        |
+| Releases                                     | `.claude/rules/releases.md`, `.claude/rules/release-supply-chain.md`, `.claude/rules/release-history.md`                                                                                                                                                                                                                                                                                              |
+| Design system, docs site, evals              | `.claude/rules/design-system.md`, `.claude/rules/docs-site.md`, `.claude/rules/evals.md`                                                                                                                                                                                                                                                                                                              |
+| Packs                                        | `.claude/rules/pack-claude-github.md`, `.claude/rules/pack-frontend.md`, `.claude/rules/pack-github.md`, `.claude/rules/pack-harness-extras.md`, `.claude/rules/pack-licensing.md`, `.claude/rules/pack-publishing.md`, `.claude/rules/pack-quality.md`, `.claude/rules/pack-service.md`, `.claude/rules/pack-statusline.md`, `.claude/rules/pack-supply-chain.md`, `.claude/rules/pack-worktrees.md` |
 
 ## Releases
 
-Only `@monte3l/groundwork` (the CLI, `packages/cli`) ships to npm;
+Only `@monte3l/groundwork` (`packages/cli`) ships to npm;
 `@monte3l/groundwork-plugin` is `private` and distributes only through the
-central `monte3l/m3l-plugins` marketplace, which pins it to a CLI release tag.
-There is no changeset: release-please reads the
-Conventional Commits, so the commit type is the release (`feat` minor, `fix`
+`monte3l/m3l-plugins` marketplace. There is no changeset: release-please reads
+the Conventional Commits, so the commit type is the release (`feat` minor, `fix`
 patch, `!` major; `docs`, `chore`, `ci`, `test` and `refactor` release
-nothing). A push to `main` runs `release.yml`, which opens or updates one
-release PR and, when that merges, packs, attests, stages and publishes. **Renaming or moving `release.yml` breaks npm's trusted
-publisher**, and a publish is staged: `npm stage approve` is a separate step
-that needs a live 2FA code. Detail: `.claude/rules/releases.md`, with the supply-chain signals in `.claude/rules/release-supply-chain.md` and the GA record, one-time setup and superseding versions in `.claude/rules/release-history.md`.
+nothing). **Renaming or moving `release.yml` breaks npm's trusted publisher**,
+and a publish is staged: `npm stage approve` is a separate step that needs a
+live 2FA code. Detail: `.claude/rules/releases.md`.
 
 ## Testing
 
 Vitest with a per-file v8 coverage gate (90% statements/lines, 80%
-branches/functions), property tests (`*.property.test.ts`, `fast-check`) in
-`pnpm test`, and `*.e2e.test.ts` files that bootstrap real projects and pack
-tarballs, run only through `pnpm test:e2e` (after any change to
-`packages/cli/src/`, `templates/core/` or `packages/plugin/skills/customize/`).
-Detail: `.claude/rules/tests.md`.
+branches/functions), and property tests (`*.property.test.ts`, `fast-check`) in
+`pnpm test`. Detail: `.claude/rules/tests.md`.
 
 ## Definition of Done
 
-`pnpm verify` passes; `pnpm test:e2e` passes too if the change touched
-`packages/cli/src/`, `templates/core/` or the `/customize` skill (CI runs it on
+`pnpm verify` passes. `pnpm test:e2e` passes too if the change touched
+`packages/cli/src/`, `templates/core/` or the `/customize` skill: CI runs it on
 every PR except documentation-only ones, but no local pre-push hook does, so
-run it before pushing). Anything that changes what the CLI's tarball ships or
+run it before pushing. Anything that changes what the CLI's tarball ships or
 how it finds its data is proved by `pack.e2e.test.ts`, not by running the CLI
 from the checkout. The baseline's caps still hold if a `.claude/` file was
-added to or removed from `templates/core`. If you touched this repo's _own_
+added to or removed from `templates/core`. If you touched this repo's own
 `.claude/`, grade it with `/grade-own-harness`: structural failures gate,
 rubric findings only warn.
 
 **A new tracked file outside `templates/**` needs an SPDX header** (`.ts`,
 `.mjs`, `.js`, `.sh`, `.yml`, `.yaml`) or a `REUSE.toml` glob (anything else);
-`node bin/check-license-headers.mjs --fix` inserts the header. Wording and the
-two header lines: `.claude/rules/definition-of-done.md`.
+`node bin/check-license-headers.mjs --fix` inserts the header.
 
 ## Known gaps (deliberately out of scope so far)
 
