@@ -1,5 +1,29 @@
 # @monte3l/groundwork
 
+## [1.4.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.3.2...@monte3l/groundwork@1.4.0) (2026-11-23)
+
+
+### Features
+
+* **packs:** add opt-in m3l-design colors to the statusline pack ([#373](https://github.com/monte3l/m3l-groundwork/issues/373)) ([96540a3](https://github.com/monte3l/m3l-groundwork/commit/96540a34537752f9fea3dc1bc28e4231aebda28a))
+* **packs:** add the org shell portability guard to harness-extras ([2f02e24](https://github.com/monte3l/m3l-groundwork/commit/2f02e2402cf9e857541cd94e01d9a3e1dc2c4646))
+* **packs:** replace subagentStatusLine with an AgentRow mod ([d35714d](https://github.com/monte3l/m3l-groundwork/commit/d35714d7720bee492758c829d6784c3bb20161a0))
+* **packs:** replace subagentStatusLine with an AgentRow mod ([371ce82](https://github.com/monte3l/m3l-groundwork/commit/371ce82981258924e8f415398d7c3ff092750978))
+* **templates:** emit the org guard starters and fail-closed wiring ([93dfdb5](https://github.com/monte3l/m3l-groundwork/commit/93dfdb51120e02b98e76e628e0fa1ece8ac26398))
+* **templates:** lint skill listing length and bare Bash grants, ban URL substring in tests ([03a8280](https://github.com/monte3l/m3l-groundwork/commit/03a82809dc3216d4a74ff242d9bb9a780aa6d56b))
+* **templates:** lint skill listing length and bare Bash grants, ban URL substring in tests ([bf2f8d9](https://github.com/monte3l/m3l-groundwork/commit/bf2f8d971939f7a3a88ea9f7dc31eeef2faff04a))
+
+
+### Bug Fixes
+
+* **core:** trim both CLAUDE.md files ([4fd8b54](https://github.com/monte3l/m3l-groundwork/commit/4fd8b546a5e0e45829880f9089f8e8d9bb7f3bbd))
+* **core:** trim the baseline CLAUDE.md guard caveats ([1e40a6d](https://github.com/monte3l/m3l-groundwork/commit/1e40a6d7d579053e10a174c671b24097e028ad55))
+* **deps:** Bump anthropics/claude-code-action ([#359](https://github.com/monte3l/m3l-groundwork/issues/359)) ([61906f6](https://github.com/monte3l/m3l-groundwork/commit/61906f6217db4bf1f332bd6b38ff1268d4584c24))
+* **harness:** accept claude-fable-5-2 as a current model id ([cb11cfd](https://github.com/monte3l/m3l-groundwork/commit/cb11cfd13276fe192adebc86ae9eebcf1fdfa175))
+* **packs:** harden the publishing pack's stage-publish scripts ([89bd0e1](https://github.com/monte3l/m3l-groundwork/commit/89bd0e13cfa599f0bda6eff5b416483fdb12fca5))
+* **templates:** tell the commit skill and commitlint config about the DCO sign-off ([3517f4c](https://github.com/monte3l/m3l-groundwork/commit/3517f4c19e8f03640652dc186967ae7493c6eac4))
+* **templates:** tell the commit skill and commitlint config about the DCO sign-off ([b51fc64](https://github.com/monte3l/m3l-groundwork/commit/b51fc64aff703c0c3ed64f82c28bda6fca2a8b8f))
+
 ## [1.3.2](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.3.1...@monte3l/groundwork@1.3.2) (2026-11-21)
 
 
