@@ -35,3 +35,14 @@ design/tokens.css
 # reformatting it would make it a custom copy that sync stops refreshing.
 # REUSE.toml covers it for the same reason.
 .claude/hooks/guard-shared-checkout.mjs
+# The other verbatim org starters (guards and the helper the push guard loads),
+# for the same reason, and the copies templates/core emits (the same files
+# without the SPDX header).
+.claude/hooks/guard-double-background.mjs
+.claude/hooks/guard-git-push-signed.mjs
+.claude/hooks/guard-secret-writes.mjs
+bin/lib/signed-range.mjs
+templates/core/.claude/hooks/guard-double-background.mjs
+templates/core/.claude/hooks/guard-git-push-signed.mjs
+templates/core/.claude/hooks/guard-secret-writes.mjs
+templates/core/bin/lib/signed-range.mjs
