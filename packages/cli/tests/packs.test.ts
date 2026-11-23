@@ -1335,7 +1335,7 @@ describe("the real harness-extras pack", () => {
     expect(pack.manifest.budget).toEqual({
       agents: 0,
       skills: 0,
-      hooks: 3,
+      hooks: 4,
       workflows: 0,
       scripts: 0,
     });

@@ -10,8 +10,9 @@ paths:
 > `templates/packs/README.md`.
 
 **What it is.** Claude Code session hooks: the compaction-handoff hook
-pair and `guard-readonly-bash`. Modes: fresh and adopt. Budget: 3 hooks.
-Requires `bin/lib/agent-roster.mjs` from the baseline. The status line used to
+pair, `guard-readonly-bash` and the org's `guard-shell-portability`. Modes:
+fresh and adopt. Budget: 4 hooks. Requires `bin/lib/agent-roster.mjs` from the
+baseline. The status line used to
 ship here and is now the `statusline` pack (`pack-statusline.md`); do not add
 a top-level settings key back, since that is exactly the collision the split
 removed.
@@ -21,6 +22,11 @@ removed.
 - **The handoff artifact is written under `tmp/`** in the git worktree the
   session runs in. The root prefers the hook payload's `cwd` over
   `CLAUDE_PROJECT_DIR`, which does not follow a session into a worktree.
+- **`guard-shell-portability.mjs` is the org's verbatim starter** from
+  `monte3l/.github` (`blueprint/files/`). Change it there, never here:
+  `org-guard-starters.test.ts` keeps the root copy and this one identical
+  apart from the SPDX header. It is in the pack, not `templates/core`,
+  because the baseline is capped at 10 hooks.
 - **The `budget` in `pack.json` must equal the real `files/` count.**
 
 | Proof          | Where                                                                        |

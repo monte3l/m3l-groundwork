@@ -43,6 +43,12 @@
           },
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-shell-portability.mjs\"",
+            "timeout": 30,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-hub-src-writes.mjs\"",
             "timeout": 30,
             "onFailure": "block"

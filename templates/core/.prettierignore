@@ -15,4 +15,7 @@ CHANGELOG.md
 .claude/hooks/guard-double-background.mjs
 .claude/hooks/guard-git-push-signed.mjs
 .claude/hooks/guard-secret-writes.mjs
+# Shipped by the harness-extras pack, not the baseline. Prettier ignores a path
+# that does not exist, so this costs nothing when the pack is not installed.
+.claude/hooks/guard-shell-portability.mjs
 bin/lib/signed-range.mjs
