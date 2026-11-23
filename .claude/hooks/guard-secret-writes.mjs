@@ -215,17 +215,33 @@ function afterReference(text, quote) {
 
 /**
  * A hyphenated identifier made of lowercase words, the way a repository or a package is named
- * (`m3l-output-governor`, `claude-code-plugin`): every part starts with a letter, and at least one is a
- * plain word of three letters or more. A random token is not: its parts are hex or base62 noise that
- * starts with a digit or has no word in it, and a UUID-shaped value is not one.
+ * (`m3l-output-governor`, `claude-code-plugin`, `m3l-s3-bucket-name`). Every part starts with a letter and is
+ * either a plain word (letters only) or a short part that mixes in a digit (`m3l`, `v2`, `s3`: at most four
+ * characters), at most two of those, and at least one part is a plain word of three letters or more. A
+ * letters-only part of eight or more letters that are all hex digits (`deadbeef`) is not a word. A token is
+ * not one: it has a long part that mixes letters and digits (`key-a1b2c3d4e5f6g7h8i9j0`), or groups of them
+ * (`ab12-cd34-ef56-gh78`), or a part that starts with a digit (a UUID).
  */
 function isHyphenatedName(run) {
   if (!/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/.test(run)) return false;
-  return run.split("-").some((part) => /^[a-z]{3,}$/.test(part));
+  const parts = run.split("-");
+  let mixed = 0;
+  for (const part of parts) {
+    if (/^[a-z]+$/.test(part)) {
+      if (part.length >= 8 && /^[a-f]+$/.test(part)) return false;
+    } else if (part.length > 4) {
+      return false;
+    } else {
+      mixed++;
+    }
+  }
+  return mixed <= 2 && parts.some((part) => /^[a-z]{3,}$/.test(part));
 }
 
-// Prefixes of credentials that are tokens whatever else they look like.
-const TOKEN_PREFIX = /^(?:gh[pousr]_|github_pat_|npm_|AKIA|ASIA|sk-|sk_|rk_|xox[abprs]-|glpat-|AIza|ya29\.)/;
+// Prefixes of credentials that are tokens whatever else they look like. `key-` is taken only when a digit
+// follows directly, that is in the part right after the hyphen, so names such as `key-value-store-v2` and
+// `key-manager-v2-prod` are not tokens.
+const TOKEN_PREFIX = /^(?:gh[pousr]_|github_pat_|npm_|AKIA|ASIA|sk-|sk_|rk_|xox[abprs]-|glpat-|AIza|ya29\.|key-(?=[A-Za-z0-9]*\d))/;
 
 /**
  * Whether a run of characters looks like a secret by the same rules as a plain value
