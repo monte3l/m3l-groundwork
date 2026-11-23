@@ -96,10 +96,12 @@ treated as the hub unless its payload reports a writer `agent_type`. To override
 `!` prefix at the Claude Code prompt, or edit the hook's registration in
 `.claude/settings.json`.
 
-Four guards (`guard-secret-writes`, `guard-hub-src-writes`,
-`guard-branch-isolation`, `guard-protected-paths`) carry `"onFailure": "block"`
-(Claude Code 2.1.295 or later), so a hook that fails blocks the call, and a
-missing `node` blocks every `Bash` call until fixed. `permissions.deny` blocks
+Six guards (`guard-secret-writes`, `guard-hub-src-writes`,
+`guard-branch-isolation`, `guard-protected-paths`, `guard-git-push-signed`,
+`guard-double-background`) carry `"onFailure": "block"` (Claude Code 2.1.295 or
+later), so a hook that fails blocks the call, and a missing `node` blocks every
+`Bash` call until fixed. `guard-git-push-signed` needs `bin/lib/signed-range.mjs`
+beside it: refresh the two files together. `permissions.deny` blocks
 reading secrets and editing lock files and `.git/`, but not `grep -r` or a
 script that opens the file itself. A session in auto, `acceptEdits` or
 `bypassPermissions` mode overrides a spoke's `permissionMode`, so the hooks,

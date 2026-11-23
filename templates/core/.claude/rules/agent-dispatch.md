@@ -83,12 +83,18 @@ Sources: [hooks](https://code.claude.com/docs/en/hooks),
 - **What `onFailure: "block"` covers.** A failure is a hook that cannot start,
   times out, exits with any code other than 0 or 2, or prints invalid JSON. It
   has no effect on `Stop`, `SubagentStop`, `TaskCompleted`, `TeammateIdle` or
-  async hooks. Each guard still handles bad input itself and exits 0 on
-  purpose. Because `guard-hub-src-writes` is also on `Bash`, a missing `node`
-  blocks every `Bash` call until fixed (run the command with the `!` prefix to
-  get past it). The style guards and `guard-git-push-signed` stay fail-open on
-  purpose: the push guard has its own parser and the remote's signed-commit
-  rule is the authoritative layer.
+  async hooks. A deliberate `exit 0` is not a failure, so
+  `guard-secret-writes`, `guard-git-push-signed` and `guard-double-background`
+  exit 2 themselves on a payload that is not a JSON object; the two style
+  guards (`guard-js-extension`, `guard-no-commonjs`) stay fail-open and handle
+  bad input by exiting 0. Because `guard-hub-src-writes`,
+  `guard-git-push-signed` and `guard-double-background` are also on `Bash`, a
+  missing `node` blocks every `Bash` call until fixed (run the command with the
+  `!` prefix to get past it). The push guard keeps one exception: when it
+  cannot work out the outgoing range it lets the push go, because the remote's
+  signed-commit rule is the authoritative layer. It and `bin/lib/signed-range.mjs`
+  are one unit: with the helper missing or older, a command that looks like a
+  `git push` is blocked and every other command passes.
 - **What `permissions.deny` covers.** It blocks reading `.env`, `.env.*`,
   `secrets/`, `credentials.json` and `secrets.yaml` (which also covers `cat`,
   `head` and `tail` on them in `Bash`) and editing `pnpm-lock.yaml`,
