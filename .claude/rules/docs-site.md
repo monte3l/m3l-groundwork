@@ -27,12 +27,18 @@ only `docs.config.mjs`, the deploy wiring and the workflows.
 `design/SHA256SUMS` proves it, so a local edit fails `--check`. A renderer,
 headers or live-check change is made in m3l-design and arrives by
 `bin/sync-design.sh`. A page-shell layout change goes in `design/local/`,
-which does not exist today and is held to `var(--token)` values only.
+and is held to `var(--token)` values only. Today it holds
+`statusline-preview.css`, the role colors for the generated "Status line" page.
 
 **`docs.config.mjs` is where this site is defined:**
 
-- `pages` are the ten rendered pages: README (as `index.html`), CONTRIBUTING,
-  GOVERNANCE, ROADMAP, CODE_OF_CONDUCT, SECURITY, and four `docs/*.md` pages.
+- `pages` are the ten rendered Markdown pages: README (as `index.html`),
+  CONTRIBUTING, GOVERNANCE, ROADMAP, CODE_OF_CONDUCT, SECURITY, and four
+  `docs/*.md` pages. `generators` adds one more, "Status line"
+  (`docs/statusline.html`), built by `bin/docs-statusline-preview.mjs`: it runs
+  the statusline pack's real renderer over sample data, so a Markdown link to it
+  must be an absolute site URL (the kit resolves relative links only to
+  Markdown pages and repo files).
   `navGroups` order the sidebar, and `nav` holds the top links (Security,
   GitHub, npm).
 - `exclude` lists every other tracked `*.md` file with a reason. A new

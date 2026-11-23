@@ -1,7 +1,7 @@
 /**
  * Pure presentation primitives for the status-line entry point
- * (`statusline.mjs`): terminal-width fitting, ANSI colors, and the small
- * formatters it needs. The subagent-rows mod keeps a vendored copy of the ones
+ * (`statusline.mjs`): terminal-width fitting, the color palettes
+ * (`PALETTES`/`resolvePalette`), and the small formatters it needs. The subagent-rows mod keeps a vendored copy of the ones
  * it uses (`row-format.mjs`; a mod may import only from its own directory).
  * No I/O, no shebang, no direct-run block -- this module is only ever
  * imported.
@@ -327,16 +327,158 @@ export function terminalColumns(env) {
   return Number.isFinite(n) && n > 0 ? n : 80;
 }
 
-export const GREEN = "\x1b[32m";
-export const YELLOW = "\x1b[33m";
-export const RED = "\x1b[31m";
-export const CYAN = "\x1b[36m";
-export const BLUE = "\x1b[34m";
-export const MAGENTA = "\x1b[35m";
-export const DIM = "\x1b[2m";
-export const RESET = "\x1b[0m";
-export const SEGMENT_SEPARATOR = `${DIM} · ${RESET}`;
-export const PLACEHOLDER = `${DIM}—${RESET}`;
+/**
+ * The SGR escape each color role paints with. Segments name a role, never a
+ * hue, so a theme swaps every color at once.
+ *
+ * @typedef {{
+ *   success: string;
+ *   warning: string;
+ *   danger: string;
+ *   accent: string;
+ *   accentAlt: string;
+ *   accentStrong: string;
+ *   muted: string;
+ *   reset: string;
+ * }} Palette
+ */
+
+/**
+ * @param {string} hex a `#rrggbb` color.
+ * @returns {string} its 24-bit foreground SGR escape.
+ */
+function truecolor(hex) {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `\x1b[38;2;${String((n >> 16) & 0xff)};${String((n >> 8) & 0xff)};${String(n & 0xff)}m`;
+}
+
+/**
+ * @param {{ success: string, warning: string, danger: string, accent: string, accentAlt: string, accentStrong: string }} hex
+ * @returns {Readonly<Palette>}
+ */
+function truecolorPalette(hex) {
+  return Object.freeze({
+    success: truecolor(hex.success),
+    warning: truecolor(hex.warning),
+    danger: truecolor(hex.danger),
+    accent: truecolor(hex.accent),
+    accentAlt: truecolor(hex.accentAlt),
+    accentStrong: truecolor(hex.accentStrong),
+    muted: "\x1b[2m",
+    reset: "\x1b[0m",
+  });
+}
+
+/**
+ * Every palette this pack ships. `default` is the basic ANSI 16 every
+ * terminal theme recolors, and the one used unless the project opts in.
+ * `m3l-design` is inert data until `GROUNDWORK_STATUSLINE_THEME=m3l-design`
+ * is set: m3l-design's `color.status.{success,warning,danger}.text` and
+ * `color.accent.{text,hover,active}` tokens, inlined as hex so the pack needs
+ * nothing outside `node:*` (a test pins them to the design tokens).
+ */
+export const PALETTES = Object.freeze({
+  default: /** @type {Readonly<Palette>} */ (
+    Object.freeze({
+      success: "\x1b[32m",
+      warning: "\x1b[33m",
+      danger: "\x1b[31m",
+      accent: "\x1b[36m",
+      accentAlt: "\x1b[34m",
+      accentStrong: "\x1b[35m",
+      muted: "\x1b[2m",
+      reset: "\x1b[0m",
+    })
+  ),
+  "m3l-design": Object.freeze({
+    light: truecolorPalette({
+      success: "#086d31",
+      warning: "#7d4f0a",
+      danger: "#963730",
+      accent: "#692746",
+      accentAlt: "#4f1a33",
+      accentStrong: "#381224",
+    }),
+    dark: truecolorPalette({
+      success: "#89d298",
+      warning: "#ebb16c",
+      danger: "#fda297",
+      accent: "#d1789e",
+      accentAlt: "#e799b9",
+      accentStrong: "#f4c0d4",
+    }),
+  }),
+});
+
+/** Every role empty: what a non-empty `NO_COLOR` asks for (no-color.org). */
+const NO_COLOR_PALETTE = /** @type {Readonly<Palette>} */ (
+  Object.freeze({
+    success: "",
+    warning: "",
+    danger: "",
+    accent: "",
+    accentAlt: "",
+    accentStrong: "",
+    muted: "",
+    reset: "",
+  })
+);
+
+/**
+ * Picks the palette for `env`. `NO_COLOR` set to a non-empty string empties
+ * every role, per no-color.org; an empty or absent `NO_COLOR` leaves colors on. Only the exact `GROUNDWORK_STATUSLINE_THEME` value
+ * `m3l-design` opts in; anything else is `default`. `m3l-design` takes its
+ * light or dark variant from `COLORFGBG` (`"fg;bg"`, a background of 7 or 15
+ * is light), dark when it is absent or has no `;`.
+ *
+ * @param {{
+ *   GROUNDWORK_STATUSLINE_THEME?: unknown;
+ *   COLORFGBG?: unknown;
+ *   NO_COLOR?: unknown;
+ * } | undefined} env
+ * @returns {Readonly<Palette>}
+ */
+export function resolvePalette(env) {
+  const noColor = env?.NO_COLOR;
+  if (typeof noColor === "string" && noColor !== "") return NO_COLOR_PALETTE;
+  if (env?.GROUNDWORK_STATUSLINE_THEME !== "m3l-design") {
+    return PALETTES.default;
+  }
+  const colorfgbg = env.COLORFGBG;
+  const bg =
+    typeof colorfgbg === "string" && colorfgbg.includes(";")
+      ? colorfgbg.slice(colorfgbg.lastIndexOf(";") + 1)
+      : "";
+  return PALETTES["m3l-design"][bg === "15" || bg === "7" ? "light" : "dark"];
+}
+
+// The pre-palette hue names, kept as aliases of the default palette because
+// they are part of this module's public API that the pack's tests pin.
+export const GREEN = PALETTES.default.success;
+export const YELLOW = PALETTES.default.warning;
+export const RED = PALETTES.default.danger;
+export const CYAN = PALETTES.default.accent;
+export const BLUE = PALETTES.default.accentAlt;
+export const MAGENTA = PALETTES.default.accentStrong;
+export const DIM = PALETTES.default.muted;
+export const RESET = PALETTES.default.reset;
+
+/**
+ * @param {Readonly<Palette>} palette
+ * @returns {string} the dim ` · ` between two segments of a row.
+ */
+export function segmentSeparator(palette) {
+  return `${palette.muted} · ${palette.reset}`;
+}
+
+/**
+ * @param {Readonly<Palette>} palette
+ * @returns {string} the dim `—` a row with no segment shows.
+ */
+export function placeholder(palette) {
+  return `${palette.muted}—${palette.reset}`;
+}
+
 export const GUTTER_WIDTH = 10;
 
 /**

@@ -134,6 +134,7 @@ describe("recommendPacks", () => {
       expect(statusline?.recommended).toBe(true);
       expect(statusline?.because).toMatch(/context.window/i);
       expect(statusline?.because).toMatch(/session|model|quota|work/i);
+      expect(statusline?.because).toContain("m3l-design");
     }
   });
 

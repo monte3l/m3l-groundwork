@@ -1,0 +1,44 @@
+/*
+ * SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+ * SPDX-License-Identifier: MIT
+ *
+ * Role colors for the generated "Status line" page (bin/docs-statusline-preview.mjs).
+ * Each `sl-<role>` class is one role of the statusline pack's m3l-design
+ * palette, painted from the matching design token so it follows the site's
+ * light/dark theme.
+ */
+.sl-preview {
+  background: var(--color-surface-sunken);
+  border: var(--border-width-default) solid var(--color-border-default);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.sl-success {
+  color: var(--color-status-success-text);
+}
+
+.sl-warning {
+  color: var(--color-status-warning-text);
+}
+
+.sl-danger {
+  color: var(--color-status-danger-text);
+}
+
+.sl-accent {
+  color: var(--color-accent-text);
+}
+
+.sl-accentAlt {
+  color: var(--color-accent-hover);
+}
+
+.sl-accentStrong {
+  color: var(--color-accent-active);
+}
+
+.sl-muted {
+  color: var(--color-text-secondary);
+}

@@ -246,6 +246,9 @@
     "padding": 1,
     "refreshInterval": 30
   },
+  "env": {
+    "GROUNDWORK_STATUSLINE_THEME": "m3l-design"
+  },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true,
     "github@claude-plugins-official": true,

@@ -259,6 +259,10 @@ declined, plus any prerequisite named against an enabled plugin
 plugin's `prerequisites` names) as a follow-up the
 user still has to satisfy.
 
+When the status line theme question was asked (Step 3 Round 1), report the
+answer: whether `env.GROUNDWORK_STATUSLINE_THEME` was set to `m3l-design`, or
+the default ANSI-16 colors were kept.
+
 Close with two follow-ups the project's own files cannot carry, because both
 are per-user. **Notifications:** Claude Code sends a desktop notification by
 itself only in Ghostty, Kitty and iTerm2; in another terminal, set

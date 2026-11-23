@@ -83,7 +83,11 @@ tools/                  Pinned CI tooling, kept out of `.github/` because
 bin/                    This repo's own gate scripts: verify.mjs, check-*.mjs,
                          eval.mjs, ci-docs-only.mjs, soak.sh, and
                          doc-parity.mjs (the docs kit's parity module,
-                         run by its --check). The docs
+                         run by its --check), and
+                         docs-statusline-preview.mjs (the docs kit generator
+                         for the "Status line" page, which renders the
+                         statusline pack's script over sample data; its role
+                         colors are design/local/statusline-preview.css). The docs
                          site builder is not here: it is the vendored kit,
                          design/source/docs-kit/.
                          The step list they all read from is
