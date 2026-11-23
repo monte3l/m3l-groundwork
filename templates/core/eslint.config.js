@@ -97,6 +97,26 @@ export default defineConfig(
     },
   },
   {
+    // CodeQL's js/incomplete-url-substring-sanitization (query help: "Parse a
+    // URL before performing a check on its host value") also fires on an
+    // assertion such as `expect(url.includes("https://a.example")).toBe(true)`.
+    // This catches only that syntactic shape: a string method called with a
+    // literal that starts with http(s)://. It cannot follow a URL held in a
+    // variable, so CodeQL stays the backstop.
+    files: ["**/tests/**/*.ts", "**/*.test.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(includes|startsWith|endsWith|indexOf)$/][arguments.0.value=/^https?:\\/\\//]",
+          message:
+            "A substring check on a URL passes for a look-alike host. Parse it (`new URL(x).hostname`) and compare the host exactly.",
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.mjs", "**/*.js"],
     ...configs.disableTypeChecked,
   },
