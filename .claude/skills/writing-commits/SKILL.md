@@ -25,7 +25,9 @@ reviewer who wasn't in the room.
       mechanical chores
 - [ ] Add `Co-Authored-By:` footer when Claude authored the commit
 - [ ] Add `BREAKING CHANGE:` footer for `feat!:` commits
-- [ ] Run `git commit -m "..."` with the full message
+- [ ] Run `git commit -m "..."` with the full message, adding `-s` when the
+      repository requires a `Signed-off-by:` trailer (`CONTRIBUTING.md`, or a
+      `trailer-exists` rule in `commitlint.config.js`)
 
 ## Step 1 — Understand the change
 
@@ -128,6 +130,14 @@ git commit -m "$(cat <<'EOF'
 EOF
 )"
 ```
+
+When the repository requires a `Signed-off-by:` trailer (`CONTRIBUTING.md`, or a
+`trailer-exists` rule in `commitlint.config.js`), commit with `git commit -s`:
+`-s` appends `Signed-off-by: Name <email>` from the git config. Without it the
+`commit-msg` hook rejects the commit, or, where the rule is only in CI, the pull
+request check does, which is a later and slower place to find out. Use
+`git merge --signoff` and `git revert --signoff` too: commitlint ignores those
+messages, but `bin/lint-commit.mjs` does not.
 
 ---
 
