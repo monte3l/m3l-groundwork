@@ -42,6 +42,32 @@ with its own status line can take that pack's hooks without a collision, and
   must degrade to fewer segments, never break. A row that overflows
   `COLUMNS` drops its lowest-priority segments rather than wrapping
   (`fitRow` in `statusline-layout.mjs`).
+- **Colors are a role palette, and the m3l-design one is opt-in.**
+  `statusline-layout.mjs` exports `PALETTES` and `resolvePalette(env)`;
+  `row-format.mjs` carries a vendored copy. The default is the terminal's ANSI-16,
+  byte-identical to before. `GROUNDWORK_STATUSLINE_THEME=m3l-design` switches to
+  truecolor (light or dark from `COLORFGBG`), and `NO_COLOR` empties every role
+  under either theme. The m3l hex values are inlined, since the pack imports
+  nothing from the baseline, and `statusline-theme.test.ts` pins them to
+  `bin/lib/term.mjs`'s palette. **Never plant the key**: the pack has no
+  `env` wiring and the CLI never sets it. `/customize` asks once, defaults to no,
+  and adds `env.GROUNDWORK_STATUSLINE_THEME` to `.claude/settings.json` only on a
+  yes. The mod cannot read `process.env`: its hook module has no Node APIs
+  (code.claude.com/docs/en/plugins/mods/api). `register()` instead calls the
+  documented `$.settings.read({ key: "env" })` once, lazily, on the first row
+  and never awaits it, so the first row uses the default palette and later rows
+  use the theme. `themeEnvFrom` copies only the three theme keys out of the
+  result, and any failure leaves the default palette (advisory, `next` runs
+  once). The mod cannot see `COLORFGBG` or `NO_COLOR` from the shell, so it
+  assumes a dark terminal unless `COLORFGBG` is in that same settings `env`
+  block. That read is written to the documented API and tested through fakes;
+  it has not been observed in a live session. `NO_COLOR` follows no-color.org
+  (set and non-empty).
+- **This repo's own copies of the four renderer files equal the pack's**, plus an
+  SPDX header, so the root status line is the pack with the theme turned on
+  (`.claude/settings.json` `env`). A test enforces it. The "Status line" docs
+  page (`bin/docs-statusline-preview.mjs`) renders the pack's script, so a
+  change to the palette roles shows up there too.
 - **The pack needs nothing from the baseline.** The scripts import only
   `node:*` and each other, and `statusline-layout.mjs` inlines its palette
   rather than importing `bin/lib/term.mjs`. Keep it that way, or add a

@@ -10,7 +10,13 @@
   that replaces the deprecated `subagentStatusLine` key); the only pack using
   `wiring.settingsTopLevel`, and in adopt mode `/customize` (not `merge-json`)
   skips the `statusLine` key and its two scripts when the key is already set,
-  installing only the mod. `quality`:
+  installing only the mod. The status line has an opt-in m3l-design palette
+  (`GROUNDWORK_STATUSLINE_THEME`, offered by `/customize`, never the default),
+  and the `subagent-rows` mod reads it through the documented
+  `$.settings.read({ key: "env" })`, since its hook module has no `process.env`.
+  That path is tested only through fakes, never seen in a live session (a probe
+  could not get a row on screen), and the mod assumes a dark terminal because it
+  cannot see `COLORFGBG`. `quality`:
   `type-design-analyzer` agent and the `check-file-budget` ratchet. `claude-github`:
   `claude-action` in mention-mode and an automated PR-review workflow, which
   need an auth secret the pack cannot create. `github`: three `gh` skills.
