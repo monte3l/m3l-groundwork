@@ -18,9 +18,9 @@
  * `nohup <cmd> > <log> 2>&1 & disown` with the polling done separately
  * against the raw PID (`kill -0 $PID`) -- never both on the same invocation.
  *
- * Fail-open on everything ambiguous: a malformed payload, a missing/
- * non-boolean `run_in_background`, or a command with no detach construct all
- * exit 0. This is a DENYLIST of the three known detach constructs, not a
+ * Fails closed on a payload it cannot read (exit 2), and open on the rest: a
+ * missing/non-boolean `run_in_background`, or a command with no detach
+ * construct, exits 0. This is a DENYLIST of the three known detach constructs, not a
  * strict parse of the shell grammar -- extend `hasShellDetach` as new gaps
  * are found rather than reaching for a real shell parser.
  */
@@ -102,7 +102,7 @@ if (isEntryPoint()) {
   // A payload that cannot be read cannot be judged, so fail closed. The hook is
   // registered with onFailure: "block", which covers a crash but not a
   // deliberate exit 0, and exit 0 means allow.
-  if (typeof input !== "object" || input === null) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
     process.stderr.write("[guard-double-background] could not read the hook payload; blocking.\n");
     process.exit(2);
   }
