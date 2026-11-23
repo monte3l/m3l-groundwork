@@ -552,25 +552,38 @@ describe("main", () => {
       expect(steps.map((step) => step.id)).toEqual(["file-budget"]);
     });
 
-    it("installs the statusline pack as a live pack (no longer a retired name): its hooks land and both top-level keys are planted", () => {
+    it("installs the statusline pack as a live pack (no longer a retired name): its hooks and the subagent-rows plugin land and only statusLine is planted", () => {
       const packTarget = join(targetDir, "sub-pack-statusline");
 
       main([packTarget, "--skip-install", "--pack", "statusline"]);
 
-      for (const file of [
-        "statusline.mjs",
-        "statusline-layout.mjs",
-        "subagent-statusline.mjs",
-      ]) {
+      for (const file of ["statusline.mjs", "statusline-layout.mjs"]) {
         expect(existsSync(join(packTarget, ".claude", "hooks", file))).toBe(
           true,
         );
       }
+      expect(
+        existsSync(
+          join(packTarget, ".claude", "hooks", "subagent-statusline.mjs"),
+        ),
+      ).toBe(false);
+      expect(
+        existsSync(
+          join(
+            packTarget,
+            ".claude",
+            "skills",
+            "subagent-rows",
+            ".claude-plugin",
+            "plugin.json",
+          ),
+        ),
+      ).toBe(true);
       const settings = JSON.parse(
         readFileSync(join(packTarget, ".claude", "settings.json"), "utf8"),
       ) as Record<string, unknown>;
       expect(Object.hasOwn(settings, "statusLine")).toBe(true);
-      expect(Object.hasOwn(settings, "subagentStatusLine")).toBe(true);
+      expect(Object.hasOwn(settings, "subagentStatusLine")).toBe(false);
     });
 
     it("prints a caps summary when a pack is installed", () => {

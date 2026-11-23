@@ -151,13 +151,14 @@ confirmed in Step 0.4:
   hand-applied path must not be laxer than the automated one (also check
   `.claude/settings.local.json` and the user's `~/.claude/settings.json`,
   either of which can shadow a project `statusLine`). For `statusline`
-  specifically, a `statusLine`/`subagentStatusLine` collision is never a
-  reason to fail the whole pack install: skip just the colliding key and the
-  script that renders it (`statusline.mjs` for `statusLine`,
-  `subagent-statusline.mjs` for `subagentStatusLine`; `statusline-layout.mjs`
-  stays while either remains), install the other key normally, and skip the
-  whole pack only when both keys are already set, stating the skip plainly in
-  Step 7. The pack is separate from `harness-extras` for exactly this reason,
+  specifically, a `statusLine` collision is never a reason to fail the whole
+  pack install: skip that key and the two scripts that render it
+  (`statusline.mjs`, `statusline-layout.mjs`), install only the
+  `subagent-rows` plugin under `.claude/skills/subagent-rows/` (an existing
+  file there is a file collision as usual), and state the skip plainly in
+  Step 7. A project that still carries a `subagentStatusLine` key keeps it
+  untouched: tell the owner it is deprecated and can be removed (the mod's
+  row text overrides it), and never remove it without asking. The pack is separate from `harness-extras` for exactly this reason,
   so a skipped status line never costs the compaction-handoff hooks or
   `guard-readonly-bash`. For `harness-extras`, `guard-readonly-bash.mjs` imports
   `bin/lib/agent-roster.mjs`: when the project keeps no agents and that file is

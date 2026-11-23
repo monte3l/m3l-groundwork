@@ -1,0 +1,8 @@
+{
+  "name": "subagent-rows",
+  "version": "1.0.0",
+  "description": "Renders each subagent row in the agent panel as label, effort, token usage and elapsed time. Replaces the deprecated subagentStatusLine setting.",
+  "author": {
+    "name": "Project maintainers"
+  }
+}

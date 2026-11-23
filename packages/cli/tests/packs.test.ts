@@ -1395,7 +1395,7 @@ describe("the real harness-extras pack", () => {
 });
 
 describe("the real statusline pack", () => {
-  it("loads cleanly, is fresh+adopt capable, budgets three hooks, and wires exactly the statusLine and subagentStatusLine top-level keys", () => {
+  it("loads cleanly, is fresh+adopt capable, budgets two hooks and one skill, and wires exactly the statusLine top-level key", () => {
     expect(listPackNames()).toContain("statusline");
     const pack = loadPack("statusline");
     expect(pack.manifest.modes).toEqual(["fresh", "adopt"]);
@@ -1403,8 +1403,8 @@ describe("the real statusline pack", () => {
     expect(pack.filesDir.startsWith(realPacksRoot)).toBe(true);
     expect(pack.manifest.budget).toEqual({
       agents: 0,
-      skills: 0,
-      hooks: 3,
+      skills: 1,
+      hooks: 2,
       workflows: 0,
       scripts: 0,
     });
@@ -1414,29 +1414,40 @@ describe("the real statusline pack", () => {
     expect(pack.manifest.wiring.packageScripts).toEqual({});
     expect(pack.manifest.wiring.verifySteps).toEqual([]);
     const topLevel = pack.manifest.wiring.settingsTopLevel ?? {};
-    expect(Object.keys(topLevel)).toEqual(["statusLine", "subagentStatusLine"]);
+    expect(Object.keys(topLevel)).toEqual(["statusLine"]);
+    expect(Object.hasOwn(topLevel, "subagentStatusLine")).toBe(false);
     expect(JSON.stringify(topLevel["statusLine"])).toContain(
       "$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.mjs",
     );
-    expect(JSON.stringify(topLevel["subagentStatusLine"])).toContain(
-      "$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-statusline.mjs",
-    );
   });
 
-  it("ships the three status-line hook files", () => {
+  it("ships the two status-line hook files and the subagent-rows plugin, and no subagent-statusline.mjs", () => {
     const pack = loadPack("statusline");
-    for (const file of [
-      "statusline.mjs",
-      "statusline-layout.mjs",
-      "subagent-statusline.mjs",
-    ]) {
+    for (const file of ["statusline.mjs", "statusline-layout.mjs"]) {
       expect(existsSync(join(pack.filesDir, ".claude", "hooks", file))).toBe(
         true,
       );
     }
+    expect(
+      existsSync(
+        join(pack.filesDir, ".claude", "hooks", "subagent-statusline.mjs"),
+      ),
+    ).toBe(false);
+    for (const rel of [
+      join(".claude-plugin", "plugin.json"),
+      join("hooks", "hooks.json"),
+      join("hooks", "register.mjs"),
+      join("hooks", "row-format.mjs"),
+    ]) {
+      expect(
+        existsSync(
+          join(pack.filesDir, ".claude", "skills", "subagent-rows", rel),
+        ),
+      ).toBe(true);
+    }
   });
 
-  it("installs alone: settings.json gains both top-level keys and no hook entries, with no agent and no gate wired", () => {
+  it("installs alone: settings.json gains the statusLine key and no hook entries, with no agent and no gate wired", () => {
     const targetDir = mkdtempSync(join(tmpdir(), "packs-statusline-alone-"));
     try {
       mkdirSync(join(targetDir, ".claude"), { recursive: true });
@@ -1448,12 +1459,7 @@ describe("the real statusline pack", () => {
       const settings = JSON.parse(
         readFileSync(join(targetDir, ".claude", "settings.json"), "utf8"),
       ) as Record<string, unknown>;
-      expect(Object.keys(settings)).toEqual([
-        "$schema",
-        "hooks",
-        "statusLine",
-        "subagentStatusLine",
-      ]);
+      expect(Object.keys(settings)).toEqual(["$schema", "hooks", "statusLine"]);
       expect(settings["hooks"]).toEqual({});
       expect(existsSync(join(targetDir, ".claude", "agents"))).toBe(false);
       expect(

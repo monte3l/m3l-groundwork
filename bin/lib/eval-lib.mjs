@@ -282,6 +282,11 @@ export function writeSkillPlugin({
     }
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      // A directory holding `.claude-plugin/plugin.json` is a plugin (e.g. a
+      // pack's `subagent-rows` mod), not a skill: it has no SKILL.md to trigger.
+      if (existsSync(join(dir, entry.name, ".claude-plugin", "plugin.json"))) {
+        continue;
+      }
       const priorOwner = owners.get(entry.name);
       if (priorOwner !== undefined) {
         throw new Error(

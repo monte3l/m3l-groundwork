@@ -6,10 +6,11 @@
   and each pack's `adoptNotes` live in `templates/packs/README.md` and its
   `pack.json` files). `harness-extras`: Claude Code session hooks
   (compaction-handoff hooks, `guard-readonly-bash`). `statusline`: the
-  `statusLine` and `subagentStatusLine` renderers; the only pack using
+  `statusLine` renderer and the `subagent-rows` mod (a project-local plugin
+  that replaces the deprecated `subagentStatusLine` key); the only pack using
   `wiring.settingsTopLevel`, and in adopt mode `/customize` (not `merge-json`)
-  skips the `statusLine`/`subagentStatusLine` keys and the script that renders
-  each when either key is already set. `quality`:
+  skips the `statusLine` key and its two scripts when the key is already set,
+  installing only the mod. `quality`:
   `type-design-analyzer` agent and the `check-file-budget` ratchet. `claude-github`:
   `claude-action` in mention-mode and an automated PR-review workflow, which
   need an auth secret the pack cannot create. `github`: three `gh` skills.

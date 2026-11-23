@@ -40,16 +40,18 @@ function recommendHarnessExtras(): PackRecommendation {
 
 /**
  * `statusline` is the five-row `statusLine` script (session, model,
- * context, quota, work) plus a per-subagent row renderer, carved out of
+ * context, quota, work) plus the `subagent-rows` mod, a project-local plugin
+ * under `.claude/skills/` that renders the per-subagent rows, carved out of
  * `harness-extras`. Its scripts read only the stdin payload, `.git/HEAD`
  * (via `node:fs`, never a `git` subprocess) and
  * `os.freemem()`/`os.totalmem()`, and `statusLine` is the only documented
  * surface carrying live `context_window.used_percentage`: no hook event
  * receives token or context data, so "when to compact" can live nowhere
  * else. That is harness-level, so it is recommended for every project
- * kind. In adopt mode a project that already defines `statusLine` or
- * `subagentStatusLine` keeps its own value -- it is never overwritten, so
- * the owner decides which one to run.
+ * kind. In adopt mode a project that already defines `statusLine` keeps its
+ * own value -- it is never overwritten, so the owner decides which one to
+ * run -- and a leftover `subagentStatusLine` key is deprecated but left in
+ * place unless the owner asks to remove it.
  */
 function recommendStatusline(): PackRecommendation {
   return {
@@ -57,12 +59,13 @@ function recommendStatusline(): PackRecommendation {
     recommended: true,
     because:
       "its five-row statusLine (session, model, context, quota, work) plus " +
-      "a per-subagent row renderer is the only surface that exposes live " +
-      "context-window pressure -- no hook event receives token data -- and " +
-      "reads only the stdin payload plus local git and memory state. It " +
-      "does occupy five terminal rows. A project that already defines " +
-      "statusLine or subagentStatusLine keeps its own value (it is never " +
-      "overwritten) and must decide which one to run.",
+      "the subagent-rows mod's per-subagent rows is the only surface that " +
+      "exposes live context-window pressure -- no hook event receives token " +
+      "data -- and reads only the stdin payload plus local git and memory " +
+      "state. It does occupy five terminal rows. A project that already " +
+      "defines statusLine keeps its own value (it is never overwritten) and " +
+      "must decide which one to run; a leftover subagentStatusLine key is " +
+      "deprecated and can be removed.",
   };
 }
 

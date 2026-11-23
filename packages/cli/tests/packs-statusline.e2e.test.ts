@@ -3,8 +3,9 @@
 
 /**
  * The statusline pack's acceptance test: bootstrap a throwaway project with
- * `--pack statusline` using the built CLI, confirm its three scripts land,
- * `.claude/settings.json` gains exactly the two top-level keys (and no hook
+ * `--pack statusline` using the built CLI, confirm its two scripts and the
+ * `subagent-rows` plugin land, `.claude/settings.json` gains exactly the one
+ * top-level key (`statusLine`, and no hook
  * registration, no verify step), run the emitted scripts for real, and pass
  * the emitted project's own `pnpm verify`. The status line was carved out of
  * `harness-extras` (see packs.e2e.test.ts, which asserts harness-extras alone
@@ -14,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -57,7 +58,7 @@ function render(script: string, input: string, columns: string): string {
 }
 
 describe("statusline pack end-to-end", () => {
-  it("installs alongside the baseline, renders its status line, and the emitted project's own pnpm verify passes", () => {
+  it("installs alongside the baseline, renders its status line, and the emitted project's own pnpm verify passes", async () => {
     const targetDir = mkdtempSync(
       join(tmpdir(), "m3l-groundwork-statusline-e2e-"),
     );
@@ -77,12 +78,20 @@ describe("statusline pack end-to-end", () => {
       );
 
       const hooksDir = join(targetDir, ".claude", "hooks");
-      for (const file of [
-        "statusline.mjs",
-        "statusline-layout.mjs",
-        "subagent-statusline.mjs",
-      ]) {
+      for (const file of ["statusline.mjs", "statusline-layout.mjs"]) {
         expect(existsSync(join(hooksDir, file))).toBe(true);
+      }
+      expect(existsSync(join(hooksDir, "subagent-statusline.mjs"))).toBe(false);
+      // The subagent row renderer is a project-local plugin; its dotdir
+      // (.claude-plugin) must survive the install.
+      const pluginDir = join(targetDir, ".claude", "skills", "subagent-rows");
+      for (const rel of [
+        join(".claude-plugin", "plugin.json"),
+        join("hooks", "hooks.json"),
+        join("hooks", "register.mjs"),
+        join("hooks", "row-format.mjs"),
+      ]) {
+        expect(existsSync(join(pluginDir, rel))).toBe(true);
       }
       // harness-extras's files are not part of this pack.
       expect(existsSync(join(hooksDir, "write-compact-handoff.mjs"))).toBe(
@@ -97,14 +106,12 @@ describe("statusline pack end-to-end", () => {
           { matcher?: string; hooks: { command: string }[] }[]
         >;
         statusLine: { type: string; command: string };
-        subagentStatusLine: { type: string; command: string };
       };
       expect(Object.keys(settings)).toEqual([
         "$schema",
         "permissions",
         "hooks",
         "statusLine",
-        "subagentStatusLine",
       ]);
       // The pack registers no hook: only the baseline's own 16 commands.
       const allCommands = Object.values(settings.hooks).flatMap((entries) =>
@@ -112,9 +119,6 @@ describe("statusline pack end-to-end", () => {
       );
       expect(allCommands).toHaveLength(16);
       expect(settings.statusLine.command).toContain("statusline.mjs");
-      expect(settings.subagentStatusLine.command).toContain(
-        "subagent-statusline.mjs",
-      );
 
       // The pack wires no verify step.
       const packSteps = JSON.parse(
@@ -156,33 +160,30 @@ describe("statusline pack end-to-end", () => {
       // Malformed input falls back to one minimal line and still exits 0.
       expect(render(statusline, "not json", "120").trim()).toBe("ctx --%");
 
-      // The subagent renderer emits one {id, content} JSON line per task and
-      // leaves a nameless task on Claude Code's default rendering.
-      const subagentOut = render(
-        join(hooksDir, "subagent-statusline.mjs"),
-        JSON.stringify({
+      // The installed plugin's renderer produces a row body for a named
+      // subagent and declines (null) for one with no usable label.
+      const registerModule = (await import(
+        pathToFileURL(join(pluginDir, "hooks", "register.mjs")).href
+      )) as {
+        renderAgentRow: (props: unknown, env: { now: number }) => string | null;
+      };
+      const body = registerModule.renderAgentRow(
+        {
+          id: "t1",
+          name: "code-reviewer",
+          type: "reviewer",
+          effort: "high",
+          tokenCount: 12000,
+          contextWindowSize: 200000,
+          startTime: 0,
           columns: 100,
-          tasks: [
-            {
-              id: "t1",
-              name: "code-reviewer",
-              effort: "high",
-              tokenCount: 12000,
-              contextWindowSize: 200000,
-              startTime: Date.now() - 60_000,
-            },
-            { id: "t2" },
-          ],
-        }),
-        "100",
+        },
+        { now: 60_000 },
       );
-      const subagentLines = subagentOut
-        .trimEnd()
-        .split("\n")
-        .map((line) => JSON.parse(line) as { id: string; content: string });
-      expect(subagentLines).toHaveLength(1);
-      expect(subagentLines[0]?.id).toBe("t1");
-      expect(plain(subagentLines[0]?.content ?? "")).toContain("code-reviewer");
+      expect(plain(body ?? "")).toContain("code-reviewer");
+      expect(
+        registerModule.renderAgentRow({ id: "t2" }, { now: 0 }),
+      ).toBeNull();
 
       execFileSync("pnpm", ["install", "--prefer-offline"], {
         cwd: targetDir,
