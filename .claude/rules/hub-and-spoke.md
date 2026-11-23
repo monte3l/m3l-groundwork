@@ -106,14 +106,24 @@ writer `agent_type` together with an `agent_id` (a hub started with
 guarded paths.
 
 **Guards that block on a crash, the secrets deny rule and `permissionMode`.**
-The baseline's four invariant guards (`guard-secret-writes`,
-`guard-hub-src-writes`, `guard-branch-isolation`, `guard-protected-paths`) carry
+The baseline's six blocking guards (`guard-secret-writes`,
+`guard-hub-src-writes`, `guard-branch-isolation`, `guard-protected-paths`,
+`guard-git-push-signed`, `guard-double-background`) carry
 `"onFailure": "block"` (Claude Code 2.1.295 or later), so a hook that cannot
 start, times out, exits with a code other than 0 or 2, or prints invalid JSON
-blocks the call instead of letting it through; the style guards and `guard-git-push-signed` stay fail-open (the push
-guard has its own parser, and the `main` ruleset rejects unsigned commits at
-merge). `guard-hub-src-writes` is also on `Bash`, so a missing `node` blocks
-every `Bash` call until fixed. `permissions.deny` carries `Read(./.env)`,
+blocks the call instead of letting it through; only the two style guards
+(`guard-js-extension`, `guard-no-commonjs`) stay fail-open. `onFailure` does not
+cover a deliberate `exit 0`, so the three guards adopted from the org's
+starters (`guard-secret-writes`, `guard-git-push-signed`,
+`guard-double-background`) also exit 2 themselves on a payload that is not a
+JSON object. `guard-git-push-signed` keeps one exception: when it cannot work
+out the outgoing range it lets the push go, because the `main` ruleset rejects
+unsigned commits at merge. It and `bin/lib/signed-range.mjs` are one unit
+(refresh both together): with the helper missing or older, a command that looks
+like a `git push` is blocked and every other command passes. `guard-secret-writes`
+is also registered for `NotebookEdit`. `guard-hub-src-writes`,
+`guard-git-push-signed` and `guard-double-background` are on `Bash`, so a
+missing `node` blocks every `Bash` call until fixed. `permissions.deny` carries `Read(./.env)`,
 `Read(./.env.*)`, `Read(./secrets/**)`, `Read(**/credentials.json)` and
 `Read(**/secrets.yaml)`, plus `Edit(...)` rules for `pnpm-lock.yaml`,
 `package-lock.json`, `yarn.lock` and the repository's `.git/` directory. The
