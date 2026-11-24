@@ -268,6 +268,9 @@ export function simpleCommands(line, depth = 0) {
       const end = close === -1 ? line.length : close;
       substitution(i, end, line.slice(i + 1, end));
       i = end;
+    } else if (c === "&" && (line[i - 1] === ">" || line[i - 1] === "<" || line[i + 1] === ">")) {
+      // `>&`, `<&` and `&>` are redirection operators, not the end of a command.
+      word = (word ?? "") + c;
     } else if (c === ";" || c === "&" || c === "|" || c === "\n" || c === "(" || c === ")") {
       endCommand();
     } else {
@@ -394,6 +397,19 @@ const EXPANSION_WORD = /^(?:\$|`)/;
 const joinDir = (base, dir) => (path.isAbsolute(dir) ? dir : path.join(base || ".", dir));
 
 /**
+ * A word where git's subcommand belongs that is a redirection (`2>/dev/null`, `>f`, `&>f`, `>&2`) or a
+ * `{fd}` descriptor: the push behind it (`git 2>/dev/null push`) is not read, so the line counts as a
+ * possible push. Quotes are gone by now, so `git '2>x' status` is taken for one too.
+ */
+const REDIRECT_SLOT = /^(?:\d*|&)[<>]|^\{[A-Za-z_]\w*\}(?:[<>].*)?$/;
+
+/** A shell or `xargs` as a word of the line: it can run text the line does not spell out. */
+const SHELL_OR_XARGS = /(?:^|[\s;&|(`'"])(?:[^\s;&|()`'"]*\/)?(?:sh|bash|zsh|dash|ksh|xargs)(?=$|[\s;&|)`'"])/;
+
+/** A push of every branch, for a line that may push but whose push the guard cannot read. */
+const everyBranch = (dirs) => ({ dryRun: false, dirs, tips: ["--branches"] });
+
+/**
  * @typedef {object} GitPush
  * @property {boolean} dryRun `--dry-run` or a short cluster with `n`
  * @property {string[]} dirs where the push may run, relative to the hook's `cwd`
@@ -408,6 +424,17 @@ const joinDir = (base, dir) => (path.isAbsolute(dir) ? dir : path.join(base || "
  * `eval`, a prefix such as `sudo` or `env`, and git global options. A `cd` is
  * followed when it names a literal directory, and both places are kept, because
  * the `cd` may have failed or happened in a subshell.
+ *
+ * Two coarse rules fail closed, each counting as a push of every branch
+ * (`tips: ["--branches"]`), so the guard blocks only when some branch holds an
+ * unsigned commit that is not yet pushed: a line with a shell or `xargs` in it and
+ * also the words `git` and `push` anywhere (`echo 'git push' | sh`,
+ * `xargs -I{} sh -c {}`), and a redirection or `{fd}` word where git's subcommand
+ * belongs (`git 2>/dev/null push`) or among a push's operands
+ * (`git push >/dev/null 2>&1`). No state is kept per pipeline and no operand
+ * is analysed. A script built by a variable, `eval "$X"` or a program that runs
+ * git on its own is not read: the signed-commits ruleset on the remote is the
+ * backstop.
  *
  * @param {string} command
  * @returns {GitPush[]}
@@ -438,9 +465,15 @@ export function parseGitPushes(command) {
           i += 1;
         }
       }
-      if (words[i] !== "push") return;
+      if (words[i] !== "push") {
+        if (words[i] !== undefined && REDIRECT_SLOT.test(words[i])) pushes.push(everyBranch(dirs));
+        return;
+      }
       pushes.push({ ...pushArguments(words.slice(i + 1)), dirs });
     });
+  }
+  if (SHELL_OR_XARGS.test(command) && /\bgit\b/.test(command) && /\bpush\b/.test(command)) {
+    pushes.push(everyBranch(places));
   }
   return pushes;
 }
@@ -486,6 +519,10 @@ function pushArguments(args) {
           break;
         }
       }
+    } else if (REDIRECT_SLOT.test(arg)) {
+      // A redirection among the operands (`git push >/dev/null 2>&1`) is no remote or refspec, and its
+      // target may be one: vet every branch rather than guess which word is which.
+      unknown = true;
     } else {
       positional.push(arg);
     }
