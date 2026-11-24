@@ -37,8 +37,9 @@ async function readStdin() {
 }
 
 /**
- * Env-var-name prefixes/exact names whose assigned *value* is a secret we
- * must never persist. Project-specific keys can be appended here.
+ * Exact env-var names whose assigned *value* is a secret we must never
+ * persist. A project-specific key can be appended here, which makes the copy
+ * custom, so template-sync stops refreshing it.
  */
 export const SECRET_KEYS = [
   "NPM_TOKEN",
@@ -47,6 +48,7 @@ export const SECRET_KEYS = [
   "AWS_SECRET_ACCESS_KEY",
   "AWS_ACCESS_KEY_ID",
   "AWS_SESSION_TOKEN",
+  "API_KEY",
 ];
 
 // High-signal literal shapes -- a match is almost certainly a real credential.
