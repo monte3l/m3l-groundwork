@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * PreToolUse guard (Bash): blocks a `git push` run through the agent's Bash
  * tool when any outgoing commit is unsigned or has an invalid signature --
@@ -53,13 +56,24 @@ const HELPER_EXPORTS = [
   "trustedRoots",
   "dirsToVet",
 ];
+// The helper may live at `bin/lib/signed-range.mjs` (the default) or beside the
+// guard at `.claude/hooks/lib/signed-range.mjs`, for a repository whose root is
+// shipped as a plugin and keeps no `bin/` of its own. The first copy that serves
+// every export wins.
 async function loadHelper() {
-  try {
-    const lib = await import("../../bin/lib/signed-range.mjs");
-    return HELPER_EXPORTS.every((name) => typeof lib[name] === "function") ? lib : null;
-  } catch {
-    return null;
+  const candidates = [
+    () => import("../../bin/lib/signed-range.mjs"),
+    () => import("./lib/signed-range.mjs"),
+  ];
+  for (const load of candidates) {
+    try {
+      const lib = await load();
+      if (HELPER_EXPORTS.every((name) => typeof lib[name] === "function")) return lib;
+    } catch {
+      // Not there, or not loadable: try the next place.
+    }
   }
+  return null;
 }
 
 async function readStdin() {
@@ -103,7 +117,7 @@ if (isEntryPoint()) {
   const command = input.tool_input?.command;
   const cwd = typeof input.cwd === "string" && input.cwd !== "" ? input.cwd : process.cwd();
 
-  // This guard and bin/lib/signed-range.mjs are one unit (sync.json refreshes
+  // This guard and signed-range.mjs are one unit (sync.json refreshes
   // them as two files). If the helper is missing or older than the guard, the
   // push cannot be judged: a command that looks like a push is blocked with the
   // way out, any other command passes, so one stale file refuses no other call.
@@ -111,12 +125,12 @@ if (isEntryPoint()) {
   if (lib === null) {
     if (/\bgit\b[^;&|\n]*\bpush\b/.test(typeof command === "string" ? command : "")) {
       process.stderr.write(
-        "[guard-git-push-signed] bin/lib/signed-range.mjs is missing or older than this guard; " +
+        "[guard-git-push-signed] signed-range.mjs is missing or older than this guard (looked in bin/lib/ and .claude/hooks/lib/); " +
           "refresh both files together (template sync, or copy them from blueprint/files/). Blocking the push.\n",
       );
       process.exit(2);
     }
-    process.stderr.write("[guard-git-push-signed] bin/lib/signed-range.mjs is missing or older than this guard; not checking.\n");
+    process.stderr.write("[guard-git-push-signed] signed-range.mjs is missing or older than this guard (looked in bin/lib/ and .claude/hooks/lib/); not checking.\n");
     process.exit(0);
   }
   const { parseGitPushes, outgoingCommits, unsignedCommits, signingEnabled, gitRunner, trustedRoots, dirsToVet } = lib;
