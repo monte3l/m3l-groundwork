@@ -8,6 +8,10 @@
   // tools/deploy, never a dependency of this workspace; knip 6.38+
   // flags the node_modules/.bin/wrangler path in that workflow.
   "ignoreBinaries": ["verify", "build", "wrangler"],
+  // The org push guard (a verbatim starter) loads its helper from bin/lib/ or,
+  // where a repository keeps no bin/, from .claude/hooks/lib/. This repository
+  // has the first, so the second candidate import never resolves.
+  "ignoreUnresolved": ["./lib/signed-range.mjs"],
   "workspaces": {
     ".": {
       "entry": [
