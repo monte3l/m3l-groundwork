@@ -816,7 +816,12 @@ type ExistingSkill =
       readonly kind: "installable";
       readonly alreadyCurrent: ReadonlySet<string>;
     }
-  | { readonly kind: "foreign"; readonly reason: string };
+  | {
+      readonly kind: "foreign";
+      readonly reason: string;
+      /** The offending entry is not a regular file, or could not be read: it cannot even be compared. */
+      readonly uncomparable: boolean;
+    };
 
 /**
  * Classifies the existing `.claude/skills/customize/` by `lstat` (a symlink,
@@ -858,7 +863,8 @@ function classifyExistingSkill(
     if (stat === undefined) {
       continue;
     }
-    const verdict: FileComparison = stat.isFile()
+    const isFile = stat.isFile();
+    const verdict: FileComparison = isFile
       ? regularFileMatches(installedPath, bytes)
       : { kind: "mismatch" };
     if (verdict.kind === "unreadable") {
@@ -866,12 +872,14 @@ function classifyExistingSkill(
       return {
         kind: "foreign",
         reason: `${installedPath} already exists and could not be read (${verdict.code}); it cannot be confirmed as this CLI's current copy`,
+        uncomparable: true,
       };
     }
     if (verdict.kind === "mismatch") {
       return {
         kind: "foreign",
         reason: `${installedPath} already exists and is not this CLI's current copy`,
+        uncomparable: !isFile,
       };
     }
     alreadyCurrent.add(name);
@@ -884,9 +892,105 @@ function classifyExistingSkill(
     return {
       kind: "foreign",
       reason: `${join(existingDir, CUSTOMIZE_SKILL_ENTRY_FILE)} already exists without the rest of this CLI's current payload`,
+      uncomparable: false,
     };
   }
   return { kind: "installable", alreadyCurrent };
+}
+
+/** Errno codes that mean a project entry itself cannot be inspected by this process. */
+const UNINSPECTABLE_ENTRY_CODES: ReadonlySet<string> = new Set([
+  "EACCES",
+  "EPERM",
+  "ELOOP",
+  "ENOTDIR",
+  "ENAMETOOLONG",
+]);
+
+/**
+ * True when `error`, or the raw error an `installError` wrapper carries as
+ * `cause`, has one of {@link UNINSPECTABLE_ENTRY_CODES}.
+ */
+function isUninspectableEntryError(error: unknown): boolean {
+  let current: unknown = error;
+  // Bounded: installError wraps at most once over the raw fs error.
+  for (let depth = 0; depth < 3 && current !== undefined; depth++) {
+    const code = errnoField(current, "code");
+    if (code !== undefined) {
+      return UNINSPECTABLE_ENTRY_CODES.has(code);
+    }
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return false;
+}
+
+/**
+ * A read-only verdict on the project's `.claude/skills/customize/` against
+ * this CLI's own `/customize` payload, for `--add-pack`'s closing `next:`
+ * line: `"current"` when every payload file there is a regular file
+ * byte-identical to the payload; `"absent"` when there is no payload file
+ * there at all (no `.claude`, no `skills/customize/`, or an empty one);
+ * `"stale"` when there are regular files that differ, or only some of the
+ * payload; `"unusable"` when `.claude`, `.claude/skills` or
+ * `.claude/skills/customize` is a symlink or not a directory, a payload name
+ * holds a symlink, directory or other non-regular entry, or an entry cannot
+ * be inspected or read because of the project entry itself (`EACCES`,
+ * `EPERM`, `ELOOP`, `ENOTDIR`, `ENAMETOOLONG`). Decided by `lstat`, never
+ * following a symlink; it never writes, removes or repairs anything.
+ *
+ * @throws The "could not install the /customize skill" `Error` (raw error as
+ * `cause`) when this CLI's own payload cannot be located or read -- a broken
+ * install, never a fact about the project. Any other failure while
+ * inspecting the project's copy (a machine fault such as `EIO`/`EMFILE`, or
+ * a bug) is rethrown as a "could not inspect the /customize skill copy at
+ * <path>" `Error` with the original as `cause`.
+ *
+ * @example
+ * ```ts
+ * import { inspectCustomizeSkill } from "./plugin.js";
+ * if (inspectCustomizeSkill("/work/app") !== "current") console.log("update the plugin first");
+ * ```
+ */
+export function inspectCustomizeSkill(
+  targetDir: string,
+): "current" | "absent" | "stale" | "unusable" {
+  // Outside the try: a failure to read this CLI's own payload is a broken
+  // install and must throw, never become a verdict about the project.
+  const payload = readCustomizeSkillPayload(resolveSourceDir(undefined));
+  const existingDir = join(targetDir, ...CLAUDE_DEST_SEGMENTS);
+  let existing: ExistingSkill;
+  try {
+    if (firstUnusableComponent(targetDir, CLAUDE_DEST_SEGMENTS) !== undefined) {
+      return "unusable";
+    }
+    existing = classifyExistingSkill(existingDir, payload);
+  } catch (error) {
+    // A project entry this process cannot inspect (permissions, a symlink
+    // loop, a component that is not a directory, an over-long name) cannot
+    // be confirmed current, and the verdict only chooses a hint line, so
+    // "unusable" -- the update-the-plugin advice -- is the truthful answer.
+    // Anything else (a machine fault or a bug) is not a fact about the
+    // project and is rethrown, worded for this read-only path.
+    if (isUninspectableEntryError(error)) {
+      return "unusable";
+    }
+    throw new Error(
+      `could not inspect the /customize skill copy at ${existingDir}`,
+      { cause: error },
+    );
+  }
+  switch (existing.kind) {
+    case "current":
+      return "current";
+    case "installable":
+      return existing.alreadyCurrent.size === 0 ? "absent" : "stale";
+    case "foreign":
+      return existing.uncomparable ? "unusable" : "stale";
+    default: {
+      const exhaustive: never = existing;
+      throw new Error(`unhandled skill state: ${JSON.stringify(exhaustive)}`);
+    }
+  }
 }
 
 /** The body of {@link installCustomizeSkillGuarded}, before its adopt-mode remediation is appended. */

@@ -19,6 +19,7 @@ import {
   countBaselineCaps,
   countDirEntries,
   countPackBudget,
+  countProjectCaps,
 } from "../src/caps.js";
 import type { CapCounts } from "../src/caps.js";
 
@@ -162,6 +163,77 @@ describe("every templates/packs/*/pack.json", () => {
         manifest.wiring?.packageScripts,
       );
       expect(manifest.budget, `pack "${entry.name}"`).toEqual(actual);
+    }
+  });
+});
+
+describe("countProjectCaps", () => {
+  function makeProject(): string {
+    const dir = mkdtempSync(join(tmpdir(), "caps-project-"));
+    mkdirSync(join(dir, ".claude", "agents"), { recursive: true });
+    mkdirSync(join(dir, ".claude", "skills", "one"), { recursive: true });
+    mkdirSync(join(dir, ".claude", "skills", "customize"), { recursive: true });
+    mkdirSync(join(dir, ".claude", "hooks"), { recursive: true });
+    mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "agents", "a.md"), "");
+    writeFileSync(join(dir, ".claude", "agents", "b.md"), "");
+    writeFileSync(join(dir, ".claude", "agents", "notes.txt"), "");
+    writeFileSync(join(dir, ".claude", "hooks", "h.mjs"), "");
+    writeFileSync(join(dir, ".claude", "hooks", "README.md"), "");
+    writeFileSync(join(dir, ".github", "workflows", "ci.yml"), "");
+    writeFileSync(join(dir, ".github", "workflows", "rel.yaml"), "");
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ scripts: { a: "1", b: "2", c: "3" } }),
+    );
+    return dir;
+  }
+
+  it("counts what the project root actually holds, with no /customize adjustment", () => {
+    const dir = makeProject();
+    try {
+      expect(countProjectCaps(dir)).toEqual({
+        agents: 2,
+        skills: 2, // "one" and "customize": both are real entries, nothing is added
+        hooks: 1,
+        workflows: 2,
+        scripts: 3,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns zeros for a project with none of the capped artifacts", () => {
+    const dir = mkdtempSync(join(tmpdir(), "caps-project-empty-"));
+    try {
+      expect(countProjectCaps(dir)).toEqual({
+        agents: 0,
+        skills: 0,
+        hooks: 0,
+        workflows: 0,
+        scripts: 0,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("agrees with countBaselineCaps on the real baseline, less the /customize skill that countBaselineCaps adds", () => {
+    const baseline = countBaselineCaps(templatesCoreDir);
+    expect(countProjectCaps(templatesCoreDir)).toEqual({
+      ...baseline,
+      skills: baseline.skills - 1,
+    });
+  });
+
+  it("leaves countBaselineCaps and countPackBudget results unchanged", () => {
+    const dir = makeProject();
+    try {
+      expect(countBaselineCaps(dir).skills).toBe(3);
+      expect(countPackBudget(dir, { x: "y" }).scripts).toBe(4);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

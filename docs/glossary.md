@@ -9,6 +9,14 @@ One canonical term is used per concept throughout these docs: "guidance
 sweep" (not "guidance pass"), "gate" for one check, "group" for one of the
 five `pnpm verify` buckets, and "lane" for the CI job that runs a group.
 
+### Add-pack plan
+
+The `plan.json` that `m3l-groundwork <dir> --add-pack <name>` writes last into
+`.groundwork/add-pack/<name>/`, recording the project's origin, the pack's
+installation status, file conflicts, wiring observations, required paths and
+caps, for `/customize add-pack` to install the staged pack from.
+In this repo: `packages/cli/src/add-pack.ts`; see [`README.md`](../README.md#two-modes).
+
 ### Adopt mode
 
 The CLI mode used when it's pointed at a directory that already looks like

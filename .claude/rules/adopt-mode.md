@@ -9,6 +9,8 @@ paths:
   - "packages/cli/src/customize-paths.ts"
   - "packages/cli/src/inventory.ts"
   - "packages/cli/src/report.ts"
+  - "packages/cli/src/add-pack.ts"
+  - "packages/cli/tests/add-pack*.ts"
   - "packages/cli/tests/adopt.e2e.test.ts"
 ---
 
@@ -57,6 +59,16 @@ paths:
   a fresh bootstrap. The per-file `sha256` proves the staging is complete
   and matches the inventory, not that it is untampered.
   `adopt.e2e.test.ts` is the test of that guarantee; don't weaken it.
+  An adopt re-run deletes only its four stale files and its own `packs/` and
+  `baseline/` staging, so `.groundwork/add-pack/` and
+  `.groundwork/installed-packs.json` survive it byte-identical.
+- **`--add-pack` (`add-pack.ts`) writes only `.groundwork/add-pack/<name>/`**
+  (`pack.json.staged`, `files/<path>.staged`, then `plan.json` last), one pack
+  at a time through `staging.ts`'s atomic swap, after every refusal and
+  `assertAddPackWriteScope` check. It never runs mode detection, never writes
+  the `/customize` copy and never touches the rest of `.groundwork/`.
+  `add-pack.test.ts` and `add-pack.e2e.test.ts` are the tests of that
+  guarantee.
 - **A Claude Code plugin repo is a first-class adopt target** (inventory
   schema 6). `survey.harness.pluginLayout` is `null` unless
   `.claude-plugin/plugin.json` is a regular file; then it lists which of

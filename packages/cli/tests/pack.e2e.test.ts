@@ -278,6 +278,38 @@ describe("published tarball end-to-end", () => {
     expect(byPath.has("_gitignore")).toBe(false);
   });
 
+  it("stages the publishing pack's escaped lockfile under its real name from the packed CLI", () => {
+    const project = join(scratch, "add-pack-project");
+    execFileSync(
+      "node",
+      [checkoutBin, project, "--name", "pack-e2e", "--skip-install"],
+      { stdio: "pipe" },
+    );
+
+    execFileSync("node", [installedBin, project, "--add-pack", "publishing"], {
+      stdio: "pipe",
+    });
+
+    const releaseDir = join(
+      project,
+      ".groundwork",
+      "add-pack",
+      "publishing",
+      "files",
+      "tools",
+      "release",
+    );
+    expect(existsSync(join(releaseDir, "package-lock.json.staged"))).toBe(true);
+    expect(existsSync(join(releaseDir, "_package-lock.json.staged"))).toBe(
+      false,
+    );
+    expect(
+      existsSync(
+        join(project, ".groundwork", "add-pack", "publishing", "plan.json"),
+      ),
+    ).toBe(true);
+  });
+
   it("produces a byte-identical tarball across two independent clean build+pack cycles (reproducible build)", () => {
     const rootDir = join(cliDir, "..", "..");
     const cliDistDir = join(cliDir, "dist");

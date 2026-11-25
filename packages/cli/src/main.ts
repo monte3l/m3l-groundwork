@@ -30,7 +30,7 @@ import { join, relative, resolve, basename } from "node:path";
 import process from "node:process";
 import { resolveAsset } from "./assets.js";
 import type { CapCounts } from "./caps.js";
-import { CAP_LIMITS, countBaselineCaps } from "./caps.js";
+import { countBaselineCaps, formatCapsSummary } from "./caps.js";
 import { assertSafeEmitDestinations, emitTemplate } from "./emit.js";
 import {
   installCustomizeSkill,
@@ -81,19 +81,27 @@ import {
   buildTokens,
   isNpmPackageName,
 } from "./tokens.js";
-import { inspectPackInstallations } from "./pack-installation.js";
-import type { PackInstallStatus } from "./pack-installation.js";
+import {
+  PACK_STATUS_LABELS,
+  inspectPackInstallations,
+} from "./pack-installation.js";
 import { errnoCode, isAbsentError } from "./survey/internal/read-guard.js";
 import type { ModeDetection } from "./mode.js";
 import { gradeToolchain } from "./toolchain/grade.js";
 import { escapeControls } from "./format-error.js";
 import { paint } from "./term.js";
 import { assertAdoptWriteScope } from "./write-scope.js";
+import { CliUsageError, USAGE } from "./usage.js";
+import { runAddPack } from "./add-pack.js";
 
 export { assertAdoptWriteScope } from "./write-scope.js";
+export { CliUsageError } from "./usage.js";
+export { formatCapsSummary } from "./caps.js";
+export type { CapsSummary } from "./caps.js";
 
 export interface CliOptions {
   targetDir: string;
+  /** `--name`, else the target directory's basename -- except under `--add-pack`, where it stays `""` unless `--name` was given, so `runAddPack` can tell an explicit name from the default. */
   projectName: string;
   skipInstall: boolean;
   force: boolean;
@@ -103,36 +111,16 @@ export interface CliOptions {
   version: boolean;
   listPacks: boolean;
   packs: string[];
+  /** The `--add-pack` names, de-duplicated and sorted; empty when not given. */
+  addPacks: string[];
+  /** `--reinstall`: stage a pack the project already has (only with `--add-pack`). */
+  reinstall: boolean;
 }
 
-const USAGE = [
-  "usage: m3l-groundwork <target-dir> [options]",
-  "",
-  "  --name <project-name>   Override the project name (default: the target directory's basename)",
-  "  --skip-install          Skip the final `pnpm install` (fresh mode only)",
-  "  --force                 Overwrite a non-empty target directory (fresh mode only)",
-  "  --adopt                 Force adopt mode, even if the target looks empty",
-  "  --fresh                 Force fresh-bootstrap mode, even if the target looks pre-existing",
-  "  --pack <name>           Install an opt-in pack from templates/packs/ (fresh mode only; repeatable)",
-  "  --list-packs [<dir>]    Print every available pack and exit; with a directory,",
-  "                          also report which packs that project has (read-only)",
-  "  --help, -h              Print this message",
-  "  --version, -v           Print the CLI's version",
-  "",
-  "With no --adopt/--fresh override, the target directory is inspected: an",
-  "empty or missing directory bootstraps fresh; a directory that already",
-  "looks like a project (package.json, .git, or loose source files) is",
-  "surveyed and adopted instead -- see .groundwork/adoption-report.md.",
-  "",
-  "--pack and --force are rejected in adopt mode -- adopt mode never writes",
-  "project files. Every available pack is surveyed into the report",
-  "automatically; run /customize to install one.",
-].join("\n");
-
-// --name takes a single value; --pack is repeatable. Every other
-// recognized flag is a bare boolean.
+// --name takes a single value; --pack and --add-pack are repeatable. Every
+// other recognized flag is a bare boolean.
 const VALUE_FLAGS = new Set(["--name"]);
-const REPEATABLE_VALUE_FLAGS = new Set(["--pack"]);
+const REPEATABLE_VALUE_FLAGS = new Set(["--pack", "--add-pack"]);
 const HELP_FLAGS = new Set(["--help", "-h"]);
 const VERSION_FLAGS = new Set(["--version", "-v"]);
 const LIST_PACKS_FLAGS = new Set(["--list-packs"]);
@@ -144,26 +132,11 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--force",
   "--adopt",
   "--fresh",
+  "--reinstall",
   ...LIST_PACKS_FLAGS,
   ...HELP_FLAGS,
   ...VERSION_FLAGS,
 ]);
-
-/**
- * Thrown for a bad invocation (unknown flag, missing target dir, missing flag
- * value, contradictory mode flags) -- distinguished from a runtime error so the
- * CLI exits 2, not 1.
- *
- * @example
- * ```sh
- * npx @monte3l/groundwork ./my-app --bogus
- * # stderr: unrecognized option: --bogus (followed by the usage text)
- * echo $? # 2 -- a runtime failure exits 1 instead
- * ```
- */
-export class CliUsageError extends Error {
-  override readonly name = "CliUsageError";
-}
 
 interface TokenizedArgv {
   positional: string[];
@@ -222,6 +195,25 @@ function tokenizeArgv(argv: string[]): TokenizedArgv {
   return { positional, flags, values, repeatableValues };
 }
 
+/**
+ * The values of the repeatable pack-name flag `flag`, each checked against
+ * {@link PACK_NAME_PATTERN} (a usage error naming the first bad one), then
+ * de-duplicated and sorted.
+ */
+function packNamesOf(
+  repeatableValues: ReadonlyMap<string, string[]>,
+  flag: "--pack" | "--add-pack",
+): string[] {
+  const values = repeatableValues.get(flag) ?? [];
+  const bad = values.find((name) => !PACK_NAME_PATTERN.test(name));
+  if (bad !== undefined) {
+    throw new CliUsageError(
+      `${flag} must be a pack name matching ${PACK_NAME_PATTERN.source}: ${JSON.stringify(bad)}\n\n${USAGE}`,
+    );
+  }
+  return [...new Set(values)].sort();
+}
+
 /** Parses argv into structured options. Throws with USAGE on a missing target dir, unless --help/--version/--list-packs is present. */
 export function parseArgs(argv: string[]): CliOptions {
   const { positional, flags, values, repeatableValues } = tokenizeArgv(argv);
@@ -250,6 +242,8 @@ export function parseArgs(argv: string[]): CliOptions {
       version,
       listPacks,
       packs: [],
+      addPacks: [],
+      reinstall: false,
     };
   }
 
@@ -277,18 +271,16 @@ export function parseArgs(argv: string[]): CliOptions {
       `--name must be a valid npm package name (lowercase, optional @scope/, at most ${String(NPM_NAME_MAX_LENGTH)} characters): ${JSON.stringify(explicitName)}\n\n${USAGE}`,
     );
   }
-  const packValues = repeatableValues.get("--pack") ?? [];
-  const badPack = packValues.find((name) => !PACK_NAME_PATTERN.test(name));
-  if (badPack !== undefined) {
-    throw new CliUsageError(
-      `--pack must be a pack name matching ${PACK_NAME_PATTERN.source}: ${JSON.stringify(badPack)}\n\n${USAGE}`,
-    );
-  }
-  const packs = [...new Set(packValues)].sort();
+  const packs = packNamesOf(repeatableValues, "--pack");
+  const addPacks = packNamesOf(repeatableValues, "--add-pack");
 
   return {
     targetDir,
-    projectName: explicitName ?? basename(targetDir),
+    // Under --add-pack an absent --name stays "": runAddPack then proposes
+    // package.json's name before the basename, which it could not do if the
+    // basename were already filled in here.
+    projectName:
+      explicitName ?? (addPacks.length > 0 ? "" : basename(targetDir)),
     skipInstall: flags.has("--skip-install"),
     force: flags.has("--force"),
     adopt: flags.has("--adopt"),
@@ -297,6 +289,8 @@ export function parseArgs(argv: string[]): CliOptions {
     version: false,
     listPacks: false,
     packs,
+    addPacks,
+    reinstall: flags.has("--reinstall"),
   };
 }
 
@@ -307,68 +301,6 @@ export function templatesCoreDir(): string {
 
 function isEmptyOrMissing(dir: string): boolean {
   return !existsSync(dir) || readdirSync(dir).length === 0;
-}
-
-function formatCounts(counts: CapCounts): string {
-  return `${counts.agents} agents, ${counts.skills} skills, ${counts.hooks} hooks, ${counts.workflows} workflows, ${counts.scripts} scripts`;
-}
-
-/**
- * The result of {@link formatCapsSummary}: the rendered summary text plus an
- * explicit over-cap flag, so a caller never has to string-match the text to
- * decide how to present it.
- *
- * @example
- * ```ts
- * const summary: CapsSummary = { text: "= 5 agents, ...", overCap: false };
- * console.log(summary.overCap ? `warning: ${summary.text}` : summary.text);
- * ```
- */
-export interface CapsSummary {
-  /** The summary line(s), newline-joined, exactly as printed. */
-  readonly text: string;
-  /** `true` when the baseline plus installed packs exceeds any cap in `CAP_LIMITS`. */
-  readonly overCap: boolean;
-}
-
-/**
- * The post-`--pack`-install caps summary line(s) printed to fresh-mode's
- * console output, plus whether any cap is exceeded.
- *
- * @example
- * ```ts
- * const summary = formatCapsSummary(baselineCounts, [
- *   { name: "harness-extras", budget: packBudget },
- * ]);
- * console.log(summary.text);
- * ```
- */
-export function formatCapsSummary(
-  baseline: CapCounts,
-  installed: { name: string; budget: CapCounts }[],
-): CapsSummary {
-  const total: CapCounts = { ...baseline };
-  const lines = [
-    `templates/core: ${formatCounts(baseline)} (caps: ${formatCounts(CAP_LIMITS)})`,
-  ];
-
-  for (const { name, budget } of installed) {
-    lines.push(`+ ${name}: ${formatCounts(budget)}`);
-    total.agents += budget.agents;
-    total.skills += budget.skills;
-    total.hooks += budget.hooks;
-    total.workflows += budget.workflows;
-    total.scripts += budget.scripts;
-  }
-
-  const overCap = (
-    ["agents", "skills", "hooks", "workflows", "scripts"] as (keyof CapCounts)[]
-  ).filter((key) => total[key] > CAP_LIMITS[key]);
-
-  lines.push(
-    `= ${formatCounts(total)}${overCap.length > 0 ? ` ⚠ over cap: ${overCap.join(", ")}` : ""}`,
-  );
-  return { text: lines.join("\n"), overCap: overCap.length > 0 };
 }
 
 /**
@@ -616,6 +548,37 @@ function assertAdoptUsage(options: CliOptions): void {
   if (options.packs.length > 0) {
     throw new CliUsageError(
       `--pack has no effect in adopt mode -- every pack is surveyed automatically; run /customize to install one.\n\n${USAGE}`,
+    );
+  }
+}
+
+/**
+ * Rejects flag combinations `--add-pack` cannot honor, as usage errors (exit
+ * 2) naming the conflicting flags: `--add-pack` with `--pack`, `--adopt`,
+ * `--fresh`, `--force` or `--skip-install` (it only stages, into a project
+ * that already exists, and never runs a mode), and `--reinstall` without
+ * `--add-pack`. A missing target directory is already refused by
+ * {@link parseArgs}.
+ */
+function assertAddPackUsage(options: CliOptions): void {
+  if (options.addPacks.length === 0) {
+    if (options.reinstall) {
+      throw new CliUsageError(
+        `--reinstall only applies to --add-pack -- add --add-pack <name>, or drop --reinstall\n\n${USAGE}`,
+      );
+    }
+    return;
+  }
+  const conflicting = [
+    options.packs.length > 0 ? "--pack" : undefined,
+    options.adopt ? "--adopt" : undefined,
+    options.fresh ? "--fresh" : undefined,
+    options.force ? "--force" : undefined,
+    options.skipInstall ? "--skip-install" : undefined,
+  ].filter((flag) => flag !== undefined);
+  if (conflicting.length > 0) {
+    throw new CliUsageError(
+      `--add-pack cannot be combined with ${conflicting.join(", ")} -- --add-pack only stages packs into an existing project, under .groundwork/add-pack/\n\n${USAGE}`,
     );
   }
 }
@@ -1054,13 +1017,6 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   console.log(nextStep);
 }
 
-const STATUS_LABELS: Readonly<Record<PackInstallStatus["status"], string>> = {
-  installed: "installed",
-  partial: "partial",
-  "not-installed": "not installed",
-  undetermined: "undetermined",
-};
-
 /**
  * {@link escapeControls}, then every line break it normalised to `\n` is
  * rendered as the literal text `\n`, so a project-controlled value always
@@ -1107,7 +1063,7 @@ function listPackStatus(targetDir: string): void {
   for (const { name, modes, description, status } of report.packs) {
     const ledger = status.source === "ledger" ? " (ledger)" : "";
     console.log(
-      `${name} (modes: ${modes.join(", ")}) [${STATUS_LABELS[status.status]}]${ledger} -- ${description}`,
+      `${name} (modes: ${modes.join(", ")}) [${PACK_STATUS_LABELS[status.status]}]${ledger} -- ${description}`,
     );
   }
   for (const note of report.undetermined) {
@@ -1118,8 +1074,8 @@ function listPackStatus(targetDir: string): void {
 /**
  * Runs the CLI. `platform` is injectable so fresh mode's Windows refusal
  * (a runtime error, exit 1, raised before anything is written) is
- * unit-testable on any OS; it defaults to `process.platform`. Adopt mode and
- * `--help`/`--version`/`--list-packs` run on every platform.
+ * unit-testable on any OS; it defaults to `process.platform`. Adopt mode,
+ * `--add-pack` and `--help`/`--version`/`--list-packs` run on every platform.
  */
 export function main(
   argv: string[],
@@ -1151,6 +1107,13 @@ export function main(
         );
       }
     }
+    return;
+  }
+
+  assertAddPackUsage(options);
+  if (options.addPacks.length > 0) {
+    // Staging only: never through mode detection, never a fresh or adopt run.
+    runAddPack(options);
     return;
   }
 

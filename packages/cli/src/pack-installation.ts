@@ -1001,8 +1001,18 @@ export function classifyPackInstallation(
   return { status, source: "detected", files, wiring };
 }
 
-/** The `__PROJECT_NAME__` value a project was most likely emitted with. */
-function projectNameOf(targetDir: string): string {
+/**
+ * The `__PROJECT_NAME__` value a project was most likely emitted with: its
+ * `package.json` `name` when that is a regular file (never read through a
+ * symlink) holding a valid package name ({@link isNpmPackageName}), else the
+ * basename of `targetDir`. Never throws on the project's files.
+ *
+ * @example
+ * ```ts
+ * const tokens = buildTokens(projectNameOf("/work/app")); // package.json's name, or "app"
+ * ```
+ */
+export function projectNameOf(targetDir: string): string {
   const read = readJsonFile(targetDir, "package.json");
   if (read.ok && isRecord(read.value) && Object.hasOwn(read.value, "name")) {
     const name: unknown = read.value["name"];
@@ -1010,6 +1020,24 @@ function projectNameOf(targetDir: string): string {
   }
   return basename(targetDir);
 }
+
+/**
+ * The word each {@link PackInstallStatus} `status` prints as, shared by
+ * `--list-packs <dir>` and `--add-pack` so both say the same thing.
+ *
+ * @example
+ * ```ts
+ * console.log(`[${PACK_STATUS_LABELS["not-installed"]}]`); // "[not installed]"
+ * ```
+ */
+export const PACK_STATUS_LABELS: Readonly<
+  Record<PackInstallStatus["status"], string>
+> = {
+  installed: "installed",
+  partial: "partial",
+  "not-installed": "not installed",
+  undetermined: "undetermined",
+};
 
 /**
  * One pack's entry in a {@link PackInstallationReport}.

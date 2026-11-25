@@ -10,6 +10,9 @@
  * All packs are written together to a temporary sibling directory and
  * swapped in by rename, so `packs/` is never half-written -- the same
  * lifecycle `baseline-stage.ts` uses (both build on `staging.ts`).
+ * `add-pack.ts` reuses the per-pack planner and writer
+ * ({@link planStagedPackDirs}, {@link writeStagedPack}) to stage one pack at
+ * a time under `.groundwork/add-pack/<name>/`.
  */
 import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -275,15 +278,40 @@ export function planPackStaging(
   groundworkDir: string,
   tokens: TokenTable,
 ): PackStagingPlan {
-  const packsDir = join(groundworkDir, PACKS_DIR_NAME);
-  const planned = planPacks(packs, packsDir, tokens);
+  return {
+    groundworkDir,
+    ...planStagedPackDirs(packs, join(groundworkDir, PACKS_DIR_NAME), tokens),
+  };
+}
+
+/**
+ * {@link planPackStaging}'s validation and projection for packs staged each
+ * into its own `<parentDir>/<name>/` directory, whatever `parentDir` is:
+ * `paths` lists, per pack, `<parentDir>/<name>/pack.json.staged`, then each
+ * `<parentDir>/<name>/files/<path>.staged`. Reads the packs' source trees;
+ * writes nothing.
+ *
+ * @throws The same plan `Error`s as {@link stagePacks}.
+ *
+ * @example
+ * ```ts
+ * import { planStagedPackDirs } from "./pack-stage.js";
+ * const { paths, packs } = planStagedPackDirs(loaded, "/work/app/.groundwork/add-pack", tokens);
+ * ```
+ */
+export function planStagedPackDirs(
+  packs: readonly Pack[],
+  parentDir: string,
+  tokens: TokenTable,
+): Pick<PackStagingPlan, "paths" | "packs"> {
+  const planned = planPacks(packs, parentDir, tokens);
   const paths = planned.flatMap(({ name, files }) => [
-    join(packsDir, name, stagedNameFor(STAGED_PACK_MANIFEST)),
+    join(parentDir, name, stagedNameFor(STAGED_PACK_MANIFEST)),
     ...files.map(({ path }) =>
-      join(packsDir, name, PACK_FILES_DIR, stagedNameFor(path)),
+      join(parentDir, name, PACK_FILES_DIR, stagedNameFor(path)),
     ),
   ]);
-  return { groundworkDir, paths, packs: planned };
+  return { paths, packs: planned };
 }
 
 /**
@@ -307,20 +335,39 @@ export function plannedPackStagingPaths(
   return [...planPackStaging(packs, groundworkDir, tokens).paths];
 }
 
-function writePack(
+/**
+ * Writes one planned pack straight into `packDir` -- its manifest as
+ * `pack.json.staged` and every file, byte-for-byte, as
+ * `files/<path>.staged` (each exclusively, `wx`, re-asserting containment
+ * under `packDir`) -- and returns the record of what was written, with `dir`
+ * set to `recordedDir`. Run it inside {@link stageAtomically}'s write
+ * callback; it does no swap of its own.
+ *
+ * @throws `AssertionError` when a staged path escapes `packDir` (the plan
+ * already refused one); any read or write error unchanged.
+ *
+ * @example
+ * ```ts
+ * import { planStagedPackDirs, writeStagedPack } from "./pack-stage.js";
+ * const [planned] = planStagedPackDirs([pack], parentDir, tokens).packs;
+ * const staged = writeStagedPack(planned, newDir, ".groundwork/add-pack/quality");
+ * ```
+ */
+export function writeStagedPack(
   plan: PlannedPack,
-  packRoot: string,
+  packDir: string,
   recordedDir: string,
 ): StagedPack {
+  // Defense in depth: containment below is asserted against packDir only;
+  // the pack name itself was validated as a single path segment at plan time.
   const manifestStaged = stagedNameFor(STAGED_PACK_MANIFEST);
-  // Relative to packRoot, so the containment assertion also covers the name.
   const manifestSha256 = writeStagedBytes(
     "stagePacks",
     plan.manifestBytes,
-    packRoot,
-    join(plan.name, manifestStaged),
+    packDir,
+    manifestStaged,
   );
-  const filesDir = join(packRoot, plan.name, PACK_FILES_DIR);
+  const filesDir = join(packDir, PACK_FILES_DIR);
   const files = plan.files.map(({ path, sourcePath }): StagedPackFile => {
     const stagedName = stagedNameFor(path);
     const sha256 = writeStagedBytes(
@@ -446,7 +493,11 @@ export function stagePacks(
   }
   return stageAtomically(target, (newDir) =>
     plan.packs.map((planned) =>
-      writePack(planned, newDir, `${STAGED_PACKS_DIR}/${planned.name}`),
+      writeStagedPack(
+        planned,
+        join(newDir, planned.name),
+        `${STAGED_PACKS_DIR}/${planned.name}`,
+      ),
     ),
   );
 }
