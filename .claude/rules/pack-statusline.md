@@ -65,9 +65,11 @@ with its own status line can take that pack's hooks without a collision, and
   unreadable give no answer, so the mod falls back to `COLORFGBG` in the
   settings `env` block, then to dark. `theme` alone never opts in to m3l-design.
   The mod cannot see `COLORFGBG` or `NO_COLOR` from the shell. Both reads are
-  written to the documented API and tested through fakes; they have not been
-  observed in a live session, and it is unverified that `/theme` saves to a
-  file `$.settings.read` sees. `NO_COLOR` follows no-color.org
+  tested through fakes and were observed live (Claude Code 2.1.332, 2026-11-25,
+  with a debug copy of the mod that stamped the resolved theme and palette into
+  each row): a `theme` in `settings.json` and a `/theme` choice both reach the
+  read, and a `/theme` change shows after the next start. The coloured segments
+  themselves were not seen. `NO_COLOR` follows no-color.org
   (set and non-empty).
 - **This repo's own copies of the four renderer files equal the pack's**, plus an
   SPDX header, so the root status line is the pack with the theme turned on
