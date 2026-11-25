@@ -40,7 +40,10 @@ the packs named in this run are read, installed or deleted.
    that `plan.staged` does not list stops that pack and changes nothing:
    tell the user to re-run `npx @monte3l/groundwork . --add-pack <name>`. If
    no command can run at all, say the check could not run and stop: nothing
-   is installed unverified. Then run the prototype-key check on the wiring in
+   is installed, and the staging is kept in `add-pack/<name>/`. Do not offer,
+   suggest or accept continuing without the hash check; tell the user to
+   re-run `/customize add-pack <name>` in a session where a command can run.
+   Then run the prototype-key check on the wiring in
    `pack.json.staged`: if a key of its `wiring.settings`,
    `wiring.settingsTopLevel` or `wiring.packageScripts` is `__proto__`,
    `constructor` or `prototype`, stop and change nothing. Check that

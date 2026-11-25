@@ -54,11 +54,16 @@ byte for byte; the corpus invariants live in
 **built** CLI to make a genuine fresh/adopted project, so the `plugin` and
 `toolchain` suites run `pnpm build` first (the other suites do not).
 `add-pack` bootstraps a fresh project, stages `quality` with
-`--add-pack quality` and prompts `/customize add-pack quality`. The sandbox
-has no shell, so the skill cannot hash the staged files: only a run that
-says the hash check could not run and stops, installing nothing, passes; an
-install-or-skip prompt on the unverified pack fails, as does any write outside `.groundwork/` and the pack's own target files, an
-interview, or a claim to have verified hashes. A new case gets no baseline
+`--add-pack quality` and prompts `/customize add-pack quality`. That prompt
+is the literal slash command, which expands in-process, so the Skill tool
+never fires: the router check (`router-fired.md`) is a Read of
+`customize/add-pack.md` instead. The sandbox has no shell, so the skill
+cannot hash the staged files: only a run that says the hash check could not
+run and stops, installing nothing, passes. The skill forbids offering to
+proceed unverified, so an offer to skip the hash check (or any install-or-skip
+prompt on the unverified pack) fails `confirms-before-write`, as does any
+write outside `.groundwork/` and the pack's own target files, an interview,
+or a claim to have verified hashes. A new case gets no baseline
 until someone records one with `--update --suite plugin`; until then `--check`
 only warns about it.
 
