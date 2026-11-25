@@ -43,6 +43,13 @@
   and unbounded work, with anything needing profiling reported as
   `NOT CHECKED`) and an `api-doc` skill that writes an OpenAPI description
   from the routes the code defines; recommended only for the `service` kind.
+- **Updating an existing project is a re-run of adopt.** There is no recorded
+  base, so an upstream change and a local edit look the same, an installed pack
+  never shows as outdated, and every re-run asks the keep-or-take questions
+  again. The fix is designed in
+  [ADR 0002](decisions/0002-update-stages-three-way.md) (`--update`,
+  `--check-update`, a tracked lock and base) and lands across seven pull
+  requests. This entry goes when the last one ships.
 - **Fresh `--pack` writes no installed-packs ledger.** Only `/customize`
   writes `.groundwork/installed-packs.json` (after `/customize add-pack` or
   adopt Round 1). A pack installed at bootstrap with `--pack` is not in it,

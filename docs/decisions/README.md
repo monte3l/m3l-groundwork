@@ -11,6 +11,7 @@ what is a decision, and what is a limit or an issue, is the org's
 A record is not edited once it is accepted. A later decision that replaces it
 says so, and the old one is marked superseded with a link forward.
 
-| Record                               | Decision                                                                     |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| [0001](0001-add-pack-stages-only.md) | `--add-pack` stages only; the installed-packs ledger lives in `.groundwork/` |
+| Record                                  | Decision                                                                               |
+| --------------------------------------- | -------------------------------------------------------------------------------------- |
+| [0001](0001-add-pack-stages-only.md)    | `--add-pack` stages only; the installed-packs ledger lives in `.groundwork/`           |
+| [0002](0002-update-stages-three-way.md) | `--update` stages a three-way merge; a tracked lock and base record what was installed |
