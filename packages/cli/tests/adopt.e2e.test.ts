@@ -378,4 +378,51 @@ describe("adopt mode end-to-end", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
+
+  it("leaves .groundwork/add-pack/ and installed-packs.json byte-identical on a re-run while regenerating its own artifacts", () => {
+    const projectDir = mkdtempSync(
+      join(tmpdir(), "m3l-groundwork-adopt-rerun-e2e-"),
+    );
+    try {
+      buildFixtureProject(projectDir);
+      const args = [binPath, projectDir, "--name", "existing-project"];
+      execFileSync("node", args, { stdio: "pipe" });
+
+      const groundwork = join(projectDir, ".groundwork");
+      mkdirSync(join(groundwork, "add-pack", "x", "files"), {
+        recursive: true,
+      });
+      writeFileSync(join(groundwork, "add-pack", "x", "plan.json"), "{}\n");
+      writeFileSync(
+        join(groundwork, "add-pack", "x", "files", "a.md.staged"),
+        "staged\n",
+      );
+      writeFileSync(
+        join(groundwork, "installed-packs.json"),
+        '{"schemaVersion":1,"packs":[{"name":"x"}]}\n',
+      );
+      // A stale adopt artifact proves the re-run really regenerates.
+      writeFileSync(join(groundwork, "adoption-report.md"), "stale\n");
+      const before = snapshotTree(projectDir);
+
+      execFileSync("node", args, { stdio: "pipe" });
+
+      const after = snapshotTree(projectDir);
+      const preserved = [
+        join(".groundwork", "add-pack", "x", "plan.json"),
+        join(".groundwork", "add-pack", "x", "files", "a.md.staged"),
+        join(".groundwork", "installed-packs.json"),
+      ];
+      for (const relPath of preserved) {
+        expect(before.has(relPath), relPath).toBe(true);
+        expect(after.get(relPath), relPath).toBe(before.get(relPath));
+      }
+      expect(after.get(join(".groundwork", "adoption-report.md"))).not.toBe(
+        before.get(join(".groundwork", "adoption-report.md")),
+      );
+      expect(existsSync(join(groundwork, "inventory.json"))).toBe(true);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 });

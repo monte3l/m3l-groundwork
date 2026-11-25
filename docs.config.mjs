@@ -98,6 +98,11 @@ export default {
         "decision-record skeleton with placeholders, copied rather than read",
     },
     {
+      glob: "docs/decisions/0001-add-pack-stages-only.md",
+      reason:
+        "decision record, reached from the Decisions page as a repository file link",
+    },
+    {
       glob: "CLAUDE.md",
       reason: "instructions for coding agents, not reader-facing",
     },

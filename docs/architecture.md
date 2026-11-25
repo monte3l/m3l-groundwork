@@ -88,6 +88,15 @@ date.
   (`pack-stage.ts`, built on the swap/sweep helpers in `staging.ts` that
   `baseline-stage.ts` shares). `inventory.stagedPacks` records each file's
   original path and `sha256`.
+- **`add-pack.ts`** stages packs into a project that is already bootstrapped
+  or adopted (`--add-pack <name>`), skipping mode detection. It reads and
+  plans everything first (the project's origin and each pack's installation
+  status from `pack-installation.ts`, file conflicts, wiring observations,
+  required paths and caps), refuses before any write, then stages each pack
+  on its own into `.groundwork/add-pack/<name>/` with the same `.staged`
+  convention and the same atomic swap (`staging.ts`), writing the
+  `plan.json` survey last. It never installs and never writes anything else;
+  `/customize add-pack` installs from the staged copy.
 - **`assets.ts`** is the one place that locates `templates/` and the plugin
   payload, whether running from the source checkout or a published npm
   tarball -- see its own header comment for why the probe order matters.

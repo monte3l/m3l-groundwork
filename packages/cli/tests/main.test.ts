@@ -3,10 +3,14 @@
 
 import { describe, expect, it } from "vitest";
 import { AssertionError } from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import {
   CliUsageError,
   assertAdoptWriteScope,
+  formatCapsSummary,
+  main,
   parseArgs,
   templatesCoreDir,
 } from "../src/main.js";
@@ -371,5 +375,172 @@ describe("assertAdoptWriteScope", () => {
     expect(() =>
       assertAdoptWriteScope(targetDir, [join(targetDir, "package.json")]),
     ).toThrow(AssertionError);
+  });
+});
+
+describe("parseArgs --add-pack / --reinstall", () => {
+  it("defaults addPacks to [] and reinstall to false", () => {
+    const options = parseArgs(["/tmp/some-project"]);
+    expect(options.addPacks).toEqual([]);
+    expect(options.reinstall).toBe(false);
+  });
+
+  it("collects a repeated --add-pack into a sorted, deduplicated array, apart from --pack", () => {
+    const options = parseArgs([
+      "/tmp/some-project",
+      "--add-pack",
+      "quality",
+      "--add-pack",
+      "github",
+      "--add-pack",
+      "quality",
+    ]);
+    expect(options.addPacks).toEqual(["github", "quality"]);
+    expect(options.packs).toEqual([]);
+  });
+
+  it("does not treat --add-pack's value as the target directory, in either order", () => {
+    expect(parseArgs(["--add-pack", "quality", "/tmp/x"]).targetDir).toBe(
+      "/tmp/x",
+    );
+    expect(parseArgs(["/tmp/x", "--add-pack", "quality"]).addPacks).toEqual([
+      "quality",
+    ]);
+  });
+
+  it("recognizes --reinstall alone as a boolean flag (rejecting it is main()'s job)", () => {
+    expect(
+      parseArgs(["/tmp/x", "--add-pack", "quality", "--reinstall"]).reinstall,
+    ).toBe(true);
+  });
+
+  it("throws CliUsageError when --add-pack has no value or its value looks like a flag", () => {
+    expect(() => parseArgs(["/tmp/x", "--add-pack"])).toThrow(
+      /--add-pack requires a value/,
+    );
+    expect(() => parseArgs(["/tmp/x", "--add-pack", "--reinstall"])).toThrow(
+      /--add-pack requires a value/,
+    );
+  });
+
+  it.each([["../x"], ["/abs"], ["a/b"], ["."], ["UPPER"], ["1abc"]])(
+    "rejects the bad pack name %s, naming it",
+    (bad) => {
+      let thrown: unknown;
+      try {
+        parseArgs(["/tmp/x", "--add-pack", bad]);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(CliUsageError);
+      expect((thrown as Error).message).toContain(bad);
+    },
+  );
+
+  it("names only the invalid value when one of several --add-pack flags is malformed", () => {
+    expect(() =>
+      parseArgs(["/tmp/x", "--add-pack", "ok", "--add-pack", "../b"]),
+    ).toThrow(/\.\.\/b/);
+  });
+
+  it("the usage text documents both flags", () => {
+    let thrown: unknown;
+    try {
+      parseArgs([]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect((thrown as Error).message).toMatch(/--add-pack <name>/);
+    expect((thrown as Error).message).toMatch(/--reinstall/);
+  });
+
+  it("still lets --help and --list-packs win over --add-pack", () => {
+    expect(parseArgs(["--help", "--add-pack", "quality"]).help).toBe(true);
+    expect(parseArgs(["--list-packs"]).addPacks).toEqual([]);
+  });
+});
+
+describe("formatCapsSummary's first-line label", () => {
+  const baseline = { agents: 1, skills: 2, hooks: 3, workflows: 1, scripts: 4 };
+  const pack = { agents: 1, skills: 0, hooks: 0, workflows: 0, scripts: 0 };
+
+  it("keeps templates/core: as the default first line", () => {
+    const text = formatCapsSummary(baseline, [
+      { name: "quality", budget: pack },
+    ]).text;
+    expect(text.split("\n")[0]).toMatch(/^templates\/core: /);
+  });
+
+  it("with a label, changes only the first line's label", () => {
+    const withDefault = formatCapsSummary(baseline, [
+      { name: "quality", budget: pack },
+    ]);
+    const labelled = formatCapsSummary(
+      baseline,
+      [{ name: "quality", budget: pack }],
+      "project:",
+    );
+    const defaultLines = withDefault.text.split("\n");
+    const labelledLines = labelled.text.split("\n");
+    expect(labelledLines[0]).toBe(
+      defaultLines[0]?.replace("templates/core:", "project:"),
+    );
+    expect(labelledLines.slice(1)).toEqual(defaultLines.slice(1));
+    expect(labelled.overCap).toBe(withDefault.overCap);
+  });
+
+  it("still reports an over-cap total with the label", () => {
+    const over = formatCapsSummary(
+      { ...baseline, agents: 5 },
+      [{ name: "quality", budget: pack }],
+      "project:",
+    );
+    expect(over.overCap).toBe(true);
+    expect(over.text).toContain("over cap: agents");
+  });
+});
+
+describe("main() add-pack routing", () => {
+  it("rejects --add-pack combined with --pack as a usage error naming both flags", () => {
+    let thrown: unknown;
+    try {
+      main([
+        "/tmp/m3l-no-such-dir",
+        "--add-pack",
+        "quality",
+        "--pack",
+        "github",
+      ]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(CliUsageError);
+    expect((thrown as Error).message).not.toMatch(/unrecognized/);
+    expect((thrown as Error).message).toMatch(/--add-pack/);
+    expect((thrown as Error).message).toMatch(/--pack/);
+  });
+
+  it("rejects --reinstall without --add-pack as a usage error", () => {
+    let thrown: unknown;
+    try {
+      main(["/tmp/m3l-no-such-dir", "--reinstall"]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(CliUsageError);
+    expect((thrown as Error).message).not.toMatch(/unrecognized/);
+    expect((thrown as Error).message).toMatch(/--add-pack/);
+  });
+
+  it("rejects a missing target directory under --add-pack naming the path, without creating it", () => {
+    const missing = join(
+      tmpdir(),
+      `m3l-add-pack-missing-${String(process.pid)}`,
+    );
+    expect(() => main([missing, "--add-pack", "quality"])).toThrow(
+      CliUsageError,
+    );
+    expect(() => main([missing, "--add-pack", "quality"])).toThrow(missing);
+    expect(existsSync(missing)).toBe(false);
   });
 });
