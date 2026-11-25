@@ -103,6 +103,11 @@ export default {
         "decision record, reached from the Decisions page as a repository file link",
     },
     {
+      glob: "docs/decisions/0002-update-stages-three-way.md",
+      reason:
+        "decision record, reached from the Decisions page as a repository file link",
+    },
+    {
       glob: "CLAUDE.md",
       reason: "instructions for coding agents, not reader-facing",
     },

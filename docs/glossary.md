@@ -31,6 +31,14 @@ writing tests, implementing code, reviewing a diff -- with its own tools and
 context, reporting back to whoever launched it.
 In this repo: `.claude/agents/`; see [`CLAUDE.md`](../CLAUDE.md#agent-operating-model).
 
+### Base snapshot
+
+The pristine, token-substituted bytes of every file groundwork installed,
+stored at `.groundwork/base/<path>.base` and tracked in git, so an update can
+tell an upstream change from a local edit. Planned in
+[ADR 0002](decisions/0002-update-stages-three-way.md).
+In this repo: `.groundwork/base/` (written at bootstrap once the update flow lands).
+
 ### Baseline
 
 Short for `templates/core`: the exact set of files -- toolchain config, CI
@@ -181,6 +189,14 @@ and how it was installed; it is tracked in git, and the CLI only reads it.
 In this repo: the `pack-install.md` step of `/customize`, read by
 `packages/cli/src/pack-installation.ts`.
 
+### Lock
+
+The `.groundwork/groundwork.lock.json` file that records which release
+installed the project's files and each file's pristine hash and status, so an
+update has a base to merge against. It is tracked in git. Planned in
+[ADR 0002](decisions/0002-update-stages-three-way.md).
+In this repo: `packages/cli/src/lock.ts` (planned).
+
 ### OIDC
 
 Short for OpenID Connect: a protocol that lets a GitHub Actions job prove
@@ -304,11 +320,28 @@ verifiable facts (which files exist, their content, which keys are set)
 without judging what they mean.
 In this repo: `packages/cli/src/survey/`.
 
+### Template history
+
+The file shipped in the CLI tarball that records, for every past release, the
+hash of each file in `templates/core` and `templates/packs`, so a project with
+no lock can still find its base offline. Planned in
+[ADR 0002](decisions/0002-update-stages-three-way.md).
+In this repo: `packages/cli/data/template-history.json` (planned).
+
 ### Trusted publishing
 
 An npm feature that lets one specific CI workflow publish a package via
 OIDC, with no npm token stored anywhere.
 In this repo: `release.yml`'s `publish` job.
+
+### Update plan
+
+The `plan.json` that `m3l-groundwork <dir> --update` writes last into
+`.groundwork/update/`, recording for every managed file its base, ours and
+theirs hashes and the action (take, keep, merge, conflict, add, delete, rename
+or review), for `/customize update` to apply from the staged copy. Planned in
+[ADR 0002](decisions/0002-update-stages-three-way.md).
+In this repo: `packages/cli/src/update.ts` (planned).
 
 ### Verify group
 
