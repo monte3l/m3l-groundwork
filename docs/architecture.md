@@ -123,6 +123,83 @@ records the pack in `.groundwork/installed-packs.json` (the
 [ledger](glossary.md#ledger)), which only `/customize` writes and the CLI's
 `--list-packs` and `--add-pack` read.
 
+## Update flow
+
+> [!NOTE]
+> Designed in [ADR 0002](decisions/0002-update-stages-three-way.md) and landing
+> across seven pull requests. Until each lands, the matching part below is a
+> plan, not behaviour.
+
+A project that already adopted groundwork, or was bootstrapped by it, moves to a
+newer release in two steps that mirror add-pack: `npx @monte3l/groundwork .
+--update` stages a plan, and `/customize update` applies it. The CLI never
+writes a project file. `--check-update` reports without staging and exits 3
+when an update is available (1 and 2 are the failure and usage codes).
+
+**What is recorded.** Three tracked files in `.groundwork/` give an update a
+base to merge against:
+
+- `groundwork.lock.json`: schema 1, the base version, the origin (fresh or
+  adopted), the token values, a `skip` list the owner controls, and for each
+  managed file its path, source (core, a pack or the skill), the sha256 of its
+  pristine token-substituted bytes and a status (`installed`, `kept`,
+  `declined` or `removed`). A path the lock does not list falls back to the
+  history lookup, so a partial lock is safe.
+- `base/<path>.base`: the pristine bytes. The suffix keeps every tool, and
+  Claude Code's own `CLAUDE.md` and skill loading, from finding them. Git
+  stores an unmodified base as the same blob as the live file.
+- `answers.json`: the interview answers, kept agents, plugins and the
+  literal retargets Round 1 applied. Only `/customize` writes it.
+
+The ledger (`installed-packs.json`) stays at schema 1 and keeps recording how
+each pack was wired. It gains `via: "fresh"` and `"update"`, an optional
+`wiring.removed`, and fresh `--pack` now writes entries.
+
+**Where the base comes from**, first hit wins: the snapshot that matches the
+lock, the lock's hash with text from history, the template history at the
+recorded version, the version in the inventory or ledger, the history version
+whose hashes match the project's files, then `--fetch-base`, which rebuilds the
+exact base from the published tarball. The history
+(`packages/cli/data/template-history.json`) ships in the tarball, so the first
+update of a project with no lock stays offline.
+
+**Per file**, with base B, ours O and theirs T (the new template with the same
+tokens, and for the wiring JSON files merged with each recorded pack's wiring):
+
+| Condition                                 | Action                                       |
+| ----------------------------------------- | -------------------------------------------- |
+| O equals T                                | `current`                                    |
+| T equals B                                | `keep` (this absorbs `/customize` tailoring) |
+| O equals B                                | `take`                                       |
+| all three differ, base text known         | `merge`, or `conflict` when hunks overlap    |
+| all three differ, base known by hash only | `review`, suggesting `--fetch-base`          |
+| no base and no history match              | two-way `review`                             |
+| absent in ours, new upstream              | `add`                                        |
+| removed upstream, O equals B              | `delete`                                     |
+| removed upstream, O differs               | `review`, default keep                       |
+| a migration renames it                    | `rename`                                     |
+| on the lock's `skip` list, or `declined`  | `skip`, or `review` if upstream changed it   |
+
+`git merge-file -p --diff3` merges text (its exit status is the conflict
+count; with no git the file becomes `review`). JSON files merge three-way per
+nested key, with arrays as whole values, so one dependency bump does not
+conflict with the rest of `devDependencies`. Retargets recorded in
+`answers.json` are applied to B and T before comparing.
+
+**Staging** writes `.groundwork/update/` in one atomic swap: the new files,
+merged results, bases taken from history, staged packs, the current
+`/customize` payload and the next lock, then `plan.json` last
+(`kind: "m3l-groundwork/update-plan"`, the same conventions as the add-pack
+plan). `assertUpdateWriteScope` limits the CLI to that directory.
+
+**Applying** (`/customize update`, `update.md`) verifies every staged hash,
+refuses a version skew between the plan and the skill, and refuses when any
+path it would touch has uncommitted changes. It then confirms in bulk and per
+conflict, switches to its own branch, writes, updates packs through
+`pack-install.md`, refreshes the project's `/customize` copy last, rewrites the
+lock and base and deletes the staging. A file with conflict markers is never
+written.
+
 ## Single source of truth for gates
 
 `bin/lib/verify-steps.mjs` is what `pnpm verify`, `lefthook`'s `pre-push`,
