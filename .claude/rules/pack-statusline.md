@@ -58,10 +58,16 @@ with its own status line can take that pack's hooks without a collision, and
   and never awaits it, so the first row uses the default palette and later rows
   use the theme. `themeEnvFrom` copies only the three theme keys out of the
   result, and any failure leaves the default palette (advisory, `next` runs
-  once). The mod cannot see `COLORFGBG` or `NO_COLOR` from the shell, so it
-  assumes a dark terminal unless `COLORFGBG` is in that same settings `env`
-  block. That read is written to the documented API and tested through fakes;
-  it has not been observed in a live session. `NO_COLOR` follows no-color.org
+  once). It makes a second, independent guarded read,
+  `$.settings.read({ key: "theme" })` (a documented top-level settings key), and
+  `themeBackgroundFrom` maps `light`/`light-*` and `dark`/`dark-*` to a
+  background that overrides `COLORFGBG`; `auto`, `custom:*` and anything
+  unreadable give no answer, so the mod falls back to `COLORFGBG` in the
+  settings `env` block, then to dark. `theme` alone never opts in to m3l-design.
+  The mod cannot see `COLORFGBG` or `NO_COLOR` from the shell. Both reads are
+  written to the documented API and tested through fakes; they have not been
+  observed in a live session, and it is unverified that `/theme` saves to a
+  file `$.settings.read` sees. `NO_COLOR` follows no-color.org
   (set and non-empty).
 - **This repo's own copies of the four renderer files equal the pack's**, plus an
   SPDX header, so the root status line is the pack with the theme turned on

@@ -14,9 +14,14 @@
   (`GROUNDWORK_STATUSLINE_THEME`, offered by `/customize`, never the default),
   and the `subagent-rows` mod reads it through the documented
   `$.settings.read({ key: "env" })`, since its hook module has no `process.env`.
-  That path is tested only through fakes, never seen in a live session (a probe
-  could not get a row on screen), and the mod assumes a dark terminal because it
-  cannot see `COLORFGBG`. `quality`:
+  It picks the light or dark variant from Claude Code's own `theme` setting
+  (`$.settings.read({ key: "theme" })`: `light*` or `dark*`). A `theme` of
+  `auto` or `custom:*` says nothing about the background, so the mod falls back
+  to `COLORFGBG` in the settings `env` block and then to dark; it cannot see the
+  shell's `COLORFGBG`. Both reads are tested only through fakes and have never
+  been seen in a live session (an earlier probe could not get a row on screen),
+  and it is unverified that `/theme` saves to a file `$.settings.read` sees.
+  `quality`:
   `type-design-analyzer` agent and the `check-file-budget` ratchet. `claude-github`:
   `claude-action` in mention-mode and an automated PR-review workflow, which
   need an auth secret the pack cannot create. `github`: three `gh` skills.

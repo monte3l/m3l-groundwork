@@ -16,16 +16,26 @@
  *
  * Theme: a mod's hook module has no Node APIs, so no `process.env`
  * (code.claude.com/docs/en/plugins/mods/api). `$.settings.read({ key })`
- * (Claude Code v2.1.304+) is the documented way to read settings, so the hook
- * reads the settings `env` block once, on its first render, and keeps only the
- * theme keys (`themeEnvFrom`); `$.env.get` is not documented to see settings
- * `env`. The first row renders with the default palette and later rows use the
- * theme once the read resolves. The mod cannot see COLORFGBG or NO_COLOR from
- * the shell, so it assumes a dark terminal unless COLORFGBG is set in that
- * same settings `env` block. The read is made once per registration and never
- * retried (a failed read is unlikely to be transient, and retrying on every
- * render would spam it), so a settings change mid-session keeps the old theme
- * until the mod reloads.
+ * (Claude Code v2.1.304+) is the documented way to read settings, so on its
+ * first render the hook makes two independent reads, never awaited: the
+ * settings `env` block, keeping only the theme keys (`themeEnvFrom`), and the
+ * documented top-level `theme` setting, mapped to a background
+ * (`themeBackgroundFrom`); `$.env.get` is not documented to see settings
+ * `env`. The first row renders with the default palette and later rows use
+ * the theme once the reads resolve. A `light*` or `dark*` theme picks the
+ * m3l-design variant, overriding any COLORFGBG in settings `env`; an `auto`
+ * or `custom:*` theme says nothing about the background, so the hook falls
+ * back to that settings-`env` COLORFGBG, then to dark. If `/theme` saved the
+ * choice somewhere other than the settings files, the `theme` read returns
+ * nothing usable (any value other than `light*` or `dark*` gives no answer)
+ * and the behaviour is as it was without it. The `theme` setting
+ * never opts in to m3l-design (that still needs GROUNDWORK_STATUSLINE_THEME),
+ * and NO_COLOR still wins. The mod cannot see COLORFGBG or NO_COLOR from the
+ * shell, only from the settings `env` block. Each read is made once per
+ * registration and never retried (a failed read is unlikely to be transient,
+ * and retrying on every render would spam it), and a failure in one never
+ * undoes or prevents the other, so a settings change mid-session keeps the
+ * old theme until the mod reloads.
  *
  * Invariant: **no subprocess, no network, no I/O.** Advisory only: any error
  * passes the event on unchanged and never touches `isHidden`.
@@ -204,6 +214,82 @@ export function themeEnvFrom(settingsEnv) {
 }
 
 /**
+ * Maps the Claude Code `theme` setting to a terminal background. The built-in
+ * themes are `light`, `dark` and their `-daltonized` / `-ansi` variants.
+ *
+ * @param {unknown} theme the value of `$.settings.read({ key: "theme" })`.
+ * @returns {"light" | "dark" | null} `"light"` for `light` or `light-*`,
+ *   `"dark"` for `dark` or `dark-*`; null for anything else (`auto`,
+ *   `custom:*`, `""`, a non-string), whose background is unknown.
+ */
+export function themeBackgroundFrom(theme) {
+  if (typeof theme !== "string") return null;
+  if (theme === "light" || theme.startsWith("light-")) return "light";
+  if (theme === "dark" || theme.startsWith("dark-")) return "dark";
+  return null;
+}
+
+/** COLORFGBG values that `resolvePalette` reads as each background. */
+const BACKGROUND_COLORFGBG = Object.freeze({ light: "0;15", dark: "15;0" });
+
+/**
+ * Builds the palette env for `renderAgentRow`: a known `theme` background
+ * overrides the settings-`env` COLORFGBG; otherwise that COLORFGBG (or its
+ * absence, meaning dark) stands.
+ *
+ * @param {Record<string, string>} themeEnv the `themeEnvFrom` result.
+ * @param {"light" | "dark" | null} background the `themeBackgroundFrom` result.
+ * @returns {Record<string, string>}
+ */
+function paletteEnv(themeEnv, background) {
+  return background === null
+    ? themeEnv
+    : { ...themeEnv, COLORFGBG: BACKGROUND_COLORFGBG[background] };
+}
+
+/**
+ * Starts one advisory `$.settings.read({ key })` and hands a resolved value to
+ * `onValue`, never awaited. A missing `$` or `$.settings`, a synchronous
+ * throw, a non-thenable, a rejection or a throwing `onValue` are all ignored:
+ * this mod is advisory, so the theme's status must never hide or break a row.
+ * Because a throw from `onValue` is swallowed, `onValue` must be a plain
+ * assignment with no other work that could fail unseen.
+ *
+ * @param {{ settings?: { read?: (query: { key: string }) => unknown } } | undefined} $
+ *   the hook's API object; may be undefined or lack `settings`.
+ * @param {string} key
+ * @param {(value: unknown) => void} onValue
+ */
+function readSettingAdvisory($, key, onValue) {
+  try {
+    /** @type {unknown} */
+    const read = $.settings.read({ key });
+    if (
+      typeof read === "object" &&
+      read !== null &&
+      typeof (/** @type {{ then?: unknown }} */ (read).then) === "function"
+    ) {
+      /** @type {PromiseLike<unknown>} */ (read).then(
+        (value) => {
+          try {
+            onValue(value);
+          } catch {
+            // advisory: a malformed value keeps the previous theme state
+          }
+        },
+        () => {
+          // advisory: a rejected read keeps the previous theme state
+        },
+      );
+    }
+  } catch {
+    // Deliberate: a missing `$` or `$.settings`, a synchronous throw from
+    // `read`, or a throwing `.then` keeps the previous theme state (the
+    // default palette). Advisory only.
+  }
+}
+
+/**
  * Entry point Claude Code calls with its hook registrar.
  *
  * @param {(event: string, matcher: { component: string }, handler: (
@@ -214,42 +300,28 @@ export function themeEnvFrom(settingsEnv) {
 export function register(on) {
   /** @type {Record<string, string>} */
   let themeEnv = {};
+  /** @type {"light" | "dark" | null} */
+  let background = null;
   let requested = false;
   on("ui.render", { component: "AgentRow" }, ($, e, next) => {
     /** @type {string | null} */
     let body = null;
     if (!requested) {
       requested = true;
-      try {
-        /** @type {unknown} */
-        const read = $.settings.read({ key: "env" });
-        if (
-          typeof read === "object" &&
-          read !== null &&
-          typeof (/** @type {{ then?: unknown }} */ (read).then) === "function"
-        ) {
-          /** @type {PromiseLike<unknown>} */ (read).then(
-            (value) => {
-              try {
-                themeEnv = themeEnvFrom(value);
-              } catch {
-                // advisory: a malformed env keeps the default palette
-              }
-            },
-            () => {
-              // advisory: a rejected read keeps the default palette
-            },
-          );
-        }
-      } catch {
-        // Deliberate: a missing `$` or `$.settings`, a throw, a non-thenable,
-        // a rejection or an empty result all keep `themeEnv = {}` (the
-        // default palette). This mod is advisory, so the theme's status must
-        // never hide or break a row. Never awaited: the first row renders now.
-      }
+      // Two independent reads: each is guarded on its own, so a failure in
+      // one never undoes or prevents the other.
+      readSettingAdvisory($, "env", (value) => {
+        themeEnv = themeEnvFrom(value);
+      });
+      readSettingAdvisory($, "theme", (value) => {
+        background = themeBackgroundFrom(value);
+      });
     }
     try {
-      body = renderAgentRow(e?.props, { ...themeEnv, now: Date.now() });
+      body = renderAgentRow(e?.props, {
+        ...paletteEnv(themeEnv, background),
+        now: Date.now(),
+      });
     } catch {
       // Advisory only: a failure in this mod's own formatting leaves the row
       // as Claude Code draws it. Only that work is guarded -- `next` runs
