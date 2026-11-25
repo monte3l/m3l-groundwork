@@ -345,6 +345,41 @@ describe("add-pack.md -- each clause of the scoped procedure", () => {
     });
   });
 
+  describe("step 3 when no command can run to hash the staged files", () => {
+    const verify = addPack.slice(
+      addPack.indexOf("`shasum -a 256`") - 900,
+      addPack.indexOf("Show the plan, verbatim"),
+    );
+    // The clause that opens with "no command can run" up to the end of step 3.
+    const noCommand = verify.slice(
+      verify.search(/no command can (run|execute)/i),
+    );
+
+    it("never offers, suggests or accepts continuing without the hash check", () => {
+      expect(noCommand).toMatch(
+        /(do not|don't|never)[^.]*(offer|suggest)[^.]*(continu|proceed|install)[^.]*without[^.]*(check|verif|hash)/i,
+      );
+    });
+
+    it("tells the user to re-run /customize add-pack <name> in a session where a command can run", () => {
+      expect(noCommand).toMatch(
+        /re-run[^.]*`?\/customize add-pack <name>`?[^.]*where a command can run/i,
+      );
+    });
+
+    it("still stops with nothing installed and the staging kept", () => {
+      expect(noCommand).toMatch(/stop/i);
+      expect(noCommand).toMatch(/nothing is installed/i);
+      expect(noCommand).toMatch(/staging[^.]*(kept|remains|left|intact)/i);
+    });
+
+    it("carries no wording that invites an override ('unless ...')", () => {
+      expect(noCommand).not.toMatch(
+        /unless (the user|you|they|he|she|told|asked|accept)/i,
+      );
+    });
+  });
+
   it("verifies hashes before showing anything verbatim (ordering of the steps)", () => {
     const hash = addPack.indexOf("`shasum -a 256`");
     const display = addPack.indexOf("verbatim");

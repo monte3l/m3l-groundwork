@@ -3,7 +3,8 @@
   "suites": {
     "plugin": {
       "adopt-reconcile": 1,
-      "fresh-interview": 1
+      "fresh-interview": 1,
+      "add-pack": 1
     },
     "harness": {
       "creating-prs-fires-1": 1,
