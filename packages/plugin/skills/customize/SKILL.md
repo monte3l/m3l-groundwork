@@ -1,5 +1,6 @@
 ---
 name: customize
+argument-hint: "[add-pack <name> ...]"
 description: >-
   Tailors a project bootstrapped or adopted by m3l-groundwork: for a fresh
   bootstrap, interviews the owner (project kind, runtime target, test
@@ -11,7 +12,8 @@ description: >-
   official TypeScript and Anthropic sources to validate and refine the
   result against current upstream recommendations. Use for /customize,
   "tailor this project", "adopt this project", "set up this scaffold for my
-  project", or right after a fresh or adopted m3l-groundwork bootstrap.
+  project", or right after a fresh or adopted m3l-groundwork bootstrap; with
+  "add-pack <name>", to add a pack to an already-set-up project.
 ---
 
 # customize
@@ -51,6 +53,15 @@ The interview below scopes **priority, not authority**: it tells Round 2
 which facets deserve the deepest dedicated research, never which facets it
 may or may not touch.
 
+## Adding a pack (`/customize add-pack`)
+
+If `$ARGUMENTS` starts with `add-pack` (the user ran `/customize add-pack
+<name> [<name>...]` after `npx @monte3l/groundwork . --add-pack <name>`
+staged the pack under `.groundwork/add-pack/<name>/`), read
+[`add-pack.md`](add-pack.md) in full and follow only it: skip Steps 0-7
+entirely, and never run the interview, Round 2 or Step 7's report. Re-read
+it after any compaction or resume. Otherwise, continue below.
+
 ## Step 0 — Reconcile (adopt mode only)
 
 **Read [`step-0-reconcile.md`](step-0-reconcile.md) in full before acting on
@@ -63,8 +74,9 @@ In outline:
    means a fresh bootstrap: skip to Step 1, unless `git rev-list -n1 HEAD`
    shows the repository has commits (the folder may be gitignored), in which
    case ask first. A `.groundwork/` holding only tracked report files is a
-   clone of an adopted project: re-run the CLI. Any other `.groundwork/` with
-   no inventory means an interrupted CLI run, and an unreadable inventory is invalid: in both cases
+   clone of an adopted project: re-run the CLI. A `.groundwork/` with nothing but
+   `add-pack/` and `installed-packs.json` is not an interrupted run: take the
+   fresh path above. Any other `.groundwork/` with no inventory means an interrupted CLI run, and an unreadable inventory is invalid: in both cases
    stop and change nothing, and never treat the project as a fresh bootstrap.
 2. **The deep read.** The CLI's survey is an index, not an interpretation:
    read the real files it flagged `needsReading`, and reconcile its facts
@@ -289,11 +301,13 @@ retargeted gate reported as not exercised), an **Assumed, not answered** list
 (each `"dismissed"` interview entry and the fallback used), and a skipped
 `guard-readonly-bash` with its reason. Rewrite the adoption report's
 `## Next step` to point at this file. Never write it in fresh mode: a
-`.groundwork/` directory with no inventory reads as an interrupted adopt run.
+`.groundwork/` directory with no inventory reads as an interrupted adopt run,
+unless it holds only `add-pack/` staging and the `installed-packs.json`
+ledger.
 
 **Adopt mode only: ask once about `.gitignore`.** The CLI never edits the
-project's `.gitignore`. Recommend tracking the two reports and ignoring the
-rest of `.groundwork/` (the inventory holds absolute machine paths, the
+project's `.gitignore`. Recommend tracking the two reports and the
+installed-packs ledger and ignoring the rest of `.groundwork/` (the inventory holds absolute machine paths, the
 staged copies are bulky, and the decisions file is only valid beside its own
 inventory):
 
@@ -301,8 +315,9 @@ inventory):
 .groundwork/*
 !.groundwork/adoption-report.md
 !.groundwork/customization-report.md
+!.groundwork/installed-packs.json
 ```
 
 Add it only if the user agrees. Say that a teammate's clone then holds the
-two reports but no `.groundwork/inventory.json`, which Step 0.1 recognizes as a
+two reports and the ledger but no `.groundwork/inventory.json`, which Step 0.1 recognizes as a
 clone and answers with the re-run advice.

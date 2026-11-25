@@ -31,6 +31,7 @@ const syncedFiles: [name: string, sourceDir: string][] = [
   ["step-0-reconcile.md", skillDir],
   ["step-3-round-1.md", skillDir],
   ["pack-install.md", skillDir],
+  ["add-pack.md", skillDir],
 ];
 
 describe("customize skill install stays synced with packages/plugin", () => {
@@ -72,13 +73,31 @@ describe("SKILL.md stays small enough to survive post-compaction re-injection", 
     }
   });
 
+  it("add-pack.md links to pack-install.md, which exists in the skill directory", () => {
+    const body = readFileSync(join(skillDir, "add-pack.md"), "utf8");
+    const targets = [...body.matchAll(/\]\(([^)#/\s]+\.md)\)/g)].map(
+      (m) => m[1] as string,
+    );
+    expect(targets).toContain("pack-install.md");
+    for (const target of targets) {
+      expect(
+        existsSync(join(skillDir, target)),
+        `add-pack.md links to ${target}, which does not exist in the skill dir`,
+      ).toBe(true);
+    }
+  });
+
   it("links only to sibling .md files that exist in the skill directory", () => {
     const body = readFileSync(join(skillDir, "SKILL.md"), "utf8");
     const targets = [...body.matchAll(/\]\(([^)#/\s]+\.md)\)/g)].map(
       (m) => m[1] as string,
     );
     expect(targets).toEqual(
-      expect.arrayContaining(["step-0-reconcile.md", "step-3-round-1.md"]),
+      expect.arrayContaining([
+        "step-0-reconcile.md",
+        "step-3-round-1.md",
+        "add-pack.md",
+      ]),
     );
     for (const target of targets) {
       expect(

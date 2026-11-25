@@ -25,6 +25,15 @@ public API waits for a major release. Which commit type releases what is in
 [`.claude/rules/releases.md`](.claude/rules/releases.md), which
 [`CLAUDE.md`](CLAUDE.md#releases) summarises.
 
+Adding a pack to an existing project has shipped
+([#377](https://github.com/monte3l/m3l-groundwork/issues/377)):
+`m3l-groundwork <dir> --add-pack <name>` stages the pack under
+`.groundwork/add-pack/<name>/` and installs nothing, and
+`/customize add-pack <name>` confirms and installs it, then records it in
+`.groundwork/installed-packs.json`. It extends adopt mode's survey-only
+contract rather than loosening it; what is left is in
+[`docs/known-gaps.md`](docs/known-gaps.md).
+
 Keeping `templates/core` and `templates/packs/` current against upstream
 TypeScript and Anthropic guidance is ongoing, ordinary maintenance, not a
 one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
@@ -32,13 +41,6 @@ one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
 
 ## Next 12 months
 
-- **A standalone "add a pack" mode.** Tracked in
-  [#377](https://github.com/monte3l/m3l-groundwork/issues/377).
-  Today, adding an optional pack to an already-bootstrapped project means
-  re-running the CLI (auto-detected as adopt mode) and then `/customize`. A
-  dedicated additive-install flag is real, planned work, and it extends adopt
-  mode's survey-only contract rather than loosening it -- see
-  [`docs/known-gaps.md`](docs/known-gaps.md).
 - **`pnpm/setup` in CI.** Tracked in
   [#319](https://github.com/monte3l/m3l-groundwork/issues/319). Its v3 reads
   Node's version from `.node-version` through a `node-version-file` input, so
@@ -109,8 +111,9 @@ The detail behind each of these, and the other accepted gaps, is in
 - **Let adopt mode write project files directly.** Its contract --
   survey-only, `.groundwork/` plus a guarded copy of `/customize` -- is
   load-bearing and asserted by `adopt.e2e.test.ts`; every future adopt-mode
-  feature (including the additive-pack-install mode above) extends that
-  contract rather than weakening it.
+  feature extends that contract rather than weakening it: `--add-pack`, for
+  example, stages only under `.groundwork/add-pack/` and leaves the install
+  to `/customize add-pack`.
 - **Chase a generic npm-package-quality heuristic that doesn't fit a CLI**
   (a fake `types`/`exports["."]` entry, for example) -- see `SECURITY.md`'s
   note on the Socket score for the reasoning already applied once.

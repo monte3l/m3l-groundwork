@@ -74,10 +74,9 @@
 - **Packs**: nothing to do here. A fresh bootstrap's packs were installed
   (or not) by the CLI at `m3l-groundwork <dir> --pack <name>` invocation
   time, before this skill ever ran — there is no fresh-mode install path in
-  `/customize` itself. To add a pack after the fact, re-run the CLI against
-  this now-non-empty directory (it auto-detects adopt mode) and run
-  `/customize` again; its Step 0 will offer the pack through the adopt path
-  below.
+  `/customize` itself. To add a pack later, run
+  `npx @monte3l/groundwork . --add-pack <name>`, then
+  `/customize add-pack <name>`.
 
 **Adopt mode** re-expresses each of the same five outcomes against whatever
 the project actually has, instead of a named baseline path — "tests must not
@@ -125,6 +124,8 @@ confirmed in Step 0.4:
   passes the comparison by reading and following
   [`pack-install.md`](pack-install.md) (same directory) in full, from its
   staged copy under `.groundwork/packs/<name>/` and the bytes Step 0.1 read.
+  Its last step records each installed pack in the
+  `.groundwork/installed-packs.json` ledger with `via: "adopt-round-1"`.
 
 **Status line theme (both modes), after packs are settled above.** Only when
 the `statusline` pack's own status line is in place, by the same test in both

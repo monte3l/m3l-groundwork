@@ -59,6 +59,7 @@ function writeSourceFixture(sourceDir: string): void {
     "step-0-reconcile.md",
     "step-3-round-1.md",
     "pack-install.md",
+    "add-pack.md",
   ]) {
     writeFileSync(
       join(sourceDir, "skills", "customize", stepName),

@@ -38,11 +38,14 @@
   and unbounded work, with anything needing profiling reported as
   `NOT CHECKED`) and an `api-doc` skill that writes an OpenAPI description
   from the routes the code defines; recommended only for the `service` kind.
-- **No standalone "add a pack to an already-bootstrapped project" flag.**
-  Today that path is: re-run the CLI against the now-non-empty directory
-  (it auto-detects adopt mode), then run `/customize`. Works, but is
-  indirect -- a dedicated additive install mode is real future work, tracked
-  in [#377](https://github.com/monte3l/m3l-groundwork/issues/377).
+- **Fresh `--pack` writes no installed-packs ledger.** Only `/customize`
+  writes `.groundwork/installed-packs.json` (after `/customize add-pack` or
+  adopt Round 1). A pack installed at bootstrap with `--pack` is not in it,
+  so `--list-packs` and `--add-pack` tell that it is installed by detecting
+  its files on disk. To record it, stage it again with
+  `npx @monte3l/groundwork . --add-pack <name> --reinstall` (the CLI refuses
+  an installed pack without `--reinstall`) and then run
+  `/customize add-pack <name>`.
 - **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it.
   Re-checked 2026-10-01: the original blocker is gone, since `pnpm/setup@v3`
   (2026-09-20) has a `node-version-file` input and auto-detects

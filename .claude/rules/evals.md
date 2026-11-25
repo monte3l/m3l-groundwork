@@ -50,9 +50,17 @@ byte for byte; the corpus invariants live in
 `packages/cli/tests/eval-agents.test.ts`.
 
 `packages/plugin/evals/` grades `/customize` itself (`fresh-interview`,
-`adopt-reconcile`); each case's `fixture.sh` runs this repo's own **built**
-CLI to make a genuine fresh/adopted project, so the `plugin` and `toolchain`
-suites run `pnpm build` first (the other suites do not).
+`adopt-reconcile`, `add-pack`); each case's `fixture.sh` runs this repo's own
+**built** CLI to make a genuine fresh/adopted project, so the `plugin` and
+`toolchain` suites run `pnpm build` first (the other suites do not).
+`add-pack` bootstraps a fresh project, stages `quality` with
+`--add-pack quality` and prompts `/customize add-pack quality`. The sandbox
+has no shell, so the skill cannot hash the staged files: only a run that
+says the hash check could not run and stops, installing nothing, passes; an
+install-or-skip prompt on the unverified pack fails, as does any write outside `.groundwork/` and the pack's own target files, an
+interview, or a claim to have verified hashes. A new case gets no baseline
+until someone records one with `--update --suite plugin`; until then `--check`
+only warns about it.
 
 `evals/core-harness/triggers.json` is a `{skill, query, should_trigger}`
 corpus that `bin/lib/eval-lib.mjs` turns into a throwaway plugin wrapping

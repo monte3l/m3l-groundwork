@@ -56,12 +56,21 @@ paths:
   the staging, the `/customize` skill copy and the report, so its presence
   means the run completed. A `.groundwork/` directory with no inventory
   therefore means an interrupted run, which `/customize` refuses to treat as
-  a fresh bootstrap. The per-file `sha256` proves the staging is complete
+  a fresh bootstrap -- except one that holds nothing but `add-pack/` and
+  `installed-packs.json`: Step 0.1 ignores those two entries, so an
+  add-pack-only `.groundwork/` on a bootstrapped project continues on the
+  fresh path and names the staged packs. The per-file `sha256` proves the staging is complete
   and matches the inventory, not that it is untampered.
   `adopt.e2e.test.ts` is the test of that guarantee; don't weaken it.
   An adopt re-run deletes only its four stale files and its own `packs/` and
   `baseline/` staging, so `.groundwork/add-pack/` and
   `.groundwork/installed-packs.json` survive it byte-identical.
+- **`.groundwork/installed-packs.json` is the installed-packs ledger.** Only
+  `/customize` writes it (`pack-install.md`'s last step, after an
+  add-pack install or adopt Round 1); the CLI only reads it, leniently
+  (`readInstalledPacksLedger` in `pack-installation.ts`). It is tracked in
+  git, so the recommended `.gitignore` block un-ignores it. Fresh `--pack`
+  writes no entry: a pack installed at bootstrap is found by detection.
 - **`--add-pack` (`add-pack.ts`) writes only `.groundwork/add-pack/<name>/`**
   (`pack.json.staged`, `files/<path>.staged`, then `plan.json` last), one pack
   at a time through `staging.ts`'s atomic swap, after every refusal and

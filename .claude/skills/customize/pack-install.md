@@ -1,6 +1,35 @@
 # Pack install: staged-pack install procedure
 
-> Installs one approved pack from its staged copy under `.groundwork/packs/<name>/`. Read this whole file before installing a pack, and re-read it after a compaction.
+> Installs one approved pack from its staged copy (adopt Round 1: `.groundwork/packs/<name>/`; `/customize add-pack`: `.groundwork/add-pack/<name>/`). Read this whole file before installing a pack, and re-read it after a compaction.
+
+**Where the staged copy lives.** Two paths follow this file, and both use the
+same `.staged` convention (`pack.json.staged`, `files/<path>.staged`) and the
+same SHA-256 hashes:
+
+- **Adopt Round 1** reads `.groundwork/packs/<name>/` and checks it against
+  the inventory (`inventory.stagedPacks`), as the text below says.
+- **`/customize add-pack`** reads `.groundwork/add-pack/<name>/` and checks it
+  against that directory's `plan.json` (`plan.staged`). Read the procedure
+  below with that staging root in place of `.groundwork/packs/<name>/`; "the
+  bytes Step 0.1 read" are the bytes add-pack.md's verification step read,
+  "Step 0.2's deep read" is your own read of the project's gate and settings,
+  "Step 7" is add-pack.md's final report, and `round1.dropped` is the ledger
+  entry's `dropped` list (see the last step). Its plan never targets a schema
+  1-4 layout, so the unsuffixed fallback below does not apply. The `modes`
+  check below tests `plan.requiredMode` (`"fresh"` for a project the CLI
+  bootstrapped, `"adopt"` for an adopted one) in place of `"adopt"`.
+
+**Project shape.** For a project the CLI itself bootstrapped (it has
+`bin/verify.mjs` and `bin/lib/verify-steps.packs.json`), the wiring lands in
+three JSON files, applying the CLI's own merge semantics by hand. In
+`.claude/settings.json`, the pack's `hooks` are merged entry by entry,
+add-only. Each `settingsTopLevel` key is planted only when the key is absent
+or identical; otherwise ask. In `package.json`, `scripts` are add-only, and a
+different existing script under the same name is a collision to ask about.
+In `bin/lib/verify-steps.packs.json`, each of the pack's `verifySteps` is
+appended by `id`, and the same `id` with different content is a collision.
+For any other project, translate the wiring by hand against the project's
+real gate, as the procedure below says.
 
 Before installing, check the
 pack's own `modes`: a pack whose `modes` doesn't include `"adopt"` (today,
@@ -52,3 +81,47 @@ runner is (a `package.json` script plus a line in its `lefthook.yml`/
 — or, if the project has no such gate runner at all, install the pack's
 other artifacts and state plainly in Step 7 that the gate was not wired,
 rather than inventing a runner the project never asked for.
+
+## Record the pack
+
+The final step, once the pack's files and wiring are in place: record it in
+`.groundwork/installed-packs.json`, the installed-packs ledger. Only
+`/customize` writes it; the CLI only reads it. Read the existing ledger first.
+When it is absent, start from `{ "schemaVersion": 1, "packs": [] }`. If it is
+invalid JSON, has an unknown or higher `schemaVersion` than 1, or holds an
+entry whose `name` is `__proto__`, `constructor` or `prototype`, stop, show it
+to the user and never overwrite it; the pack stays installed, unrecorded, and
+the report says so. (add-pack.md runs the same check before its first
+question, so on that path it stops before anything is installed.) When the
+ledger is valid, add this pack's entry, or replace the entry of the same name
+(a reinstall), and keep the other entries semantically unchanged (the ledger
+is re-serialised, so their formatting may change). The entry's shape:
+
+```json
+{
+  "name": "quality",
+  "installedAt": "2026-01-01T00:00:00.000Z",
+  "via": "add-pack",
+  "cliVersion": "1.0.0",
+  "manifestSha256": "<sha256 of pack.json.staged>",
+  "files": [{ "path": "bin/check-file-budget.mjs", "sha256": "<sha256>" }],
+  "wiring": {
+    "applied": ["verifySteps:file-budget"],
+    "skipped": [{ "item": "settingsTopLevel:statusLine", "reason": "..." }]
+  },
+  "dropped": [{ "path": "...", "reason": "..." }]
+}
+```
+
+`name` is the pack's name and `installedAt` the current time as an ISO 8601
+string. `via` is `"add-pack"` (followed from add-pack.md) or
+`"adopt-round-1"` (followed from adopt Round 1); `"fresh"` names a pack the
+CLI installed at bootstrap with `--pack`, which writes no ledger itself, so
+this skill does not write it today. `cliVersion` is `plan.cliVersion` for
+add-pack or `inventory.cliVersion` for adopt. `manifestSha256` is the SHA-256
+of the verified `pack.json.staged` bytes. `files` lists every file the pack
+installed by its project path, and each `sha256` is the SHA-256 of the
+installed bytes (after token substitution); `sha256` is `null` for a file the
+user kept theirs on. `wiring` lists each wiring item as `applied` or
+`skipped` with its reason, and `dropped` lists each file or hook left out
+with its reason.

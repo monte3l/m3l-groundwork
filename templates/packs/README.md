@@ -49,9 +49,12 @@ already enumerate groups rather than individual steps.
 - `modes` — `["fresh"]` and/or `["fresh", "adopt"]`. By convention,
   "adopt-capable" means an artifact has no dependency on the baseline's exact
   file layout (an agent, most hooks), so it is safe to install into an
-  existing project. Nothing enforces this: adopt mode stages every pack
-  whatever its `modes`, and fresh mode refuses a pack that does not list
-  `fresh`. A pack whose artifacts
+  existing project. No check verifies that convention against a pack's
+  artifacts; what the CLI checks is `modes` itself. Adopt mode stages every
+  pack whatever its `modes`, fresh mode refuses a pack that does not list
+  `fresh`, and `--add-pack` checks `modes` against the project's origin: a
+  project the CLI bootstrapped needs `fresh` in the pack's `modes`, an
+  adopted one needs `adopt`. A pack whose artifacts
   assume a layout can still list `adopt` (`quality` does: its gate assumes a
   flat `src/` and `tests/`); it must then say what to adjust in `adoptNotes`,
   which `/customize` surfaces before installing.
@@ -101,6 +104,12 @@ already enumerate groups rather than individual steps.
   installation translates `wiring.verifySteps`/`wiring.settings` against
   the project's _real_ gate runner and hook config — read for real by that
   point, not guessed at offline.
+- **Add to an existing project**: for a project that is already bootstrapped
+  or adopted, `npx @monte3l/groundwork <dir> --add-pack <name>` stages the
+  pack at `.groundwork/add-pack/<name>/` with a `plan.json` survey and
+  installs nothing. Then `/customize add-pack <name>` shows the plan, asks
+  before writing anything, installs the pack and records it in
+  `.groundwork/installed-packs.json`.
 
 ## Available packs
 

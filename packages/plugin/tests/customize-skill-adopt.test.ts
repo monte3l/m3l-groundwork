@@ -32,14 +32,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 const skillPath = join(here, "..", "skills", "customize", "SKILL.md");
 // Step 0, Step 3 and the staged-pack install procedure live in sibling files
 // (SKILL.md links to them, to stay under the post-compaction re-injection cap),
-// so the contract text spans all four.
+// so the contract text spans all of them, add-pack.md (the scoped add-pack
+// procedure) included so the exactly-once regression guards keep covering it.
+// A missing file reads as "" so only the tests that need its text fail.
 const raw = [
   join(here, "..", "skills", "customize", "step-0-reconcile.md"),
   join(here, "..", "skills", "customize", "step-3-round-1.md"),
   join(here, "..", "skills", "customize", "pack-install.md"),
   skillPath,
+  join(here, "..", "skills", "customize", "add-pack.md"),
 ]
-  .map((path) => readFileSync(path, "utf8"))
+  .map((path) => (existsSync(path) ? readFileSync(path, "utf8") : ""))
   .join("\n");
 const text = raw.replace(/\s+/g, " ");
 // The staged-pack install procedure lives in pack-install.md beside SKILL.md.
@@ -1376,13 +1379,22 @@ describe("pack-install.md -- the staged-pack install procedure moved out of step
     expect(packInstallFlat).toContain(phrase);
   });
 
-  it("ends with the verifySteps 'gate was not wired' rule (nothing of the comparison paragraph trails it)", () => {
-    expect(
-      packInstallFlat
-        .trimEnd()
-        .endsWith(
-          "rather than inventing a runner the project never asked for.",
-        ),
-    ).toBe(true);
+  // Slice 5 DELIBERATELY re-points the slice-4 "pack-install.md ends with the
+  // verifySteps 'gate was not wired' sentence" assertion: the file now ends
+  // with the "Record the pack" ledger step. The verifySteps sentence itself
+  // is still pinned by the invariants table above; here we pin that it is
+  // still intact, still precedes the ledger step, and that the ledger step is
+  // the tail (nothing of the comparison paragraph trails it).
+  it("ends with the 'Record the pack' ledger step, which follows the verifySteps 'gate was not wired' rule", () => {
+    const gateSentence =
+      "rather than inventing a runner the project never asked for.";
+    const gateIdx = packInstallFlat.indexOf(gateSentence);
+    const recordIdx = packInstallFlat.indexOf("Record the pack");
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(recordIdx).toBeGreaterThan(gateIdx);
+    const tail = packInstallFlat.slice(recordIdx);
+    expect(tail).toContain(".groundwork/installed-packs.json");
+    expect(tail).not.toContain("`recommendPacks(answers)`");
+    expect(packInstallFlat.trimEnd().endsWith(gateSentence)).toBe(false);
   });
 });

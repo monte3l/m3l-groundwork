@@ -12,7 +12,10 @@ Contents:
 
 ## Step 0 — Reconcile (adopt mode only)
 
-1. Look for `.groundwork/inventory.json`.
+1. Look for `.groundwork/inventory.json`. Classify `.groundwork/` after
+   ignoring its two entries `add-pack/` and `installed-packs.json` (packs
+   staged by `--add-pack` and the installed-packs ledger, which a fresh
+   bootstrap can carry too).
    - **Absent, and no `.groundwork/` directory either → usually a fresh
      bootstrap; skip straight to Step 1.** Everything below this step applies
      only when an inventory exists. **One guard first:** an adopted project
@@ -25,10 +28,15 @@ Contents:
      second answer stops with the re-run advice below and changes nothing.
      Never apply fresh-mode tailoring to an established codebase on the
      strength of a missing directory alone.
+   - **Absent, and `.groundwork/` holds nothing but those two entries → not
+     an interrupted run: continue on the fresh path**, with the same
+     `git rev-list -n1 HEAD` guard as the bullet above. If any
+     `.groundwork/add-pack/*/plan.json` exists, mention it: "pack(s) staged:
+     run /customize add-pack <name>" (naming each one).
    - **Absent, but `.groundwork/` holds only tracked report files → a clone
      of an adopted project.** The recommended `.gitignore` (Step 7) tracks
-     `adoption-report.md` and `customization-report.md` and ignores the
-     rest, so a clone has a `.groundwork/` with those reports and no
+     `adoption-report.md`, `customization-report.md` and the
+     `installed-packs.json` ledger and ignores the rest, so a clone has a `.groundwork/` with those reports and no
      inventory, no `baseline/` and no `packs/`. Confirm with
      `git ls-files .groundwork` (it lists the files present). This is not an
      interrupted run. Stop, change nothing, and tell the user: "This clone has
@@ -36,7 +44,7 @@ Contents:
      committed. Re-run `npx @monte3l/groundwork .` and then run `/customize`
      again. The re-run deletes the tracked `.groundwork/customization-report.md`
      from your working tree; `git restore` brings it back if you want it."
-   - **Absent, but `.groundwork/` exists → a previous CLI adopt run did not
+   - **Absent, and anything else is in `.groundwork/` → a previous CLI adopt run did not
      complete** (the CLI deletes the old inventory before it stages anything
      and writes the new one last, so no inventory beside a `.groundwork/`
      directory means the run died part-way). **Stop. Never fall through to
@@ -44,7 +52,9 @@ Contents:
      established project. Tell the user: "`.groundwork/` is incomplete: a
      previous adopt run did not finish, or `inventory.json` was removed.
      If this project was never adopted (it was bootstrapped fresh), delete
-     `.groundwork/` and run `/customize` again. Otherwise re-run
+     everything in `.groundwork/` except `installed-packs.json` and
+     `add-pack/` (the tracked ledger and any pending pack staging) and run
+     `/customize` again. Otherwise re-run
      `npx @monte3l/groundwork .` and then run `/customize` again."
      Change nothing.
    - **Present, but not valid JSON, or its `schemaVersion` is not an integer
@@ -275,7 +285,11 @@ Contents:
    question per file (the harness facet's batch also carries any wiring
    findings you confirmed in the deep read, offered as fixes to make, and the
    toolchain facet's batch does the same for confirmed toolchain wiring findings) — and
-   (c) **which pack(s) to install**, from `inventory.packs`. For each pack, show its `budget`, its
+   (c) **which pack(s) to install**, from `inventory.packs`. When
+   `.groundwork/installed-packs.json` exists and is valid, the packs it lists
+   are marked installed and not offered again unless the user asks to
+   reinstall; an invalid ledger is shown to the user and never overwritten
+   silently. For each pack, show its `budget`, its
    `wiringObservations` (facts about how it would land — e.g. "no
    `bin/lib/verify-steps.packs.json` found: no `bin/verify.mjs`-shaped gate
    runner detected", or "`.claude/settings.json` already sets a top-level

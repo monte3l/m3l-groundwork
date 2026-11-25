@@ -164,6 +164,13 @@ surveys which packs apply and stages them under `.groundwork/packs/` (and
 the baseline files it would add under `.groundwork/baseline/`);
 `/customize` installs from there after you confirm.
 
+To add a pack to a project that is already set up, run
+`npx @monte3l/groundwork . --add-pack <name>`, then `/customize add-pack <name>`
+in Claude Code. The CLI only stages the pack. `/customize add-pack` shows its
+plan, asks before writing anything, installs it, and records it in
+`.groundwork/installed-packs.json`, a ledger to commit so every clone knows
+which packs the project has.
+
 ## Flags
 
 | Flag                    | Effect                                                                                                                                                                                                                                    |
