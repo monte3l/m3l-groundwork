@@ -28,11 +28,12 @@
  * the theme once the reads resolve. A `light*` or `dark*` theme picks the
  * m3l-design variant, overriding any COLORFGBG in settings `env`; an `auto`
  * or `custom:*` theme says nothing about the background, so the hook falls
- * back to that settings-`env` COLORFGBG, then to dark. If `/theme` saved the
- * choice somewhere other than the settings files, the `theme` read returns
- * nothing usable (any value other than `light*` or `dark*` gives no answer)
- * and the behaviour is as it was without it. The `theme` setting
- * never opts in to m3l-design (that still needs GROUNDWORK_STATUSLINE_THEME),
+ * back to that settings-`env` COLORFGBG, then to dark. Observed live (Claude
+ * Code 2.1.332, 2026-11-25): a `theme` in a project `settings.json` and a
+ * choice made with `/theme` both reach the read, and a `/theme` change shows
+ * after the next start. Any value other than `light*` or `dark*` gives no
+ * answer, and the behaviour is then as it was without the read. The `theme`
+ * setting never opts in to m3l-design (that still needs GROUNDWORK_STATUSLINE_THEME),
  * and NO_COLOR still wins. The mod cannot see COLORFGBG or NO_COLOR from the
  * shell, only from the settings `env` block. Each read is made once per
  * registration and never retried (a failed read is unlikely to be transient,

@@ -18,10 +18,12 @@
   (`$.settings.read({ key: "theme" })`: `light*` or `dark*`). A `theme` of
   `auto` or `custom:*` says nothing about the background, so the mod falls back
   to `COLORFGBG` in the settings `env` block and then to dark; it cannot see the
-  shell's `COLORFGBG`. Both reads are tested only through fakes and have never
-  been seen in a live session (an earlier probe could not get a row on screen),
-  and it is unverified that `/theme` saves to a file `$.settings.read` sees.
-  `quality`:
+  shell's `COLORFGBG`. Both reads were observed in a live session (Claude Code
+  2.1.332, 2026-11-25, with a debug copy of the mod that stamped the resolved
+  theme and palette into each row): a `theme` in `settings.json` and a choice
+  made with `/theme` both reach the mod, and a `/theme` change shows after the
+  next start. The coloured segments themselves were not seen, because the rows
+  in that session carried no effort or elapsed time to colour. `quality`:
   `type-design-analyzer` agent and the `check-file-budget` ratchet. `claude-github`:
   `claude-action` in mention-mode and an automated PR-review workflow, which
   need an auth secret the pack cannot create. `github`: three `gh` skills.
