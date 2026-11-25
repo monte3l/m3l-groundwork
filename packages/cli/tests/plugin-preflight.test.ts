@@ -55,7 +55,11 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
-  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+  for (const stepName of [
+    "step-0-reconcile.md",
+    "step-3-round-1.md",
+    "pack-install.md",
+  ]) {
     writeFileSync(
       join(sourceDir, "skills", "customize", stepName),
       `# ${stepName}\n`,

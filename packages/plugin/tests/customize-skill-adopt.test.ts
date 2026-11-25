@@ -15,7 +15,13 @@
  * doesn't break on the markdown's own line wrapping.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  mkdtempSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -24,16 +30,30 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const skillPath = join(here, "..", "skills", "customize", "SKILL.md");
-// Step 0 and Step 3 live in sibling files (SKILL.md links to them, to stay under
-// the post-compaction re-injection cap), so the contract text spans all three.
+// Step 0, Step 3 and the staged-pack install procedure live in sibling files
+// (SKILL.md links to them, to stay under the post-compaction re-injection cap),
+// so the contract text spans all four.
 const raw = [
   join(here, "..", "skills", "customize", "step-0-reconcile.md"),
   join(here, "..", "skills", "customize", "step-3-round-1.md"),
+  join(here, "..", "skills", "customize", "pack-install.md"),
   skillPath,
 ]
   .map((path) => readFileSync(path, "utf8"))
   .join("\n");
 const text = raw.replace(/\s+/g, " ");
+// The staged-pack install procedure lives in pack-install.md beside SKILL.md.
+// A missing file reads as "" so only the tests that need its text fail.
+const packInstallPath = join(
+  here,
+  "..",
+  "skills",
+  "customize",
+  "pack-install.md",
+);
+const packInstallFlat = existsSync(packInstallPath)
+  ? readFileSync(packInstallPath, "utf8").replace(/\s+/g, " ")
+  : "";
 
 describe("SKILL.md Step 0 -- incomplete-run rule", () => {
   it("tells the agent to stop and never fall through to the fresh flow when an inventory is absent but .groundwork/ exists", () => {
@@ -533,16 +553,9 @@ describe("SKILL.md Step 0.4(c) Confirm -- prototype-key check before offering a 
 });
 
 describe("SKILL.md Round 1's approved-packs bullet -- prototype-key check before the hand merge", () => {
-  // Heading-scoped from "The **approved packs**" (the bullet's own opening)
-  // down to the next major heading, "**Plugins (both modes)".
-  const sectionStart = text.indexOf("The **approved packs**");
-  const sectionEnd = text.indexOf("**Plugins (both modes)");
-  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
-    throw new Error(
-      "Round 1 approved-packs section markers ('The **approved packs**' / '**Plugins (both modes)') were not both found in SKILL.md -- update these markers if the heading text changed",
-    );
-  }
-  const section = text.slice(sectionStart, sectionEnd);
+  // The install procedure now lives in pack-install.md (read in full by
+  // step-3-round-1.md), so the slice is that whole file, flattened.
+  const section = packInstallFlat;
 
   it("tells the agent to repeat the Step 0.4(c) prototype-key check before merging any staged pack.json.staged wiring", () => {
     expect(section).toContain(
@@ -744,16 +757,9 @@ describe("SKILL.md Step 0.1 -- the staged-packs verify block stays scoped to sch
 });
 
 describe("SKILL.md Round 1's approved-packs bullet -- installs from the staged, verified, token-substituted copy", () => {
-  // Same heading-scoped slice as the "prototype-key check before the hand
-  // merge" describe block above.
-  const sectionStart = text.indexOf("The **approved packs**");
-  const sectionEnd = text.indexOf("**Plugins (both modes)");
-  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
-    throw new Error(
-      "Round 1 approved-packs section markers ('The **approved packs**' / '**Plugins (both modes)') were not both found in SKILL.md -- update these markers if the heading text changed",
-    );
-  }
-  const section = text.slice(sectionStart, sectionEnd);
+  // The install procedure now lives in pack-install.md (read in full by
+  // step-3-round-1.md), so the slice is that whole file, flattened.
+  const section = packInstallFlat;
 
   it("installs each file from the staged, suffixed path", () => {
     expect(section).toContain("`.groundwork/packs/<name>/files/<path>.staged`");
@@ -826,16 +832,9 @@ describe("SKILL.md Step 0.4(c) Confirm -- schema 1-4 branch reads the unsuffixed
 });
 
 describe("SKILL.md Round 1's approved-packs bullet -- schema 1-4 branch reads the unsuffixed files", () => {
-  // Same heading-scoped slice as the other Round 1 approved-packs describe
-  // blocks above.
-  const sectionStart = text.indexOf("The **approved packs**");
-  const sectionEnd = text.indexOf("**Plugins (both modes)");
-  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
-    throw new Error(
-      "Round 1 approved-packs section markers ('The **approved packs**' / '**Plugins (both modes)') were not both found in SKILL.md -- update these markers if the heading text changed",
-    );
-  }
-  const section = text.slice(sectionStart, sectionEnd);
+  // The install procedure now lives in pack-install.md (read in full by
+  // step-3-round-1.md), so the slice is that whole file, flattened.
+  const section = packInstallFlat;
 
   it("still keeps the schema 5 clause installing from files/<path>.staged", () => {
     expect(section).toContain("`.groundwork/packs/<name>/files/<path>.staged`");
@@ -1046,16 +1045,9 @@ describe("SKILL.md Step 0.1 -- no-shell-tool fallback for the staged-baseline ha
 });
 
 describe("SKILL.md Round 1's approved-packs bullet -- the wiring translation is one shared sentence for both schemas", () => {
-  // Same heading-scoped slice as the other Round 1 approved-packs describe
-  // blocks above.
-  const sectionStart = text.indexOf("The **approved packs**");
-  const sectionEnd = text.indexOf("**Plugins (both modes)");
-  if (sectionStart === -1 || sectionEnd === -1 || sectionEnd <= sectionStart) {
-    throw new Error(
-      "Round 1 approved-packs section markers ('The **approved packs**' / '**Plugins (both modes)') were not both found in SKILL.md -- update these markers if the heading text changed",
-    );
-  }
-  const section = text.slice(sectionStart, sectionEnd);
+  // The install procedure now lives in pack-install.md (read in full by
+  // step-3-round-1.md), so the slice is that whole file, flattened.
+  const section = packInstallFlat;
 
   const forEitherSchemaPhrase = "for either schema";
   const translatePhrase = "translate `pack.json`'s `wiring` by hand";
@@ -1282,4 +1274,115 @@ describe("Step 3 -- retargeting rule", () => {
       expect(step3Flat).toContain(phrase);
     },
   );
+});
+
+describe("pack-install.md -- the staged-pack install procedure moved out of step-3-round-1.md", () => {
+  const step3Raw = readFileSync(
+    join(here, "..", "skills", "customize", "step-3-round-1.md"),
+    "utf8",
+  );
+
+  it("exists beside SKILL.md", () => {
+    expect(existsSync(packInstallPath)).toBe(true);
+  });
+
+  it("is linked from step-3-round-1.md as a same-directory relative link, with an instruction to read it in full", () => {
+    expect(step3Raw).toContain("(pack-install.md)");
+    expect(step3Flat).toMatch(
+      /read(ing)? and follow(ing)? \[`pack-install\.md`\]/,
+    );
+    expect(step3Flat).toContain("in full");
+  });
+
+  it("keeps the approved-packs lead-in and the recommendPacks comparison paragraph in step-3-round-1.md", () => {
+    expect(step3Flat).toContain("The **approved packs**");
+    expect(step3Flat).toContain("`recommendPacks(answers)`");
+    expect(step3Flat).toContain(
+      'mirroring Step 4\'s "the one exception" rule for guidance findings.',
+    );
+  });
+
+  it("no longer carries the moved procedure in step-3-round-1.md", () => {
+    for (const moved of [
+      "Before installing, check the pack's own `modes`",
+      "Before merging any staged `pack.json.staged` wiring",
+      "translate `pack.json`'s `wiring` by hand",
+      "the gate was not wired",
+    ]) {
+      expect(step3Flat).not.toContain(moved);
+    }
+  });
+
+  it("does not repeat the comparison paragraph in pack-install.md", () => {
+    expect(packInstallFlat).not.toContain("`recommendPacks(answers)`");
+  });
+
+  // Each phrase pins one sentence of the moved text: deleting that sentence
+  // from pack-install.md fails the matching row.
+  it.each([
+    [
+      "modes check: a pack without adopt is never auto-installed",
+      "Before installing, check the pack's own `modes`: a pack whose `modes` doesn't include `\"adopt\"`",
+    ],
+    [
+      "modes check: publishing and licensing named as manual installs",
+      "is never auto-installed here even if staged and approved; instead, state in Step 7 that it needs a manual install",
+    ],
+    [
+      "prototype-key check before merging wiring",
+      "if a key of `wiring.settings`, `wiring.settingsTopLevel` or `wiring.packageScripts` is `__proto__`, `constructor` or `prototype`, stop the same way and change nothing",
+    ],
+    [
+      ".staged strip and __KEY__ replacement on install",
+      "(the `.staged` suffix stripped, never to the staged name), filling in the `__KEY__` tokens with the project's real values as you copy",
+    ],
+    [
+      "per-file conflict decisions respected on install",
+      "respecting any approved per-file conflict decision the same way the baseline's own additions are applied",
+    ],
+    [
+      "schema 1-4 fallback reads unsuffixed files",
+      "For a schema 1-4 inventory, install each file from the unsuffixed `.groundwork/packs/<name>/files/<path>` instead",
+    ],
+    [
+      "settingsTopLevel is planted only when the key is absent",
+      "is a set of top-level keys (e.g. `statusLine`) planted whole, and only when the project doesn't already define that key",
+    ],
+    [
+      "statusline collision is never a reason to fail the pack install",
+      "a `statusLine` collision is never a reason to fail the whole pack install: skip that key and the two scripts that render it (`statusline.mjs`, `statusline-layout.mjs`)",
+    ],
+    [
+      "statusline collision still installs the subagent-rows plugin",
+      "install only the `subagent-rows` plugin under `.claude/skills/subagent-rows/`",
+    ],
+    [
+      "a leftover subagentStatusLine key is kept untouched and never removed unasked",
+      "A project that still carries a `subagentStatusLine` key keeps it untouched",
+    ],
+    [
+      "harness-extras guard-readonly-bash skip is recorded in round1.dropped",
+      "skip that one hook too (the pack's `adoptNotes` allow it), record it in `round1.dropped` and say in Step 7 that it was skipped and why",
+    ],
+    [
+      "verifySteps becomes a step in the project's real gate runner",
+      "`wiring.verifySteps` becomes a step in whatever this project's real gate runner is",
+    ],
+    [
+      "no gate runner: state the gate was not wired, never invent one",
+      "state plainly in Step 7 that the gate was not wired, rather than inventing a runner the project never asked for.",
+    ],
+  ])("pack-install.md keeps the invariant: %s", (_label, phrase) => {
+    expect(packInstallFlat).toContain(phrase);
+  });
+
+  it("ends with the verifySteps 'gate was not wired' rule (nothing of the comparison paragraph trails it)", () => {
+    expect(
+      packInstallFlat
+        .trimEnd()
+        .endsWith(
+          "rather than inventing a runner the project never asked for.",
+        ),
+    ).toBe(true);
+  });
 });

@@ -22,15 +22,16 @@ import {
 import { assertAdoptWriteScope } from "../src/main.js";
 
 describe("the step-file payload constants", () => {
-  it("CUSTOMIZE_SKILL_STEP_FILE_NAMES names the two step files", () => {
+  it("CUSTOMIZE_SKILL_STEP_FILE_NAMES names the three step files", () => {
     expect([...CUSTOMIZE_SKILL_STEP_FILE_NAMES]).toEqual([
       "step-0-reconcile.md",
       "step-3-round-1.md",
+      "pack-install.md",
     ]);
   });
 
-  it("CUSTOMIZE_SKILL_FILE_NAMES holds all seven payload files", () => {
-    expect(CUSTOMIZE_SKILL_FILE_NAMES).toHaveLength(7);
+  it("CUSTOMIZE_SKILL_FILE_NAMES holds all eight payload files", () => {
+    expect(CUSTOMIZE_SKILL_FILE_NAMES).toHaveLength(8);
     for (const name of [
       "SKILL.md",
       "kind-facet-map.ts",
@@ -39,13 +40,14 @@ describe("the step-file payload constants", () => {
       "plugin-map.ts",
       "step-0-reconcile.md",
       "step-3-round-1.md",
+      "pack-install.md",
     ]) {
       expect(CUSTOMIZE_SKILL_FILE_NAMES).toContain(name);
     }
   });
 
-  it("CUSTOMIZE_SKILL_WRITE_ORDER writes SKILL.md last, after both step files", () => {
-    expect(CUSTOMIZE_SKILL_WRITE_ORDER).toHaveLength(7);
+  it("CUSTOMIZE_SKILL_WRITE_ORDER writes SKILL.md last, after every step file", () => {
+    expect(CUSTOMIZE_SKILL_WRITE_ORDER).toHaveLength(8);
     expect(CUSTOMIZE_SKILL_WRITE_ORDER.at(-1)).toBe("SKILL.md");
     for (const stepName of CUSTOMIZE_SKILL_STEP_FILE_NAMES) {
       expect(CUSTOMIZE_SKILL_WRITE_ORDER).toContain(stepName);

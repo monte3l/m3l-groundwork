@@ -52,7 +52,11 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
-  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+  for (const stepName of [
+    "step-0-reconcile.md",
+    "step-3-round-1.md",
+    "pack-install.md",
+  ]) {
     writeFileSync(
       join(sourceDir, "skills", "customize", stepName),
       `# ${stepName}\n`,
@@ -590,6 +594,7 @@ describe("plain run (no symlinks) is unchanged by the guard", () => {
       join(".claude", "skills", "customize", "plugin-map.ts"),
       join(".claude", "skills", "customize", "step-0-reconcile.md"),
       join(".claude", "skills", "customize", "step-3-round-1.md"),
+      join(".claude", "skills", "customize", "pack-install.md"),
     ].sort();
 
     const result1 = installCustomizeSkill(targetDir, sourceDir);
