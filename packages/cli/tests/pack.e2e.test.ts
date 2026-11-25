@@ -24,6 +24,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { emitTemplate } from "../src/emit.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cliDir = join(here, "..");
@@ -133,6 +134,57 @@ describe("published tarball end-to-end", () => {
     expect(output).toMatch(/^github \(modes:/m);
     expect(output).toMatch(/^claude-github \(modes:/m);
     expect(output).toMatch(/^licensing \(modes:/m);
+  });
+
+  it("ships the template history data inside the tarball", () => {
+    const shipped = join(
+      scratch,
+      "extracted",
+      "package",
+      "data",
+      "template-history.json",
+    );
+    expect(existsSync(shipped)).toBe(true);
+    const parsed = JSON.parse(readFileSync(shipped, "utf8")) as {
+      schemaVersion: number;
+      versions: Record<string, unknown>;
+    };
+    expect(parsed.schemaVersion).toBe(1);
+    expect(Object.keys(parsed.versions)).toContain("1.5.0");
+  });
+
+  it("finds the shipped history from the packed CLI: --list-packs marks an outdated ledger pack [outdated]", () => {
+    const project = join(scratch, "outdated-project");
+    emitTemplate(join(cliDir, "..", "..", "templates", "core"), project, {
+      PROJECT_NAME: "pack-e2e",
+      YEAR: "2026",
+    });
+    mkdirSync(join(project, ".groundwork"), { recursive: true });
+    writeFileSync(
+      join(project, ".groundwork", "installed-packs.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [
+          {
+            name: "statusline",
+            cliVersion: "0.0.1",
+            manifestSha256: "0".repeat(64),
+          },
+        ],
+      }),
+    );
+
+    const output = execFileSync(
+      "node",
+      [installedBin, "--list-packs", project],
+      { encoding: "utf8" },
+    );
+
+    expect(output).toMatch(
+      /^statusline \(modes: [^)]*\) \[outdated\] \(ledger 0\.0\.1\) -- /m,
+    );
+    // The history file loaded: no note says it could not be read.
+    expect(output).not.toMatch(/template-history/);
   });
 
   it("ships the publishing pack's lockfile escaped, because npm strips package-lock.json at any depth", () => {

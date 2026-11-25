@@ -145,3 +145,30 @@ describe("templates/core/bin/lib/verify-steps.mjs -- readPackSteps error handlin
     }
   });
 });
+
+describe("bin/lib/verify-steps.mjs -- the template-history step", () => {
+  it("runs `node bin/build-template-history.mjs --check` in the lint group", async () => {
+    const lib = (await import(
+      pathToFileURL(join(repoRoot, "bin", "lib", "verify-steps.mjs")).href
+    )) as {
+      VERIFY_STEPS: { id: string; group: string; cmd: string[] }[];
+      findStep(
+        id: string,
+      ): { id: string; group: string; cmd: string[] } | undefined;
+      stepsInGroup(group: string): { id: string }[];
+    };
+    const step = lib.findStep("template-history");
+    expect(step?.group).toBe("lint");
+    expect(step?.cmd).toEqual([
+      "node",
+      "bin/build-template-history.mjs",
+      "--check",
+    ]);
+    expect(lib.stepsInGroup("lint").map((s) => s.id)).toContain(
+      "template-history",
+    );
+    expect(
+      lib.VERIFY_STEPS.filter((s) => s.id === "template-history"),
+    ).toHaveLength(1);
+  });
+});

@@ -171,6 +171,14 @@ plan, asks before writing anything, installs it, and records it in
 `.groundwork/installed-packs.json`, a ledger to commit so every clone knows
 which packs the project has.
 
+`--list-packs <dir>` marks a pack **outdated** when the ledger says it was
+installed by an older release and the pack has changed since. The check is
+offline: the CLI ships a history of every release's pack files. To refresh an
+outdated pack, stage it again with `npx @monte3l/groundwork . --add-pack <name>
+--reinstall` and run `/customize add-pack <name>`. A pack the ledger does not
+list, such as one installed at bootstrap with `--pack`, is never reported as
+outdated.
+
 ## Flags
 
 | Flag                    | Effect                                                                                                                                                                                                                                    |
@@ -183,7 +191,7 @@ which packs the project has.
 | `--pack <name>`         | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable).                                                                                                                                                             |
 | `--add-pack <name>`     | Stage a pack into an already bootstrapped or adopted project, under `.groundwork/add-pack/<name>/`, for `/customize add-pack` to install (repeatable). Creates `.groundwork/` and `.groundwork/add-pack/` if absent; writes nothing else. |
 | `--reinstall`           | With `--add-pack`: stage a pack the project already has installed.                                                                                                                                                                        |
-| `--list-packs [<dir>]`  | Print every available pack and exit. With a directory, also report which packs that project already has (installed, partial, not installed or undetermined), without writing anything.                                                    |
+| `--list-packs [<dir>]`  | Print every available pack and exit. With a directory, also report which packs that project already has (installed, outdated, partial, not installed or undetermined), without writing anything.                                          |
 | `--help`, `--version`   | Print usage, or the CLI's version.                                                                                                                                                                                                        |
 
 An unexpected failure (anything that is not a bad invocation) prints its

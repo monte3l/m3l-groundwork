@@ -77,6 +77,12 @@ export const VERIFY_STEPS = [
     cmd: ["node", "bin/build-npm-readme.mjs", "--check"],
   },
   {
+    id: "template-history",
+    group: "lint",
+    name: "Check template history covers every release",
+    cmd: ["node", "bin/build-template-history.mjs", "--check"],
+  },
+  {
     id: "typecheck",
     group: "typecheck",
     name: "Typecheck",

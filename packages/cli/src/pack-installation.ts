@@ -16,6 +16,7 @@
  * Notes and evidence name paths relative to the project root, with `/`
  * separators.
  */
+import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, sep } from "node:path";
 import { planConflicts, templateRelPath } from "./conflicts.js";
@@ -34,6 +35,9 @@ import type { SettingsHooksFragment } from "./merge-json.js";
 import { listPackNames, loadPack } from "./packs.js";
 import type { Pack } from "./packs.js";
 import { errnoCode, isAbsentError } from "./survey/internal/read-guard.js";
+import { loadTemplateHistory, packHashesAt } from "./template-history.js";
+import type { TemplateHistory } from "./template-history.js";
+import { resolveCliVersion } from "./inventory.js";
 import { buildTokens, isNpmPackageName } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
 
@@ -94,7 +98,8 @@ export interface PackInstallFacts {
  * ```
  */
 export interface PackInstallStatus {
-  readonly status: "not-installed" | "partial" | "installed" | "undetermined";
+  readonly status:
+    "not-installed" | "partial" | "installed" | "outdated" | "undetermined";
   readonly source: "ledger" | "detected";
   readonly files: PackInstallFacts["files"];
   readonly wiring: PackInstallFacts["wiring"];
@@ -488,13 +493,50 @@ export function matchesTokenizedTemplate(
 const LEDGER_SCHEMA_VERSION = 1;
 
 /**
- * Reads the pack names `.groundwork/installed-packs.json` records
- * (`{ schemaVersion: 1, packs: [{ name, ... }] }`). A missing file is an
- * empty ledger with no notes. A symlinked or non-regular file, one behind a
- * symlinked `.groundwork/`, malformed JSON, a non-object, or a missing,
- * wrong or future `schemaVersion` skips the whole file with a note; an entry
- * whose `name` is not a string, or is `__proto__`/`constructor`/`prototype`,
- * is skipped with a note while the rest are kept. Notes name the path
+ * One `.groundwork/installed-packs.json` entry as read: the pack `name`, plus
+ * the CLI version that installed it (`cliVersion`) and the sha256 of the
+ * `pack.json` it staged (`manifestSha256`) when the entry records them as
+ * strings.
+ *
+ * @example
+ * ```ts
+ * const entry: LedgerEntry = { name: "quality", cliVersion: "1.4.0" };
+ * ```
+ */
+export interface LedgerEntry {
+  readonly name: string;
+  readonly cliVersion?: string | undefined;
+  readonly manifestSha256?: string | undefined;
+}
+
+const LEDGER_SHA256 = /^[0-9a-f]{64}$/;
+
+/**
+ * `entry[key]` when it is an own string property (for `manifestSha256`, a
+ * lowercase 64-hex sha256), else nothing.
+ */
+function optionalString(
+  entry: Record<string, unknown>,
+  key: "cliVersion" | "manifestSha256",
+): { readonly [K in typeof key]?: string } {
+  const value: unknown = Object.hasOwn(entry, key) ? entry[key] : undefined;
+  if (typeof value !== "string") return {};
+  if (key === "manifestSha256" && !LEDGER_SHA256.test(value)) return {};
+  return { [key]: value };
+}
+
+/**
+ * Reads the packs `.groundwork/installed-packs.json` records
+ * (`{ schemaVersion: 1, packs: [{ name, cliVersion?, manifestSha256?, ... }] }`):
+ * `names` in order, without duplicates, and `entries` in step with them (the
+ * first entry for a name wins). A missing file is an empty ledger with no
+ * notes. A symlinked or non-regular file, one behind a symlinked
+ * `.groundwork/`, malformed JSON, a non-object, or a missing, wrong or future
+ * `schemaVersion` skips the whole file with a note; an entry whose `name` is
+ * not a string, or is `__proto__`/`constructor`/`prototype`, is skipped with
+ * a note while the rest are kept. A `cliVersion` that is not a string, or a
+ * `manifestSha256` that is not a lowercase 64-hex sha256, is dropped
+ * silently, keeping the entry. Notes name the path
  * relative to `targetDir`. Never throws.
  *
  * @example
@@ -505,12 +547,13 @@ const LEDGER_SCHEMA_VERSION = 1;
  */
 export function readInstalledPacksLedger(targetDir: string): {
   names: string[];
+  entries: LedgerEntry[];
   undetermined: string[];
 } {
   const rel = `${GROUNDWORK}/installed-packs.json`;
   const undetermined: string[] = [];
   if (projectEntry(targetDir, rel).kind === "absent") {
-    return { names: [], undetermined };
+    return { names: [], entries: [], undetermined };
   }
 
   const read = readJsonFile(targetDir, rel);
@@ -518,42 +561,174 @@ export function readInstalledPacksLedger(targetDir: string): {
     undetermined.push(
       `${read.reason} -- the installed-packs ledger was ignored`,
     );
-    return { names: [], undetermined };
+    return { names: [], entries: [], undetermined };
   }
   const ledger = read.value;
   if (schemaVersionOf(ledger) !== LEDGER_SCHEMA_VERSION || !isRecord(ledger)) {
     undetermined.push(
       `${rel} is not a schemaVersion ${String(LEDGER_SCHEMA_VERSION)} ledger object -- ignored`,
     );
-    return { names: [], undetermined };
+    return { names: [], entries: [], undetermined };
   }
   const packs: unknown = Object.hasOwn(ledger, "packs")
     ? ledger["packs"]
     : undefined;
   if (!Array.isArray(packs)) {
     undetermined.push(`${rel} has no packs array -- ignored`);
-    return { names: [], undetermined };
+    return { names: [], entries: [], undetermined };
   }
 
   const names: string[] = [];
+  const entries: LedgerEntry[] = [];
   let skipped = 0;
   for (const entry of packs as unknown[]) {
     const name: unknown =
       isRecord(entry) && Object.hasOwn(entry, "name")
         ? entry["name"]
         : undefined;
-    if (typeof name !== "string" || isPrototypeSensitiveKey(name)) {
+    if (
+      !isRecord(entry) ||
+      typeof name !== "string" ||
+      isPrototypeSensitiveKey(name)
+    ) {
       skipped++;
       continue;
     }
-    if (!names.includes(name)) names.push(name);
+    if (names.includes(name)) continue;
+    names.push(name);
+    entries.push({
+      name,
+      ...optionalString(entry, "cliVersion"),
+      ...optionalString(entry, "manifestSha256"),
+    });
   }
   if (skipped > 0) {
     undetermined.push(
       `${rel}: ${String(skipped)} entr${skipped === 1 ? "y" : "ies"} without a usable pack name skipped`,
     );
   }
-  return { names, undetermined };
+  return { names, entries, undetermined };
+}
+
+/**
+ * The hashes of a pack as the running CLI ships it: `manifestSha256` of the
+ * `pack.json` bytes staging writes (`JSON.stringify(manifest, null, 2)` plus
+ * a newline), and each template file's raw bytes by project path.
+ *
+ * @example
+ * ```ts
+ * const current: CurrentPackHashes = { manifestSha256: "ab12...", files: { "REUSE.toml": "cd34..." } };
+ * ```
+ */
+export interface CurrentPackHashes {
+  readonly manifestSha256: string;
+  readonly files: Readonly<Record<string, string>>;
+}
+
+const PLAIN_VERSION = /^(\d+)\.(\d+)\.(\d+)$/;
+
+/** `a` minus `b` as plain `x.y.z` versions, or `undefined` when either is not one. */
+function compareVersions(a: string, b: string): number | undefined {
+  const left = PLAIN_VERSION.exec(a);
+  const right = PLAIN_VERSION.exec(b);
+  if (left === null || right === null) return undefined;
+  for (let index = 1; index <= 3; index++) {
+    const diff = Number(left[index]) - Number(right[index]);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function sha256Hex(data: string | Buffer): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+/**
+ * The hash a history manifest compares by. The history hashes the raw
+ * `pack.json` blob, while staging (and so the ledger and
+ * {@link CurrentPackHashes}) hashes the re-serialized manifest; the
+ * shipped `pack.json` files are not byte-identical to that form. So when the
+ * history holds the blob's text, its canonical form is hashed instead. A
+ * missing blob gives no verdict (`missing`): the raw-blob hash never equals
+ * the canonical one, so comparing it would call every pack outdated. An
+ * unparseable blob gives no verdict either, with a `reason` for the caller.
+ */
+function comparableManifestHash(
+  history: TemplateHistory,
+  recorded: string,
+):
+  | { readonly kind: "hash"; readonly hash: string }
+  | { readonly kind: "missing" }
+  | { readonly kind: "unparsable"; readonly reason: string } {
+  const blob = Object.hasOwn(history.blobs, recorded)
+    ? history.blobs[recorded]
+    : undefined;
+  if (blob === undefined) return { kind: "missing" };
+  try {
+    const parsed: unknown = JSON.parse(blob);
+    return {
+      kind: "hash",
+      hash: sha256Hex(`${JSON.stringify(parsed, null, 2)}\n`),
+    };
+  } catch (error) {
+    // A damaged blob is missing data: it must never make a pack outdated.
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      kind: "unparsable",
+      reason: `its recorded pack.json is not valid JSON (${detail})`,
+    };
+  }
+}
+
+function sameHashes(
+  a: Readonly<Record<string, string>>,
+  b: Readonly<Record<string, string>>,
+): boolean {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && a[key] === b[key])
+  );
+}
+
+/**
+ * Whether a ledger-listed pack was installed from an older CLI whose copy of
+ * the pack differs from the running one's (`current`). Never true without an
+ * `entry`, or unless both its `cliVersion` and `runningVersion` are plain
+ * `x.y.z` with the ledger's numerically older. Then true when the ledger's
+ * `manifestSha256` differs from the current one, or when `history` records
+ * the pack at the ledger's version and its manifest hash, file set or any
+ * file hash differs from `current`. Missing data (no hash, no history, a
+ * version or pack the history lacks) never makes it true. Pure.
+ *
+ * @example
+ * ```ts
+ * const outdated = isPackOutdated(entry, current, history, resolveCliVersion());
+ * ```
+ */
+export function isPackOutdated(
+  entry: LedgerEntry | undefined,
+  current: CurrentPackHashes,
+  history: TemplateHistory | undefined,
+  runningVersion: string,
+): boolean {
+  if (entry?.cliVersion === undefined) return false;
+  const order = compareVersions(entry.cliVersion, runningVersion);
+  if (order === undefined || order >= 0) return false;
+  if (
+    entry.manifestSha256 !== undefined &&
+    entry.manifestSha256 !== current.manifestSha256
+  ) {
+    return true;
+  }
+  if (history === undefined) return false;
+  const recorded = packHashesAt(history, entry.cliVersion, entry.name);
+  if (recorded === undefined) return false;
+  const manifest = comparableManifestHash(history, recorded.manifest);
+  if (manifest.kind === "hash" && manifest.hash !== current.manifestSha256) {
+    return true;
+  }
+  return !sameHashes(recorded.files, current.files);
 }
 
 /** Every template file under `root`, keyed by the project path it emits to. */
@@ -948,7 +1123,9 @@ export function collectPackInstallFacts(
 
 /**
  * The verdict for one pack, from its facts. A pack the ledger lists is
- * `installed` from the `ledger`. Otherwise, `detected`: wiring `unknown` is
+ * `installed` from the `ledger` -- or `outdated` when `outdated` is set
+ * (see {@link isPackOutdated}); the flag means nothing for a pack the ledger
+ * does not list. Otherwise, `detected`: wiring `unknown` is
  * always `undetermined`, and so is a pack with no files and no applicable
  * wiring, which cannot be detected at all. Every file absent and wiring
  * absent or not applicable is `not-installed` -- or `undetermined` while
@@ -969,10 +1146,16 @@ export function classifyPackInstallation(
   ledgerNames: readonly string[],
   packName: string,
   undetermined: readonly string[],
+  outdated = false,
 ): PackInstallStatus {
   const { files, wiring } = facts;
   if (ledgerNames.includes(packName)) {
-    return { status: "installed", source: "ledger", files, wiring };
+    return {
+      status: outdated ? "outdated" : "installed",
+      source: "ledger",
+      files,
+      wiring,
+    };
   }
   const fileCount =
     files.present.length + files.absent.length + files.modified.length;
@@ -1037,6 +1220,7 @@ export const PACK_STATUS_LABELS: Readonly<
   partial: "partial",
   "not-installed": "not installed",
   undetermined: "undetermined",
+  outdated: "outdated",
 };
 
 /**
@@ -1052,6 +1236,8 @@ interface PackInstallationEntry {
   readonly modes: readonly string[];
   readonly description: string;
   readonly status: PackInstallStatus;
+  /** The ledger's `cliVersion` for the pack, set only when `status` is `outdated`. */
+  readonly ledgerVersion?: string;
 }
 
 /**
@@ -1067,6 +1253,110 @@ export interface PackInstallationReport {
   readonly origin: ProjectOrigin;
   readonly packs: readonly PackInstallationEntry[];
   readonly undetermined: readonly string[];
+}
+
+/**
+ * `pack` as the running CLI ships it, hashed the way the ledger and the
+ * history are: the manifest as staging serializes it, and each template
+ * file's raw bytes keyed by its untokenized project path. Throws the raw
+ * `fs` error of a failed read of the CLI's own templates.
+ */
+function currentPackHashes(pack: Pack): CurrentPackHashes {
+  const files = [...templateSources(pack.filesDir, {})].map(
+    ([path, source]) =>
+      [toPosix(path), sha256Hex(readFileSync(source))] as const,
+  );
+  return {
+    manifestSha256: sha256Hex(`${JSON.stringify(pack.manifest, null, 2)}\n`),
+    files: Object.fromEntries(files),
+  };
+}
+
+/**
+ * Optional overrides for {@link inspectPackInstallations}'s outdated check:
+ * the loaded template history (default: {@link loadTemplateHistory}) and the
+ * running CLI version (default: {@link resolveCliVersion}).
+ *
+ * @example
+ * ```ts
+ * const deps: OutdatedCheckDeps = { history: { note: "history unavailable" }, runningVersion: "1.5.0" };
+ * ```
+ */
+export interface OutdatedCheckDeps {
+  readonly history?: { history: TemplateHistory } | { note: string };
+  readonly runningVersion?: string;
+}
+
+const LEDGER_PATH = `${GROUNDWORK}/installed-packs.json`;
+
+/**
+ * Which ledger-listed packs in `collected` are outdated, and the notes for
+ * each ledger pack the check could not decide: a ledger `cliVersion` or a
+ * running version that is not a plain `x.y.z` (the latter once), a ledger
+ * version the history does not record, an unparsable recorded manifest, or
+ * a history that could not be loaded. The history is loaded only when an
+ * entry's `cliVersion` is a plain version older than the running CLI's, so a
+ * project with a current ledger never depends on it.
+ */
+function findOutdated(
+  entries: readonly LedgerEntry[],
+  collected: readonly { readonly name: string; readonly pack: Pack }[],
+  deps: OutdatedCheckDeps,
+): { outdated: Map<string, string>; notes: string[] } {
+  const running = deps.runningVersion ?? resolveCliVersion();
+  const outdated = new Map<string, string>();
+  const notes: string[] = [];
+  const listed = collected.flatMap(({ name, pack }) => {
+    const entry = entries.find((candidate) => candidate.name === name);
+    return entry?.cliVersion === undefined
+      ? []
+      : [{ name, pack, entry, cliVersion: entry.cliVersion }];
+  });
+  if (listed.length === 0) return { outdated, notes };
+  if (!PLAIN_VERSION.test(running)) {
+    notes.push(
+      `the running CLI version ${JSON.stringify(running)} is not a plain x.y.z version -- outdated packs in ${LEDGER_PATH} cannot be detected`,
+    );
+    return { outdated, notes };
+  }
+  const stale = listed.filter(({ name, cliVersion }) => {
+    const order = compareVersions(cliVersion, running);
+    if (order === undefined) {
+      notes.push(
+        `${LEDGER_PATH}: pack "${name}" has cliVersion ${JSON.stringify(cliVersion)}, not a plain x.y.z version -- whether it is outdated is unknown`,
+      );
+    }
+    return order !== undefined && order < 0;
+  });
+  if (stale.length === 0) return { outdated, notes };
+  const loaded = deps.history ?? loadTemplateHistory();
+  if ("note" in loaded) {
+    notes.push(loaded.note);
+    return { outdated, notes };
+  }
+  const { history } = loaded;
+  for (const { name, pack, entry, cliVersion } of stale) {
+    if (!Object.hasOwn(history.versions, cliVersion)) {
+      notes.push(
+        `${LEDGER_PATH}: pack "${name}" was installed by CLI ${cliVersion}, which the template history does not record -- whether it is outdated is unknown`,
+      );
+    } else {
+      const recorded = packHashesAt(history, cliVersion, name);
+      const manifest =
+        recorded === undefined
+          ? undefined
+          : comparableManifestHash(history, recorded.manifest);
+      if (manifest?.kind === "unparsable") {
+        notes.push(
+          `${LEDGER_PATH}: pack "${name}" at CLI ${cliVersion}: ${manifest.reason} -- its manifest was not compared`,
+        );
+      }
+    }
+    if (isPackOutdated(entry, currentPackHashes(pack), history, running)) {
+      outdated.set(name, cliVersion);
+    }
+  }
+  return { outdated, notes };
 }
 
 /**
@@ -1089,9 +1379,18 @@ export interface PackInstallationReport {
  * report's `origin.evidence` by a short pointer to that note, so no sentence
  * appears twice; {@link classifyProjectOrigin} keeps the full line.
  *
+ * `deps` overrides the template history and the running CLI version the
+ * outdated check uses ({@link OutdatedCheckDeps}). When that check cannot
+ * decide for a ledger-listed pack (a ledger or running version that is not
+ * a plain `x.y.z`, a ledger version the history does not record, an
+ * unparsable recorded manifest, or a history that cannot be loaded), a note
+ * says so; such a note never turns a pack `undetermined`.
+ *
  * @throws The `Error` `loadPack` raises for an unknown or malformed pack
- * name -- a caller error, not project data -- and whatever
- * {@link collectPackInstallFacts} throws.
+ * name -- a caller error, not project data -- whatever
+ * {@link collectPackInstallFacts} throws, and the raw `fs` error of a failed
+ * read of the CLI's own pack templates while hashing a ledger pack for the
+ * outdated check.
  *
  * @example
  * ```ts
@@ -1102,6 +1401,7 @@ export interface PackInstallationReport {
 export function inspectPackInstallations(
   targetDir: string,
   packNames?: readonly string[],
+  deps: OutdatedCheckDeps = {},
 ): PackInstallationReport {
   const survey = surveyProjectOrigin(targetDir);
   const ledger = readInstalledPacksLedger(targetDir);
@@ -1120,14 +1420,29 @@ export function inspectPackInstallations(
     );
     return { name, pack, facts };
   });
+  const { outdated, notes } = findOutdated(ledger.entries, collected, deps);
   const packs = collected.map(
-    ({ name, pack, facts }): PackInstallationEntry => ({
-      name,
-      modes: pack.manifest.modes,
-      description: pack.manifest.description,
-      status: classifyPackInstallation(facts, ledger.names, name, undetermined),
-    }),
+    ({ name, pack, facts }): PackInstallationEntry => {
+      const ledgerVersion = outdated.get(name);
+      return {
+        name,
+        modes: pack.manifest.modes,
+        description: pack.manifest.description,
+        status: classifyPackInstallation(
+          facts,
+          ledger.names,
+          name,
+          undetermined,
+          ledgerVersion !== undefined,
+        ),
+        ...(ledgerVersion !== undefined && { ledgerVersion }),
+      };
+    },
   );
+  // After the verdicts: an undecided outdated check hides no installation,
+  // only whether a ledger pack is outdated, so it must not turn a pack
+  // undetermined.
+  for (const note of notes) recordOnce(undetermined, note);
   const origin: ProjectOrigin = {
     ...survey.origin,
     evidence: survey.origin.evidence.map(

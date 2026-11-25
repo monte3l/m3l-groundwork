@@ -67,6 +67,18 @@ paths:
   `pnpm pack` from being read stale on a dev machine, and the marker is what
   stops an unscoped install from treating the consumer's own project root as
   ours. `scripts/vendor-assets.mjs` (`prepack`/`postpack`) does the copying.
+- **`packages/cli/data/template-history.json` is generated, never hand-edited.**
+  `node bin/build-template-history.mjs` rebuilds it from the local
+  `@monte3l/groundwork@x.y.z` tags (fetch them first); `--check`, the
+  `template-history` step in the `lint` group, validates the committed file and
+  fails when a released version in `CHANGELOG.md` is missing. It records, per
+  release, the sha256 of every template file and pack file, and keeps the text
+  only of tokenized files, `pack.json`s and the JSON merge targets. It ships
+  through `files` (`data`) and is located by `templateHistoryPath()` in
+  `assets.ts`, the same way as `templates/`, so `pack.e2e.test.ts` proves it
+  from the tarball. A pack's recorded manifest hash is compared in canonical
+  form (`JSON.stringify(parsed, null, 2)` plus a newline), because the ledger
+  hashes the bytes staging writes, not the raw `pack.json`.
 - **npm-family tooling strips `.gitignore`, `.npmrc`, `.npmignore` and
   `package-lock.json` (at any depth) from a tarball whatever `files` says**
   (measured: `pnpm pack` keeps `.gitignore` but drops `.npmrc`; `npm pack`

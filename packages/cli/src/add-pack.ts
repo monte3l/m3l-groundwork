@@ -231,7 +231,8 @@ function serializePlan(
  * empty target, a project that is neither adopted nor bootstrapped (or an
  * adopt run that did not complete), an unknown pack, a pack whose `modes`
  * lack the project's mode (`adopt` for an adopted project, `fresh` for a
- * bootstrapped one), an `installed` pack without `--reinstall`, an invalid
+ * bootstrapped one), an `installed` or `outdated` pack without
+ * `--reinstall`, an invalid
  * `--name`, or a required path missing from a bootstrapped project is a
  * `CliUsageError` with nothing written -- for every pack, so one bad pack
  * stages none. A missing required path on an adopted project is only
@@ -313,6 +314,11 @@ export function runAddPack(options: CliOptions): void {
     if (installation.status === "installed" && !options.reinstall) {
       throw new CliUsageError(
         `pack "${manifest.name}" is already installed in ${targetDir} -- pass --reinstall to stage it again\n\n${USAGE}`,
+      );
+    }
+    if (installation.status === "outdated" && !options.reinstall) {
+      throw new CliUsageError(
+        `pack "${manifest.name}" is already installed in ${targetDir} and outdated (an older CLI installed a different copy of it) -- pass --reinstall to stage this version\n\n${USAGE}`,
       );
     }
     const requires = (manifest.requires?.paths ?? []).map((path) => ({
