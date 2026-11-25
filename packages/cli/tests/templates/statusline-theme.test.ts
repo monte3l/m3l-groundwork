@@ -309,9 +309,6 @@ describe("renderAgentRow honors an injected theme", () => {
   });
 });
 
-// TODO: register()-level theme behavior (how the hook obtains the theme at
-// runtime) is untested until the probe on the mod's available APIs resolves.
-
 describe("root copy convergence", () => {
   // The root copy adds a 2-line SPDX header (plus a blank line) after the
   // optional shebang; strip it to compare with the SPDX-free pack file.

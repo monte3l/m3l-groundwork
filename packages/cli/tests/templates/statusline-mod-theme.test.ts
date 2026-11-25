@@ -36,14 +36,17 @@ type Handler = (ctx: unknown, e: Event, next: Next) => unknown;
 type On = (event: string, matcher: unknown, handler: Handler) => unknown;
 
 let themeEnvFrom: (settingsEnv: unknown) => Record<string, unknown>;
+let themeBackgroundFrom: (theme: unknown) => "light" | "dark" | null;
 let register: (on: On) => void;
 
 beforeAll(async () => {
   const mod = (await import(pathToFileURL(registerPath).href)) as {
     themeEnvFrom: typeof themeEnvFrom;
+    themeBackgroundFrom: typeof themeBackgroundFrom;
     register: typeof register;
   };
   themeEnvFrom = mod.themeEnvFrom;
+  themeBackgroundFrom = mod.themeBackgroundFrom;
   register = mod.register;
 });
 
@@ -54,6 +57,9 @@ const ANSI16_HUE = /\x1b\[3[0-7]m/;
 // eslint-disable-next-line no-control-regex -- matches ESC
 const TRUECOLOR = /\x1b\[38;2;\d{1,3};\d{1,3};\d{1,3}m/;
 const MAGENTA = "\x1b[35m";
+// Hand-picked m3l-design accentStrong values: light #381224, dark #f4c0d4.
+const LIGHT_ACCENT = "\x1b[38;2;56;18;36mhigh";
+const DARK_ACCENT = "\x1b[38;2;244;192;212mhigh";
 
 const makeProps = (): Props => ({
   name: "reviewer",
@@ -168,6 +174,12 @@ describe("themeEnvFrom", () => {
   });
 });
 
+/** Calls to a `$.settings.read` mock that asked for `{ key: "env" }`. */
+const envReads = (read: { mock: { calls: unknown[][] } }) =>
+  read.mock.calls.filter(
+    ([arg]) => (arg as { key?: string } | undefined)?.key === "env",
+  );
+
 describe("register theme discovery via $.settings.read", () => {
   const withEnv = (resolved: unknown) => {
     const read = vi.fn(() => Promise.resolve(resolved));
@@ -180,7 +192,7 @@ describe("register theme discovery via $.settings.read", () => {
     expect(read).not.toHaveBeenCalled();
 
     const first = run();
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(envReads(read)).toHaveLength(1);
     expect(read).toHaveBeenCalledWith({ key: "env" });
     expect(body(first.out)).toContain(`${MAGENTA}high`);
     expect(body(first.out)).not.toMatch(TRUECOLOR);
@@ -189,7 +201,7 @@ describe("register theme discovery via $.settings.read", () => {
     run();
     run();
     run();
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(envReads(read)).toHaveLength(1);
   });
 
   it("uses the m3l-design palette after the read resolves", async () => {
@@ -284,7 +296,7 @@ describe("register failure paths stay advisory", () => {
     run();
     await settle();
     run();
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(envReads(read)).toHaveLength(1);
   });
 
   it.each([
@@ -342,5 +354,177 @@ describe("register passthrough", () => {
       expect(out.props).toEqual(props);
       expect(out.props).not.toHaveProperty("body");
     }
+  });
+});
+
+describe("themeBackgroundFrom", () => {
+  it.each([
+    ["light", "light"],
+    ["light-daltonized", "light"],
+    ["light-ansi", "light"],
+    ["dark", "dark"],
+    ["dark-daltonized", "dark"],
+    ["dark-ansi", "dark"],
+  ])("maps %s to %s", (theme, expected) => {
+    expect(themeBackgroundFrom(theme)).toBe(expected);
+  });
+
+  it.each([
+    ["auto", "auto"],
+    ["custom:x", "custom:x"],
+    ["empty string", ""],
+    ["a number", 42],
+    ["null", null],
+    ["undefined", undefined],
+    ["an object", { theme: "light" }],
+    ["an array", ["light"]],
+  ])("returns null for %s", (_n, theme) => {
+    expect(themeBackgroundFrom(theme)).toBeNull();
+  });
+});
+
+describe("register theme setting via $.settings.read", () => {
+  const OPT_IN = { GROUNDWORK_STATUSLINE_THEME: "m3l-design" };
+  type Answer = () => unknown;
+  const withSettings = (answers: { env?: Answer; theme?: Answer }) => {
+    const read = vi.fn((q: { key: string }) => {
+      if (q.key === "env") return (answers.env ?? (() => undefined))();
+      if (q.key === "theme") return (answers.theme ?? (() => undefined))();
+      return undefined;
+    });
+    return { read, $: { settings: { read } } };
+  };
+  const render = async (answers: {
+    env?: Answer;
+    theme?: Answer;
+  }): Promise<{ read: ReturnType<typeof vi.fn>; text: string }> => {
+    const { read, $ } = withSettings(answers);
+    const { run } = setup($);
+    run();
+    await settle();
+    await settle();
+    return { read, text: body(run().out) };
+  };
+
+  it("reads env and theme each exactly once, lazily, across renders", async () => {
+    const { read, $ } = withSettings({
+      env: () => Promise.resolve(OPT_IN),
+      theme: () => Promise.resolve("light"),
+    });
+    const { run } = setup($);
+    expect(read).not.toHaveBeenCalled();
+    run();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledWith({ key: "env" });
+    expect(read).toHaveBeenCalledWith({ key: "theme" });
+    await settle();
+    run();
+    run();
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("a light theme selects the light m3l-design palette", async () => {
+    const { text } = await render({
+      env: () => Promise.resolve(OPT_IN),
+      theme: () => Promise.resolve("light-daltonized"),
+    });
+    expect(text).toContain(LIGHT_ACCENT);
+  });
+
+  it("a dark theme selects the dark palette over env COLORFGBG light", async () => {
+    const { text } = await render({
+      env: () => Promise.resolve({ ...OPT_IN, COLORFGBG: "0;15" }),
+      theme: () => Promise.resolve("dark-ansi"),
+    });
+    expect(text).toContain(DARK_ACCENT);
+  });
+
+  it("a light theme overrides env COLORFGBG dark", async () => {
+    const { text } = await render({
+      env: () => Promise.resolve({ ...OPT_IN, COLORFGBG: "15;0" }),
+      theme: () => Promise.resolve("light"),
+    });
+    expect(text).toContain(LIGHT_ACCENT);
+  });
+
+  it.each([
+    ["auto", "auto"],
+    ["custom", "custom:x"],
+    ["non-string", 42],
+  ])("a %s theme falls back to env COLORFGBG", async (_n, theme) => {
+    const { text } = await render({
+      env: () => Promise.resolve({ ...OPT_IN, COLORFGBG: "0;15" }),
+      theme: () => Promise.resolve(theme),
+    });
+    expect(text).toContain(LIGHT_ACCENT);
+  });
+
+  it("an auto theme with no COLORFGBG falls back to dark", async () => {
+    const { text } = await render({
+      env: () => Promise.resolve(OPT_IN),
+      theme: () => Promise.resolve("auto"),
+    });
+    expect(text).toContain(DARK_ACCENT);
+  });
+
+  it.each([
+    ["rejects", () => Promise.reject(new Error("denied"))],
+    [
+      "throws",
+      () => {
+        throw new Error("sync");
+      },
+    ],
+    ["is a non-thenable", () => "light"],
+    ["resolves undefined", () => Promise.resolve(undefined)],
+  ])(
+    "a theme read that %s leaves env COLORFGBG in charge",
+    async (_n, theme) => {
+      const { text } = await render({
+        env: () => Promise.resolve({ ...OPT_IN, COLORFGBG: "0;15" }),
+        theme,
+      });
+      expect(text).toContain(LIGHT_ACCENT);
+    },
+  );
+
+  it.each([
+    ["rejects", () => Promise.reject(new Error("denied"))],
+    [
+      "throws",
+      () => {
+        throw new Error("sync");
+      },
+    ],
+    ["is a non-thenable", () => ({ ...OPT_IN })],
+    ["resolves undefined", () => Promise.resolve(undefined)],
+  ])(
+    "still issues the theme read after an env read that %s",
+    async (_n, env) => {
+      const { read } = await render({
+        env,
+        theme: () => Promise.resolve("light"),
+      });
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenCalledWith({ key: "theme" });
+    },
+  );
+
+  it("a light theme alone does not opt in to m3l-design", async () => {
+    const { text } = await render({
+      env: () => Promise.resolve({ PATH: "/bin" }),
+      theme: () => Promise.resolve("light"),
+    });
+    expect(text).toContain(`${MAGENTA}high`);
+    expect(text).not.toMatch(TRUECOLOR);
+  });
+
+  it("NO_COLOR still wins over a light theme", async () => {
+    const { text } = await render({
+      env: () => Promise.resolve({ ...OPT_IN, NO_COLOR: "1" }),
+      theme: () => Promise.resolve("light"),
+    });
+    expect(text).not.toBe("");
+    expect(text).not.toMatch(ESC);
   });
 });
