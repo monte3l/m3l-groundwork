@@ -50,8 +50,9 @@ paths:
   **Skip inside the job, never with a job-level `if:` or a `paths:`
   filter**: a skipped job is not `success`, so `verify` would go red, and a
   path-filtered required check never reports. **Skip the setup too, not just
-  the work**: `actions/setup-node`'s post step saves a pnpm cache, and with
-  nothing installed that save throws on a cache miss and fails the job. The
+  the work**: `actions/setup-node`'s post step (still used by the two
+  Node-line lanes) saves a pnpm cache, and with nothing installed that save
+  throws on a cache miss and fails the job. The
   decision (`bin/lib/ci-scope.mjs`) fails toward running everything: not a
   pull request, no valid base commit, a git error, an empty diff or the step
   itself failing (empty output is not `'true'`) all mean everything runs, so
@@ -80,8 +81,14 @@ paths:
   never runs in CI (paid model calls). **CodeQL is GitHub-managed default
   setup and has no file in this repo -- do not add a `codeql.yml`**, it
   collides with default setup.
+- **`pnpm/setup` is allowed in the `ci.yml` pinned-toolchain lanes and
+  `security-audit.yml` only (#319)**, with `node-version-file: .node-version`,
+  `install: false` and no `cache`, pinned to a commit SHA. Never in
+  `release.yml` (it restores a lockfile-verification cache whatever `cache`
+  says, and those jobs hold the OIDC token), `soak.yml` or `templates/core`.
 - `bin/check-node-version.mjs` is live here now: every lane that runs the
-  pinned toolchain takes Node from `node-version-file: .node-version`;
+  pinned toolchain takes Node from `node-version-file: .node-version`, and a
+  `runtime: node@N` literal fails it too;
   `node-current` and `node-previous-lts` are the two deliberate, documented exceptions,
   and the gate's own regex (which only rejects a hardcoded **digit**) allows them. `release.yml` follows the same two rules and adds a third: **it never
   writes the text `verify.mjs`**. The grader reads a workflow as text, so a
@@ -126,7 +133,9 @@ paths:
   Dependabot has npm updates off on purpose and Dependency Review only sees
   what a PR changes, so this is the only thing that notices an advisory
   published against an already-locked dependency. It mirrors the workflow
-  `templates/core` emits, at the root's own `pnpm/action-setup` pin.
+  `templates/core` emits, except that the root copy sets up pnpm and Node with
+  `pnpm/setup` (see `docs/known-gaps.md`) and the emitted one keeps
+  `pnpm/action-setup`.
   `release.yml`'s `pack` job runs the same audit before any release, so the daily
   run and the release gate agree; the policy behind both is `SECURITY.md`'s
   "Dependency and code-scanning findings".

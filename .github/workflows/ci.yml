@@ -45,16 +45,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      # pnpm must be on PATH before setup-node, or `cache: pnpm` cannot
-      # locate the store. Its version comes from package.json's
-      # `packageManager` field, never from an input here.
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      # pnpm and Node in one step (#319). pnpm's version comes from
+      # package.json's `packageManager` field, never from an input here.
       # `.node-version` is the single authoritative Node pin -- a literal
-      # `node-version:` value here would fail `pnpm check:node-version`.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      # `node-version:` or `runtime: node@N` here would fail
+      # `pnpm check:node-version`. `install: false` keeps the explicit install
+      # below; `cache` stays off (pnpm/setup#67, #102: its store cache restores
+      # almost nothing, or a stale store). release.yml deliberately stays on
+      # pnpm/action-setup + setup-node, and so do the two lanes at the bottom
+      # of this file that pin a Node release line setup-node can resolve.
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           node-version-file: .node-version
-          cache: pnpm
+          install: false
       - run: pnpm install --frozen-lockfile
       - run: node bin/verify.mjs --group format
 
@@ -66,11 +69,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           node-version-file: .node-version
-          cache: pnpm
+          install: false
       - run: pnpm install --frozen-lockfile
       - run: node bin/verify.mjs --group lint
 
@@ -82,11 +84,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           node-version-file: .node-version
-          cache: pnpm
+          install: false
       - run: pnpm install --frozen-lockfile
       - run: node bin/verify.mjs --group typecheck
 
@@ -98,11 +99,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           node-version-file: .node-version
-          cache: pnpm
+          install: false
       - run: pnpm install --frozen-lockfile
       - run: node bin/verify.mjs --group build
 
@@ -114,11 +114,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           node-version-file: .node-version
-          cache: pnpm
+          install: false
       - run: pnpm install --frozen-lockfile
       - run: node bin/verify.mjs --group test
 
@@ -137,9 +136,9 @@ jobs:
   # skip lives inside each job, never in a job-level `if:` or a `paths:`
   # filter, so the job still ends in `success` and `verify` keeps getting the
   # explicit success it demands from every lane. The setup is skipped too,
-  # not just the work: `actions/setup-node`'s post step would otherwise try
-  # to save a pnpm cache for a store nothing installed, and fail the job on
-  # a cache miss. `bin/ci-docs-only.mjs` decides, on the runner's own Node,
+  # not just the work: the setup actions' post steps would otherwise still
+  # run for a job that installed nothing (`actions/setup-node`'s would try to
+  # save a pnpm cache for an empty store and fail the job on a cache miss). `bin/ci-docs-only.mjs` decides, on the runner's own Node,
   # and any doubt (not a pull request, no base commit, a git error, an empty
   # diff, the step itself failing) means "run everything". A push to `main`
   # is never a pull request, so it always runs in full.
@@ -164,12 +163,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
       - if: steps.scope.outputs.docs_only != 'true'
-        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - if: steps.scope.outputs.docs_only != 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           node-version-file: .node-version
-          cache: pnpm
+          install: false
       # templates/core names exactly this repo's devDependency set, so this
       # install warms the pnpm store for the emitted projects' own installs.
       - if: steps.scope.outputs.docs_only != 'true'
@@ -209,12 +206,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
       - if: steps.scope.outputs.docs_only != 'true'
-        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - if: steps.scope.outputs.docs_only != 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           node-version-file: .node-version
-          cache: pnpm
+          install: false
       - if: steps.scope.outputs.docs_only != 'true'
         run: pnpm install --frozen-lockfile
       - if: steps.scope.outputs.docs_only != 'true'

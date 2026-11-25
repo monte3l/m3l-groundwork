@@ -46,6 +46,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      # pnpm/action-setup, not pnpm/setup (#319): the soak stands in for an
+      # adopter, whose baseline uses it, and it runs `npx` (pnpm/setup#66) on
+      # arm (pnpm/setup#29).
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:

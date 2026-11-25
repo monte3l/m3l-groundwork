@@ -41,13 +41,10 @@ one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
 
 ## Next 12 months
 
-- **`pnpm/setup` in CI.** Tracked in
-  [#319](https://github.com/monte3l/m3l-groundwork/issues/319). Its v3 reads
-  Node's version from `.node-version` through a `node-version-file` input, so
-  the original blocker is gone. What is left is reliability and trust surface:
-  v3 is new with open hang and network-failure issues, it provisions Node
-  through `pnpm runtime set` in the publish jobs that hold the OIDC token, and
-  it needs pnpm 11 or newer. Migration waits for those to settle -- see
+- **`pnpm/setup` for the rest of CI.** The main lanes moved in
+  [#319](https://github.com/monte3l/m3l-groundwork/issues/319). The publish
+  jobs, the soak, the two Node-line lanes and the emitted baseline stay on
+  `pnpm/action-setup` until the upstream cache and PATH bugs are fixed -- see
   [`docs/known-gaps.md`](docs/known-gaps.md).
 - **Automated PR review, only if it can be made reliable.** This repository
   has none: the `claude-code-action` workflow was removed because it could

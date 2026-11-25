@@ -86,6 +86,9 @@ jobs:
       # file must never carry a literal version (`pnpm check:node-version`).
       # No package-manager cache anywhere in this file: a restored cache is an
       # input an attacker can poison, and these jobs are the ones that publish.
+      # That rules out `pnpm/setup` (#319): it restores and saves a lockfile
+      # verification cache on every run, whatever its `cache` input says, and
+      # it has no `registry-url` for the OpenSSF Scorecard check below.
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
