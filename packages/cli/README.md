@@ -164,16 +164,16 @@ the baseline files it would add under `.groundwork/baseline/`);
 
 ## Flags
 
-| Flag                    | Effect                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| `--name <project-name>` | Override the project name (default: the target directory's basename).         |
-| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                              |
-| `--force`               | Overwrite a non-empty target directory (fresh mode only).                     |
-| `--adopt`               | Force adopt mode, even if the target looks empty.                             |
-| `--fresh`               | Force fresh mode, even if the target looks like an existing project.          |
-| `--pack <name>`         | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable). |
-| `--list-packs`          | Print every available pack and exit.                                          |
-| `--help`, `--version`   | Print usage, or the CLI's version.                                            |
+| Flag                    | Effect                                                                                                                                                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name <project-name>` | Override the project name (default: the target directory's basename).                                                                                                                  |
+| `--skip-install`        | Skip the final `pnpm install` (fresh mode only).                                                                                                                                       |
+| `--force`               | Overwrite a non-empty target directory (fresh mode only).                                                                                                                              |
+| `--adopt`               | Force adopt mode, even if the target looks empty.                                                                                                                                      |
+| `--fresh`               | Force fresh mode, even if the target looks like an existing project.                                                                                                                   |
+| `--pack <name>`         | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable).                                                                                                          |
+| `--list-packs [<dir>]`  | Print every available pack and exit. With a directory, also report which packs that project already has (installed, partial, not installed or undetermined), without writing anything. |
+| `--help`, `--version`   | Print usage, or the CLI's version.                                                                                                                                                     |
 
 An unexpected failure (anything that is not a bad invocation) prints its
 error name before the message, for example `TypeError: ...`. Set `M3L_DEBUG`

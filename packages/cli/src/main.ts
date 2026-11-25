@@ -22,6 +22,7 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import assert from "node:assert/strict";
@@ -75,9 +76,17 @@ import {
 } from "./packs.js";
 import { STAGED_PACKS_DIR, planPackStaging, stagePacks } from "./pack-stage.js";
 import { renderReport } from "./report.js";
-import type { TokenTable } from "./tokens.js";
+import {
+  NPM_NAME_MAX_LENGTH,
+  buildTokens,
+  isNpmPackageName,
+} from "./tokens.js";
+import { inspectPackInstallations } from "./pack-installation.js";
+import type { PackInstallStatus } from "./pack-installation.js";
+import { errnoCode, isAbsentError } from "./survey/internal/read-guard.js";
 import type { ModeDetection } from "./mode.js";
 import { gradeToolchain } from "./toolchain/grade.js";
+import { escapeControls } from "./format-error.js";
 import { paint } from "./term.js";
 import { assertAdoptWriteScope } from "./write-scope.js";
 
@@ -105,7 +114,8 @@ const USAGE = [
   "  --adopt                 Force adopt mode, even if the target looks empty",
   "  --fresh                 Force fresh-bootstrap mode, even if the target looks pre-existing",
   "  --pack <name>           Install an opt-in pack from templates/packs/ (fresh mode only; repeatable)",
-  "  --list-packs            Print every available pack and exit",
+  "  --list-packs [<dir>]    Print every available pack and exit; with a directory,",
+  "                          also report which packs that project has (read-only)",
   "  --help, -h              Print this message",
   "  --version, -v           Print the CLI's version",
   "",
@@ -129,12 +139,6 @@ const LIST_PACKS_FLAGS = new Set(["--list-packs"]);
 // A --pack value is a bare directory name under templates/packs/ -- this
 // allowlist keeps it from ever reaching packs.ts's join() as a path.
 const PACK_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
-// A --name value is substituted verbatim into the emitted package.json, so it
-// must fit a conservative, ASCII-lowercase subset of npm's naming rules
-// (optional @scope/). Reserved names like `node_modules` are out of scope.
-const NPM_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
-// npm's own ceiling on a package name's total length, scope included.
-const NPM_NAME_MAX_LENGTH = 214;
 const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--skip-install",
   "--force",
@@ -227,8 +231,16 @@ export function parseArgs(argv: string[]): CliOptions {
   const listPacks = [...LIST_PACKS_FLAGS].some((flag) => flags.has(flag));
 
   if (help || version || listPacks) {
+    // `--list-packs <dir>` reports that project's pack status; the bare form
+    // (and --help/--version) carries no directory.
+    const listDir = listPacks && !help && !version ? positional[0] : undefined;
+    if (listDir !== undefined && positional.length > 1) {
+      throw new CliUsageError(
+        `unexpected argument(s): ${positional.slice(1).join(" ")}\n\n${USAGE}`,
+      );
+    }
     return {
-      targetDir: "",
+      targetDir: listDir === undefined ? "" : resolve(listDir),
       projectName: "",
       skipInstall: false,
       force: false,
@@ -259,11 +271,8 @@ export function parseArgs(argv: string[]): CliOptions {
 
   const targetDir = resolve(targetArg);
   const explicitName = values.get("--name");
-  if (
-    explicitName !== undefined &&
-    (explicitName.length > NPM_NAME_MAX_LENGTH ||
-      !NPM_NAME_PATTERN.test(explicitName))
-  ) {
+  // A --name value is substituted verbatim into the emitted package.json.
+  if (explicitName !== undefined && !isNpmPackageName(explicitName)) {
     throw new CliUsageError(
       `--name must be a valid npm package name (lowercase, optional @scope/, at most ${String(NPM_NAME_MAX_LENGTH)} characters): ${JSON.stringify(explicitName)}\n\n${USAGE}`,
     );
@@ -298,10 +307,6 @@ export function templatesCoreDir(): string {
 
 function isEmptyOrMissing(dir: string): boolean {
   return !existsSync(dir) || readdirSync(dir).length === 0;
-}
-
-function buildTokens(projectName: string): TokenTable {
-  return { PROJECT_NAME: projectName, YEAR: String(new Date().getFullYear()) };
 }
 
 function formatCounts(counts: CapCounts): string {
@@ -1049,6 +1054,67 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   console.log(nextStep);
 }
 
+const STATUS_LABELS: Readonly<Record<PackInstallStatus["status"], string>> = {
+  installed: "installed",
+  partial: "partial",
+  "not-installed": "not installed",
+  undetermined: "undetermined",
+};
+
+/**
+ * {@link escapeControls}, then every line break it normalised to `\n` is
+ * rendered as the literal text `\n`, so a project-controlled value always
+ * prints on the one line it was given and cannot forge a line of its own.
+ */
+function escapeInline(text: string): string {
+  return escapeControls(text).replaceAll("\n", "\\n");
+}
+
+/**
+ * `--list-packs <dir>`: the project's origin, then one status line per pack,
+ * then any undetermined note. Read-only; a missing or non-directory target is
+ * a usage error naming the path, and so is one that cannot be checked at all,
+ * naming the path and the errno with the original failure as `cause`.
+ *
+ * The origin evidence and every note can carry project-controlled text (the
+ * name of a `.groundwork/` entry), so each is printed through
+ * `escapeInline`: no control character reaches the terminal raw, and none
+ * can break the line it sits on. Pack names, modes and descriptions come
+ * from this package's own templates and print as they are.
+ */
+function listPackStatus(targetDir: string): void {
+  let isDirectory = false;
+  try {
+    isDirectory = statSync(targetDir).isDirectory();
+  } catch (error) {
+    if (!isAbsentError(error)) {
+      throw new CliUsageError(
+        `${targetDir} could not be checked (${errnoCode(error) ?? "unknown error"}) -- --list-packs <dir> needs a project directory it can inspect\n\n${USAGE}`,
+        { cause: error },
+      );
+    }
+    // Absent: reported as "not an existing directory" just below.
+  }
+  if (!isDirectory) {
+    throw new CliUsageError(
+      `${targetDir} is not an existing directory -- --list-packs <dir> needs a project directory to inspect\n\n${USAGE}`,
+    );
+  }
+  const report = inspectPackInstallations(targetDir);
+  console.log(
+    `project: ${report.origin.kind} (${report.origin.evidence.map(escapeInline).join("; ")})`,
+  );
+  for (const { name, modes, description, status } of report.packs) {
+    const ledger = status.source === "ledger" ? " (ledger)" : "";
+    console.log(
+      `${name} (modes: ${modes.join(", ")}) [${STATUS_LABELS[status.status]}]${ledger} -- ${description}`,
+    );
+  }
+  for (const note of report.undetermined) {
+    console.log(`note: ${escapeInline(note)}`);
+  }
+}
+
 /**
  * Runs the CLI. `platform` is injectable so fresh mode's Windows refusal
  * (a runtime error, exit 1, raised before anything is written) is
@@ -1067,6 +1133,10 @@ export function main(
   }
   if (options.version) {
     console.log(resolveCliVersion());
+    return;
+  }
+  if (options.listPacks && options.targetDir !== "") {
+    listPackStatus(options.targetDir);
     return;
   }
   if (options.listPacks) {
