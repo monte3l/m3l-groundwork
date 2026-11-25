@@ -1,5 +1,23 @@
 # @monte3l/groundwork
 
+## [1.5.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.4.0...@monte3l/groundwork@1.5.0) (2026-11-25)
+
+
+### Features
+
+* **cli:** show which packs a project already has with --list-packs &lt;dir&gt; ([afed777](https://github.com/monte3l/m3l-groundwork/commit/afed777760abcdde850816021c75000bed8c64fc))
+* **cli:** show which packs a project already has with --list-packs &lt;dir&gt; ([da9cbd6](https://github.com/monte3l/m3l-groundwork/commit/da9cbd630d816dfeebfe8747bf93833c95b8c04e))
+* **cli:** stage packs into an existing project with --add-pack ([8f101d6](https://github.com/monte3l/m3l-groundwork/commit/8f101d651d6b6839b4fa70c37df5466412817e8e))
+* **cli:** stage packs into an existing project with --add-pack ([20d4da3](https://github.com/monte3l/m3l-groundwork/commit/20d4da3fa1e656530bd3221775665cac1204728b))
+* **plugin:** add /customize add-pack and the installed-packs ledger ([5567ff9](https://github.com/monte3l/m3l-groundwork/commit/5567ff948b9830a1651366c6aebbfcf198b407f2))
+* **plugin:** add /customize add-pack and the installed-packs ledger ([fae2195](https://github.com/monte3l/m3l-groundwork/commit/fae21958e169ea4658de48793b18e50d5fd63472))
+
+
+### Bug Fixes
+
+* **plugin:** stop add-pack from offering an unverified install; fix its eval ([a9a8382](https://github.com/monte3l/m3l-groundwork/commit/a9a8382d867ad174d745ddaa94c6c2dd89f3149d))
+* **plugin:** stop add-pack from offering an unverified install; fix its eval ([099cb67](https://github.com/monte3l/m3l-groundwork/commit/099cb6711642b02130b43c5f7578dc9d5a9b9934))
+
 ## [1.4.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.3.2...@monte3l/groundwork@1.4.0) (2026-11-23)
 
 
