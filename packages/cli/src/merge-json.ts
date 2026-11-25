@@ -27,6 +27,32 @@
  * weakness is catalogued.
  */
 
+/**
+ * A merge collision: the target already holds the same hook command, top-level
+ * settings key or verify-step id with a different value. Thrown by
+ * {@link mergeSettingsHooks}, {@link mergeSettingsTopLevel} and
+ * {@link mergeVerifySteps} -- and only for a collision, so a caller can tell
+ * "the project has its own, different entry here" apart from any other
+ * failure (a refused prototype-sensitive key, or malformed existing data,
+ * still throws a plain `Error`/`TypeError`). `mergePackageScripts` never
+ * throws one: it returns its collisions instead.
+ *
+ * @example
+ * ```ts
+ * import { MergeCollisionError, mergeSettingsTopLevel } from "./merge-json.js";
+ *
+ * try {
+ *   mergeSettingsTopLevel({ statusLine: { command: "a" } }, { statusLine: { command: "b" } });
+ * } catch (error) {
+ *   if (error instanceof MergeCollisionError) console.error(error.message);
+ *   else throw error;
+ * }
+ * ```
+ */
+export class MergeCollisionError extends Error {
+  override readonly name = "MergeCollisionError";
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -40,24 +66,26 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
  *
  * @example
  * ```ts
- * deepEqual({ a: 1, b: [2] }, { b: [2], a: 1 }); // true
- * deepEqual([1, 2], [2, 1]); // false
+ * import { jsonEqual } from "./merge-json.js";
+ *
+ * jsonEqual({ a: 1, b: [2] }, { b: [2], a: 1 }); // true
+ * jsonEqual([1, 2], [2, 1]); // false
  * ```
  */
-function deepEqual(a: unknown, b: unknown): boolean {
+export function jsonEqual(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) || Array.isArray(b)) {
     return (
       Array.isArray(a) &&
       Array.isArray(b) &&
       a.length === b.length &&
-      a.every((item, index) => deepEqual(item, b[index]))
+      a.every((item, index) => jsonEqual(item, b[index]))
     );
   }
   if (isRecord(a) && isRecord(b)) {
     const aKeys = Object.keys(a);
     return (
       aKeys.length === Object.keys(b).length &&
-      aKeys.every((key) => Object.hasOwn(b, key) && deepEqual(a[key], b[key]))
+      aKeys.every((key) => Object.hasOwn(b, key) && jsonEqual(a[key], b[key]))
     );
   }
   return Object.is(a, b);
@@ -185,8 +213,8 @@ export function mergeSettingsHooks(
           (candidate) => candidate.command === hookCmd.command,
         );
         if (duplicate) {
-          if (!deepEqual(duplicate, hookCmd)) {
-            throw new Error(
+          if (!jsonEqual(duplicate, hookCmd)) {
+            throw new MergeCollisionError(
               `settings.json merge collision: "${event}" (matcher ${JSON.stringify(entry.matcher)}) already has a hook for "${hookCmd.command}" with different config`,
             );
           }
@@ -239,8 +267,8 @@ export function mergeSettingsTopLevel(
       settings[key] = value;
       continue;
     }
-    if (!deepEqual(settings[key], value)) {
-      throw new Error(
+    if (!jsonEqual(settings[key], value)) {
+      throw new MergeCollisionError(
         `settings.json merge collision: "${key}" is already set with a different value`,
       );
     }
@@ -327,8 +355,8 @@ export function mergeVerifySteps(
       continue;
     }
     const existingStep = current[existingIndex];
-    if (!deepEqual(existingStep, step)) {
-      throw new Error(
+    if (!jsonEqual(existingStep, step)) {
+      throw new MergeCollisionError(
         `verify-steps.packs.json merge collision: step "${step.id}" is already registered with different config`,
       );
     }

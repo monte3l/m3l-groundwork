@@ -3,13 +3,49 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  MergeCollisionError,
   isPrototypeSensitiveKey,
   isRecord,
+  jsonEqual,
   mergePackageScripts,
   mergeSettingsHooks,
   mergeSettingsTopLevel,
   mergeVerifySteps,
 } from "../src/merge-json.js";
+
+describe("jsonEqual", () => {
+  it("ignores object key order, at any depth", () => {
+    expect(
+      jsonEqual({ a: 1, b: { c: 2, d: 3 } }, { b: { d: 3, c: 2 }, a: 1 }),
+    ).toBe(true);
+  });
+
+  it("is order-sensitive for arrays", () => {
+    expect(jsonEqual([1, 2], [2, 1])).toBe(false);
+    expect(jsonEqual([1, 2], [1, 2])).toBe(true);
+  });
+
+  it.each([
+    ["a differing value", { a: 1 }, { a: 2 }],
+    ["an extra key", { a: 1 }, { a: 1, b: 2 }],
+    ["a missing key", { a: 1, b: 2 }, { a: 1 }],
+    ["a different type", 1, "1"],
+    ["null versus an object", null, {}],
+    ["an array versus an object", [], {}],
+    ["differing array length", [1], [1, 2]],
+  ])("is false for %s", (_label, a, b) => {
+    expect(jsonEqual(a, b)).toBe(false);
+  });
+
+  it.each([
+    ["primitives", 1, 1],
+    ["strings", "x", "x"],
+    ["null", null, null],
+    ["empty objects", {}, {}],
+  ])("is true for equal %s", (_label, a, b) => {
+    expect(jsonEqual(a, b)).toBe(true);
+  });
+});
 
 describe("isRecord", () => {
   it("is true for a plain object, false for null/array/primitive", () => {
@@ -456,4 +492,81 @@ describe("prototype-key guard (CWE-1321)", () => {
     expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
     expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
   });
+});
+
+describe("MergeCollisionError", () => {
+  const hookEntry = (timeout: number): { PreToolUse: unknown[] } => ({
+    PreToolUse: [
+      {
+        matcher: "Bash",
+        hooks: [{ type: "command", command: "node foo.mjs", timeout }],
+      },
+    ],
+  });
+  const collisions: [string, () => unknown, RegExp][] = [
+    [
+      "mergeSettingsHooks (same command, different config)",
+      () =>
+        mergeSettingsHooks(
+          { hooks: hookEntry(30) },
+          hookEntry(60) as Parameters<typeof mergeSettingsHooks>[1],
+        ),
+      /merge collision/,
+    ],
+    [
+      "mergeSettingsTopLevel (key with a different value)",
+      () =>
+        mergeSettingsTopLevel(
+          { statusLine: { command: "a" } },
+          { statusLine: { command: "b" } },
+        ),
+      /collision.*"statusLine"/,
+    ],
+    [
+      "mergeVerifySteps (same id, different content)",
+      () =>
+        mergeVerifySteps(
+          [{ id: "s", group: "build", name: "x", cmd: ["node", "a"] }],
+          [{ id: "s", group: "test", name: "x", cmd: ["node", "a"] }],
+        ),
+      /merge collision/,
+    ],
+  ];
+
+  it.each(collisions)(
+    "%s throws a MergeCollisionError that is also an Error, message unchanged",
+    (_label, run, message) => {
+      let thrown: unknown;
+      try {
+        run();
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(MergeCollisionError);
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).name).toBe("MergeCollisionError");
+      expect((thrown as Error).message).toMatch(message);
+    },
+  );
+
+  it.each(["__proto__", "constructor", "prototype"])(
+    "a prototype-sensitive %s key throws a plain Error, not a MergeCollisionError",
+    (key) => {
+      const fragment = JSON.parse(`{"${key}":{}}`) as Record<string, unknown>;
+      const attempts: (() => unknown)[] = [
+        () => mergeSettingsTopLevel({}, fragment),
+        () => mergeSettingsHooks({}, fragment as never),
+      ];
+      for (const attempt of attempts) {
+        let thrown: unknown;
+        try {
+          attempt();
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(MergeCollisionError);
+      }
+    },
+  );
 });

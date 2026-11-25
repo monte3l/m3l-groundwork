@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { AssertionError } from "node:assert/strict";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
   CliUsageError,
   assertAdoptWriteScope,
@@ -103,9 +103,37 @@ describe("parseArgs", () => {
     expect(options.listPacks).toBe(true);
     expect(options.targetDir).toBe("");
   });
+
+  // Contract ambiguity: CliOptions' field name for the list-packs directory
+  // is unspecified. These tests pin it to `targetDir` (resolved), the field
+  // the bare form leaves as "".
+  it.each([
+    ["--list-packs before the directory", ["--list-packs", "/tmp/some-dir"]],
+    ["--list-packs after the directory", ["/tmp/some-dir", "--list-packs"]],
+  ])("recognizes %s", (_label, argv) => {
+    const options = parseArgs(argv);
+    expect(options.listPacks).toBe(true);
+    expect(options.targetDir).toBe("/tmp/some-dir");
+    expect(options.packs).toEqual([]);
+  });
+
+  it("resolves a relative --list-packs directory to an absolute path", () => {
+    const options = parseArgs(["--list-packs", "rel/dir"]);
+    expect(options.targetDir).toBe(resolve("rel/dir"));
+  });
+
+  it("does not treat --list-packs alone as carrying a directory", () => {
+    expect(parseArgs(["--list-packs"]).targetDir).toBe("");
+  });
 });
 
 describe("parseArgs (CliUsageError)", () => {
+  it("throws CliUsageError for a second positional after --list-packs <dir>", () => {
+    const argv = ["--list-packs", "/tmp/some-dir", "extra"];
+    expect(() => parseArgs(argv)).toThrow(CliUsageError);
+    expect(() => parseArgs(argv)).toThrow(/unexpected argument\(s\): extra/);
+  });
+
   it("throws CliUsageError (not a plain Error) with usage text and the short-alias hints when no target directory is given", () => {
     expect(() => parseArgs([])).toThrow(CliUsageError);
     expect(() => parseArgs([])).toThrow(/usage: m3l-groundwork/i);

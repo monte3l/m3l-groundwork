@@ -9,6 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  chmodSync,
   mkdtempSync,
   mkdirSync,
   rmSync,
@@ -23,6 +24,9 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chmodIneffective } from "./chmod-ineffective.js";
+import { emitTemplate } from "../src/emit.js";
+import { installPack, listPackNames, loadPack } from "../src/packs.js";
 import type { Inventory } from "../src/inventory.js";
 import type * as InventoryModule from "../src/inventory.js";
 import type * as ReportModule from "../src/report.js";
@@ -1186,5 +1190,238 @@ describe("main", () => {
       ).toBe(true);
       logSpy.mockRestore();
     });
+
+    it("keeps the bare form's per-pack line format and prints no project or status", () => {
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+      main(["--list-packs"]);
+      const lines = logSpy.mock.calls.map(([line]) => String(line));
+      logSpy.mockRestore();
+      const manifest = loadPack("licensing").manifest;
+      expect(lines).toContain(
+        `licensing (modes: ${manifest.modes.join(", ")}) -- ${manifest.description}`,
+      );
+      expect(lines.some((l) => l.startsWith("project:"))).toBe(false);
+      expect(lines.some((l) => l.includes("[installed]"))).toBe(false);
+    });
+  });
+
+  describe("--list-packs <dir>", () => {
+    const TOKENS = { PROJECT_NAME: "acme", YEAR: "2026" };
+
+    function bootstrapProject(packs: string[]): string {
+      const dir = join(targetDir, "proj");
+      emitTemplate(templatesCoreDir(), dir, TOKENS);
+      for (const name of packs) {
+        installPack(loadPack(name), dir, TOKENS);
+      }
+      return dir;
+    }
+
+    function listLines(argv: string[]): string[] {
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+      try {
+        main(argv);
+        return logSpy.mock.calls.flatMap(([line]) => String(line).split("\n"));
+      } finally {
+        logSpy.mockRestore();
+      }
+    }
+
+    function packLine(
+      name: string,
+      bracket: string,
+      suffix: string = "",
+    ): string {
+      const { manifest } = loadPack(name);
+      return `${name} (modes: ${manifest.modes.join(", ")}) [${bracket}]${suffix} -- ${manifest.description}`;
+    }
+
+    /** Every entry (path, kind, size, content hash) under a tree. */
+    function snapshot(dir: string): string[] {
+      const out: string[] = [];
+      const walk = (current: string): void => {
+        for (const name of readdirSync(current).sort()) {
+          const full = join(current, name);
+          const stat = lstatSync(full);
+          if (stat.isDirectory()) {
+            out.push(`d ${full}`);
+            walk(full);
+          } else if (stat.isSymbolicLink()) {
+            out.push(`l ${full}`);
+          } else {
+            const hash = createHash("sha256")
+              .update(readFileSync(full))
+              .digest("hex");
+            out.push(`f ${full} ${String(stat.mtimeMs)} ${hash}`);
+          }
+        }
+      };
+      walk(dir);
+      return out;
+    }
+
+    it("prints a project line, then one status line per pack in the documented format", () => {
+      const dir = bootstrapProject(["licensing"]);
+      const lines = listLines(["--list-packs", dir]);
+
+      expect(lines[0]).toMatch(/^project: bootstrapped \(.+\)$/);
+      expect(lines).toContain(packLine("licensing", "installed"));
+      expect(lines).toContain(packLine("statusline", "not installed"));
+    });
+
+    it("accepts the directory before --list-packs too", () => {
+      const dir = bootstrapProject(["licensing"]);
+      const lines = listLines([dir, "--list-packs"]);
+      expect(lines).toContain(packLine("licensing", "installed"));
+    });
+
+    it("lists every available pack exactly once", () => {
+      const dir = bootstrapProject([]);
+      const lines = listLines(["--list-packs", dir]);
+      for (const name of listPackNames()) {
+        const matching = lines.filter((l) => l.startsWith(`${name} (modes:`));
+        expect(matching).toHaveLength(1);
+      }
+    });
+
+    it("marks a ledger-listed pack with (ledger) after the bracket", () => {
+      const dir = bootstrapProject([]);
+      mkdirSync(join(dir, ".groundwork"), { recursive: true });
+      writeFileSync(
+        join(dir, ".groundwork", "installed-packs.json"),
+        JSON.stringify({ schemaVersion: 1, packs: [{ name: "statusline" }] }),
+      );
+      const lines = listLines(["--list-packs", dir]);
+      expect(lines).toContain(packLine("statusline", "installed", " (ledger)"));
+    });
+
+    it("marks a partially installed pack [partial]", () => {
+      const dir = bootstrapProject(["licensing"]);
+      rmSync(join(dir, "bin", "check-license-headers.mjs"));
+      const lines = listLines(["--list-packs", dir]);
+      expect(lines).toContain(packLine("licensing", "partial"));
+    });
+
+    it("prints undetermined notes after the list as note: lines, and never claims not installed", () => {
+      const dir = bootstrapProject([]);
+      writeFileSync(join(dir, ".claude", "settings.json"), "{ broken");
+      const lines = listLines(["--list-packs", dir]);
+      expect(lines.some((l) => l.startsWith("note: "))).toBe(true);
+      expect(lines).toContain(packLine("statusline", "undetermined"));
+      expect(lines.some((l) => l.includes("[not installed]"))).toBe(false);
+      const firstNote = lines.findIndex((l) => l.startsWith("note: "));
+      const lastPack = lines.findLastIndex((l) => / \(modes: /.test(l));
+      expect(firstNote).toBeGreaterThan(lastPack);
+    });
+
+    it("reports an unrecognized directory as project: unknown", () => {
+      const lines = listLines(["--list-packs", targetDir]);
+      expect(lines[0]).toMatch(/^project: unknown \(/);
+    });
+
+    it("is strictly read-only: the tree is byte- and mtime-identical afterwards", () => {
+      const dir = bootstrapProject(["licensing"]);
+      const before = snapshot(dir);
+      listLines(["--list-packs", dir]);
+      expect(snapshot(dir)).toEqual(before);
+      expect(existsSync(join(dir, ".groundwork"))).toBe(false);
+    });
+
+    describe("project-controlled .groundwork entry names", () => {
+      function printed(argv: string[]): string {
+        const logSpy = vi
+          .spyOn(console, "log")
+          .mockImplementation(() => undefined);
+        try {
+          main(argv);
+          return logSpy.mock.calls.map(([line]) => String(line)).join("\n");
+        } finally {
+          logSpy.mockRestore();
+        }
+      }
+
+      function projectWithHostileEntries(): string {
+        const dir = join(targetDir, "hostile");
+        const groundwork = join(dir, ".groundwork");
+        mkdirSync(groundwork, { recursive: true });
+        try {
+          mkdirSync(join(groundwork, ".packs-\u001b[31mEVIL\u0007x"));
+          mkdirSync(join(groundwork, ".baseline-a\rFAKE: line"));
+        } catch (error) {
+          throw new Error(
+            "this platform cannot create directory names with control characters; skip",
+            { cause: error },
+          );
+        }
+        return dir;
+      }
+
+      it("prints no raw ESC, BEL or CR from an entry name, shows the escaped name, and still lists packs", () => {
+        const dir = projectWithHostileEntries();
+        const output = printed(["--list-packs", dir]);
+
+        expect(output).not.toContain("\u001b");
+        expect(output).not.toContain("\u0007");
+        expect(output).not.toContain("\r");
+        expect(output).toContain("\\x1b[31mEVIL\\x07x");
+        for (const name of listPackNames()) {
+          expect(output).toContain(`${name} (modes:`);
+        }
+      });
+    });
+
+    it("throws CliUsageError naming a missing directory", () => {
+      const missing = join(targetDir, "does-not-exist");
+      expect(() => main(["--list-packs", missing])).toThrow(CliUsageError);
+      expect(() => main(["--list-packs", missing])).toThrow(missing);
+      expect(existsSync(missing)).toBe(false);
+    });
+
+    it("throws CliUsageError naming a path that is a file, not a directory", () => {
+      const file = join(targetDir, "a-file");
+      writeFileSync(file, "x");
+      expect(() => main(["--list-packs", file])).toThrow(CliUsageError);
+      expect(() => main(["--list-packs", file])).toThrow(file);
+    });
+
+    it("keeps the 'is not an existing directory' wording for a missing path", () => {
+      const missing = join(targetDir, "does-not-exist");
+      expect(() => main(["--list-packs", missing])).toThrow(
+        /is not an existing directory/,
+      );
+    });
+
+    describe.skipIf(chmodIneffective)(
+      "a stat failure that is not absence",
+      () => {
+        let locked: string;
+
+        afterEach(() => {
+          chmodSync(locked, 0o755);
+        });
+
+        it("throws CliUsageError naming the path and the errno code, with the cause", () => {
+          locked = join(targetDir, "locked");
+          mkdirSync(join(locked, "proj"), { recursive: true });
+          const inside = join(locked, "proj");
+          chmodSync(locked, 0o000);
+          let thrown: unknown;
+          try {
+            main(["--list-packs", inside]);
+          } catch (error) {
+            thrown = error;
+          }
+          expect(thrown).toBeInstanceOf(CliUsageError);
+          const message = (thrown as Error).message;
+          expect(message).toContain(inside);
+          expect(message).toContain("EACCES");
+          expect((thrown as Error).cause).toBeInstanceOf(Error);
+        });
+      },
+    );
   });
 });

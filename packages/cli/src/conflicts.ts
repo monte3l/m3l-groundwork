@@ -149,6 +149,24 @@ function compareFile(
   };
 }
 
+/**
+ * The project-relative path a template file at `sourcePath` (under `root`)
+ * is emitted to: tokens substituted, then an escaped dotfile name restored.
+ * The single derivation every comparison against a template tree keys on.
+ *
+ * @example
+ * ```ts
+ * templateRelPath("/t", "/t/_gitignore", {}); // ".gitignore"
+ * ```
+ */
+export function templateRelPath(
+  root: string,
+  sourcePath: string,
+  tokens: TokenTable,
+): string {
+  return restoreDotfilePath(applyTokens(relative(root, sourcePath), tokens));
+}
+
 function walkTemplate(
   root: string,
   currentDir: string,
@@ -159,9 +177,7 @@ function walkTemplate(
 ): void {
   for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
     const sourcePath = join(currentDir, entry.name);
-    const relPath = restoreDotfilePath(
-      applyTokens(relative(root, sourcePath), tokens),
-    );
+    const relPath = templateRelPath(root, sourcePath, tokens);
 
     if (entry.isDirectory()) {
       walkTemplate(root, sourcePath, targetDir, tokens, results, undetermined);
