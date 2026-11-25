@@ -81,7 +81,11 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
-  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+  for (const stepName of [
+    "step-0-reconcile.md",
+    "step-3-round-1.md",
+    "pack-install.md",
+  ]) {
     writeFileSync(
       join(sourceDir, "skills", "customize", stepName),
       `# ${stepName}\n`,
@@ -172,7 +176,11 @@ describe("copyCustomizeSkillFiles writes SKILL.md last and rolls back all-or-not
     const result = installCustomizeSkill(targetDir, sourceDir);
     const destDir = join(targetDir, ".claude", "skills", "customize");
 
-    for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+    for (const stepName of [
+      "step-0-reconcile.md",
+      "step-3-round-1.md",
+      "pack-install.md",
+    ]) {
       expect(readFileSync(join(destDir, stepName), "utf8")).toBe(
         readFileSync(join(sourceDir, "skills", "customize", stepName), "utf8"),
       );
@@ -536,7 +544,11 @@ describe("interrupted-install repair: all data files already current, only SKILL
     writeFileSync(join(destDir, "domain-map.ts"), "export const y = 2;\n");
     writeFileSync(join(destDir, "pack-map.ts"), "export const z = 3;\n");
     writeFileSync(join(destDir, "plugin-map.ts"), "export const w = 4;\n");
-    for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+    for (const stepName of [
+      "step-0-reconcile.md",
+      "step-3-round-1.md",
+      "pack-install.md",
+    ]) {
       writeFileSync(join(destDir, stepName), `# ${stepName}\n`);
     }
   }

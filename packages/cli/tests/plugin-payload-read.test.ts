@@ -49,7 +49,11 @@ function writeSourceFixture(sourceDir: string): void {
     join(sourceDir, "src", "plugin-map.ts"),
     "export const w = 4;\n",
   );
-  for (const stepName of ["step-0-reconcile.md", "step-3-round-1.md"]) {
+  for (const stepName of [
+    "step-0-reconcile.md",
+    "step-3-round-1.md",
+    "pack-install.md",
+  ]) {
     writeFileSync(
       join(sourceDir, "skills", "customize", stepName),
       `# ${stepName}\n`,
@@ -175,7 +179,7 @@ describe("a source payload file that exists but is unreadable keeps its real err
     expect((thrown as Error).message).toContain("is missing");
   });
 
-  it.each(["step-0-reconcile.md", "step-3-round-1.md"])(
+  it.each(["step-0-reconcile.md", "step-3-round-1.md", "pack-install.md"])(
     "a missing %s throws the 'is missing' error naming its path under skills/customize/",
     (stepName) => {
       const stepPath = join(sourceDir, "skills", "customize", stepName);
