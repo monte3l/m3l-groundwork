@@ -46,19 +46,31 @@
   `npx @monte3l/groundwork . --add-pack <name> --reinstall` (the CLI refuses
   an installed pack without `--reinstall`) and then run
   `/customize add-pack <name>`.
-- **CI does not use `pnpm/setup`**, though pnpm's docs now recommend it.
-  Re-checked 2026-10-01: the original blocker is gone, since `pnpm/setup@v3`
-  (2026-09-20) has a `node-version-file` input and auto-detects
-  `.node-version`, so a migration needs no second Node pin and passes
-  `check-node-version.mjs` unchanged as long as it spells
-  `node-version-file: .node-version` (a `runtime: node@N` literal would
-  evade that gate's `node-version:` regex). It is deferred, not blocked:
-  v3 is days old with open reliability issues, it needs pnpm 11+, it changes
-  how Node is provisioned in the publishing jobs, and the org's actions
-  allowlist must add `pnpm/setup` first. `pnpm/action-setup` itself has no
-  such input. Issue #47 is closed, so track the re-check in a new issue; do it when
-  `pnpm/setup` ships a v3.x with no open hang or network-failure bug and the
-  allowlist is settled.
+- **CI uses `pnpm/setup` only in part.** Re-checked 2026-11-25 against
+  v3.2.0 (#319): no open hang report, and the one possible network bug
+  (pnpm/setup#97, `tls handshake eof`) comes from behind a corporate registry.
+  The `ci.yml` lanes that read `.node-version` (format, lint, typecheck, build,
+  test, `e2e`, `e2e-macos`) and `security-audit.yml` now use it, with
+  `node-version-file: .node-version`, `install: false` and its store cache off
+  (pnpm/setup#67 and #102: it restores almost nothing, or a stale store).
+  `check-node-version.mjs` also rejects a `runtime: node@N` literal now, so
+  the Node pin cannot slip in through that input. These stay on
+  `pnpm/action-setup` + `actions/setup-node`, on purpose:
+  - `release.yml` holds the OIDC token. `pnpm/setup` restores and saves a
+    lockfile-verification cache on every run, whatever `cache` says, and the
+    file forbids any restored cache; it has no `registry-url` for the
+    Scorecard Packaging check either.
+  - `soak.yml` stands in for an adopter, runs `npx` (pnpm/setup#66) and runs
+    on arm (pnpm/setup#29).
+  - `node-current` and `node-previous-lts` pin Node release lines (`>=26`,
+    `lts/-1`) that `node-version-file` cannot express.
+  - `templates/core` keeps `pnpm/action-setup`: an adopter's org may restrict
+    actions as well, and the baseline should not require `pnpm/setup`.
+
+  The org's actions allowlist needs `pnpm/setup@*` for the migrated lanes
+  (`docs/github-blueprint.md`, row 5). Revisit the rest when #66, #67 and #102
+  are fixed upstream.
+
 - **`.claude/` harness support for working _in this repo_ (as opposed to what
   it emits) is now installed** -- see "Agent Operating Model" above for what
   and why. It arrived by running this repo's own published CLI against

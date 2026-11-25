@@ -178,5 +178,5 @@ rubric findings only warn.
 
 ## Known gaps (deliberately out of scope so far)
 
-The eleven packs, `pnpm/setup` deferred, adopt-mode caveats and the GitHub
+The eleven packs, `pnpm/setup` only partly adopted, adopt-mode caveats and the GitHub
 settings that live outside the repo: `docs/known-gaps.md`.

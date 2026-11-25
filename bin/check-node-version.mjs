@@ -8,6 +8,8 @@
  * -- every workflow must instead read `node-version-file: .node-version` (or
  * an equivalent file-derived expression), so the pin can never drift between
  * the file a developer's version manager reads and what CI actually runs.
+ * Also forbids a `runtime: node@<digit>` literal, which is how `pnpm/setup`
+ * would take a Node version without ever spelling `node-version:`.
  */
 import process from "node:process";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -30,6 +32,7 @@ reporter.ok(`.node-version pins ${pin}`);
 const workflowsDir = join(root, ".github", "workflows");
 const HARDCODED_VERSION = /node-version:\s*['"]?\d/;
 const FILE_DERIVED = /node-version-file:/;
+const RUNTIME_LITERAL = /runtime:\s*['"]?node@\d/;
 
 if (existsSync(workflowsDir)) {
   for (const entry of readdirSync(workflowsDir)) {
@@ -37,7 +40,11 @@ if (existsSync(workflowsDir)) {
     const text = readFileSync(join(workflowsDir, entry), "utf8");
     const hasHardcoded = HARDCODED_VERSION.test(text);
     const hasFileDerived = FILE_DERIVED.test(text);
-    if (hasHardcoded && !hasFileDerived) {
+    if (RUNTIME_LITERAL.test(text)) {
+      reporter.fail(
+        `.github/workflows/${entry} hardcodes a Node version in a runtime: node@N literal instead of node-version-file: .node-version`,
+      );
+    } else if (hasHardcoded && !hasFileDerived) {
       reporter.fail(
         `.github/workflows/${entry} hardcodes a node-version literal instead of node-version-file: .node-version`,
       );
