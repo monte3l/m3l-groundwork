@@ -85,6 +85,7 @@ function writeSourceFixture(sourceDir: string): void {
     "step-0-reconcile.md",
     "step-3-round-1.md",
     "pack-install.md",
+    "add-pack.md",
   ]) {
     writeFileSync(
       join(sourceDir, "skills", "customize", stepName),
@@ -180,6 +181,7 @@ describe("copyCustomizeSkillFiles writes SKILL.md last and rolls back all-or-not
       "step-0-reconcile.md",
       "step-3-round-1.md",
       "pack-install.md",
+      "add-pack.md",
     ]) {
       expect(readFileSync(join(destDir, stepName), "utf8")).toBe(
         readFileSync(join(sourceDir, "skills", "customize", stepName), "utf8"),
@@ -548,6 +550,7 @@ describe("interrupted-install repair: all data files already current, only SKILL
       "step-0-reconcile.md",
       "step-3-round-1.md",
       "pack-install.md",
+      "add-pack.md",
     ]) {
       writeFileSync(join(destDir, stepName), `# ${stepName}\n`);
     }

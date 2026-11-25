@@ -31,7 +31,11 @@ paths:
   `.groundwork/add-pack/<name>/`; every refusal is a `CliUsageError` raised
   before the first write. `CliUsageError` and `USAGE` live in `usage.ts` so
   `main.ts` can import `add-pack.ts` with no runtime cycle (`add-pack.ts`
-  imports only the `CliOptions` type from `main.ts`).
+  imports only the `CliOptions` type from `main.ts`). `/customize add-pack`
+  is what installs, so every step file of the skill, `add-pack.md` and
+  `pack-install.md` included, must be in `customize-paths.ts`'s
+  `CUSTOMIZE_SKILL_STEP_FILE_NAMES`, or the CLI's copy of the skill ships
+  without it.
 - **`packages/cli/README.md` is generated from the root `README.md`.** Never
   hand-edit it: change the root README and run `node bin/build-npm-readme.mjs`
   (the `npm-readme` verify step fails on drift). Keep `package.json`'s

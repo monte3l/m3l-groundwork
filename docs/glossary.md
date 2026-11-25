@@ -172,6 +172,15 @@ The JSON file adopt mode writes recording what its survey found, plus the
 harness and toolchain grades, so `/customize` can act on it later.
 In this repo: `.groundwork/inventory.json`.
 
+### Ledger
+
+The `.groundwork/installed-packs.json` file that `/customize` writes after it
+installs a pack (through `/customize add-pack` or adopt Round 1), recording
+each pack's installed files and their hashes, the wiring applied and skipped,
+and how it was installed; it is tracked in git, and the CLI only reads it.
+In this repo: the `pack-install.md` step of `/customize`, read by
+`packages/cli/src/pack-installation.ts`.
+
 ### OIDC
 
 Short for OpenID Connect: a protocol that lets a GitHub Actions job prove

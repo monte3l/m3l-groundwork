@@ -93,6 +93,7 @@ describe("inspectCustomizeSkill", () => {
     ["pack-map.ts", "export const old = 1;\n"],
     ["step-0-reconcile.md", "# older step\n"],
     ["pack-install.md", "# older pack install\n"],
+    ["add-pack.md", "# older add pack\n"],
   ])("is stale when %s differs from the payload", (name, content) => {
     installCustomizeSkill(target);
     writeFileSync(join(skillDir(), name), content);

@@ -34,8 +34,8 @@ const CUSTOMIZE_SKILL_DATA_FILE_NAMES = [
 
 /**
  * The step files `SKILL.md` delegates to (Step 0's adopt-mode reconcile,
- * Step 3's Round 1 and the staged-pack install procedure Round 1 follows),
- * sourced from the plugin's `skills/customize/` beside
+ * Step 3's Round 1, the staged-pack install procedure Round 1 follows, and
+ * the scoped `/customize add-pack` procedure that follows it too), sourced from the plugin's `skills/customize/` beside
  * {@link CUSTOMIZE_SKILL_ENTRY_FILE}. Like the backing-data files, they are
  * written before `SKILL.md`, so a loadable `SKILL.md` never sits beside a
  * missing step file.
@@ -51,7 +51,13 @@ export const CUSTOMIZE_SKILL_STEP_FILE_NAMES: readonly [
   "step-0-reconcile.md",
   "step-3-round-1.md",
   "pack-install.md",
-] = ["step-0-reconcile.md", "step-3-round-1.md", "pack-install.md"] as const;
+  "add-pack.md",
+] = [
+  "step-0-reconcile.md",
+  "step-3-round-1.md",
+  "pack-install.md",
+  "add-pack.md",
+] as const;
 
 /**
  * Every payload file's name inside an installed copy of the skill.
@@ -72,6 +78,7 @@ export const CUSTOMIZE_SKILL_FILE_NAMES: readonly [
   "step-0-reconcile.md",
   "step-3-round-1.md",
   "pack-install.md",
+  "add-pack.md",
 ] = [
   CUSTOMIZE_SKILL_ENTRY_FILE,
   ...CUSTOMIZE_SKILL_DATA_FILE_NAMES,
@@ -107,6 +114,7 @@ export const CUSTOMIZE_SKILL_WRITE_ORDER: readonly [
   "step-0-reconcile.md",
   "step-3-round-1.md",
   "pack-install.md",
+  "add-pack.md",
   "SKILL.md",
 ] = [
   ...CUSTOMIZE_SKILL_DATA_FILE_NAMES,
@@ -157,7 +165,7 @@ export const GROUNDWORK_DEST_SEGMENTS = [".groundwork", "customize"] as const;
  * import { plannedCustomizeSkillPaths } from "./customize-paths.js";
  *
  * plannedCustomizeSkillPaths();
- * // [".claude/skills/customize/SKILL.md", ..., ".groundwork/customize/pack-install.md"]
+ * // [".claude/skills/customize/SKILL.md", ..., ".groundwork/customize/add-pack.md"]
  * ```
  */
 export function plannedCustomizeSkillPaths(): readonly string[] {

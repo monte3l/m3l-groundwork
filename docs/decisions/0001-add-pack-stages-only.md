@@ -42,3 +42,9 @@ creates `.groundwork/`, and the current `/customize` Step 0.1 reads a
 0.1 exemption for a `.groundwork/` that holds only `add-pack/` and
 `installed-packs.json` ships in the same release, so this change must not be
 released without it.
+
+That hazard is resolved: `/customize add-pack` shipped with the Step 0.1
+exemption. Step 0.1 now ignores `add-pack/` and `installed-packs.json` when it
+classifies `.groundwork/`, so a `.groundwork/` that holds nothing else
+continues on the fresh path and names the staged packs, instead of reading as
+an interrupted adopt run.

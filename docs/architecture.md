@@ -113,6 +113,16 @@ two domains or an explicit **neutral allowlist** -- a list of files (such
 as this one) that belong to neither guidance skill's domain and so need no
 sweep -- checked by a test that walks the real template tree on every run.
 
+`/customize add-pack <name>` is a scoped entry: a short router in `SKILL.md`
+sends it to `add-pack.md`, which skips the interview, the Step 0 reconcile
+and Round 2. It reads the `plan.json` the CLI staged, verifies the staged
+bytes against their hashes, shows the plan and asks before writing anything.
+The install itself lives in `pack-install.md`, shared by adopt Round 1 and
+add-pack, so both paths install a staged pack the same way. Its last step
+records the pack in `.groundwork/installed-packs.json` (the
+[ledger](glossary.md#ledger)), which only `/customize` writes and the CLI's
+`--list-packs` and `--add-pack` read.
+
 ## Single source of truth for gates
 
 `bin/lib/verify-steps.mjs` is what `pnpm verify`, `lefthook`'s `pre-push`,

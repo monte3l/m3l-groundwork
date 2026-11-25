@@ -76,3 +76,12 @@ paths:
   offers none whose plugin ships hooks or default-on telemetry. It lives in that file, not a new one,
   because every file beside `SKILL.md` is listed in `customize-paths.ts` and
   a new one would be a CLI change.
+- **The `/customize` step files.** Every file beside `SKILL.md` is listed in
+  `customize-paths.ts`, which is how the CLI ships it; adding one is a CLI
+  change, and the self-hosted copy under `.claude/skills/customize/` must
+  match byte for byte (`customize-skill-sync.test.ts`). `pack-install.md` is
+  shared: adopt Round 1 and `/customize add-pack` both install a staged pack
+  through it, and its last step writes the `.groundwork/installed-packs.json`
+  ledger. `add-pack.md` is the router's target: `SKILL.md` sends
+  `/customize add-pack <name>` there before Step 0, and it skips the
+  interview, the Step 0 reconcile, Round 2 and Step 7's report.
