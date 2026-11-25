@@ -14,15 +14,16 @@ rule for which goes where is the org's
 This file lists what is still ahead; what has shipped is in the git history
 and the GitHub Releases.
 
-## Now: the 1.0 series
+## Now: the 1.x series
 
 The public API has been frozen since the first `1.0.0-rc`
 (see the README's ["Versioning policy"](README.md#versioning-policy)), and
-`1.0.0` shipped it unchanged. Only `fix` commits (patch releases) land in the
-1.0 series, so anything that adds a
-CLI flag or mode waits for a `1.1` release (see
+`1.0.0` shipped it unchanged. The project follows SemVer from there: `fix`
+commits ship as patch releases and backwards-compatible `feat` commits as
+minor releases (`1.4.0` is the latest), while a breaking change to the
+public API waits for a major release. Which commit type releases what is in
 [`.claude/rules/releases.md`](.claude/rules/releases.md), which
-[`CLAUDE.md`](CLAUDE.md#releases) summarises).
+[`CLAUDE.md`](CLAUDE.md#releases) summarises.
 
 Keeping `templates/core` and `templates/packs/` current against upstream
 TypeScript and Anthropic guidance is ongoing, ordinary maintenance, not a
@@ -31,9 +32,8 @@ one-time milestone -- see `docs/research/*.md` and the `typescript-guidance`
 
 ## Next 12 months
 
-- **A standalone "add a pack" mode, targeted at 1.1.** Tracked in
-  [#318](https://github.com/monte3l/m3l-groundwork/issues/318), in the
-  [1.1.0 milestone](https://github.com/monte3l/m3l-groundwork/milestone/1).
+- **A standalone "add a pack" mode.** Tracked in
+  [#377](https://github.com/monte3l/m3l-groundwork/issues/377).
   Today, adding an optional pack to an already-bootstrapped project means
   re-running the CLI (auto-detected as adopt mode) and then `/customize`. A
   dedicated additive-install flag is real, planned work, and it extends adopt
