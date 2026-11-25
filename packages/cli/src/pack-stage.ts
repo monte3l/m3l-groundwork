@@ -307,16 +307,20 @@ export function plannedPackStagingPaths(
   return [...planPackStaging(packs, groundworkDir, tokens).paths];
 }
 
-function writePack(plan: PlannedPack, newDir: string): StagedPack {
+function writePack(
+  plan: PlannedPack,
+  packRoot: string,
+  recordedDir: string,
+): StagedPack {
   const manifestStaged = stagedNameFor(STAGED_PACK_MANIFEST);
-  // Relative to newDir, so the containment assertion also covers the name.
+  // Relative to packRoot, so the containment assertion also covers the name.
   const manifestSha256 = writeStagedBytes(
     "stagePacks",
     plan.manifestBytes,
-    newDir,
+    packRoot,
     join(plan.name, manifestStaged),
   );
-  const filesDir = join(newDir, plan.name, PACK_FILES_DIR);
+  const filesDir = join(packRoot, plan.name, PACK_FILES_DIR);
   const files = plan.files.map(({ path, sourcePath }): StagedPackFile => {
     const stagedName = stagedNameFor(path);
     const sha256 = writeStagedBytes(
@@ -333,7 +337,7 @@ function writePack(plan: PlannedPack, newDir: string): StagedPack {
   });
   return {
     name: plan.name,
-    dir: `${STAGED_PACKS_DIR}/${plan.name}`,
+    dir: recordedDir,
     suffix: STAGED_SUFFIX,
     manifest: {
       path: STAGED_PACK_MANIFEST,
@@ -441,6 +445,8 @@ export function stagePacks(
     return [];
   }
   return stageAtomically(target, (newDir) =>
-    plan.packs.map((planned) => writePack(planned, newDir)),
+    plan.packs.map((planned) =>
+      writePack(planned, newDir, `${STAGED_PACKS_DIR}/${planned.name}`),
+    ),
   );
 }
