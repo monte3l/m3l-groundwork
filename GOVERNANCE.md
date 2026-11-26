@@ -194,9 +194,10 @@ matter how the project is otherwise run. Each is recorded as **Unmet** in
 - **`two_person_review` (MUST, requiring at least 50% of changes reviewed by
   someone other than the author before release).** The ruleset now requires
   one approval from a person other than the author, so every new change
-  meets this. The criterion counts changes, though, and most of the history
-  predates the rule: 17 of the last 60 merged pull requests carry such an
-  approval. It stays **Unmet** until the majority of recent changes do, and
+  meets this. The criterion counts changes, though: of the 369 pull requests
+  merged since 2026-09-18, 192 (52%) carry such an approval, and all 88
+  merged since 2026-11-18 do. It stays **Unmet** because the window the
+  criterion counts over has not been checked against this history, and
   an automated tool review is not a substitute for a person (see
   [`CONTRIBUTING.md`](CONTRIBUTING.md#code-review) for the review this
   project does run). It also depends on the second owner staying active,
@@ -213,7 +214,7 @@ inside the organization closes only two of them.
 
 - **`two_person_review`** closes with time. The ruleset requires one approval
   from a code owner other than the author, so every new change is reviewed, and
-  the criterion clears once most recent changes carry one.
+  the criterion clears once the owners have checked the window it counts over.
 - **`bus_factor`** closes when the second owner can run the project without
   the maintainer: npm package-maintainer access, driving a release end to end,
   and authoring changes. Review access alone does not do it.
