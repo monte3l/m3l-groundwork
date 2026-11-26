@@ -115,6 +115,29 @@ function inspect(path: string, advice: string): Stats | undefined {
 }
 
 /**
+ * The refusal {@link assertNotSymlink}, {@link assertDirectoryComponent},
+ * {@link assertFileDestination} and {@link assertNotDirectory} throw for a
+ * fact about the project (a symlink, a non-directory, a directory where a
+ * file goes) -- as opposed to a failure to inspect the path, which stays a
+ * plain `Error`. Its message is unchanged (`refusing to ...`).
+ *
+ * @example
+ * ```ts
+ * import { assertNotSymlink, FsGuardRefusal } from "./fs-guard.js";
+ *
+ * try {
+ *   assertNotSymlink("/work/app/.groundwork");
+ * } catch (error) {
+ *   if (error instanceof FsGuardRefusal) console.error(error.message);
+ *   else throw error;
+ * }
+ * ```
+ */
+export class FsGuardRefusal extends Error {
+  override readonly name = "FsGuardRefusal";
+}
+
+/**
  * Throws when `path` exists and is a symbolic link; a missing path passes.
  * Uses `lstat`, so the link itself is inspected, never its target. Call it
  * on every staging directory before the first `rm` or write under it.
@@ -142,7 +165,7 @@ export function assertNotSymlink(
 ): void {
   const stat = inspect(path, advice);
   if (stat?.isSymbolicLink() === true) {
-    throw new Error(
+    throw new FsGuardRefusal(
       `refusing to write through a symlink: ${path} -- ${advice}`,
     );
   }
@@ -170,7 +193,7 @@ export function assertDirectoryComponent(path: string, advice: string): void {
   assertNotSymlink(path, advice);
   const stat = inspect(path, advice);
   if (stat !== undefined && !stat.isDirectory()) {
-    throw new Error(
+    throw new FsGuardRefusal(
       `refusing to write under a non-directory: ${path} -- ${advice}`,
     );
   }
@@ -222,7 +245,7 @@ export function assertFileDestination(path: string, advice: string): void {
 export function assertNotDirectory(path: string, advice: string): void {
   const stat = inspect(path, advice);
   if (stat?.isDirectory() === true) {
-    throw new Error(
+    throw new FsGuardRefusal(
       `refusing to write a file over a directory: ${path} -- ${advice}`,
     );
   }

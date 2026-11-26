@@ -91,6 +91,15 @@ describe("USAGE", () => {
     expect(USAGE).toContain("--check-update");
     expect(USAGE).toContain("--base-version <");
   });
+
+  it("lists --name among the flags --check-update refuses", () => {
+    const paragraph =
+      USAGE.split("\n\n").find((block) =>
+        block.startsWith("--check-update skips mode detection"),
+      ) ?? "";
+    expect(paragraph).toMatch(/cannot be\s+combined with/);
+    expect(paragraph.replaceAll(/\s+/g, " ")).toContain("--name");
+  });
 });
 
 describe("main() return value", () => {

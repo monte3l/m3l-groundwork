@@ -35,7 +35,9 @@ export const USAGE: string = [
   "  --check-update          Report whether this CLI's templates differ from the release",
   "                          the project was installed from (read-only, offline;",
   "                          exit 0 up to date, 3 update available)",
-  "  --base-version <x.y.z>  With --check-update: the release to compare against",
+  "  --update                Stage an update to this CLI's templates under .groundwork/update/,",
+  "                          for /customize update to apply (offline; writes nothing else)",
+  "  --base-version <x.y.z>  With --check-update or --update: the release to compare against",
   "                          (default: the lock's, else inferred from the project's files)",
   "  --help, -h              Print this message",
   "  --version, -v           Print the CLI's version",
@@ -55,7 +57,11 @@ export const USAGE: string = [
   "",
   "--check-update skips mode detection, writes nothing, and cannot be",
   "combined with --pack, --add-pack, --reinstall, --adopt, --fresh, --force,",
-  "--skip-install or --list-packs.",
+  "--skip-install, --list-packs or --name.",
+  "",
+  "--update skips mode detection, writes only under .groundwork/update/, and",
+  "cannot be combined with --check-update, --pack, --add-pack, --reinstall,",
+  "--adopt, --fresh, --force, --skip-install, --list-packs or --name.",
 ].join("\n");
 
 /**

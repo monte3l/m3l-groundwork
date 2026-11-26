@@ -558,9 +558,18 @@ type ProjectRead =
 
 /**
  * A project file's bytes, read only when it is a regular file reached
- * without a symlink. Never throws.
+ * without a symlink: `absent`, or `unreadable` with a reason naming `rel`
+ * (a symlink, a directory, a FIFO, a read failure). Never throws.
+ *
+ * @example
+ * ```ts
+ * import { readGuarded } from "./update-classify.js";
+ *
+ * const read = readGuarded("/path/to/project", "eslint.config.js");
+ * if (read.kind === "unreadable") console.log(read.reason);
+ * ```
  */
-function readGuarded(targetDir: string, rel: string): ProjectRead {
+export function readGuarded(targetDir: string, rel: string): ProjectRead {
   const entry = projectEntry(targetDir, rel);
   if (entry.kind === "absent") return { kind: "absent" };
   if (entry.kind === "file") {
@@ -708,6 +717,29 @@ function asReview(entry: UpdateFileEntry, reason: string): UpdateFileEntry {
     theirsSha256: entry.theirsSha256,
     baseFrom: entry.baseFrom,
   };
+}
+
+/**
+ * The base content {@link classifyProject} compares `path` against, with the
+ * same precedence (a lock-verified `.groundwork/base/` snapshot, else the
+ * history's blob with the tokens applied), or `undefined` when only a hash or
+ * nothing is known. Reads the snapshot; writes nothing.
+ *
+ * @example
+ * ```ts
+ * import { resolveBaseBytes } from "./update-classify.js";
+ *
+ * const base = resolveBaseBytes(input, "eslint.config.js");
+ * if (base !== undefined) console.log(base.byteLength);
+ * ```
+ */
+export function resolveBaseBytes(
+  input: ClassifyProjectInput,
+  path: string,
+): Uint8Array | undefined {
+  const lockFile = input.lock?.files.find((file) => file.path === path);
+  const base = resolveBase(input, path, lockFile, historyHashes(input), []);
+  return base.kind === "content" ? base.bytes : undefined;
 }
 
 /**

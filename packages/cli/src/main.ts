@@ -99,6 +99,7 @@ import { assertAdoptWriteScope } from "./write-scope.js";
 import { CliUsageError, USAGE } from "./usage.js";
 import { runAddPack } from "./add-pack.js";
 import { runCheckUpdate } from "./check-update.js";
+import { runUpdate } from "./update.js";
 
 export { assertAdoptWriteScope } from "./write-scope.js";
 export { CliUsageError } from "./usage.js";
@@ -123,7 +124,9 @@ export interface CliOptions {
   reinstall: boolean;
   /** `--check-update`: report whether this CLI's templates differ from the project's release. */
   checkUpdate: boolean;
-  /** `--base-version`: the release `--check-update` compares against (plain `x.y.z`). */
+  /** `--update`: stage an update under `.groundwork/update/` for `/customize update`. */
+  update: boolean;
+  /** `--base-version`: the release `--check-update` or `--update` starts from (plain `x.y.z`). */
   baseVersion: string | undefined;
 }
 
@@ -146,6 +149,7 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--fresh",
   "--reinstall",
   "--check-update",
+  "--update",
   ...LIST_PACKS_FLAGS,
   ...HELP_FLAGS,
   ...VERSION_FLAGS,
@@ -228,25 +232,27 @@ function packNamesOf(
 }
 
 /**
- * Rejects what `--check-update` cannot honor, as usage errors (exit 2): any
- * flag that installs, stages or lists (naming both flags), `--base-version`
- * without `--check-update`, and a `--base-version` that is not a plain
- * `x.y.z`.
+ * Rejects what `--check-update` and `--update` cannot honor, as usage errors
+ * (exit 2): the two together, either with any flag that installs, stages,
+ * lists or names (naming both flags), `--base-version` without either, and
+ * a `--base-version` that is not a plain `x.y.z`.
  */
-function assertCheckUpdateUsage(
-  { flags, values, repeatableValues }: TokenizedArgv,
-  checkUpdate: boolean,
-): void {
+function assertCheckUpdateUsage(tokenized: TokenizedArgv): void {
+  const { flags, values, repeatableValues } = tokenized;
   const baseVersion = values.get("--base-version");
-  if (!checkUpdate) {
+  const checkUpdate = flags.has("--check-update");
+  const update = flags.has("--update");
+  if (!checkUpdate && !update) {
     if (baseVersion !== undefined) {
       throw new CliUsageError(
-        `--base-version only applies to --check-update -- add --check-update, or drop --base-version\n\n${USAGE}`,
+        `--base-version only applies to --check-update or --update -- add one of them, or drop --base-version\n\n${USAGE}`,
       );
     }
     return;
   }
+  const flag = update ? "--update" : "--check-update";
   const conflicting = [
+    update && checkUpdate ? "--check-update" : undefined,
     repeatableValues.has("--pack") ? "--pack" : undefined,
     repeatableValues.has("--add-pack") ? "--add-pack" : undefined,
     values.has("--name") ? "--name" : undefined,
@@ -261,7 +267,11 @@ function assertCheckUpdateUsage(
   ].filter((flag) => flag !== undefined);
   if (conflicting.length > 0) {
     throw new CliUsageError(
-      `--check-update cannot be combined with ${conflicting.join(", ")} -- --check-update only reads the project and reports\n\n${USAGE}`,
+      `${flag} cannot be combined with ${conflicting.join(", ")} -- ${
+        update
+          ? "--update only stages an update, under .groundwork/update/"
+          : "--check-update only reads the project and reports"
+      }\n\n${USAGE}`,
     );
   }
   if (baseVersion !== undefined && !BASE_VERSION_PATTERN.test(baseVersion)) {
@@ -281,7 +291,7 @@ export function parseArgs(argv: string[]): CliOptions {
   const listPacks = [...LIST_PACKS_FLAGS].some((flag) => flags.has(flag));
   const checkUpdate = flags.has("--check-update");
   if (!help && !version) {
-    assertCheckUpdateUsage(tokenized, checkUpdate);
+    assertCheckUpdateUsage(tokenized);
   }
 
   if (help || version || listPacks) {
@@ -307,6 +317,7 @@ export function parseArgs(argv: string[]): CliOptions {
       addPacks: [],
       reinstall: false,
       checkUpdate: false,
+      update: false,
       baseVersion: undefined,
     };
   }
@@ -356,6 +367,7 @@ export function parseArgs(argv: string[]): CliOptions {
     addPacks,
     reinstall: flags.has("--reinstall"),
     checkUpdate,
+    update: flags.has("--update"),
     baseVersion: values.get("--base-version"),
   };
 }
@@ -1187,11 +1199,12 @@ function listPackStatus(targetDir: string): void {
 
 /**
  * Runs the CLI and returns the exit code to set, or `undefined` to leave it
- * (only `--check-update` returns one: 0 up to date, 3 update available).
+ * (`--check-update` returns 0 up to date or 3 update available; `--update`
+ * returns 0).
  * `platform` is injectable so fresh mode's Windows refusal
  * (a runtime error, exit 1, raised before anything is written) is
  * unit-testable on any OS; it defaults to `process.platform`. Adopt mode,
- * `--add-pack`, `--check-update` and `--help`/`--version`/`--list-packs`
+ * `--add-pack`, `--check-update`, `--update` and `--help`/`--version`/`--list-packs`
  * run on every platform.
  */
 export function main(
@@ -1229,6 +1242,15 @@ export function main(
   if (options.checkUpdate) {
     // Read-only: never through mode detection, never creating anything.
     return runCheckUpdate({
+      targetDir: options.targetDir,
+      baseVersion: options.baseVersion,
+    });
+  }
+
+  if (options.update) {
+    // Staging only: never through mode detection, never writing outside
+    // .groundwork/update/.
+    return runUpdate({
       targetDir: options.targetDir,
       baseVersion: options.baseVersion,
     });

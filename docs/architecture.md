@@ -154,6 +154,31 @@ date.
   note. A freshly bootstrapped project classifies as nothing but `current` and
   `skip` against its own theirs tree, and a test pins that. `--check-update` prints
   the counts as `if you update: ...` and always removes the temporary tree.
+- **`update.ts`** stages an update (`--update`), the same shape as `add-pack.ts`:
+  it plans everything first, refuses before any write, then writes the whole
+  `.groundwork/update/` directory into a work directory and swaps it in by
+  rename (`staging.ts`), `plan.json` last. It shares its refusals and base
+  resolution with `--check-update` (`update-common.ts`). For each file the
+  classification (`update-classify.ts`) picks what is staged: the new bytes
+  under `files/`, a three-way result under `merged/` (JSON through
+  `merge-json3.ts`; text through `gitMergeFile` in `git.ts`, which runs
+  `git merge-file -p --diff3` on three temporary files outside the project), and
+  the base bytes under `base/` when they came from the template history, not
+  from the project's own snapshot. A text file that merges with conflicts becomes
+  a `conflict` entry whose markers are staged only, never applied; a file git
+  cannot merge, binary or non-UTF-8 text, or a missing `git` becomes a `review`
+  with all the versions staged. `pack-wiring-diff.ts` compares an outdated
+  pack's manifest at its recorded release with the current one, item by item
+  (hook by event and command, setting by key, script by name, verify step by id),
+  and marks a removed or changed item `removable` only when the project's own
+  value still equals the old one. `lock-next.json` is the lock after every
+  default is accepted: each file the update brings forward gets the pristine new
+  bytes as its base (never the merged text), files left alone keep their old base,
+  and its `updatedAt` is the previous lock's (or the epoch) so the plan stays
+  deterministic; `/customize update` sets the real time when it writes the lock.
+  `plan.json` lists every file, its action and the sha256 of everything staged,
+  so a changed or missing file stops the apply step. Two runs on an unchanged
+  project give a byte-identical plan apart from `generatedAt`.
 - **`assets.ts`** is the one place that locates `templates/` and the plugin
   payload, whether running from the source checkout or a published npm
   tarball -- see its own header comment for why the probe order matters.
@@ -186,8 +211,9 @@ records the pack in `.groundwork/installed-packs.json` (the
 > Designed in [ADR 0002](decisions/0002-update-stages-three-way.md) and landing
 > across seven pull requests. Shipped so far: the template history and the
 > `outdated` pack status, the lock and base snapshot a fresh bootstrap writes,
-> `--check-update`, and the per-file decision table with the three-way JSON
-> merge. The rest below is a plan, not behaviour.
+> `--check-update`, the per-file decision table with the three-way JSON merge,
+> and `--update` staging. The apply step (`/customize update`) is still a plan,
+> not behaviour.
 
 A project that already adopted groundwork, or was bootstrapped by it, moves to a
 newer release in two steps that mirror add-pack: `npx @monte3l/groundwork .

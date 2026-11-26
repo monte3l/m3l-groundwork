@@ -226,8 +226,15 @@ export function readProjectFile(
  * Reads and parses a JSON(C) project file through {@link readProjectFile}.
  * Never throws: every failure is a reason. The parser's own message is
  * dropped, since it can quote the file's content.
+ *
+ * @example
+ * ```ts
+ * const read = readJsonFile("/path/to/project", ".claude/settings.json");
+ * if (read.ok) console.log(read.value);
+ * else console.log(read.reason); // e.g. ".claude/settings.json is not valid JSON"
+ * ```
  */
-function readJsonFile(targetDir: string, rel: string): JsonRead {
+export function readJsonFile(targetDir: string, rel: string): JsonRead {
   const read = readProjectFile(targetDir, rel);
   if (!read.ok) return read;
   const parsed = parseJsonc(read.text);

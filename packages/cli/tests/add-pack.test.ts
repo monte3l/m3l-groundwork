@@ -590,12 +590,17 @@ describe("an outdated ledger pack", () => {
     const before = snapshot(root);
     const { thrown } = run([dir, "--add-pack", "statusline"]);
     expect(thrown).toBeInstanceOf(CliUsageError);
-    const message = (thrown as Error).message;
+    // Only the refusal text: every usage error appends USAGE, which
+    // documents --update.
+    const message = (thrown as Error).message.split("\n\n")[0] ?? "";
     expect(message).toMatch(/statusline/);
     expect(message).toMatch(/installed/);
     expect(message).toMatch(/outdated/);
     expect(message).toMatch(/--reinstall/);
-    expect(message).not.toMatch(/--update/);
+    // Both ways out: bring the whole project forward, or restage this pack.
+    expect(message).toMatch(/--update/);
+    expect(message).toMatch(/whole project/);
+    expect(message).toMatch(/just this pack|only this pack/);
     expect(snapshot(root)).toEqual(before);
   });
 

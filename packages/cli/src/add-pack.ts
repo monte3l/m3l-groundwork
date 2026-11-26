@@ -38,7 +38,11 @@ import type { StagedPack } from "./pack-stage.js";
 import { listPackNames, loadPack, observeWiring } from "./packs.js";
 import type { Pack, PackManifest } from "./packs.js";
 import { inspectCustomizeSkill } from "./plugin.js";
-import { prepareStaging, stageAtomically } from "./staging.js";
+import {
+  isIncompleteStagingError,
+  prepareStaging,
+  stageAtomically,
+} from "./staging.js";
 import type { StagingTarget } from "./staging.js";
 import { errnoCode, isAbsentError } from "./survey/internal/read-guard.js";
 import { paint } from "./term.js";
@@ -318,7 +322,7 @@ export function runAddPack(options: CliOptions): void {
     }
     if (installation.status === "outdated" && !options.reinstall) {
       throw new CliUsageError(
-        `pack "${manifest.name}" is already installed in ${targetDir} and outdated (an older CLI installed a different copy of it) -- pass --reinstall to stage this version\n\n${USAGE}`,
+        `pack "${manifest.name}" is already installed in ${targetDir} and outdated (an older CLI installed a different copy of it) -- re-run with --update to bring the whole project forward, or pass --reinstall to restage just this pack\n\n${USAGE}`,
       );
     }
     const requires = (manifest.requires?.paths ?? []).map((path) => ({
@@ -457,25 +461,6 @@ export function runAddPack(options: CliOptions): void {
 }
 
 /**
- * The "so .groundwork/ is incomplete -- re-run the CLI" wrapper
- * `stageAtomically`/`prepareStaging` put around a staging failure. Its
- * advice is adopt mode's and wrong here (add-pack touches nothing else in
- * `.groundwork/`), so {@link stagingFailure} replaces it, keeping its cause.
- * Coupled to `staging.ts`'s wording; add-pack-stage-write-failure.test.ts
- * pins that no link of the resulting chain carries it.
- */
-function isIncompleteStagingWrapper(error: unknown): error is Error {
-  return (
-    error instanceof Error &&
-    !(error instanceof AggregateError) &&
-    error.cause !== undefined &&
-    error.message.includes(
-      "so .groundwork/ is incomplete -- fix the cause and re-run the CLI",
-    )
-  );
-}
-
-/**
  * The error for a staging failure on pack `name`: the root failure's
  * message plus which packs were staged and which were not, that the rest of
  * `.groundwork/` was not touched, and the `--add-pack` re-run. An
@@ -499,7 +484,7 @@ function stagingFailure(
     error.cause = cause;
     return error;
   }
-  const root = isIncompleteStagingWrapper(cause) ? cause.cause : cause;
+  const root = isIncompleteStagingError(cause) ? cause.cause : cause;
   const reason = root instanceof Error ? root.message : String(root);
   const message = `could not stage pack "${name}" (${reason}); ${which}; the rest of .groundwork/ was not touched -- fix the cause and re-run with --add-pack ${notStaged.join(" ")}`;
   return cause instanceof AggregateError
