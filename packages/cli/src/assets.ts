@@ -164,3 +164,23 @@ export function templateHistoryPath(): string {
     local: "data/template-history.json",
   });
 }
+
+/**
+ * The committed migrations list (`data/migrations.json`): renames and removed
+ * pack wiring the update flow replays between two CLI versions. It sits beside
+ * {@link templateHistoryPath}'s file: `packages/cli/data/migrations.json` in a
+ * checkout, and `data/migrations.json` beside `dist/` in a published tarball.
+ *
+ * @throws The `Error` {@link resolveAsset} raises when neither layout has it.
+ *
+ * @example
+ * ```ts
+ * const text = readFileSync(templateMigrationsPath(), "utf8");
+ * ```
+ */
+export function templateMigrationsPath(): string {
+  return resolveAsset({
+    repo: "packages/cli/data/migrations.json",
+    local: "data/migrations.json",
+  });
+}

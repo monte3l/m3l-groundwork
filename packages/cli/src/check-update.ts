@@ -13,20 +13,27 @@ import { resolveAsset } from "./assets.js";
 import { escapeControls } from "./format-error.js";
 import { resolveCliVersion } from "./inventory.js";
 import { LOCK_FILE, readLock } from "./lock.js";
+import type { Lock } from "./lock.js";
+import { loadMigrations } from "./migrations.js";
 import {
   classifyProjectOrigin,
   compareVersions,
   inspectPackInstallations,
   LEDGER_PATH,
   PACK_STATUS_LABELS,
+  projectNameOf,
   readInstalledPacksLedger,
 } from "./pack-installation.js";
 import { packsRootDir } from "./packs.js";
 import { errnoCode, isAbsentError } from "./survey/internal/read-guard.js";
 import { loadTemplateHistory } from "./template-history.js";
 import type { TemplateHistory } from "./template-history.js";
+import { buildTheirsTree } from "./theirs-tree.js";
+import { buildTokens } from "./tokens.js";
 import { diffAgainstHistory, resolveUpdateBase } from "./update-base.js";
 import type { FileDiff } from "./update-base.js";
+import { classifyProject } from "./update-classify.js";
+import type { UpdateAction, UpdateOrigin } from "./update-classify.js";
 import { CliUsageError, USAGE } from "./usage.js";
 
 /**
@@ -48,7 +55,10 @@ export interface CheckUpdateOptions {
  * (default: `loadTemplateHistory()`), the running CLI version (default:
  * `resolveCliVersion()`) and the running CLI's `templates/core` (default:
  * the installed one, which must be readable; an explicit directory that is
- * absent is compared as an empty tree).
+ * absent is compared as an empty tree); for the `if you update:` preview,
+ * the classifier (default: `classifyProject`), the theirs-tree builder
+ * (default: `buildTheirsTree`) and the migrations file (default: the
+ * shipped one).
  *
  * @example
  * ```ts
@@ -59,6 +69,9 @@ export interface CheckUpdateDeps {
   readonly history?: { history: TemplateHistory } | { note: string };
   readonly runningVersion?: string;
   readonly coreDir?: string;
+  readonly classify?: typeof classifyProject;
+  readonly buildTheirs?: typeof buildTheirsTree;
+  readonly migrationsPath?: string;
 }
 
 /** Exit code: the project's templates match the running CLI's. */
@@ -143,6 +156,144 @@ function installedCoreDir(): string {
   return dir;
 }
 
+/** The preview's parts, in print order, with their wording. */
+const PREVIEW_PARTS: readonly (readonly [UpdateAction, string])[] = [
+  ["take", "update cleanly"],
+  ["merge", "need a merge"],
+  ["conflict", "conflict"],
+  ["review", "need review"],
+  ["add", "new"],
+  ["delete", "removed"],
+  ["rename", "renamed"],
+];
+
+/** The project's origin as the classification sees it. */
+function updateOrigin(targetDir: string, lock: Lock | undefined): UpdateOrigin {
+  if (lock !== undefined) return lock.origin === "adopt" ? "adopted" : "fresh";
+  const { kind } = classifyProjectOrigin(targetDir);
+  switch (kind) {
+    case "adopted":
+      return "adopted";
+    case "bootstrapped":
+      return "fresh";
+    case "interrupted-adopt":
+    case "unknown":
+      return "unknown";
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`unhandled project origin ${String(exhaustive)}`);
+    }
+  }
+}
+
+/** The preview's injectable parts (see {@link CheckUpdateDeps}). */
+interface PreviewDeps {
+  readonly classify: typeof classifyProject;
+  readonly buildTheirs: typeof buildTheirsTree;
+  readonly migrationsPath: string | undefined;
+}
+
+/** The `if you update:` line, its notes, and how many comparisons it skipped. */
+interface UpdatePreview {
+  readonly line: string | undefined;
+  readonly notes: readonly string[];
+  readonly skipped: number;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The `if you update: ...` line (or none when nothing would change) and its
+ * notes: builds the running CLI's theirs tree, classifies the project
+ * against it, and removes the tree before returning. Never throws for a
+ * preview failure: a tree that cannot be built, damaged migrations, a
+ * classifier failure or a ledger pack this CLI no longer ships is a note
+ * counted in `skipped`, and a tree that cannot be removed is a note naming
+ * the leftover directory.
+ */
+function updatePreview(
+  targetDir: string,
+  history: TemplateHistory,
+  input: {
+    readonly lock: Lock | undefined;
+    readonly baseVersion: string;
+    readonly runningVersion: string;
+    readonly coreDir: string;
+    readonly packNames: readonly string[];
+    readonly packVersions: Readonly<Record<string, string>>;
+  },
+  deps: PreviewDeps,
+): UpdatePreview {
+  const notes: string[] = [];
+  let skipped = 0;
+  const loaded = loadMigrations(deps.migrationsPath);
+  if ("note" in loaded) {
+    notes.push(loaded.note);
+    skipped += 1;
+  }
+  const migrations = "migrations" in loaded ? loaded.migrations : [];
+  const tokens = input.lock?.tokens ?? buildTokens(projectNameOf(targetDir));
+  let theirs: ReturnType<typeof buildTheirsTree>;
+  try {
+    theirs = deps.buildTheirs({
+      tokens,
+      packNames: input.packNames,
+      coreDir: input.coreDir,
+    });
+  } catch (error) {
+    notes.push(`update preview skipped: ${messageOf(error)}`);
+    return { line: undefined, notes, skipped: skipped + 1 };
+  }
+  let line: string | undefined;
+  try {
+    for (const name of theirs.missingPacks) {
+      notes.push(
+        `pack "${name}" no longer ships with this CLI -- its files are left alone`,
+      );
+      skipped += 1;
+    }
+    const result = deps.classify({
+      targetDir,
+      lock: input.lock,
+      history,
+      baseVersion: input.baseVersion,
+      ledgerPacks: input.packNames,
+      tokens,
+      theirsDir: theirs.dir,
+      theirsSources: theirs.sources,
+      migrations,
+      runningVersion: input.runningVersion,
+      origin: updateOrigin(targetDir, input.lock),
+      missingPacks: theirs.missingPacks,
+      ledgerPackVersions: input.packVersions,
+    });
+    notes.push(...result.notes);
+    skipped += result.notes.length;
+    const parts = PREVIEW_PARTS.filter(
+      ([action]) => result.summary[action] > 0,
+    ).map(
+      ([action, wording]) => `${String(result.summary[action])} ${wording}`,
+    );
+    if (parts.length > 0) line = `if you update: ${parts.join(", ")}`;
+  } catch (error) {
+    notes.push(`update preview skipped: ${messageOf(error)}`);
+    skipped += 1;
+  } finally {
+    try {
+      theirs.cleanup();
+    } catch (error) {
+      // Best effort: a leftover temp directory never replaces the report
+      // or the preview's own failure; it is reported so it can be removed.
+      notes.push(
+        `could not remove the temporary directory ${theirs.dir} (${messageOf(error)}) -- remove it by hand`,
+      );
+    }
+  }
+  return { line, notes, skipped };
+}
+
 /** The lines `--check-update` prints, computed before any is printed. */
 interface CheckUpdateReport {
   readonly lines: readonly string[];
@@ -154,8 +305,13 @@ interface CheckUpdateReport {
  * code: 0 when up to date, 3 when an update is available. Everything is
  * computed before anything is printed. Prints, through `console.log`,
  * `base <X> (<flag|lock|inferred>), CLI <Y>`, then a count line for the
- * core templates and for each ledger pack that differs, any `note:` lines
- * (a tie in inference, the project inspection's notes, a ledger pack that
+ * core templates and for each ledger pack that differs, then -- when the
+ * base is older than the running CLI -- `if you update: <counts>` (what an
+ * update would do to this project's files: update cleanly, need a merge,
+ * conflict, need review, new, removed, renamed; omitted when all are zero;
+ * the temporary theirs tree it is computed from is always removed), any
+ * `note:` lines (migrations or packs the preview could not use,
+ * a tie in inference, the project inspection's notes, a ledger pack that
  * could not be compared, a pack whose files show it installed -- or could
  * not be classified -- without a ledger entry), and finally
  * `update available`, `up to date (N comparison(s) skipped -- see notes)`
@@ -197,6 +353,11 @@ export function runCheckUpdate(
     runningVersion: deps.runningVersion ?? resolveCliVersion(),
     coreDir: deps.coreDir ?? installedCoreDir(),
     baseVersion,
+    preview: {
+      classify: deps.classify ?? classifyProject,
+      buildTheirs: deps.buildTheirs ?? buildTheirsTree,
+      migrationsPath: deps.migrationsPath,
+    },
   });
   for (const line of report.lines) console.log(line);
   return report.changed ? UPDATE_AVAILABLE : UP_TO_DATE;
@@ -213,6 +374,7 @@ function buildReport(
     readonly runningVersion: string;
     readonly coreDir: string;
     readonly baseVersion: string | undefined;
+    readonly preview: PreviewDeps;
   },
 ): CheckUpdateReport {
   const { history } = loaded;
@@ -287,20 +449,47 @@ function buildReport(
     const manifest = pack.manifestChanged ? ", manifest changed" : "";
     lines.push(`pack "${pack.name}": ${countLine(pack)}${manifest}`);
   }
+  const preview: UpdatePreview = coreUpToDate
+    ? { line: undefined, notes: [], skipped: 0 }
+    : updatePreview(
+        targetDir,
+        history,
+        {
+          lock: base.lock,
+          baseVersion: base.version,
+          runningVersion,
+          coreDir,
+          packNames: ledger.names,
+          packVersions: Object.fromEntries(
+            ledger.entries.flatMap(({ name, cliVersion }) =>
+              cliVersion === undefined ? [] : [[name, cliVersion] as const],
+            ),
+          ),
+        },
+        settings.preview,
+      );
+  if (preview.line !== undefined) lines.push(preview.line);
   const notes = new Set([
     ...base.notes,
     ...inspection.undetermined,
     ...ledger.undetermined,
     ...diff.notes,
     ...unledgered,
+    ...preview.notes,
   ]);
   for (const note of notes) lines.push(`note: ${escapeInline(note)}`);
 
-  const skipped = diff.notes.length + unledgered.length;
+  const skipped = diff.notes.length + unledgered.length + preview.skipped;
   if (changed) lines.push("update available");
   else if (skipped > 0) {
     lines.push(
       `up to date (${String(skipped)} comparison(s) skipped -- see notes)`,
+    );
+  } else if (preview.line !== undefined) {
+    // The templates match upstream, yet this project's own base is older:
+    // a bare "up to date" would contradict the preview line above it.
+    lines.push(
+      `templates up to date upstream (base ${base.version} (${base.source}), CLI ${runningVersion}), but an update would still change this project -- see 'if you update:'`,
     );
   } else {
     lines.push(

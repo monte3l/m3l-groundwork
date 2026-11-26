@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -87,6 +88,43 @@ describe.skipIf(process.platform === "win32")(
       );
       expect(result.stdout).toMatch(/\d+ file\(s\) changed upstream/);
       expect(result.stdout).toContain("update available");
+      expect(snapshotTree(dir)).toEqual(before);
+    });
+
+    it("previews what an update would do to this project's files", () => {
+      const read = (rel: string): string =>
+        readFileSync(join(dir, rel), "utf8");
+      const lockPath = join(dir, ".groundwork", "groundwork.lock.json");
+      const lock = JSON.parse(readFileSync(lockPath, "utf8")) as {
+        baseVersion: string;
+        files: { path: string; baseSha256: string | null }[];
+      };
+      const older = "older: true\n";
+      const baseFile = (rel: string): string =>
+        join(dir, ".groundwork", "base", `${rel}.base`);
+      // lefthook.yml: installed from an older release, untouched since.
+      writeFileSync(baseFile("lefthook.yml"), older);
+      writeFileSync(join(dir, "lefthook.yml"), older);
+      // eslint.config.js: older release, edited locally since.
+      const oldEslint = "export default [];\n";
+      writeFileSync(baseFile("eslint.config.js"), oldEslint);
+      writeFileSync(join(dir, "eslint.config.js"), `${oldEslint}// mine\n`);
+      const hash = (text: string): string =>
+        createHash("sha256").update(text).digest("hex");
+      for (const file of lock.files) {
+        if (file.path === "lefthook.yml") file.baseSha256 = hash(older);
+        if (file.path === "eslint.config.js") file.baseSha256 = hash(oldEslint);
+      }
+      lock.baseVersion = oldest;
+      writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+      expect(read("lefthook.yml")).toBe(older);
+
+      const before = snapshotTree(dir);
+      const result = run([dir, "--check-update"]);
+      expect(result.status).toBe(3);
+      expect(result.stdout).toContain(
+        "if you update: 1 update cleanly, 1 need a merge",
+      );
       expect(snapshotTree(dir)).toEqual(before);
     });
 
