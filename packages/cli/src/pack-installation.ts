@@ -649,8 +649,17 @@ export interface CurrentPackHashes {
 
 const PLAIN_VERSION = /^(\d+)\.(\d+)\.(\d+)$/;
 
-/** `a` minus `b` as plain `x.y.z` versions, or `undefined` when either is not one. */
-function compareVersions(a: string, b: string): number | undefined {
+/**
+ * `a` minus `b` as plain `x.y.z` versions (negative, zero or positive), or
+ * `undefined` when either is not one.
+ *
+ * @example
+ * ```ts
+ * compareVersions("1.4.0", "1.10.0"); // negative
+ * compareVersions("1.4.0", "latest"); // undefined
+ * ```
+ */
+export function compareVersions(a: string, b: string): number | undefined {
   const left = PLAIN_VERSION.exec(a);
   const right = PLAIN_VERSION.exec(b);
   if (left === null || right === null) return undefined;
@@ -661,7 +670,15 @@ function compareVersions(a: string, b: string): number | undefined {
   return 0;
 }
 
-function sha256Hex(data: string | Buffer): string {
+/**
+ * The lowercase hex sha256 of `data` (a string is hashed as UTF-8).
+ *
+ * @example
+ * ```ts
+ * const hash = sha256Hex(readFileSync("/p/package.json"));
+ * ```
+ */
+export function sha256Hex(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
@@ -674,8 +691,14 @@ function sha256Hex(data: string | Buffer): string {
  * missing blob gives no verdict (`missing`): the raw-blob hash never equals
  * the canonical one, so comparing it would call every pack outdated. An
  * unparseable blob gives no verdict either, with a `reason` for the caller.
+ *
+ * @example
+ * ```ts
+ * const manifest = comparableManifestHash(history, recorded.manifest);
+ * if (manifest.kind === "hash") console.log(manifest.hash === current.manifestSha256);
+ * ```
  */
-function comparableManifestHash(
+export function comparableManifestHash(
   history: TemplateHistory,
   recorded: string,
 ):
@@ -1278,19 +1301,36 @@ export interface PackInstallationReport {
 }
 
 /**
+ * The sha256 of every template file's raw bytes under `root` (no token
+ * substitution), keyed by its untokenized, `/`-separated project path (an
+ * escaped dotfile name restored) -- the form the template history records.
+ * Throws the raw `fs` error of a failed read of the CLI's own templates.
+ *
+ * @example
+ * ```ts
+ * const hashes = templateFileHashes("/path/to/templates/core");
+ * console.log(hashes[".gitignore"]);
+ * ```
+ */
+export function templateFileHashes(root: string): Record<string, string> {
+  return Object.fromEntries(
+    [...templateSources(root, {})].map(
+      ([path, source]) =>
+        [toPosix(path), sha256Hex(readFileSync(source))] as const,
+    ),
+  );
+}
+
+/**
  * `pack` as the running CLI ships it, hashed the way the ledger and the
  * history are: the manifest as staging serializes it, and each template
  * file's raw bytes keyed by its untokenized project path. Throws the raw
  * `fs` error of a failed read of the CLI's own templates.
  */
 function currentPackHashes(pack: Pack): CurrentPackHashes {
-  const files = [...templateSources(pack.filesDir, {})].map(
-    ([path, source]) =>
-      [toPosix(path), sha256Hex(readFileSync(source))] as const,
-  );
   return {
     manifestSha256: packManifestSha256(pack.manifest),
-    files: Object.fromEntries(files),
+    files: templateFileHashes(pack.filesDir),
   };
 }
 

@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -22,7 +23,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const binPath = join(here, "..", "bin", "m3l-groundwork.mjs");
@@ -128,6 +129,68 @@ describe("bin/m3l-groundwork.mjs error reporting", () => {
         expect(occurrences).toBe(1);
       } finally {
         rmSync(targetDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("bin/m3l-groundwork.mjs --check-update exit codes", () => {
+  const packageDir = join(here, "..");
+  const runningVersion = (
+    JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as {
+      version: string;
+    }
+  ).version;
+  const history = JSON.parse(
+    readFileSync(join(packageDir, "data", "template-history.json"), "utf8"),
+  ) as { versions: Record<string, unknown> };
+  // The oldest released templates: they differ from the running CLI's.
+  const oldest = Object.keys(history.versions)[0] as string;
+
+  function bootstrap(dir: string): void {
+    const result = spawnSync(
+      process.execPath,
+      [binPath, dir, "--skip-install", "--name", "acme"],
+      { encoding: "utf8" },
+    );
+    expect(result.status).toBe(0);
+  }
+
+  function checkUpdate(dir: string): { status: number | null; stdout: string } {
+    const result = spawnSync(
+      process.execPath,
+      [binPath, dir, "--check-update"],
+      { encoding: "utf8" },
+    );
+    return { status: result.status, stdout: result.stdout };
+  }
+
+  it.skipIf(process.platform === "win32")(
+    "exits 0 for an untouched fresh bootstrap and 3 once the lock records an older release",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "bin-check-update-"));
+      const dir = join(root, "acme");
+      try {
+        bootstrap(dir);
+        const upToDate = checkUpdate(dir);
+        expect(upToDate.status).toBe(0);
+        expect(upToDate.stdout).toContain("up to date");
+
+        const lockPath = join(dir, ".groundwork", "groundwork.lock.json");
+        const lock = readFileSync(lockPath, "utf8");
+        expect(lock).toContain(`"baseVersion": "${runningVersion}"`);
+        writeFileSync(
+          lockPath,
+          lock.replace(
+            `"baseVersion": "${runningVersion}"`,
+            `"baseVersion": "${oldest}"`,
+          ),
+        );
+        const outdated = checkUpdate(dir);
+        expect(outdated.status).toBe(3);
+        expect(outdated.stdout).toContain("update available");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
       }
     },
   );
