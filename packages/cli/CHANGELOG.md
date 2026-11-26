@@ -1,5 +1,30 @@
 # @monte3l/groundwork
 
+## [1.6.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.5.0...@monte3l/groundwork@1.6.0) (2026-11-26)
+
+
+### Features
+
+* **cli:** add --check-update to report whether an update is available ([e5a790e](https://github.com/monte3l/m3l-groundwork/commit/e5a790eb6f386171c577f922f464c6b956ea5262))
+* **cli:** add --check-update to report whether an update is available ([4a6de62](https://github.com/monte3l/m3l-groundwork/commit/4a6de62f1739a0a55f5f5f7881b9e9920be4ae0a))
+* **cli:** classify each file an update would touch ([26c1cb3](https://github.com/monte3l/m3l-groundwork/commit/26c1cb340b36ea490e461c93a7b5fba867d0bc02))
+* **cli:** classify each file an update would touch ([de77e45](https://github.com/monte3l/m3l-groundwork/commit/de77e452b06d8d734ccfc1b965172a66282b1527))
+* **cli:** rebuild an exact base from npm with --fetch-base ([975744c](https://github.com/monte3l/m3l-groundwork/commit/975744ca778d0c7c875bf2f70397fc46c105f1d7))
+* **cli:** rebuild an exact base from npm with --fetch-base ([f9142a6](https://github.com/monte3l/m3l-groundwork/commit/f9142a6cef6fcee7dea25cf7daec7a5c7837f050))
+* **cli:** record a lock and base snapshot at bootstrap ([#396](https://github.com/monte3l/m3l-groundwork/issues/396)) ([82ac7bc](https://github.com/monte3l/m3l-groundwork/commit/82ac7bc73f8452c7f5f1877144bae0c97ebf23cf))
+* **cli:** ship per-release template history and report outdated packs ([c8dd473](https://github.com/monte3l/m3l-groundwork/commit/c8dd4736e30a0953e6baec96e0e090b3f956ffe0))
+* **cli:** ship per-release template history and report outdated packs ([a063cb9](https://github.com/monte3l/m3l-groundwork/commit/a063cb9040d264c051ff6855a9a7dee285b4b7b3))
+* **cli:** stage an update with --update ([bd6b958](https://github.com/monte3l/m3l-groundwork/commit/bd6b958173459318df80b0c1f0673ecbff7187e6))
+* **cli:** stage an update with --update ([2750d42](https://github.com/monte3l/m3l-groundwork/commit/2750d42615f990aea438bc7c859a2497b16455c3))
+* **plugin:** apply staged updates with /customize update ([ce8c279](https://github.com/monte3l/m3l-groundwork/commit/ce8c2792694f15c2869f3834de544cb560855489))
+* **plugin:** apply staged updates with /customize update ([a28010e](https://github.com/monte3l/m3l-groundwork/commit/a28010ec5a7e14edd50e54534817d997d5fd2640))
+
+
+### Bug Fixes
+
+* **packs:** read Claude Code's theme setting in the subagent-rows mod ([defb848](https://github.com/monte3l/m3l-groundwork/commit/defb8489e7ec3ff839ac54827bc78a488eab44da))
+* **packs:** read Claude Code's theme setting in the subagent-rows mod ([8c672cd](https://github.com/monte3l/m3l-groundwork/commit/8c672cd50d83ae88149668c20f9f997ccbfe180a)), closes [#378](https://github.com/monte3l/m3l-groundwork/issues/378)
+
 ## [1.5.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.4.0...@monte3l/groundwork@1.5.0) (2026-11-25)
 
 
