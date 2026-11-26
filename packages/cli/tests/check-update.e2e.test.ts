@@ -46,6 +46,29 @@ const history = JSON.parse(
 ) as { versions: Record<string, unknown> };
 const oldest = Object.keys(history.versions)[0] as string;
 
+/**
+ * Makes `dir` look installed from an older release: the lock records
+ * `baseVersion`, and `lefthook.yml` is untouched since that release's
+ * (older) text, so an update would take the current one.
+ */
+function installFromOlderRelease(dir: string, baseVersion: string): void {
+  const lockPath = join(dir, ".groundwork", "groundwork.lock.json");
+  const lock = JSON.parse(readFileSync(lockPath, "utf8")) as {
+    baseVersion: string;
+    files: { path: string; baseSha256: string | null }[];
+  };
+  const older = "older: true\n";
+  writeFileSync(join(dir, ".groundwork", "base", "lefthook.yml.base"), older);
+  writeFileSync(join(dir, "lefthook.yml"), older);
+  for (const file of lock.files) {
+    if (file.path === "lefthook.yml") {
+      file.baseSha256 = createHash("sha256").update(older).digest("hex");
+    }
+  }
+  lock.baseVersion = baseVersion;
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+}
+
 describe.skipIf(process.platform === "win32")(
   "--check-update (built bin)",
   () => {
@@ -71,15 +94,7 @@ describe.skipIf(process.platform === "win32")(
     });
 
     it("exits 3 and reports changed files once the lock records an older release", () => {
-      const lockPath = join(dir, ".groundwork", "groundwork.lock.json");
-      const lock = readFileSync(lockPath, "utf8");
-      writeFileSync(
-        lockPath,
-        lock.replace(
-          `"baseVersion": "${runningVersion}"`,
-          `"baseVersion": "${oldest}"`,
-        ),
-      );
+      installFromOlderRelease(dir, oldest);
       const before = snapshotTree(dir);
       const result = run([dir, "--check-update"]);
       expect(result.status).toBe(3);
@@ -89,6 +104,21 @@ describe.skipIf(process.platform === "win32")(
       expect(result.stdout).toMatch(/\d+ file\(s\) changed upstream/);
       expect(result.stdout).toContain("update available");
       expect(snapshotTree(dir)).toEqual(before);
+    });
+
+    it("exits 0 when ONLY the lock's baseVersion is lowered: every file already matches the new templates", () => {
+      const lockPath = join(dir, ".groundwork", "groundwork.lock.json");
+      writeFileSync(
+        lockPath,
+        readFileSync(lockPath, "utf8").replace(
+          `"baseVersion": "${runningVersion}"`,
+          `"baseVersion": "${oldest}"`,
+        ),
+      );
+      const result = run([dir, "--check-update"]);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("already matches or keeps them");
+      expect(result.stdout).not.toContain("update available");
     });
 
     it("previews what an update would do to this project's files", () => {

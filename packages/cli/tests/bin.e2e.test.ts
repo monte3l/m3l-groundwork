@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const binPath = join(here, "..", "bin", "m3l-groundwork.mjs");
@@ -177,15 +178,27 @@ describe("bin/m3l-groundwork.mjs --check-update exit codes", () => {
         expect(upToDate.stdout).toContain("up to date");
 
         const lockPath = join(dir, ".groundwork", "groundwork.lock.json");
-        const lock = readFileSync(lockPath, "utf8");
-        expect(lock).toContain(`"baseVersion": "${runningVersion}"`);
+        const lock = JSON.parse(readFileSync(lockPath, "utf8")) as {
+          baseVersion: string;
+          files: { path: string; baseSha256: string | null }[];
+        };
+        expect(lock.baseVersion).toBe(runningVersion);
+        // Installed from an older release: lefthook.yml still holds that
+        // release's text, which is also its recorded base, so an update
+        // would take the current one.
+        const older = "older: true\n";
         writeFileSync(
-          lockPath,
-          lock.replace(
-            `"baseVersion": "${runningVersion}"`,
-            `"baseVersion": "${oldest}"`,
-          ),
+          join(dir, ".groundwork", "base", "lefthook.yml.base"),
+          older,
         );
+        writeFileSync(join(dir, "lefthook.yml"), older);
+        for (const file of lock.files) {
+          if (file.path === "lefthook.yml") {
+            file.baseSha256 = createHash("sha256").update(older).digest("hex");
+          }
+        }
+        lock.baseVersion = oldest;
+        writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
         const outdated = checkUpdate(dir);
         expect(outdated.status).toBe(3);
         expect(outdated.stdout).toContain("update available");

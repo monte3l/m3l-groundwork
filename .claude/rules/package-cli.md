@@ -27,6 +27,17 @@ paths:
 - **Adopt mode never writes a project file.** It writes under
   `.groundwork/` plus the guarded `/customize` copy. `adopt.e2e.test.ts` is
   the test of that guarantee: do not weaken it.
+- **`--update` stages, it never applies.** It writes only under
+  `.groundwork/update/`: every planned path passes `assertUpdateWriteScope`
+  and `.groundwork` / `.groundwork/update` are `lstat`-refused before the first
+  write, the directory is swapped in by rename with `plan.json` last, and a
+  failed write leaves the previous copy exactly as it was. The text merge runs
+  `git merge-file` on temporary files in the system temp directory, never in the
+  project; a merge with conflicts is staged with markers and never applied.
+  `/customize update` is what applies it, so any new file the skill reads from
+  the staging directory must be in the plan's `staged.files` list with a hash.
+  The plan must stay deterministic (only `generatedAt` varies), so nothing time-,
+  order- or temp-dir-dependent may reach it.
 - **`--check-update` reads and reports, it never writes.** It is the one mode
   whose exit code carries information: `0` up to date, `3` an update is
   available (`1` and `2` stay failure and bad invocation, so a CI step can tell

@@ -49,3 +49,36 @@ export function assertAdoptWriteScope(
     );
   }
 }
+
+/**
+ * `--update`'s write-scope invariant: every path it writes resolves under
+ * `<targetDir>/.groundwork/update/` -- never a project file, the lock beside
+ * it, adopt's inventory or add-pack's staging. `paths` may be absolute or
+ * relative to `targetDir`; containment is {@link isPathContained}'s, so a
+ * look-alike `.groundwork/update-evil/` is rejected. Lexical only: symlinked
+ * components are refused by the writer itself (`fs-guard.ts`).
+ *
+ * @throws `AssertionError` (from `node:assert/strict`) naming the first path
+ * outside the scope.
+ *
+ * @example
+ * ```ts
+ * import { assertUpdateWriteScope } from "./write-scope.js";
+ *
+ * assertUpdateWriteScope("/work/app", [".groundwork/update/plan.json"]); // ok
+ * assertUpdateWriteScope("/work/app", ["package.json"]); // throws
+ * ```
+ */
+export function assertUpdateWriteScope(
+  targetDir: string,
+  paths: readonly string[],
+): void {
+  const root = resolve(targetDir, GROUNDWORK_DEST_SEGMENTS[0], "update");
+  for (const path of paths) {
+    const resolved = resolve(targetDir, path);
+    assert.ok(
+      isPathContained(resolved, root),
+      `update mode wrote outside its scope: ${resolved}`,
+    );
+  }
+}

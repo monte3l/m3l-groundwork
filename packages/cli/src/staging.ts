@@ -186,6 +186,9 @@ function removeBestEffort(path: string): void {
   }
 }
 
+/** {@link StagingTarget.rerun}'s default: adopt mode's re-run advice. */
+const DEFAULT_RERUN = "re-run the CLI";
+
 /**
  * The swap's final rename and the restore of the parked previous staging
  * both failed: the parked copy is the only one left. Its `errors` are
@@ -207,6 +210,29 @@ function incompleteStagingError(
   return new Error(
     `staging the ${noun} into ${destDir} failed (${reason}), so .groundwork/ is incomplete -- fix the cause and re-run the CLI`,
     { cause },
+  );
+}
+
+/**
+ * Whether `error` is {@link incompleteStagingError}'s "so .groundwork/ is
+ * incomplete -- re-run the CLI" wrapper (never a parked-staging
+ * `AggregateError`). Its advice is adopt mode's; a stager whose run touches
+ * nothing else in `.groundwork/` (`--add-pack`, `--update`) replaces it,
+ * keeping its `cause`.
+ *
+ * @example
+ * ```ts
+ * const root = isIncompleteStagingError(error) ? error.cause : error;
+ * ```
+ */
+export function isIncompleteStagingError(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    !(error instanceof AggregateError) &&
+    error.cause !== undefined &&
+    error.message.includes(
+      "so .groundwork/ is incomplete -- fix the cause and re-run the CLI",
+    )
   );
 }
 
@@ -246,7 +272,7 @@ function removeStaleWorkDirs(target: StagingTarget): void {
  * `parkedDir` first. If the final rename fails the parked copy is renamed
  * back and the rename failure rethrown; if that restore fails too, throws a
  * {@link ParkedStagingError} carrying both errors, naming `parkedDir`, and
- * telling the user to re-run the CLI -- the staging is derived data, so the
+ * telling the user to re-run (`target.rerun`) -- the staging is derived data, so the
  * next run's stale-dir sweep removes the parked copy and regenerates
  * `destDir`.
  */
@@ -256,7 +282,7 @@ function swapInto(
   destDir: string,
   parkedDir: string,
 ): void {
-  const { noun } = target;
+  const { noun, rerun = DEFAULT_RERUN } = target;
   const was = target.plural ? "were" : "was";
   const hadPrevious = existsSync(destDir);
   if (hadPrevious) {
@@ -273,7 +299,7 @@ function swapInto(
     } catch (restoreError) {
       throw new ParkedStagingError(
         [error, restoreError],
-        `moving the new ${noun} into ${destDir} failed and restoring the previous one failed too; the previous ${noun} ${was} parked at ${parkedDir} -- fix the cause and re-run the CLI: the staging is derived data, regenerated from the template, and the next run removes the parked copy`,
+        `moving the new ${noun} into ${destDir} failed and restoring the previous one failed too; the previous ${noun} ${was} parked at ${parkedDir} -- fix the cause and ${rerun}: the staging is derived data, regenerated from the template, and the next run removes the parked copy`,
       );
     }
     throw error;
@@ -331,6 +357,12 @@ export interface StagingTarget {
   readonly noun: string;
   /** Whether `noun` takes a plural verb in messages ("the previous packs were", not "was"). */
   readonly plural: boolean;
+  /**
+   * The re-run advice a parked-staging `AggregateError` ends with, after
+   * "fix the cause and" (`"re-run with --update"`). Defaults to adopt
+   * mode's `"re-run the CLI"`.
+   */
+  readonly rerun?: string;
 }
 
 /**

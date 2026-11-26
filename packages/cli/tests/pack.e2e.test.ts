@@ -377,6 +377,20 @@ describe("published tarball end-to-end", () => {
     ).toBe(true);
   });
 
+  it("reports a freshly bootstrapped project as up to date from the packed CLI's --update, writing nothing", () => {
+    const project = join(scratch, "update-project");
+    execFileSync(
+      "node",
+      [checkoutBin, project, "--name", "pack-e2e", "--skip-install"],
+      { stdio: "pipe" },
+    );
+    const stdout = execFileSync("node", [installedBin, project, "--update"], {
+      encoding: "utf8",
+    });
+    expect(stdout).toContain("already up to date");
+    expect(existsSync(join(project, ".groundwork", "update"))).toBe(false);
+  });
+
   it("produces a byte-identical tarball across two independent clean build+pack cycles (reproducible build)", () => {
     const rootDir = join(cliDir, "..", "..");
     const cliDistDir = join(cliDir, "dist");

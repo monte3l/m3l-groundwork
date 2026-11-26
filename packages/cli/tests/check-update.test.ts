@@ -28,7 +28,11 @@ import { restoreDotfilePath } from "../src/assets.js";
 import { templatesCoreDir } from "../src/main.js";
 import { buildLock, LOCK_FILE, serializeLock } from "../src/lock.js";
 import type { TemplateHistory } from "../src/template-history.js";
-import { bootstrapInto, snapshotTree } from "./add-pack-fixtures.js";
+import {
+  bootstrapInto as bootstrapBare,
+  snapshotTree,
+} from "./add-pack-fixtures.js";
+import { installCustomizeSkill } from "../src/plugin.js";
 import { loadPack, packsRootDir, serializePackManifest } from "../src/packs.js";
 import {
   LEDGER_PATH,
@@ -55,6 +59,12 @@ afterEach(() => {
   vi.restoreAllMocks();
   rmSync(root, { recursive: true, force: true });
 });
+
+/** A real bootstrap: baseline, packs and the `/customize` skill payload. */
+function bootstrapInto(dir: string, packs: string[] = []): void {
+  bootstrapBare(dir, packs);
+  installCustomizeSkill(dir);
+}
 
 /** Every line printed through console.log, joined. */
 function output(): string {
@@ -141,6 +151,21 @@ describe("runCheckUpdate", () => {
     expect(output()).not.toContain("update available");
   });
 
+  it("exits 3 and counts the skill files as added when the /customize skill is not installed", () => {
+    bootstrapInto(project);
+    rmSync(join(project, ".claude", "skills", "customize"), {
+      recursive: true,
+      force: true,
+    });
+    const code = runCheckUpdate(
+      { targetDir: project, baseVersion: "1.0.0" },
+      { history: historyWith(currentCoreHashes()), runningVersion: "1.1.0" },
+    );
+    expect(code).toBe(3);
+    expect(output()).toContain("update available");
+    expect(output()).toContain("if you update: 9 new");
+  });
+
   it("exits 3 with the counts and 'update available' for a seeded difference", () => {
     bootstrapInto(project);
     writeTree(project, { "only-in-base.txt": "x" });
@@ -175,7 +200,9 @@ describe("runCheckUpdate", () => {
         runningVersion: "1.1.0",
       },
     );
-    expect(code).toBe(3);
+    // The project already holds the CLI's package.json, so an update would
+    // change nothing: upstream differs, yet the verdict is up to date.
+    expect(code).toBe(0);
     expect(output().split("\n")[0]).toBe("base 1.0.0 (lock), CLI 1.1.0");
   });
 
@@ -442,13 +469,16 @@ describe("runCheckUpdate: honest verdicts and notes", () => {
 
   it("keeps 'update available' and exit 3 when a comparison was skipped but a change exists", () => {
     bootstrapInto(project, ["quality"]);
-    writeTree(project, { [LEDGER_PATH]: ledgerText("0.5.0") });
+    writeTree(project, {
+      [LEDGER_PATH]: ledgerText("0.5.0"),
+      "only-in-base.txt": "x",
+    });
     const code = runCheckUpdate(
       { targetDir: project, baseVersion: "1.0.0" },
       {
         history: historyWith({
           ...currentCoreHashes(),
-          "package.json": sha("older"),
+          "only-in-base.txt": sha("x"),
         }),
         runningVersion: "1.1.0",
       },
@@ -628,7 +658,7 @@ describe.skipIf(process.platform === "win32")(
       expect(snapshotTree(project)).toEqual(before);
     });
 
-    it("omits the line when nothing would change locally, keeping exit 3", () => {
+    it("omits the line when nothing would change locally, and reports up to date with exit 0", () => {
       bootstrapFresh(project);
       const base = readLockOrThrow(project).baseVersion;
       const code = runCheckUpdate(
@@ -641,8 +671,17 @@ describe.skipIf(process.platform === "win32")(
           runningVersion: "99.0.0",
         },
       );
-      expect(code).toBe(3);
+      // Upstream changed lefthook.yml, but the project already holds the
+      // CLI's copy: the preview ran and found nothing actionable.
+      expect(code).toBe(0);
       expect(output()).not.toContain("if you update:");
+      expect(output()).not.toContain("update available");
+      expect(output().split("\n")).toContain(
+        "1 file(s) changed upstream, 0 added, 0 removed",
+      );
+      expect(output().split("\n").at(-1)).toBe(
+        `up to date (base ${base} (lock), CLI 99.0.0): 1 file(s) changed upstream, but your project already matches or keeps them`,
+      );
       expect(theirsLeftovers()).toEqual([]);
     });
 
