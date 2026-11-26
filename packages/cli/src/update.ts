@@ -347,12 +347,15 @@ function stageEntry(
       mergedBytes,
     );
   }
-  // A clean merge stages only merged/ (and base/ from the history).
+  // A clean merge stages merged/ plus pristine theirs under files/ (the
+  // apply moves the base snapshot forward from it), and base/ from the
+  // history.
   const historyBase =
     entry.baseFrom === "history" ? stage("base", base) : undefined;
   return done({
     ...entry,
     staged: {
+      theirs: stage("files", theirs),
       merged: stage("merged", mergedBytes),
       ...(historyBase === undefined ? {} : { base: historyBase }),
     },
@@ -651,8 +654,8 @@ interface StagedUpdate {
  * earlier `.groundwork/update/` is left untouched -- when no file would
  * change and no ledger pack is outdated. Otherwise stages, through one
  * atomic swap (`stageAtomically`): `files/<path>.staged` (theirs, for a
- * take, add, rename -- at the new path --, conflict, or review whose new
- * version exists), `merged/<path>.staged` (a clean JSON or `git merge-file`
+ * take, add, rename -- at the new path --, merge, conflict, or review whose
+ * new version exists), `merged/<path>.staged` (a clean JSON or `git merge-file`
  * merge, or a text conflict's diff3 markers), `base/<path>.staged` (for a
  * merge, conflict or review whose base came from the template history),
  * `packs/<name>/pack.json.staged` per ledger pack this CLI still ships,

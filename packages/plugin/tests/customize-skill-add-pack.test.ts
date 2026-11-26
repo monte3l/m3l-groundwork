@@ -50,21 +50,23 @@ function windowsAround(haystack: string, needle: string, radius: number) {
   return windows;
 }
 
-describe("SKILL.md -- the add-pack router", () => {
+describe("SKILL.md -- the add-pack routing (merged sub-command router)", () => {
   const frontmatter = skillRaw.slice(0, skillRaw.indexOf("\n---", 4));
   const step0Heading = skillRaw.indexOf("## Step 0");
-  const routerStart = skillRaw.indexOf("$ARGUMENTS");
+  const routerStart = skillRaw.indexOf("## Sub-commands (add-pack, update)");
   const router = flatten(skillRaw.slice(routerStart, step0Heading));
 
-  it('declares argument-hint: "[add-pack <name> ...]" in the frontmatter', () => {
-    expect(frontmatter).toContain('argument-hint: "[add-pack <name> ...]"');
+  it('declares argument-hint: "[add-pack <name> ... | update]" in the frontmatter', () => {
+    expect(frontmatter).toContain(
+      'argument-hint: "[add-pack <name> ... | update]"',
+    );
   });
 
   it("mentions adding a pack to an already-set-up project in the frontmatter description", () => {
     expect(flatten(frontmatter)).toMatch(/add a pack/i);
   });
 
-  it("places the router (it reads $ARGUMENTS) before Step 0", () => {
+  it("places the sub-commands router section before Step 0", () => {
     expect(step0Heading).toBeGreaterThan(-1);
     expect(routerStart).toBeGreaterThan(-1);
     expect(routerStart).toBeLessThan(step0Heading);
@@ -79,7 +81,7 @@ describe("SKILL.md -- the add-pack router", () => {
     expect(router).toMatch(/read \[`add-pack\.md`\]\(add-pack\.md\) in full/i);
   });
 
-  it("follows ONLY add-pack.md and skips Steps 0-7 entirely", () => {
+  it("follows ONLY the routed file and skips Steps 0-7 entirely", () => {
     expect(router).toMatch(/follow only/i);
     expect(router).toMatch(/skip Steps 0\s*(-|–|—|through|to)\s*7 entirely/i);
   });
@@ -88,10 +90,10 @@ describe("SKILL.md -- the add-pack router", () => {
     expect(router).toMatch(/otherwise,? continue below/i);
   });
 
-  it("keeps the router small (about 600 bytes; between 300 and 1000)", () => {
+  it("keeps the router small (between 300 and 1600 now that it routes two sub-commands)", () => {
     const bytes = Buffer.byteLength(router, "utf8");
     expect(bytes).toBeGreaterThan(300);
-    expect(bytes).toBeLessThanOrEqual(1000);
+    expect(bytes).toBeLessThanOrEqual(1600);
   });
 
   it("stays at most 18000 bytes with the router in", () => {

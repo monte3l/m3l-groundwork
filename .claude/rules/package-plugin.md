@@ -20,7 +20,9 @@ paths:
 - **The plugin version tracks the CLI's.** `bin/check-plugin-version.mjs`
   fails the `verify` run on drift, and release-please writes both from
   `extra-files` in `release-please-config.json`. `packages/plugin/package.json`
-  stays `private`.
+  stays `private`. The same gate checks the `Skill version:` marker line in
+  both copies of `update.md` (a release-please `generic` extra-file), which
+  `/customize update` compares with a plan's `cliVersion`.
 - **A plugin-only change is a `feat` or `fix` commit, and is not live on merge.** The
   central `monte3l/m3l-plugins` catalog pins a CLI release tag and commit, so
   it ships after the next CLI release and a pin-bump PR there (see
@@ -84,4 +86,9 @@ paths:
   through it, and its last step writes the `.groundwork/installed-packs.json`
   ledger. `add-pack.md` is the router's target: `SKILL.md` sends
   `/customize add-pack <name>` there before Step 0, and it skips the
-  interview, the Step 0 reconcile, Round 2 and Step 7's report.
+  interview, the Step 0 reconcile, Round 2 and Step 7's report. `update.md`
+  is the router's other target: `/customize update` applies the
+  `.groundwork/update/` staging the CLI's `--update` wrote, on its own
+  branch, with no interview, and records the lock, the base snapshot and the
+  ledger (`via: "update"`). Its text must describe the real `plan.json` shape
+  in `packages/cli/src/update.ts`.

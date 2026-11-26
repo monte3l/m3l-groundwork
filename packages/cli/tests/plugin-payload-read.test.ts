@@ -54,6 +54,7 @@ function writeSourceFixture(sourceDir: string): void {
     "step-3-round-1.md",
     "pack-install.md",
     "add-pack.md",
+    "update.md",
   ]) {
     writeFileSync(
       join(sourceDir, "skills", "customize", stepName),
@@ -185,6 +186,7 @@ describe("a source payload file that exists but is unreadable keeps its real err
     "step-3-round-1.md",
     "pack-install.md",
     "add-pack.md",
+    "update.md",
   ])(
     "a missing %s throws the 'is missing' error naming its path under skills/customize/",
     (stepName) => {
