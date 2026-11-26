@@ -106,7 +106,7 @@ date.
   Adopt mode never touches any of it. `lock.ts` is the lock's schema:
   `parseLock` is strict, and `readLock` never throws.
 - **`update-base.ts` and `check-update.ts`** back `--check-update`, which is
-  read-only, offline and never mentions what it would write. `resolveUpdateBase`
+  read-only, offline (unless `--fetch-base`) and never mentions what it would write. `resolveUpdateBase`
   picks the release the project was installed from: `--base-version`, else the
   lock's `baseVersion`, else inference. Inference compares the project's files
   with the file hashes of each release in the shipped template history, plus the
@@ -154,6 +154,18 @@ date.
   note. A freshly bootstrapped project classifies as nothing but `current` and
   `skip` against its own theirs tree, and a test pins that. `--check-update` prints
   the counts as `if you update: ...` and always removes the temporary tree.
+- **`fetch-base.ts` and `tarball.ts`** back `--fetch-base`, the one network
+  step of `--check-update` and `--update`. When a base is known only by its hash
+  (or `--base-version` was given), `fetchBase` runs `npm pack
+@monte3l/groundwork@<x.y.z> --ignore-scripts` (no shell, in a temporary
+  directory that is always removed, or named in a warning when removal fails)
+  and `readTemplateTarball` reads the gzipped ustar in memory, keeping only
+  regular files under `package/templates/` and refusing `..`, absolute or
+  backslash paths, links under `package/templates/`, pax and GNU long-name
+  headers, a template path that appears twice and anything over 64 MiB. The
+  classifier uses a fetched file only for a hash-only base, and only when it
+  hashes to the recorded base as published or with the tokens applied; every
+  fetch failure is a usage error (exit 2) that writes nothing.
 - **`update.ts`** stages an update (`--update`), the same shape as `add-pack.ts`:
   it plans everything first, refuses before any write, then writes the whole
   `.groundwork/update/` directory into a work directory and swaps it in by

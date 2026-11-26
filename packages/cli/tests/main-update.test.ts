@@ -123,3 +123,34 @@ describe("main() with --update", () => {
     expect(() => main(["./proj", "--update"])).toThrowError(CliUsageError);
   });
 });
+
+describe("main() with --update --fetch-base", () => {
+  it("passes fetchBase to runUpdate", () => {
+    vi.mocked(runUpdate).mockReturnValue(0);
+    main(["./proj", "--update", "--fetch-base", "--base-version", "1.4.0"]);
+    expect(vi.mocked(runUpdate).mock.calls[0]?.[0]).toMatchObject({
+      baseVersion: "1.4.0",
+      fetchBase: true,
+    });
+  });
+
+  it("passes fetchBase: false when the flag is absent", () => {
+    vi.mocked(runUpdate).mockReturnValue(0);
+    main(["./proj", "--update"]);
+    expect(vi.mocked(runUpdate).mock.calls[0]?.[0]).toMatchObject({
+      fetchBase: false,
+    });
+  });
+
+  it("documents --fetch-base in USAGE, tied to --check-update and --update", () => {
+    expect(USAGE).toMatch(
+      /--fetch-base[^\n]*\n?[^\n]*--check-update[^\n]*--update/,
+    );
+    expect(USAGE).toMatch(/--fetch-base[\s\S]*npm/);
+  });
+
+  it("refuses --fetch-base with neither update flag before running anything", () => {
+    expect(() => main(["./proj", "--fetch-base"])).toThrowError(CliUsageError);
+    expect(runUpdate).not.toHaveBeenCalled();
+  });
+});

@@ -544,3 +544,79 @@ describe("main() add-pack routing", () => {
     expect(existsSync(missing)).toBe(false);
   });
 });
+
+describe("parseArgs: --fetch-base", () => {
+  it("is off by default", () => {
+    expect(parseArgs(["./proj"]).fetchBase).toBe(false);
+  });
+
+  it.each(["--check-update", "--update"])("is on with %s", (flag) => {
+    expect(parseArgs(["./proj", flag, "--fetch-base"]).fetchBase).toBe(true);
+  });
+
+  it.each(["--check-update", "--update"])(
+    "works together with --base-version and %s",
+    (flag) => {
+      const options = parseArgs([
+        "./proj",
+        flag,
+        "--fetch-base",
+        "--base-version",
+        "1.4.0",
+      ]);
+      expect(options.fetchBase).toBe(true);
+      expect(options.baseVersion).toBe("1.4.0");
+    },
+  );
+
+  it("is refused without --check-update or --update, naming both", () => {
+    let thrown: unknown;
+    try {
+      parseArgs(["./proj", "--fetch-base"]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(CliUsageError);
+    const message = (thrown as CliUsageError).message;
+    expect(message).toContain("--fetch-base");
+    expect(message).toContain("--check-update");
+    expect(message).toContain("--update");
+  });
+
+  it.each([
+    ["--pack", "quality"],
+    ["--add-pack", "quality"],
+    ["--adopt"],
+    ["--fresh"],
+    ["--force"],
+    ["--skip-install"],
+    ["--list-packs"],
+    ["--reinstall"],
+  ])("is refused alongside %s even with --update", (...other) => {
+    let thrown: unknown;
+    try {
+      parseArgs(["./proj", "--update", "--fetch-base", ...other]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(CliUsageError);
+    expect((thrown as CliUsageError).message).toContain(other[0]);
+  });
+
+  it.each([
+    ["--pack", "quality"],
+    ["--add-pack", "quality"],
+    ["--adopt"],
+    ["--force"],
+  ])("is refused alongside %s without an update flag", (...other) => {
+    expect(() => parseArgs(["./proj", "--fetch-base", ...other])).toThrowError(
+      CliUsageError,
+    );
+  });
+
+  it("takes no value: a following word is the target, not a version", () => {
+    const options = parseArgs(["--update", "--fetch-base", "./proj"]);
+    expect(options.targetDir).toMatch(/proj$/);
+    expect(options.fetchBase).toBe(true);
+  });
+});

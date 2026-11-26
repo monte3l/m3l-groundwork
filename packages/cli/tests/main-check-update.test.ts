@@ -134,3 +134,38 @@ describe("main() return value", () => {
     expect(result).toBeUndefined();
   });
 });
+
+describe("main() with --check-update --fetch-base", () => {
+  it("passes fetchBase to runCheckUpdate and keeps --base-version", () => {
+    vi.mocked(runCheckUpdate).mockReturnValue(3);
+    const result: unknown = main([
+      "./proj",
+      "--check-update",
+      "--fetch-base",
+      "--base-version",
+      "1.4.0",
+    ]);
+    expect(result).toBe(3);
+    expect(vi.mocked(runCheckUpdate).mock.calls[0]?.[0]).toMatchObject({
+      baseVersion: "1.4.0",
+      fetchBase: true,
+    });
+  });
+
+  it("passes fetchBase: false when the flag is absent", () => {
+    vi.mocked(runCheckUpdate).mockReturnValue(0);
+    main(["./proj", "--check-update"]);
+    expect(vi.mocked(runCheckUpdate).mock.calls[0]?.[0]).toMatchObject({
+      fetchBase: false,
+    });
+  });
+
+  it("refuses --fetch-base alone before running the check", () => {
+    expect(() => main(["./proj", "--fetch-base"])).toThrowError(CliUsageError);
+    expect(runCheckUpdate).not.toHaveBeenCalled();
+  });
+
+  it("documents --fetch-base in USAGE", () => {
+    expect(USAGE).toContain("--fetch-base");
+  });
+});

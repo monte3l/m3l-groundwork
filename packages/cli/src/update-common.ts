@@ -9,6 +9,8 @@
  */
 import { readdirSync, statSync } from "node:fs";
 import { resolveAsset } from "./assets.js";
+import { fetchBase } from "./fetch-base.js";
+import type { FetchedBase, RunNpm } from "./fetch-base.js";
 import { escapeControls } from "./format-error.js";
 import { LOCK_FILE, readLock } from "./lock.js";
 import type { Lock } from "./lock.js";
@@ -17,6 +19,7 @@ import type { LedgerEntry } from "./pack-installation.js";
 import { errnoCode, isAbsentError } from "./survey/internal/read-guard.js";
 import { loadTemplateHistory } from "./template-history.js";
 import type { TemplateHistory } from "./template-history.js";
+import { hasHashOnlyBase } from "./update-classify.js";
 import type { UpdateAction, UpdateOrigin } from "./update-classify.js";
 import { CliUsageError, USAGE } from "./usage.js";
 
@@ -274,4 +277,32 @@ export function isUpdateAvailable(
   return (
     outdatedPacks > 0 || entries.some(({ action }) => ACTIONABLE.has(action))
   );
+}
+
+/**
+ * The base `--fetch-base` brings, or `undefined` when no fetch is wanted:
+ * without the flag, or when neither `--base-version` was given nor any base
+ * is known only by its hash (see `hasHashOnlyBase`). Otherwise fetches
+ * `input.baseVersion` through `runNpm` (default: the real `npm`).
+ *
+ * @throws `CliUsageError` (exit 2) when the fetch fails; nothing is written.
+ *
+ * @example
+ * ```ts
+ * import { fetchedBaseFor } from "./update-common.js";
+ *
+ * const fetchedBase = fetchedBaseFor(input, { fetchBase: true, explicitVersion: false });
+ * ```
+ */
+export function fetchedBaseFor(
+  input: Parameters<typeof hasHashOnlyBase>[0],
+  options: {
+    readonly fetchBase: boolean | undefined;
+    readonly explicitVersion: boolean;
+    readonly runNpm?: RunNpm | undefined;
+  },
+): FetchedBase | undefined {
+  if (options.fetchBase !== true) return undefined;
+  if (!options.explicitVersion && !hasHashOnlyBase(input)) return undefined;
+  return fetchBase({ version: input.baseVersion, runNpm: options.runNpm });
 }
