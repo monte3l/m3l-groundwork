@@ -467,9 +467,14 @@ describe("classifyProject", () => {
     it("stay keep for an adopted project when upstream did not change them", () => {
       bootstrapFresh(project, ["quality"]);
       for (const path of ["package.json", ".claude/settings.json"]) {
+        const parsed = JSON.parse(readText(project, path)) as Record<
+          string,
+          unknown
+        >;
+        parsed["x-local"] = 1;
         writeFileSync(
           join(project, path),
-          readText(project, path).replace("{", '{ "x-local": 1,'),
+          `${JSON.stringify(parsed, null, 2)}\n`,
         );
       }
       const fresh = classify(["quality"]);
