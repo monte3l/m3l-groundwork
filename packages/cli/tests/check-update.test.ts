@@ -163,7 +163,7 @@ describe("runCheckUpdate", () => {
     );
     expect(code).toBe(3);
     expect(output()).toContain("update available");
-    expect(output()).toContain("if you update: 9 new");
+    expect(output()).toContain("if you update: 10 new");
   });
 
   it("exits 3 with the counts and 'update available' for a seeded difference", () => {

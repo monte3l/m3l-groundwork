@@ -1,6 +1,6 @@
 # Pack install: staged-pack install procedure
 
-> Installs one approved pack from its staged copy (adopt Round 1: `.groundwork/packs/<name>/`; `/customize add-pack`: `.groundwork/add-pack/<name>/`). Read this whole file before installing a pack, and re-read it after a compaction.
+> Installs one approved pack from its staged copy (adopt Round 1: `.groundwork/packs/<name>/`; `/customize add-pack`: `.groundwork/add-pack/<name>/`), or updates an installed one (`/customize update`: see its own section). Read this whole file before installing a pack, and re-read it after a compaction.
 
 **Where the staged copy lives.** Two paths follow this file, and both use the
 same `.staged` convention (`pack.json.staged`, `files/<path>.staged`) and the
@@ -82,6 +82,23 @@ runner is (a `package.json` script plus a line in its `lefthook.yml`/
 other artifacts and state plainly in Step 7 that the gate was not wired,
 rather than inventing a runner the project never asked for.
 
+## Update an installed pack
+
+`/customize update` follows this section for each outdated ledger pack, with
+the staging root `.groundwork/update/packs/<name>/`, whose
+`pack.json.staged` update.md's verification step already hash-checked. The
+pack's files are entries of the update plan, applied there; this section
+covers its wiring, from the plan's `wiring` diff for that pack. Apply each
+`added` item exactly as the install procedure above would. Apply a
+`changed` item only when the plan marks it `applies` and the user accepted
+it, and drop a `removed` item only when the plan marks it `removable` and
+the user confirmed the removal: update.md's Confirm step asks each once,
+showing the project's current entry and the new fragment, so do not ask
+again here. An item whose `applies` or `removable` flag is false stays as
+the project has it, and the report gives the plan's `reason`. Then record the pack as below, with `via: "update"`,
+`cliVersion` from the update plan's `cliVersion`, and the `files` the update
+left installed for it.
+
 ## Record the pack
 
 The final step, once the pack's files and wiring are in place: record it in
@@ -114,11 +131,12 @@ is re-serialised, so their formatting may change). The entry's shape:
 ```
 
 `name` is the pack's name and `installedAt` the current time as an ISO 8601
-string. `via` is `"add-pack"` (followed from add-pack.md) or
-`"adopt-round-1"` (followed from adopt Round 1); `"fresh"` names a pack the
-CLI installed at bootstrap with `--pack`; the CLI writes its ledger entry
-itself, so this skill never writes that value. `"update"` is reserved for `/customize update`. `cliVersion` is `plan.cliVersion` for
-add-pack or `inventory.cliVersion` for adopt. `manifestSha256` is the SHA-256
+string. `via` is `"add-pack"` (followed from add-pack.md),
+`"adopt-round-1"` (followed from adopt Round 1) or `"update"` (followed from
+update.md); `"fresh"` names a pack the CLI installed at bootstrap with
+`--pack`; the CLI writes its ledger entry itself, so this skill never writes
+that value. `cliVersion` is `plan.cliVersion` for add-pack and update, or
+`inventory.cliVersion` for adopt. `manifestSha256` is the SHA-256
 of the verified `pack.json.staged` bytes. `files` lists every file the pack
 installed by its project path, and each `sha256` is the SHA-256 of the
 installed bytes (after token substitution); `sha256` is `null` for a file the

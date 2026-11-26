@@ -57,6 +57,7 @@ function writeSourceFixture(sourceDir: string): void {
     "step-3-round-1.md",
     "pack-install.md",
     "add-pack.md",
+    "update.md",
   ]) {
     writeFileSync(
       join(sourceDir, "skills", "customize", stepName),
@@ -597,6 +598,7 @@ describe("plain run (no symlinks) is unchanged by the guard", () => {
       join(".claude", "skills", "customize", "step-3-round-1.md"),
       join(".claude", "skills", "customize", "pack-install.md"),
       join(".claude", "skills", "customize", "add-pack.md"),
+      join(".claude", "skills", "customize", "update.md"),
     ].sort();
 
     const result1 = installCustomizeSkill(targetDir, sourceDir);

@@ -195,6 +195,15 @@ two domains or an explicit **neutral allowlist** -- a list of files (such
 as this one) that belong to neither guidance skill's domain and so need no
 sweep -- checked by a test that walks the real template tree on every run.
 
+`/customize update` is the second scoped entry, routed the same way to
+`update.md`. It reads the `plan.json` and `lock-next.json` that `--update`
+staged, verifies every staged file against its hash, shows the plan, refuses
+when a path it would touch has uncommitted changes, and applies on a dedicated
+`groundwork/update-<from>-to-<to>` branch after the user confirms. It refreshes
+its own skill copy last, runs the project gate, then rewrites the lock and the
+base snapshot and deletes `.groundwork/update/`. It offers a commit and never
+pushes.
+
 `/customize add-pack <name>` is a scoped entry: a short router in `SKILL.md`
 sends it to `add-pack.md`, which skips the interview, the Step 0 reconcile
 and Round 2. It reads the `plan.json` the CLI staged, verifies the staged

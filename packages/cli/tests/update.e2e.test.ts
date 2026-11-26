@@ -154,6 +154,9 @@ describe.skipIf(process.platform === "win32")("--update (built bin)", () => {
 
     const base = join(dir, ".groundwork/update");
     expect(existsSync(join(base, "merged/eslint.config.js.staged"))).toBe(true);
+    // A merge also stages pristine theirs, the new base snapshot.
+    expect(existsSync(join(base, "files/eslint.config.js.staged"))).toBe(true);
+    expect(existsSync(join(base, "files/package.json.staged"))).toBe(true);
     expect(
       readFileSync(join(base, "merged/vitest.config.ts.staged"), "utf8"),
     ).toContain("<<<<<<< yours");

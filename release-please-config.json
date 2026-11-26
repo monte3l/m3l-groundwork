@@ -32,6 +32,14 @@
           "type": "json",
           "path": "packages/plugin/.claude-plugin/plugin.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "packages/plugin/skills/customize/update.md"
+        },
+        {
+          "type": "generic",
+          "path": ".claude/skills/customize/update.md"
         }
       ]
     }

@@ -32,6 +32,7 @@ const syncedFiles: [name: string, sourceDir: string][] = [
   ["step-3-round-1.md", skillDir],
   ["pack-install.md", skillDir],
   ["add-pack.md", skillDir],
+  ["update.md", skillDir],
 ];
 
 describe("customize skill install stays synced with packages/plugin", () => {

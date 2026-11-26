@@ -123,14 +123,15 @@ They stay two separate phases on purpose, rather than one -- see
 ## Two modes
 
 The mode is auto-detected from the target directory; `--fresh` and `--adopt`
-override it. `--add-pack` skips detection: it stages packs into a project that
-one of the two modes already set up.
+override it. `--add-pack` and `--update` skip detection: they stage into a project
+that one of the two modes already set up.
 
 | Mode         | When                                                     | What it does                                                                                                                                                                                                                                                                                                                    |
 | ------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Fresh**    | The target is empty or missing                           | Writes the full baseline, installs any `--pack`, installs the `/customize` skill, records what it wrote in `.groundwork/` (a lock, a base snapshot and a pack ledger), runs `git init`, then `pnpm install`.                                                                                                                    |
 | **Adopt**    | The target already looks like a project                  | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and of the packs (`.groundwork/packs/`). It writes only under `.groundwork/`, plus one guarded copy of the `/customize` skill, and never overwrites a project file. |
 | **Add-pack** | `--add-pack <name>` on a bootstrapped or adopted project | Stages each named pack as inert `.staged` copies plus a `plan.json` survey under `.groundwork/add-pack/<name>/`, for `/customize add-pack` to install. Beyond `add-pack/<name>/` it creates only `.groundwork/` and `.groundwork/add-pack/` when they are absent, and writes nothing else.                                      |
+| **Update**   | `--update` on a bootstrapped or adopted project          | Stages new files, three-way merges, the new lock and a `plan.json` under `.groundwork/update/`, for `/customize update` to apply. It writes nothing outside `.groundwork/update/`.                                                                                                                                              |
 
 That copy lands at `.claude/skills/customize/`, or at `.groundwork/customize/`
 when something already there blocks it. It is where the real work happens: it reads the survey, confirms
@@ -179,6 +180,11 @@ outdated pack, stage it again with `npx @monte3l/groundwork . --add-pack <name>
 list, such as one installed at bootstrap with `--pack`, is never reported as
 outdated.
 
+## Updating a project
+
+When a new release ships, a project that is already set up updates in three steps:
+check, stage, apply. Nothing touches your files until you confirm in Claude Code.
+
 To see whether the whole project is behind, run
 `npx @monte3l/groundwork <dir> --check-update`. It compares the template files
 of the release your project was installed from (the base, read from
@@ -215,6 +221,21 @@ conflicting changes is staged with conflict markers for you to resolve, and is
 never applied with markers in it. Running it twice on an unchanged project gives
 the same plan, so a teammate can re-run it and compare. When nothing would
 change, it prints `already up to date` and writes nothing.
+
+Then run `/customize update` in Claude Code. If your project's copy of the skill
+predates `update`, refresh it first from `.groundwork/update/customize/`; the
+CLI's `next:` line says so. `/customize update` checks the plan and the hash of
+every staged file, shows you the plan, and refuses to go on when any file it
+would touch has uncommitted changes (unrelated dirty files are fine). It then
+creates a branch `groundwork/update-<from>-to-<to>`, asks once for the
+defaults and once more for each conflict, review or rename (keep yours, take
+groundwork's, resolve together, or skip), applies the files and any outdated
+packs, refreshes its own skill copy last, runs your project's gate, and records
+the new lock and base snapshot. It offers a commit but never pushes. Commit
+`.groundwork/groundwork.lock.json`, `.groundwork/base/` and
+`.groundwork/installed-packs.json`, so teammates share the same update state.
+Choices you made earlier (kept or declined files) are remembered and are not
+asked again unless groundwork changed that file since.
 
 ## Flags
 

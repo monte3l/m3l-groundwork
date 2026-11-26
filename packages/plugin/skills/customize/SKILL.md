@@ -1,6 +1,6 @@
 ---
 name: customize
-argument-hint: "[add-pack <name> ...]"
+argument-hint: "[add-pack <name> ... | update]"
 description: >-
   Tailors a project bootstrapped or adopted by m3l-groundwork: for a fresh
   bootstrap, interviews the owner (project kind, runtime target, test
@@ -13,7 +13,8 @@ description: >-
   result against current upstream recommendations. Use for /customize,
   "tailor this project", "adopt this project", "set up this scaffold for my
   project", or right after a fresh or adopted m3l-groundwork bootstrap; with
-  "add-pack <name>", to add a pack to an already-set-up project.
+  "add-pack <name>", to add a pack to an already-set-up project; with
+  "update", to apply a baseline update the CLI's --update staged.
 ---
 
 # customize
@@ -53,14 +54,17 @@ The interview below scopes **priority, not authority**: it tells Round 2
 which facets deserve the deepest dedicated research, never which facets it
 may or may not touch.
 
-## Adding a pack (`/customize add-pack`)
+## Sub-commands (add-pack, update)
 
-If `$ARGUMENTS` starts with `add-pack` (the user ran `/customize add-pack
+If `$ARGUMENTS` starts with `update` (the user ran `/customize update` after
+`npx @monte3l/groundwork . --update` staged an update under
+`.groundwork/update/`), read [`update.md`](update.md) in full. If
+`$ARGUMENTS` starts with `add-pack` (the user ran `/customize add-pack
 <name> [<name>...]` after `npx @monte3l/groundwork . --add-pack <name>`
 staged the pack under `.groundwork/add-pack/<name>/`), read
-[`add-pack.md`](add-pack.md) in full and follow only it: skip Steps 0-7
-entirely, and never run the interview, Round 2 or Step 7's report. Re-read
-it after any compaction or resume. Otherwise, continue below.
+[`add-pack.md`](add-pack.md) in full. Either way, follow only that file:
+skip Steps 0-7 entirely, and never run the interview, Round 2 or Step 7's
+report. Re-read it after any compaction or resume. Otherwise, continue below.
 
 ## Step 0 — Reconcile (adopt mode only)
 

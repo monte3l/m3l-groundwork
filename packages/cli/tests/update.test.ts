@@ -295,6 +295,13 @@ describe("runUpdate: staging one change per category", () => {
     expect(planEntry(plan, TEXT_MERGE).staged.merged).toBe(
       `merged/${TEXT_MERGE}.staged`,
     );
+    // Pristine theirs is staged too, so it can become the new base snapshot.
+    expect(readStaged(project, `files/${TEXT_MERGE}.staged`)).toBe(
+      theirs(TEXT_MERGE),
+    );
+    expect(planEntry(plan, TEXT_MERGE).staged.theirs).toBe(
+      `files/${TEXT_MERGE}.staged`,
+    );
     // The base came from .groundwork/base, not the template history.
     expect(
       existsSync(join(project, UPDATE_DIR, "base", `${TEXT_MERGE}.staged`)),
@@ -307,6 +314,13 @@ describe("runUpdate: staging one change per category", () => {
     ) as Record<string, unknown>;
     expect(merged["localKey"]).toBe(2);
     expect(merged).not.toHaveProperty("oldUpstream");
+    // Pristine theirs is staged too, so it can become the new base snapshot.
+    expect(readStaged(project, `files/${JSON_MERGE}.staged`)).toBe(
+      theirs(JSON_MERGE),
+    );
+    expect(planEntry(plan, JSON_MERGE).staged.theirs).toBe(
+      `files/${JSON_MERGE}.staged`,
+    );
   });
 
   it("stages a text conflict with diff3 markers, never in the project", () => {

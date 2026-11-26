@@ -6,7 +6,7 @@
  * Fails when the plugin's Claude Code identity has drifted from the CLI's
  * release, or when the plugin package has quietly grown npm-publish shape
  * again -- the plugin is listed by the central `monte3l/m3l-plugins`
- * marketplace, pinned to a release tag, never published to npm. release-please writes both versions (`extra-files` in release-please-config.json); see lib/plugin-version.mjs.
+ * marketplace, pinned to a release tag, never published to npm. release-please writes both versions, and the `Skill version:` marker in both copies of `update.md` (`extra-files` in release-please-config.json); see lib/plugin-version.mjs.
  */
 import process from "node:process";
 import { createReporter, parseJsonFlag, repoRoot } from "./lib/report.mjs";
@@ -22,6 +22,20 @@ if (v.manifest.version === expected) {
   reporter.fail(
     `plugin.json version is ${v.manifest.version ?? "missing"}, but ${v.cliPackage.name} is ${expected} -- release-please writes both from \`extra-files\` in release-please-config.json, so check that entry and do not edit either version by hand`,
   );
+}
+
+for (const marker of v.skillMarkers) {
+  if (!marker.present) {
+    reporter.warn(
+      `${marker.path} is absent -- no Skill version marker to check`,
+    );
+  } else if (marker.version === expected) {
+    reporter.ok(`${marker.path} Skill version is ${expected}`);
+  } else {
+    reporter.fail(
+      `${marker.path} Skill version is ${marker.version ?? "missing"}, but ${v.cliPackage.name} is ${expected} -- release-please rewrites the \`Skill version: <version> <!-- x-release-please-version -->\` line as a \`generic\` extra-file, so check that entry in release-please-config.json and do not edit the version by hand`,
+    );
+  }
 }
 
 if (v.pluginPackagePrivate) {

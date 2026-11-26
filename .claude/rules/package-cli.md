@@ -34,8 +34,10 @@ paths:
   failed write leaves the previous copy exactly as it was. The text merge runs
   `git merge-file` on temporary files in the system temp directory, never in the
   project; a merge with conflicts is staged with markers and never applied.
-  `/customize update` is what applies it, so any new file the skill reads from
-  the staging directory must be in the plan's `staged.files` list with a hash.
+  `/customize update` (`update.md`, listed in `CUSTOMIZE_SKILL_STEP_FILE_NAMES`)
+  is what applies it, so any new file the skill reads from the staging
+  directory must be in the plan's `staged.files` list with a hash, and a
+  change to the plan's shape needs the same change in `update.md`.
   The plan must stay deterministic (only `generatedAt` varies), so nothing time-,
   order- or temp-dir-dependent may reach it.
 - **`--check-update` reads and reports, it never writes.** It is the one mode

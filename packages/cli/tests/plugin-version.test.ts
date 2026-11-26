@@ -16,6 +16,11 @@ interface PluginVersionLib {
     cliPackage: { name: string; version: string };
     manifest: { name: string; version: string };
     pluginPackagePrivate: boolean;
+    skillMarkers: {
+      path: string;
+      present: boolean;
+      version?: string | undefined;
+    }[];
   };
 }
 
@@ -49,6 +54,20 @@ describe("the plugin-version gate", () => {
       name: "the-plugin",
       version: overrides.manifest ?? "1.0.0",
     });
+  }
+
+  const markerFiles = [
+    "packages/plugin/skills/customize/update.md",
+    ".claude/skills/customize/update.md",
+  ];
+
+  function putMarkerFile(rel: string, body: string): void {
+    mkdirSync(dirname(join(root, rel)), { recursive: true });
+    writeFileSync(join(root, rel), body);
+  }
+
+  function marker(version: string): string {
+    return `# Update\n\nSkill version: ${version} <!-- x-release-please-version -->\n`;
   }
 
   function run(script: string): { status: number | null; output: string } {
@@ -107,5 +126,57 @@ describe("the plugin-version gate", () => {
     expect(result.status).toBe(1);
     expect(result.output).toContain("is not private");
     expect(result.output).toContain("not npm");
+  });
+
+  it("reads each update.md copy's marker, flagging absent files", () => {
+    writeFixture({});
+    putMarkerFile(markerFiles[0] as string, marker("1.0.0"));
+
+    const [first, second] = lib.readVersions(root).skillMarkers;
+
+    expect(first).toMatchObject({ present: true, version: "1.0.0" });
+    expect(second).toMatchObject({ present: false });
+  });
+
+  it("passes when both marker files match the CLI version", () => {
+    writeFixture({});
+    for (const rel of markerFiles) putMarkerFile(rel, marker("1.0.0"));
+
+    const result = run("check-plugin-version.mjs");
+
+    expect(result.status).toBe(0);
+    expect(result.output).toContain("Skill version is 1.0.0");
+  });
+
+  it("fails when a marker differs from the CLI version", () => {
+    writeFixture({});
+    putMarkerFile(markerFiles[0] as string, marker("0.9.0"));
+    putMarkerFile(markerFiles[1] as string, marker("1.0.0"));
+
+    const result = run("check-plugin-version.mjs");
+
+    expect(result.status).toBe(1);
+    expect(result.output).toMatch(
+      /update\.md Skill version is 0\.9\.0, but @scope\/cli is 1\.0\.0/,
+    );
+  });
+
+  it("fails when a present update.md has no marker line", () => {
+    writeFixture({});
+    putMarkerFile(markerFiles[0] as string, "# Update\n\nno marker here\n");
+
+    const result = run("check-plugin-version.mjs");
+
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("Skill version is missing");
+  });
+
+  it("only warns when the update.md files are absent", () => {
+    writeFixture({});
+
+    const result = run("check-plugin-version.mjs");
+
+    expect(result.status).toBe(0);
+    expect(result.output).toContain("is absent");
   });
 });
