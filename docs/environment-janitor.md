@@ -37,24 +37,19 @@ integration` under a Secrets-only grant).
    Generate a private key) and note the App's Client ID.
 3. **Install the App** on the repositories that run the cleanup ("Install
    App" → "Only select repositories"). Do not install it organization-wide.
-4. **Store the key as organization secrets**, once, shared with those
-   repositories only (visibility `selected`), the same way as
-   `GITLEAKS_LICENSE`:
-   ```
-   gh secret set JANITOR_APP_CLIENT_ID --org monte3l --visibility selected --repos <repo,...>
-   gh secret set JANITOR_APP_PRIVATE_KEY --org monte3l --visibility selected --repos <repo,...> < key.pem
-   ```
-   Then, per repository, let the baseline script create the `env-janitor`
-   environment, restrict it to `main` and share the two secrets with the
-   repository (read first with `--dry-run`):
+4. **Create the environment and store the key in it**, once per repository.
+   The baseline script creates the `env-janitor` environment and restricts it
+   to `main` (read first with `--dry-run`). Then set the two secrets in it, so
+   that only a job running on `main` can read them:
    ```
    bin/apply-repo-baseline.sh monte3l/m3l-groundwork --dry-run
    bin/apply-repo-baseline.sh monte3l/m3l-groundwork --apply
+   bin/env-secrets.sh set JANITOR_APP_CLIENT_ID --repo m3l-groundwork
+   bin/env-secrets.sh set JANITOR_APP_PRIVATE_KEY --repo m3l-groundwork < key.pem
    ```
-   The script is in `monte3l/.github`. It never creates a secret and never
-   deletes one. Do not also set the secrets on the `env-janitor`
-   environment: an environment secret overrides the org one, so a leftover
-   copy keeps an old key alive after a rotation.
+   Both scripts are in `monte3l/.github`. Do not also share an organization
+   secret of the same name with the repository: it would reach every workflow
+   on every branch, and the baseline script reports it as drift.
 5. **First run:** trigger `workflow_dispatch` with `dry_run: true` (the
    default) and read the job summary -- it lists exactly what a real run
    would deactivate, delete, and flag as drift or refused. Confirm the plan
@@ -71,7 +66,7 @@ It checks out this repository's `bin/` at a pinned commit and runs
 `bin/cleanup-environments.mjs` against the calling repository's own
 `.github/environments.json`, so there is one copy of the planner. Each
 repository is covered by the same `monte3l-env-janitor` App installation and
-the same two organization secrets, and has its own `env-janitor` environment
+the same two secrets, kept in its own `env-janitor` environment
 (steps 3 and 4 above, with its own name in place of `m3l-groundwork`).
 
 The script's interface is therefore a contract with those repositories: the
@@ -87,22 +82,27 @@ in that script in the same change.
 
 ## Secrets and rotation
 
-`JANITOR_APP_CLIENT_ID` and `JANITOR_APP_PRIVATE_KEY` are organization
-secrets with visibility `selected`, shared with each repository that runs the
-cleanup. The environment holds no secrets.
+`JANITOR_APP_CLIENT_ID` and `JANITOR_APP_PRIVATE_KEY` are secrets of each
+repository's `env-janitor` environment, which deploys from `main` only, so only
+a job running on `main` reads them. No organization secret of those names is
+shared with a repository.
 
 > [!WARNING]
-> An organization secret reaches every workflow in each repository it is
-> shared with, on any branch a collaborator pushes, where an environment secret
-> reached only the job running on `main`. Only `environments.yml` may name the
-> two secrets: the baseline script reports any other workflow that does.
+> The App's key can mint an `administration: write` token for every repository
+> the App is installed on, so it is kept out of the organization's secrets,
+> which reach every workflow of a repository on any branch a collaborator
+> pushes. Only `environments.yml` may name the two secrets: the baseline script
+> reports any other workflow that does, and any organization secret of the same
+> name still shared with the repository.
 
 To rotate the key:
 
 1. Generate a new private key in the App's settings. The old one keeps
    working.
-2. Replace the secret: `gh secret set JANITOR_APP_PRIVATE_KEY --org monte3l`.
-   The repository list is kept.
+2. Replace the secret in every repository's environment with one command,
+   `bin/env-secrets.sh set JANITOR_APP_PRIVATE_KEY` in `monte3l/.github`, which
+   reads the value from a hidden prompt. Run `bin/env-secrets.sh check` to
+   confirm no copy was missed.
 3. Dispatch `environments.yml` with `dry_run` on in one repository and confirm
    it succeeds.
 4. Delete the old key in the App's settings.
