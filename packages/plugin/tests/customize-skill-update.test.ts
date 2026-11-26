@@ -106,6 +106,42 @@ describe("update.md -- verification", () => {
     expect(update).toMatch(/no shell[^.]*stop|stop[^.]*no shell/i);
   });
 
+  it("forbids claiming any check passed when the no-shell stop fires", () => {
+    const start = update.search(/no shell/i);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const paragraph = update.slice(start, start + 900);
+    // The stop must forbid stating OR implying that a staged hash, the lock's
+    // hash or the working tree's cleanliness was checked or matches.
+    expect(paragraph).toMatch(/not (state|claim) or imply/i);
+    expect(paragraph).toMatch(/staged file/i);
+    expect(paragraph).toMatch(/lock'?s? hash|lock's sha|lock hash/i);
+    expect(paragraph).toMatch(/working tree/i);
+    expect(paragraph).toMatch(/checked or match/i);
+    // Only relaying plan.json is allowed, labelled as the plan's own statement.
+    expect(paragraph).toMatch(
+      /plan\.json[^.]*(plan's own statement|plan's own claim)|(plan's own statement|plan's own claim)[^.]*plan\.json/i,
+    );
+  });
+
+  it("forbids describing any file's hashes as matching when the no-shell stop fires", () => {
+    const start = update.search(/no shell/i);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const paragraph = update.slice(start, start + 900).replace(/\s+/g, " ");
+    // No file's hashes (customize/ payload, staged files) may be called
+    // matching or equal; the skill copy may only relay plan's skill.status.
+    expect(paragraph).toMatch(/hashes/i);
+    expect(paragraph).toContain("skill.status");
+  });
+
+  it("tells the user to re-run /customize update where a shell exists, and that --update only re-stages", () => {
+    const start = update.search(/no shell/i);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const paragraph = update.slice(start, start + 900).replace(/\s+/g, " ");
+    expect(paragraph).toContain("/customize update");
+    expect(paragraph).toMatch(/re-stages/i);
+    expect(paragraph).toMatch(/applies nothing/i);
+  });
+
   it("stops on an extra *.staged file not listed in the plan", () => {
     expect(update).toMatch(
       /extra[^.]*\.staged[^.]*stop|stop[^.]*extra[^.]*\.staged/i,

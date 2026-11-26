@@ -55,7 +55,13 @@ the owner; `current`, `keep` and `skip` leave it alone.
    list does not name stops the run the same way, wherever it sits in the
    staging directory. If there is no shell to run a command in, say the check could not
    run and stop: nothing is applied, and the staging is kept. Do not offer,
-   suggest or accept continuing without the hash check. Run the
+   suggest or accept continuing without the hash check. When the check
+   could not run, do not state or imply that any staged file, the lock's
+   hash or the working tree was checked or matches; you may relay what
+   `plan.json` says, only as the plan's own statement. Never call any
+   file's hashes matching; for the skill copy give only `skill.status`.
+   To continue, say to run `/customize update` again with a shell:
+   re-running `--update` only re-stages and applies nothing. Run the
    prototype-key check on each `packs/<name>/pack.json.staged`: if a key of
    its `wiring.settings`, `wiring.settingsTopLevel` or
    `wiring.packageScripts` is `__proto__`, `constructor` or `prototype`,

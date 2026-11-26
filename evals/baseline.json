@@ -2,9 +2,10 @@
   "schemaVersion": 1,
   "suites": {
     "plugin": {
+      "add-pack": 1,
       "adopt-reconcile": 1,
       "fresh-interview": 1,
-      "add-pack": 1
+      "update": 0.9444
     },
     "harness": {
       "creating-prs-fires-1": 1,

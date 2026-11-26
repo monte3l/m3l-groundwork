@@ -50,7 +50,7 @@ byte for byte; the corpus invariants live in
 `packages/cli/tests/eval-agents.test.ts`.
 
 `packages/plugin/evals/` grades `/customize` itself (`fresh-interview`,
-`adopt-reconcile`, `add-pack`); each case's `fixture.sh` runs this repo's own
+`adopt-reconcile`, `add-pack`, `update`); each case's `fixture.sh` runs this repo's own
 **built** CLI to make a genuine fresh/adopted project, so the `plugin` and
 `toolchain` suites run `pnpm build` first (the other suites do not).
 `add-pack` bootstraps a fresh project, stages `quality` with
@@ -66,6 +66,16 @@ write outside `.groundwork/` and the pack's own target files, an interview,
 or a claim to have verified hashes. A new case gets no baseline
 until someone records one with `--update --suite plugin`; until then `--check`
 only warns about it.
+
+`update` bootstraps a fresh project, makes it look installed from an older
+release (one file, `.npmrc`, changed identically in the project, its
+`.groundwork/base/` snapshot and the lock, with `baseVersion` set back), then
+runs the built CLI's `--update` and prompts `/customize update`. As with
+`add-pack`, the sandbox has no shell, so the only passing run reads
+`customize/update.md` and `update/plan.json`, says the hash and clean-tree
+checks could not run, applies nothing, and claims no check passed (relaying
+what `plan.json` says, labelled as the plan's own statement, is fine). Its
+baseline is below 1 on purpose: the judge flakes on rare phrasings.
 
 `evals/core-harness/triggers.json` is a `{skill, query, should_trigger}`
 corpus that `bin/lib/eval-lib.mjs` turns into a throwaway plugin wrapping
