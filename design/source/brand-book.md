@@ -387,8 +387,8 @@ into bootstrapped projects rather than having them depend on it live.
 
 m3l-design v1 was signed off on 2026-09-26. It covers the foundations
 (DTCG source plus `tokens.json`), seven components and the cover. Nothing
-in v1 is unfinished. The items below are the only known gaps, and they
-fall into two different kinds.
+in v1 is unfinished. The items below are the only known gaps, plus one
+token decision that has since been closed.
 
 **Deliberate v1 scope boundaries.** Add these when a project needs them;
 none is urgent:
@@ -399,14 +399,18 @@ none is urgent:
 - No syntax-highlighting tokens for CodeBlock.
 - No chosen icon set. The status glyphs cover status only.
 
-**One open token decision, carried forward:**
+**One token decision, since closed:**
 
-- In dark mode, `color-surface-sunken` has the same value as
-  `color-surface-default` (both `neutral-1000`). Every current component
-  works around this the same way, by borrowing `color-surface-hover`. The
-  workaround is documented in the Badge, Button and Input READMEs. The token
-  itself still needs a real dark value before any component needs a hover
-  state and a sunken state that look different from each other.
+- `color-surface-sunken` had the same value as `color-surface-default` in
+  dark (both `neutral-1000`), and the same value as `color-surface-hover` in
+  light (both `neutral-100`), so Badge, inline code and the disabled Button
+  and Input borrowed `color-surface-hover`. Sunken is now `neutral-150` in
+  light and `neutral-900` in dark. In dark the page is already the darkest
+  step, so a sunken fill can only be lighter than it. It shares its value
+  with `color-surface-raised`, so a neutral badge on a dark card has no fill
+  contrast. In light, tertiary text (4.51:1) and the success border (3.00:1)
+  sit close to their AA floors on sunken. The components use
+  `color-surface-sunken` again and the workarounds are gone.
 
 ---
 

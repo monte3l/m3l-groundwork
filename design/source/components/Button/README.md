@@ -25,14 +25,14 @@ Triggers an action on the current page: primary for the one main action in a vie
 - Primary: `color-accent-default` / `-hover` / `-active` fill, `color-text-on-accent` label.
 - Secondary: `color-surface-default` fill, `color-border-control` border, `color-text-primary` label; hover/active `color-surface-hover`.
 - Ghost: transparent, `color-text-primary`; hover/active `color-surface-hover`.
-- Disabled: `color-surface-hover` fill (interim, see Flags), `color-text-disabled`, `color-border-default` border.
+- Disabled: `color-surface-sunken` fill, `color-text-disabled`, `color-border-default` border.
 - Focus: `color-focus-ring`, `focus-ring-width`, `focus-ring-offset`.
 - Shape `radius-md`, padding `space-2 space-4`, gap `space-2`. Motion: colour only, `duration-fast` + `easing-standard`, `duration-instant` under reduced motion.
 - Component-tier aliases: `button-primary-*`, `button-secondary-*`.
 
 ## Flags
 
-- `color-surface-sunken` equals `color-surface-default` in dark (both `neutral-1000`), so a sunken disabled fill would not show on the page (1.00:1). The disabled fill uses `color-surface-hover` until a token decision is made. That fill is `neutral-100` in light (the same colour as sunken) and `neutral-850` in dark (1.35:1 against the page). The disabled border is `color-border-default`, not `color-border-subtle`: in dark, subtle is `neutral-850`, the same colour as the fill (1.00:1). `color-border-default` is 1.18:1 against the fill in light and 1.21:1 in dark, quieter on purpose than the enabled `color-border-control` (3.34 / 3.71).
+- The disabled border is `color-border-default`, not `color-border-subtle`: in light, subtle is `neutral-150`, the same colour as the sunken fill (1.00:1). `color-border-default` is 1.10:1 against the fill in light and 1.38:1 in dark, quieter on purpose than the enabled `color-border-control`.
 
 ## Contrast (WCAG 2.2 AA)
 

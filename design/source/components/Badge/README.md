@@ -21,21 +21,18 @@ A short, one- or two-word label next to a version, page title or API name: a ver
 
 ## Tokens
 
-- Neutral: `color-surface-hover` fill (interim, see Flags) with `color-text-secondary` text.
+- Neutral: `color-surface-sunken` fill with `color-text-secondary` text.
 - Accent: `color-accent-tint` fill, `color-accent-text` text, `color-accent-tint-border` border.
 - Status: `color-status-<s>-surface` fill, `color-status-<s>-text` text, `color-status-<s>-border` border and icon.
 - Shape `radius-sm`, padding `0 space-2`, gap `space-1`.
-- Component-tier alias: `badge-neutral-bg` / `-fg`. `badge-neutral-bg` still points at `color-surface-sunken`, which vanishes in dark (see Flags).
-
-## Flags
-
-- `color-surface-sunken` equals `color-surface-default` in dark (both `neutral-1000`). A sunken fill therefore disappears on the page. Neutral badges and inline code use `color-surface-hover` until a token decision is made.
+- Component-tier alias: `badge-neutral-bg` / `-fg`. `badge-neutral-bg` aliases `color-surface-sunken`.
+- In dark, `color-surface-sunken` is the same colour as `color-surface-raised`, so a neutral badge on a card has no visible fill. Use an accent or status badge there, or keep the label readable on its own.
 
 ## Contrast (WCAG 2.2 AA)
 
 | Pair                   | Tokens                                                          | Light |  Dark | Floor |
 | ---------------------- | --------------------------------------------------------------- | ----: | ----: | ----: |
-| neutral                | `color-text-secondary` on `color-surface-hover`                 |  7.15 |  8.39 |   4.5 |
+| neutral                | `color-text-secondary` on `color-surface-sunken`                |  6.65 |  9.60 |   4.5 |
 | accent                 | `color-accent-text` on `color-accent-tint`                      |  9.53 |  5.87 |   4.5 |
 | info label             | `color-status-info-text` on `color-status-info-surface`         |  6.18 |  9.10 |   4.5 |
 | info icon              | `color-status-info-border` on `color-status-info-surface`       |  4.80 |  6.87 |     3 |

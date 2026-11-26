@@ -39,14 +39,14 @@ A single-line text field with a visible label, an optional hint and an inline er
 - Field: `color-surface-default` fill, `color-border-control` border, `color-text-primary` value, `color-text-tertiary` placeholder.
 - Hint and "(optional)": `color-text-secondary`. Error: `color-status-danger-text` text, `color-status-danger-border` border and icon.
 - Focus: the border turns `color-focus-ring`, plus the standard outside ring.
-- Disabled: `color-surface-hover` fill (interim, see Flags), `color-text-disabled`, `color-border-default` border.
+- Disabled: `color-surface-sunken` fill, `color-text-disabled`, `color-border-default` border.
 - Shape `radius-md`, padding `space-2 space-3`, field gap `space-1`, width capped at `measure-prose`.
 - Component-tier aliases: `input-bg`, `-border`, `-border-focus`, `-fg`, `-placeholder`.
 - There is no hover-border token, so there is no hover state (out of v1 scope).
 
 ## Flags
 
-- `color-surface-sunken` equals `color-surface-default` in dark (both `neutral-1000`), so a sunken disabled field would look the same as an enabled one (1.00:1 against the page and the field fill). The disabled fill uses `color-surface-hover` until a token decision is made. That fill is `neutral-100` in light (the same colour as sunken) and `neutral-850` in dark (1.35:1 against the page). The disabled border is `color-border-default`, not `color-border-subtle`: in dark, subtle is `neutral-850`, the same colour as the fill (1.00:1). `color-border-default` is 1.18:1 against the fill in light and 1.21:1 in dark, quieter on purpose than the enabled `color-border-control` (3.34 / 3.71).
+- The disabled border is `color-border-default`, not `color-border-subtle`: in light, subtle is `neutral-150`, the same colour as the sunken fill (1.00:1). `color-border-default` is 1.10:1 against the fill in light and 1.38:1 in dark, quieter on purpose than the enabled `color-border-control`.
 
 ## Contrast (WCAG 2.2 AA)
 

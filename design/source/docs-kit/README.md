@@ -67,7 +67,7 @@ Every problem is listed in one run.
 
 | Gate | Fails when |
 | --- | --- |
-| Links | An internal link, a same-page anchor or a cross-page anchor does not resolve, or a link scheme is not `http`, `https` or `mailto` |
+| Links | An internal link, a local image, a same-page anchor or a cross-page anchor does not resolve, or a link scheme is not `http`, `https` or `mailto` |
 | Markdown | A page uses Markdown the renderer does not support, or an italic span |
 | Headers | The generated `_headers` file exceeds Cloudflare's limits of 100 rule blocks or 2,000 characters per line |
 | Coverage | A tracked `*.md` file is neither a page nor excluded, or a `pages` or `exclude` entry matches nothing |
@@ -144,7 +144,9 @@ before.
 
 - A copy is the page source with its links rewritten so they work from the
   copy's URL. A link to another page goes to that page's copy, a repository
-  file goes to GitHub, and an external link or an anchor is untouched.
+  file goes to GitHub, a local `.svg` or `.png` goes to its copy under
+  `assets/files/` (see [Rules for the site](#rules-for-the-site)), and an
+  external link or an anchor is untouched.
   Frontmatter and HTML comments are dropped, as they are on the site.
 - With `llms` set, every page `out`, generated or not, must end in `.html` so
   its copy can be named, and must be unique. A page may not be called
@@ -169,6 +171,14 @@ before.
 - A page is on the site only if it is in `pages`. Fix a page in its source
   Markdown, never in the renderer.
 - Raw HTML is never passed through. Everything is escaped.
+- A local `.svg` or `.png` that a page links or embeds is copied to
+  `assets/files/<repository path>` and linked from there, in the page and in its
+  `.md` copy. Any other repository file still links to GitHub, and an image that
+  does not exist fails `--check`. Embed a diagram with `![alt](path.svg)`: an
+  image loaded by an `<img>` renders, with its own `<style>` and its dark-mode
+  media query, under the site's policy. An SVG opened on its own, as a document,
+  loses its inline `<style>` to `style-src 'self'`, so link to an image on the
+  site only to embed it.
 - The Content Security Policy pins the SHA-256 of the one inline theme script,
   so the site has no `unsafe-inline`.
 

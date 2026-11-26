@@ -165,9 +165,7 @@ body {
 .m3l-code-inline {
   padding: var(--space-0-5) var(--space-1);
   border-radius: var(--radius-xs);
-  background: var(
-    --color-surface-hover
-  ); /* interim: surface-sunken equals surface-default in dark (flagged) */
+  background: var(--color-surface-sunken);
   color: var(--color-text-primary);
   word-spacing: 0; /* the code class on the element sets family, size, tracking */
 }
@@ -224,7 +222,7 @@ body {
   padding: 0 var(--space-2);
   border: var(--border-width-default) solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-hover); /* interim: see .m3l-code-inline */
+  background: var(--color-surface-sunken);
   color: var(--color-text-secondary);
   white-space: nowrap;
   vertical-align: middle;
@@ -331,11 +329,11 @@ body {
 }
 .m3l-button:disabled,
 .m3l-button[aria-disabled="true"] {
-  background: var(--color-surface-hover); /* interim: see .m3l-code-inline */
+  background: var(--color-surface-sunken);
   color: var(--color-text-disabled);
   border-color: var(
     --color-border-default
-  ); /* border-subtle equals surface-hover in dark */
+  ); /* border-subtle equals surface-sunken in light */
   cursor: not-allowed;
 }
 
@@ -395,11 +393,11 @@ body {
   border-color: var(--color-status-danger-border);
 }
 .m3l-input:disabled {
-  background: var(--color-surface-hover); /* interim: see .m3l-code-inline */
+  background: var(--color-surface-sunken);
   color: var(--color-text-disabled);
   border-color: var(
     --color-border-default
-  ); /* border-subtle equals surface-hover in dark */
+  ); /* border-subtle equals surface-sunken in light */
   cursor: not-allowed;
 }
 
