@@ -180,8 +180,17 @@ of the release your project was installed from (the base, read from
 closest release, or you pass `--base-version`) with the ones the running CLI
 ships, and counts what changed, was added or was removed upstream, plus any
 outdated packs. A project installed by the running release reads as up to date.
-It writes nothing and needs no network. It prints a `note:` line whenever a
-comparison could not run, and says how many were skipped in the final line. Exit `0` means up to
+It writes nothing to your project and needs no network. When your project is
+behind, it also says what an update would do to your own files, for example
+`if you update: 4 update cleanly, 2 need a merge, 1 conflict`: files you never
+touched update cleanly, files you changed and groundwork changed too need a
+merge, a `package.json` or settings file that both sides changed is merged key
+by key (a dependency bump no longer conflicts with the rest of
+`devDependencies`) and only conflicts on a key both sides changed, and files you
+changed but groundwork did not are left alone. Files that `/customize` tailored
+for you, such as a `pnpm` command rewritten to `npm`, stay yours unless groundwork
+also changed them. It prints a `note:` line whenever a comparison could not run,
+and says how many were skipped in the final line. Exit `0` means up to
 date and exit `3` means an update is available, so a CI job or a hook can act on
 it. Run it with `@latest` to compare against the newest release.
 

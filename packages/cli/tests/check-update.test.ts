@@ -16,10 +16,13 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { runCheckUpdate } from "../src/check-update.js";
+import { classifyProject } from "../src/update-classify.js";
+import { buildTheirsTree } from "../src/theirs-tree.js";
 import { CliUsageError } from "../src/usage.js";
 import { restoreDotfilePath } from "../src/assets.js";
 import { templatesCoreDir } from "../src/main.js";
@@ -33,6 +36,11 @@ import {
   templateFileHashes,
 } from "../src/pack-installation.js";
 import { sha, writeTree } from "./update-base-fixtures.js";
+import {
+  bootstrapFresh,
+  readLockOrThrow,
+  simulateOlder,
+} from "./update-classify-fixtures.js";
 
 let root: string;
 let project: string;
@@ -556,3 +564,345 @@ describe("runCheckUpdate: damaged inputs", () => {
     ).not.toThrow();
   });
 });
+
+describe.skipIf(process.platform === "win32")(
+  "runCheckUpdate: 'if you update' preview",
+  () => {
+    let scratch: string;
+    beforeEach(() => {
+      scratch = mkdtempSync(join(tmpdir(), "check-update-tmp-"));
+      // os.tmpdir() reads TMPDIR: the theirs tree lands in a private dir.
+      vi.stubEnv("TMPDIR", scratch);
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      rmSync(scratch, { recursive: true, force: true });
+    });
+
+    const theirsLeftovers = (): string[] =>
+      readdirSync(scratch).filter((name) => name.startsWith("m3l-theirs-"));
+
+    /** A project installed from an older release with two changed files. */
+    function olderProject(): { history: { history: TemplateHistory } } {
+      bootstrapFresh(project);
+      simulateOlder(project, "lefthook.yml", "older: true\n");
+      simulateOlder(
+        project,
+        "eslint.config.js",
+        "export default [];\n",
+        "export default [];\n// mine\n",
+      );
+      return {
+        history: historyWith({
+          ...currentCoreHashes(),
+          "lefthook.yml": sha("older: true\n"),
+          "eslint.config.js": sha("export default [];\n"),
+        }),
+      };
+    }
+
+    it("prints one 'if you update:' line with the non-zero counts, after the count lines", () => {
+      const { history } = olderProject();
+      const code = runCheckUpdate(
+        { targetDir: project },
+        { history, runningVersion: "99.0.0" },
+      );
+      expect(code).toBe(3);
+      const lines = output().split("\n");
+      const preview = lines.filter((l) => l.startsWith("if you update:"));
+      expect(preview).toEqual([
+        "if you update: 1 update cleanly, 1 need a merge",
+      ]);
+      const countIndex = lines.findIndex((l) => l.includes("changed upstream"));
+      expect(lines.indexOf(preview[0] as string)).toBeGreaterThan(countIndex);
+      expect(theirsLeftovers()).toEqual([]);
+    });
+
+    it("leaves the project tree byte-identical", () => {
+      const { history } = olderProject();
+      const before = snapshotTree(project);
+      runCheckUpdate(
+        { targetDir: project },
+        { history, runningVersion: "99.0.0" },
+      );
+      expect(snapshotTree(project)).toEqual(before);
+    });
+
+    it("omits the line when nothing would change locally, keeping exit 3", () => {
+      bootstrapFresh(project);
+      const base = readLockOrThrow(project).baseVersion;
+      const code = runCheckUpdate(
+        { targetDir: project },
+        {
+          history: historyWith(
+            { ...currentCoreHashes(), "lefthook.yml": sha("older") },
+            base,
+          ),
+          runningVersion: "99.0.0",
+        },
+      );
+      expect(code).toBe(3);
+      expect(output()).not.toContain("if you update:");
+      expect(theirsLeftovers()).toEqual([]);
+    });
+
+    it("omits the line and builds no tree when the base is not older than the CLI", () => {
+      bootstrapFresh(project);
+      const base = readLockOrThrow(project).baseVersion;
+      const code = runCheckUpdate(
+        { targetDir: project },
+        {
+          history: historyWith(currentCoreHashes(), base),
+          runningVersion: base,
+        },
+      );
+      expect(code).toBe(0);
+      expect(output()).not.toContain("if you update:");
+    });
+
+    it("cleans the temp tree even when printing throws", () => {
+      const { history } = olderProject();
+      log.mockImplementation(() => {
+        throw new Error("stdout closed");
+      });
+      expect(() =>
+        runCheckUpdate(
+          { targetDir: project },
+          { history, runningVersion: "99.0.0" },
+        ),
+      ).toThrow("stdout closed");
+      expect(theirsLeftovers()).toEqual([]);
+    });
+
+    /** The final line printed. */
+    const lastLine = (): string => output().split("\n").at(-1) ?? "";
+    const SKIPPED =
+      /^up to date \([1-9]\d* comparison\(s\) skipped -- see notes\)$/;
+
+    /** A project whose base is older than the CLI but whose templates are unchanged. */
+    function unchangedProject(): { history: { history: TemplateHistory } } {
+      bootstrapFresh(project);
+      return {
+        history: historyWith(
+          currentCoreHashes(),
+          readLockOrThrow(project).baseVersion,
+        ),
+      };
+    }
+
+    it("counts a failed theirs-tree build as a skipped comparison in the verdict", () => {
+      bootstrapFresh(project);
+      const base = readLockOrThrow(project).baseVersion;
+      const code = runCheckUpdate(
+        { targetDir: project },
+        {
+          // An empty history and an absent coreDir: no upstream difference.
+          history: historyWith({}, base),
+          runningVersion: "99.0.0",
+          coreDir: join(root, "no-core"),
+        },
+      );
+      expect(code).toBe(0);
+      expect(output()).toContain("note: update preview skipped");
+      expect(lastLine()).toMatch(SKIPPED);
+      expect(theirsLeftovers()).toEqual([]);
+    });
+
+    it("counts a damaged migrations file as a skipped comparison in the verdict", () => {
+      const { history } = unchangedProject();
+      // Assumes CheckUpdateDeps.migrationsPath? points loadMigrations at a file.
+      const migrationsPath = join(root, "migrations.json");
+      writeFileSync(migrationsPath, "{ not json");
+      const code = runCheckUpdate(
+        { targetDir: project },
+        { history, runningVersion: "99.0.0", migrationsPath },
+      );
+      expect(code).toBe(0);
+      expect(output()).toMatch(/note: migrations .*ignored/);
+      expect(lastLine()).toMatch(SKIPPED);
+    });
+
+    it("never closes with a bare 'up to date (base ...' when a preview note was printed", () => {
+      const { history } = unchangedProject();
+      const migrationsPath = join(root, "migrations.json");
+      writeFileSync(migrationsPath, "{ not json");
+      runCheckUpdate(
+        { targetDir: project },
+        { history, runningVersion: "99.0.0", migrationsPath },
+      );
+      expect(output()).toContain("note:");
+      expect(lastLine()).not.toMatch(/^up to date \(base /);
+    });
+
+    it("never closes with a bare 'up to date (base ...' after printing 'if you update:'", () => {
+      bootstrapFresh(project);
+      // The history says nothing changed upstream, yet the project's own
+      // base snapshot is older, so the preview has something to report.
+      simulateOlder(project, "lefthook.yml", "older: true\n");
+      const history = historyWith(currentCoreHashes(), "1.0.0");
+      runCheckUpdate(
+        { targetDir: project },
+        { history, runningVersion: "99.0.0" },
+      );
+      expect(output()).toContain("if you update:");
+      expect(lastLine()).not.toMatch(/^up to date \(base /);
+    });
+
+    it("notes a ledger pack the CLI no longer ships, saying its files are left alone", () => {
+      bootstrapFresh(project);
+      writeTree(project, {
+        [LEDGER_PATH]: JSON.stringify({
+          schemaVersion: 1,
+          packs: [{ name: "retired-pack", cliVersion: "1.0.0" }],
+        }),
+      });
+      runCheckUpdate(
+        { targetDir: project, baseVersion: "1.0.0" },
+        {
+          history: historyWith(currentCoreHashes()),
+          runningVersion: "99.0.0",
+        },
+      );
+      const notes = output()
+        .split("\n")
+        .filter(
+          (line) => line.startsWith("note:") && line.includes("retired-pack"),
+        );
+      expect(notes.some((line) => line.includes("no longer ships"))).toBe(true);
+      expect(output()).not.toContain("not in the preview");
+    });
+
+    describe("preview failure handling", () => {
+      // Assumes CheckUpdateDeps.classify? and CheckUpdateDeps.buildTheirs?
+      // replace classifyProject and buildTheirsTree.
+      it("keeps the report and the exit code when classification throws, and cleans up", () => {
+        const { history } = olderProject();
+        const code = runCheckUpdate(
+          { targetDir: project },
+          {
+            history,
+            runningVersion: "99.0.0",
+            classify: () => {
+              throw new Error("classifier exploded");
+            },
+          },
+        );
+        expect(code).toBe(3);
+        expect(output()).toContain(
+          "note: update preview skipped: classifier exploded",
+        );
+        expect(output()).toContain("update available");
+        expect(output()).not.toContain("if you update:");
+        expect(theirsLeftovers()).toEqual([]);
+      });
+
+      it("never lets a throwing cleanup replace a successful report", () => {
+        const { history } = olderProject();
+        let leftover = "";
+        const code = runCheckUpdate(
+          { targetDir: project },
+          {
+            history,
+            runningVersion: "99.0.0",
+            buildTheirs: (input: Parameters<typeof buildTheirsTree>[0]) => {
+              const real = buildTheirsTree(input);
+              leftover = real.dir;
+              return {
+                ...real,
+                cleanup: () => {
+                  throw new Error("cleanup failed");
+                },
+              };
+            },
+          },
+        );
+        rmSync(leftover, { recursive: true, force: true });
+        expect(code).toBe(3);
+        expect(output()).toContain("if you update:");
+        expect(output()).toContain("update available");
+        const notes = output()
+          .split("\n")
+          .filter((line) => line.startsWith("note:"));
+        expect(notes.some((line) => line.includes(leftover))).toBe(true);
+      });
+
+      it("never lets a throwing cleanup replace the original preview failure", () => {
+        const { history } = olderProject();
+        const code = runCheckUpdate(
+          { targetDir: project },
+          {
+            history,
+            runningVersion: "99.0.0",
+            classify: () => {
+              throw new Error("classifier exploded");
+            },
+            buildTheirs: (input: Parameters<typeof buildTheirsTree>[0]) => {
+              const real = buildTheirsTree(input);
+              return {
+                ...real,
+                cleanup: () => {
+                  real.cleanup();
+                  throw new Error("cleanup failed");
+                },
+              };
+            },
+          },
+        );
+        expect(code).toBe(3);
+        expect(output()).toContain(
+          "note: update preview skipped: classifier exploded",
+        );
+      });
+    });
+
+    describe("the project's origin reaches the classification", () => {
+      function lockWith(origin: "fresh" | "adopt"): void {
+        const lock = readLockOrThrow(project);
+        writeFileSync(
+          join(project, LOCK_FILE),
+          serializeLock(
+            buildLock({
+              baseVersion: lock.baseVersion,
+              origin,
+              tokens: lock.tokens,
+              via: lock.via,
+              updatedAt: lock.updatedAt,
+              skip: lock.skip,
+              files: lock.files,
+            }),
+          ),
+        );
+      }
+      function originSeen(): string[] {
+        const seen: string[] = [];
+        runCheckUpdate(
+          { targetDir: project },
+          {
+            history: historyWith(
+              currentCoreHashes(),
+              readLockOrThrow(project).baseVersion,
+            ),
+            runningVersion: "99.0.0",
+            classify: (input: Parameters<typeof classifyProject>[0]) => {
+              seen.push(input.origin);
+              return classifyProject(input);
+            },
+          },
+        );
+        return seen;
+      }
+
+      it.each([
+        ["fresh", "fresh"],
+        ["adopt", "adopted"],
+      ] as const)(
+        "a lock with origin %s is classified as %s",
+        (lockOrigin, expected) => {
+          bootstrapFresh(project);
+          lockWith(lockOrigin);
+          expect(originSeen()).toEqual([expected]);
+        },
+      );
+    });
+  },
+);

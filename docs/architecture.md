@@ -129,6 +129,31 @@ date.
   the exit code can still be told to look at the notes. `0` is up to date, `3`
   is an update available. `main()` returns that code and
   `bin/m3l-groundwork.mjs` sets `process.exitCode` from it.
+- **`update-classify.ts`, `theirs-tree.ts`, `merge-json3.ts` and
+  `migrations.ts`** turn "an update exists" into "what it would do to this
+  project's files". `theirs-tree.ts` builds the project the running CLI would
+  bootstrap, in a temporary directory, with the same code fresh mode runs
+  (`emitTemplate`, `installPack`, `installCustomizeSkill`) and the tokens the lock
+  recorded. That tree is the single source of "theirs" for every file,
+  including the three JSON files pack wiring is merged into. `classifyFile` is the
+  decision table: for each path it compares the base (B), the project's file
+  (O) and theirs (T) and returns `skip`, `rename`, `current`, `keep` (T equals B,
+  so only you changed it, which is how `/customize` tailoring stays yours), `take`
+  (O equals B), `merge`, `conflict`, `add`, `delete` or `review`. Rows are checked
+  in a fixed order and each carries a default (`apply`, `skip` or `ask`); `review`
+  never defaults to `apply`. The base comes from the lock's snapshot under
+  `.groundwork/base/` when its hash matches, else the lock's hash alone, else the
+  template history at the base version. `merge-json3.ts` merges JSON three ways
+  per nested key (arrays are whole values, a prototype-sensitive key is refused,
+  comments make a file unmergeable, so it needs a human), so one dependency bump
+  does not conflict with the rest of `devDependencies`. `migrations.ts` loads
+  `data/migrations.json`, hand-written and version-gated (applied when the base
+  is older than `since` and the CLI is at or past it), for renames upstream.
+  `classifyProject` never writes, reads project files only through the guarded
+  helpers, and turns a symlink, directory or unreadable file into a `review` with a
+  note. A freshly bootstrapped project classifies as nothing but `current` and
+  `skip` against its own theirs tree, and a test pins that. `--check-update` prints
+  the counts as `if you update: ...` and always removes the temporary tree.
 - **`assets.ts`** is the one place that locates `templates/` and the plugin
   payload, whether running from the source checkout or a published npm
   tarball -- see its own header comment for why the probe order matters.
@@ -161,7 +186,8 @@ records the pack in `.groundwork/installed-packs.json` (the
 > Designed in [ADR 0002](decisions/0002-update-stages-three-way.md) and landing
 > across seven pull requests. Shipped so far: the template history and the
 > `outdated` pack status, the lock and base snapshot a fresh bootstrap writes,
-> and `--check-update`. The rest below is a plan, not behaviour.
+> `--check-update`, and the per-file decision table with the three-way JSON
+> merge. The rest below is a plan, not behaviour.
 
 A project that already adopted groundwork, or was bootstrapped by it, moves to a
 newer release in two steps that mirror add-pack: `npx @monte3l/groundwork .
