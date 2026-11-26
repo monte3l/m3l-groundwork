@@ -61,7 +61,10 @@ policy updated.
 predates the newest commit touching any of them. If the planner imports
 another file, add it there in the same change.
 
-**The two App secrets are organization secrets**, shared with selected
-repositories, not secrets of the `env-janitor` environment. An environment
-secret of the same name would override them. Only `environments.yml` may name
+**The two App secrets are secrets of the `env-janitor` environment**, limited
+to `main`, not organization secrets: an organization secret reaches every
+workflow on every branch, and the App key can mint an `administration: write`
+token for every repository it is installed on. They are set with
+`bin/env-secrets.sh set NAME` in `monte3l/.github`. Only `environments.yml` may
+name them. Only `environments.yml` may name
 them.
