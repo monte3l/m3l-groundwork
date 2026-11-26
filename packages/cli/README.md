@@ -108,8 +108,8 @@ and CI wired to the same gates you run locally.
 
 **Phase A** (`packages/cli`) is deterministic: an offline Node CLI with no
 runtime dependencies that writes the baseline. It makes no network call
-beyond the final package install, and the same input always produces the
-same output.
+beyond the final package install (and the opt-in `--fetch-base` of an
+update), and the same input always produces the same output.
 
 **Phase B** (`packages/plugin`) is adaptive: the [`/customize`](https://github.com/monte3l/m3l-groundwork/blob/main/docs/glossary.md#customize)
 skill, which interviews you (or, for an existing project, reconciles the
@@ -192,7 +192,8 @@ of the release your project was installed from (the base, read from
 closest release, or you pass `--base-version`) with the ones the running CLI
 ships, and counts what changed, was added or was removed upstream, plus any
 outdated packs. A project installed by the running release reads as up to date.
-It writes nothing to your project and needs no network. When your project is
+It writes nothing to your project and needs no network unless you add
+`--fetch-base` (see below). When your project is
 behind, it also says what an update would do to your own files, for example
 `if you update: 4 update cleanly, 2 need a merge, 1 conflict`: files you never
 touched update cleanly, files you changed and groundwork changed too need a
@@ -237,23 +238,34 @@ the new lock and base snapshot. It offers a commit but never pushes. Commit
 Choices you made earlier (kept or declined files) are remembered and are not
 asked again unless groundwork changed that file since.
 
+A file you and groundwork both changed needs its base text to merge. When that
+base is known only by its hash (its `.groundwork/base/` copy is missing and the
+shipped history keeps no text for it), the file is left for review. Add
+`--fetch-base` to `--check-update` or `--update` to fetch that exact release
+with `npm pack` and merge against its files instead. It is the only network step
+of either command and needs `npm`; it runs only when some base is known only by
+its hash or you pass `--base-version`, a fetched file is used only when it
+matches the recorded hash, and `plan.json` records whether a fetch ran
+(`base.fetched`).
+
 ## Flags
 
-| Flag                     | Effect                                                                                                                                                                                                                                    |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--name <project-name>`  | Override the project name (default: the target directory's basename).                                                                                                                                                                     |
-| `--skip-install`         | Skip the final `pnpm install` (fresh mode only).                                                                                                                                                                                          |
-| `--force`                | Overwrite a non-empty target directory (fresh mode only).                                                                                                                                                                                 |
-| `--adopt`                | Force adopt mode, even if the target looks empty.                                                                                                                                                                                         |
-| `--fresh`                | Force fresh mode, even if the target looks like an existing project.                                                                                                                                                                      |
-| `--pack <name>`          | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable).                                                                                                                                                             |
-| `--add-pack <name>`      | Stage a pack into an already bootstrapped or adopted project, under `.groundwork/add-pack/<name>/`, for `/customize add-pack` to install (repeatable). Creates `.groundwork/` and `.groundwork/add-pack/` if absent; writes nothing else. |
-| `--reinstall`            | With `--add-pack`: stage a pack the project already has installed.                                                                                                                                                                        |
-| `--list-packs [<dir>]`   | Print every available pack and exit. With a directory, also report which packs that project already has (installed, outdated, partial, not installed or undetermined), without writing anything.                                          |
-| `--check-update`         | Report whether the running CLI's templates differ from the release this project was installed from, without writing anything. Exit `0` when up to date, `3` when an update is available. Needs a directory. Works offline.                |
-| `--base-version <x.y.z>` | With `--check-update` or `--update`: use this release as the base instead of the one the lock records (or the closest match, when the project has no lock).                                                                               |
-| `--update`               | Stage an update for a project that is already set up, under `.groundwork/update/`: the new files, three-way merge results, the new lock and a plan. Writes nothing else; `/customize update` applies it. Needs a directory.               |
-| `--help`, `--version`    | Print usage, or the CLI's version.                                                                                                                                                                                                        |
+| Flag                     | Effect                                                                                                                                                                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name <project-name>`  | Override the project name (default: the target directory's basename).                                                                                                                                                                                     |
+| `--skip-install`         | Skip the final `pnpm install` (fresh mode only).                                                                                                                                                                                                          |
+| `--force`                | Overwrite a non-empty target directory (fresh mode only).                                                                                                                                                                                                 |
+| `--adopt`                | Force adopt mode, even if the target looks empty.                                                                                                                                                                                                         |
+| `--fresh`                | Force fresh mode, even if the target looks like an existing project.                                                                                                                                                                                      |
+| `--pack <name>`          | Install an opt-in pack from `templates/packs/` (fresh mode only; repeatable).                                                                                                                                                                             |
+| `--add-pack <name>`      | Stage a pack into an already bootstrapped or adopted project, under `.groundwork/add-pack/<name>/`, for `/customize add-pack` to install (repeatable). Creates `.groundwork/` and `.groundwork/add-pack/` if absent; writes nothing else.                 |
+| `--reinstall`            | With `--add-pack`: stage a pack the project already has installed.                                                                                                                                                                                        |
+| `--list-packs [<dir>]`   | Print every available pack and exit. With a directory, also report which packs that project already has (installed, outdated, partial, not installed or undetermined), without writing anything.                                                          |
+| `--check-update`         | Report whether the running CLI's templates differ from the release this project was installed from, without writing anything. Exit `0` when up to date, `3` when an update is available. Needs a directory. Works offline unless `--fetch-base` is given. |
+| `--base-version <x.y.z>` | With `--check-update` or `--update`: use this release as the base instead of the one the lock records (or the closest match, when the project has no lock).                                                                                               |
+| `--fetch-base`           | With `--check-update` or `--update`: when a file's base is known only by its hash (or with `--base-version`), fetch that release with `npm pack` and compare against its files. The only network step of an update; needs `npm`.                          |
+| `--update`               | Stage an update for a project that is already set up, under `.groundwork/update/`: the new files, three-way merge results, the new lock and a plan. Writes nothing else; `/customize update` applies it. Needs a directory.                               |
+| `--help`, `--version`    | Print usage, or the CLI's version.                                                                                                                                                                                                                        |
 
 An unexpected failure (anything that is not a bad invocation) prints its
 error name before the message, for example `TypeError: ...`. Set `M3L_DEBUG`
@@ -265,6 +277,8 @@ to any non-empty value to also print its stack trace.
 - **pnpm**. Fresh mode ends with a `pnpm install` in the new project (skip it
   with `--skip-install`), and this repo pins 12.8.1 through `packageManager`.
 - **git**.
+- **npm**, only for `--fetch-base`, which fetches a published release with
+  `npm pack`: the only network step of `--check-update` and `--update`.
 - **Claude Code**, for Phase B only. The CLI itself does not need it.
 
 ## Install and run
@@ -438,11 +452,12 @@ everything else that goes wrong at run time. Exit `3` is only ever returned by
 | `--add-pack` for an unknown pack, a fresh-only pack on an adopted project, an installed pack without `--reinstall`, or a pack whose required path is missing from a bootstrapped project                                                                                                  | 2    | Nothing is staged, for any of the named packs.                                                                                                                                                    |
 | `--add-pack` fails while staging                                                                                                                                                                                                                                                          | 1    | Packs staged before the failure stay staged; the message names which were staged and which were not. Re-run for the rest.                                                                         |
 | A pack's manifest fails to load                                                                                                                                                                                                                                                           | 1    | A broken install, not a bad invocation.                                                                                                                                                           |
-| `--check-update` with `--pack`, `--add-pack`, `--reinstall`, `--adopt`, `--fresh`, `--force`, `--skip-install` or `--list-packs`; `--base-version` without `--check-update`; a `--base-version` that is not `x.y.z`                                                                       | 2    | Names the conflicting flags.                                                                                                                                                                      |
+| `--check-update` with `--pack`, `--add-pack`, `--reinstall`, `--adopt`, `--fresh`, `--force`, `--skip-install` or `--list-packs`; `--base-version` or `--fetch-base` without `--check-update` or `--update`; a `--base-version` that is not `x.y.z`                                       | 2    | Names the conflicting flags.                                                                                                                                                                      |
 | `--check-update` on a missing or non-directory target, a half-adopted project, a project that is neither adopted nor bootstrapped, an unreadable lock or one newer than the CLI, or a base release it cannot find                                                                         | 2    | Nothing is written. The message says what to do: re-run adopt, pass `--base-version`, or run a newer CLI.                                                                                         |
 | `--check-update` cannot read the CLI's own template history                                                                                                                                                                                                                               | 1    | A broken install, not a bad invocation.                                                                                                                                                           |
 | `--update` with `--check-update`, `--pack`, `--add-pack`, `--reinstall`, `--adopt`, `--fresh`, `--force`, `--skip-install`, `--list-packs` or `--name`; `--base-version` without `--check-update` or `--update`                                                                           | 2    | Names the conflicting flags.                                                                                                                                                                      |
 | `--update` on a missing or non-directory target, a half-adopted project, a project that is neither adopted nor bootstrapped, an unreadable lock or one newer than the CLI, a base release it cannot find, or a `.groundwork` or `.groundwork/update` that is a symlink or not a directory | 2    | Nothing is written. The message says what to do.                                                                                                                                                  |
+| `--check-update --fetch-base` or `--update --fetch-base` cannot fetch the base release: `npm` is missing, the registry is unreachable, the release was never published, or its tarball is corrupt or holds an unsafe entry                                                                | 2    | Nothing is written. Re-run without `--fetch-base` (files whose base is known only by hash stay for review), or pass the right `--base-version`.                                                   |
 | `--update` fails while staging                                                                                                                                                                                                                                                            | 1    | The previous `.groundwork/update/`, if any, is left exactly as it was; the message names the cause.                                                                                               |
 
 A flag value that starts with `-` counts as missing, and `--pack` and `--add-pack`

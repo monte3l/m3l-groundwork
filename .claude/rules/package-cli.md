@@ -117,7 +117,10 @@ paths:
   field is ignored.
 - **The CLI has zero runtime dependencies it can avoid**, and makes no
   network call beyond the package install it runs at the end of fresh mode
-  (`packages/cli/src/git.ts`'s `runInstall`; adopt mode makes none at all).
+  (`packages/cli/src/git.ts`'s `runInstall`; adopt mode makes none at all)
+  and the opt-in `--fetch-base` of `--check-update`/`--update`
+  (`fetch-base.ts`: `npm pack` of the base release, read in memory by
+  `tarball.ts`, only when a base is hash-only or `--base-version` is given).
   If a change to `packages/cli` needs a new dependency, stop and
   reconsider -- this is a hard constraint, not a style preference. It's why
   `src/survey/` parses JSONC by hand (`jsonc.ts`) and never parses YAML at

@@ -9,6 +9,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { fetchedBaseFile } from "./fetch-base.js";
+import type { FetchedBase } from "./fetch-base.js";
 import { BASE_DIR, BASE_SUFFIX } from "./lock.js";
 import type { Lock, LockFile } from "./lock.js";
 import { isRecord, jsonEqual } from "./merge-json.js";
@@ -484,7 +486,9 @@ export type UpdateOrigin = "fresh" | "adopted" | "unknown";
  * migrations, the running CLI's version and the project's origin. Optional:
  * `missingPacks`, the ledger packs this CLI no longer ships (their files are
  * left alone), and `ledgerPackVersions`, the CLI version each ledger pack
- * was installed with (its files' base; default `baseVersion`).
+ * was installed with (its files' base; default `baseVersion`), and
+ * `fetchedBase`, a release `--fetch-base` rebuilt from npm (see
+ * {@link classifyProject}).
  *
  * @example
  * ```ts
@@ -516,6 +520,7 @@ export interface ClassifyProjectInput {
   readonly origin: UpdateOrigin;
   readonly missingPacks?: readonly string[] | undefined;
   readonly ledgerPackVersions?: Readonly<Record<string, string>> | undefined;
+  readonly fetchedBase?: FetchedBase | undefined;
 }
 
 /**
@@ -605,12 +610,45 @@ function asSource(value: string): FileSource | undefined {
   return value.startsWith("pack:") ? `pack:${value.slice(5)}` : undefined;
 }
 
+/** What resolving a base needs: {@link ClassifyProjectInput} without the theirs tree. */
+type BaseInput = Pick<
+  ClassifyProjectInput,
+  | "targetDir"
+  | "lock"
+  | "history"
+  | "baseVersion"
+  | "ledgerPacks"
+  | "tokens"
+  | "ledgerPackVersions"
+  | "fetchedBase"
+>;
+
+type HistoryHashes = ReadonlyMap<
+  string,
+  { readonly sha256: string; readonly source: FileSource }
+>;
+
+/** Where `path` comes from: theirs, else the lock's record, else the history, else core. */
+function sourceOf(
+  path: string,
+  lockFile: LockFile | undefined,
+  history: HistoryHashes,
+  theirsSources?: ReadonlyMap<string, FileSource>,
+): FileSource {
+  return (
+    theirsSources?.get(path) ??
+    asSource(lockFile?.source ?? "") ??
+    history.get(path)?.source ??
+    "core"
+  );
+}
+
 /**
  * The base release's template hashes: core at `baseVersion`, then each
  * ledger pack at the version it was installed with (default `baseVersion`).
  */
 function historyHashes(
-  input: ClassifyProjectInput,
+  input: BaseInput,
 ): Map<string, { readonly sha256: string; readonly source: FileSource }> {
   const out = new Map<
     string,
@@ -642,13 +680,59 @@ function historyHashes(
   return out;
 }
 
+/** The release `source`'s files were installed from: a ledger pack's own version, else `baseVersion`. */
+function releaseOf(input: BaseInput, source: FileSource): string {
+  if (!source.startsWith("pack:")) return input.baseVersion;
+  const name = source.slice("pack:".length);
+  const versions = input.ledgerPackVersions ?? {};
+  return (
+    (Object.hasOwn(versions, name) ? versions[name] : undefined) ??
+    input.baseVersion
+  );
+}
+
+/**
+ * The `--fetch-base` bytes of `path` when they are its base: fetched for the
+ * release `source` was installed from, and hashing (as published, else with
+ * the tokens applied) to `sha256`. A mismatch is a note; `undefined` when
+ * there is no fetched file to use.
+ */
+function fetchedContent(
+  input: BaseInput,
+  path: string,
+  source: FileSource,
+  known: { readonly sha256: string; readonly from: BaseFrom },
+  notes: string[],
+): UpdateBaseContent | undefined {
+  const fetched = input.fetchedBase;
+  if (fetched === undefined || fetched.version !== releaseOf(input, source)) {
+    return undefined;
+  }
+  const raw = fetchedBaseFile(fetched, source, path);
+  if (raw === undefined) return undefined;
+  const tokenized = Buffer.from(
+    applyTokens(new TextDecoder().decode(raw), input.tokens),
+    "utf8",
+  );
+  const bytes = [raw, tokenized].find((b) => hashOf(b) === known.sha256);
+  if (bytes === undefined) {
+    notes.push(
+      `the ${path} fetched from @monte3l/groundwork@${fetched.version} does not match the ${known.from === "lock" ? "lock's" : "template history's"} hash -- only the hash is used`,
+    );
+    return undefined;
+  }
+  return { kind: "content", bytes, from: known.from };
+}
+
 /**
  * The base of `path`: the snapshot when the lock's hash verifies it, else
- * the lock's hash, else the history's blob (tokens applied) or hash.
+ * the history's blob (tokens applied), else -- when only a hash is known --
+ * the `--fetch-base` bytes that hash to it, else the hash.
  */
 function resolveBase(
-  input: ClassifyProjectInput,
+  input: BaseInput,
   path: string,
+  source: FileSource,
   lockFile: LockFile | undefined,
   history: ReadonlyMap<string, { readonly sha256: string }>,
   notes: string[],
@@ -671,7 +755,13 @@ function resolveBase(
         `${rel} is missing, though the lock records a base for ${path} -- only the lock's hash is used`,
       );
     }
-    return { kind: "hash", sha256: recorded, from: "lock" };
+    const known = { sha256: recorded, from: "lock" } as const;
+    return (
+      fetchedContent(input, path, source, known, notes) ?? {
+        kind: "hash",
+        ...known,
+      }
+    );
   }
   const known = history.get(path);
   if (known === undefined) return { kind: "none" };
@@ -680,7 +770,13 @@ function resolveBase(
     ? blobs[known.sha256]
     : undefined;
   if (blob === undefined) {
-    return { kind: "hash", sha256: known.sha256, from: "history" };
+    const hashed = { sha256: known.sha256, from: "history" } as const;
+    return (
+      fetchedContent(input, path, source, hashed, notes) ?? {
+        kind: "hash",
+        ...hashed,
+      }
+    );
   }
   return {
     kind: "content",
@@ -722,7 +818,8 @@ function asReview(entry: UpdateFileEntry, reason: string): UpdateFileEntry {
 /**
  * The base content {@link classifyProject} compares `path` against, with the
  * same precedence (a lock-verified `.groundwork/base/` snapshot, else the
- * history's blob with the tokens applied), or `undefined` when only a hash or
+ * history's blob with the tokens applied, else a matching `fetchedBase`
+ * file), or `undefined` when only a hash or
  * nothing is known. Reads the snapshot; writes nothing.
  *
  * @example
@@ -738,8 +835,40 @@ export function resolveBaseBytes(
   path: string,
 ): Uint8Array | undefined {
   const lockFile = input.lock?.files.find((file) => file.path === path);
-  const base = resolveBase(input, path, lockFile, historyHashes(input), []);
+  const history = historyHashes(input);
+  const source = sourceOf(path, lockFile, history, input.theirsSources);
+  const base = resolveBase(input, path, source, lockFile, history, []);
   return base.kind === "content" ? base.bytes : undefined;
+}
+
+/**
+ * Whether `--fetch-base` could help: some path the lock or the base
+ * release's history records, and the lock does not skip, has a base known
+ * only by its hash (no verified snapshot, no history blob) and was
+ * installed from `baseVersion` itself -- the release a fetch would bring.
+ * Ignores `input.fetchedBase`. Reads the snapshots; writes nothing.
+ *
+ * @example
+ * ```ts
+ * import { hasHashOnlyBase } from "./update-classify.js";
+ *
+ * if (hasHashOnlyBase(input)) console.log("a fetched base would help");
+ * ```
+ */
+export function hasHashOnlyBase(input: BaseInput): boolean {
+  const offline: BaseInput = { ...input, fetchedBase: undefined };
+  const lockFiles = new Map((input.lock?.files ?? []).map((f) => [f.path, f]));
+  const skip = new Set(input.lock?.skip ?? []);
+  const history = historyHashes(input);
+  return [...new Set([...lockFiles.keys(), ...history.keys()])].some((path) => {
+    if (skip.has(path)) return false;
+    const lockFile = lockFiles.get(path);
+    const source = sourceOf(path, lockFile, history);
+    return (
+      releaseOf(input, source) === input.baseVersion &&
+      resolveBase(offline, path, source, lockFile, history, []).kind === "hash"
+    );
+  });
 }
 
 /**
@@ -759,7 +888,11 @@ export function resolveBaseBytes(
  * and never read as absent. The template history keeps a blob for every
  * `__TOKEN__` file, so a tokenized file always gets a content base with the
  * tokens applied; a hash-only history base applies to untokenized files
- * only, compared against the project's bytes as-is. Writes nothing.
+ * only, compared against the project's bytes as-is. A base known only by
+ * its hash (lock or history) takes `input.fetchedBase`'s file for that path
+ * instead, when it was fetched for the release the file was installed from
+ * and hashes to the recorded base as published or with the tokens applied;
+ * one that does not match is ignored with a note. Writes nothing.
  *
  * @example
  * ```ts
@@ -819,17 +952,13 @@ export function classifyProject(
   const missing = new Set(input.missingPacks ?? []);
   const classified = paths.map((path): UpdateFileEntry => {
     const lockFile = lockFiles.get(path);
-    const source =
-      input.theirsSources.get(path) ??
-      asSource(lockFile?.source ?? "") ??
-      history.get(path)?.source ??
-      "core";
+    const source = sourceOf(path, lockFile, history, input.theirsSources);
     const ours = readGuarded(targetDir, path);
     const entry = classifyFile({
       path,
       source,
       skipped: skip.has(path),
-      base: resolveBase(input, path, lockFile, history, notes),
+      base: resolveBase(input, path, source, lockFile, history, notes),
       ours: ours.kind === "bytes" ? ours.bytes : undefined,
       theirs: theirsFiles.has(path)
         ? readFileSync(join(theirsDir, path))

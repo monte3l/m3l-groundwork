@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * `m3l-groundwork <dir> --update [--base-version <x.y.z>]`: offline, stages
+ * `m3l-groundwork <dir> --update [--base-version <x.y.z>] [--fetch-base]`:
+ * offline (unless `--fetch-base` fetches the base release from npm), stages
  * an update from the project's release to the running CLI's for
  * `/customize update` to apply. The CLI never applies it: it writes nothing
  * outside `<dir>/.groundwork/update/` -- the versions each file needs
@@ -68,6 +69,7 @@ import {
   assertUpdatableOrigin,
   assertUpdateTarget,
   escapeInline,
+  fetchedBaseFor,
   formatUpdateCounts,
   installedCoreDir,
   isUpdateAvailable,
@@ -80,17 +82,18 @@ import { CliUsageError, USAGE } from "./usage.js";
 import { assertUpdateWriteScope } from "./write-scope.js";
 
 /**
- * `--update`'s options: the project directory, and the `--base-version`
- * override when given.
+ * `--update`'s options: the project directory, the `--base-version`
+ * override when given, and `--fetch-base`.
  *
  * @example
  * ```ts
- * const options: UpdateOptions = { targetDir: "/path/to/project", baseVersion: "1.4.0" };
+ * const options: UpdateOptions = { targetDir: "/path/to/project", baseVersion: "1.4.0", fetchBase: true };
  * ```
  */
 export interface UpdateOptions {
   readonly targetDir: string;
   readonly baseVersion?: string | undefined;
+  readonly fetchBase?: boolean | undefined;
 }
 
 /** The project-relative staging directory, and its name under `.groundwork/`. */
@@ -666,13 +669,17 @@ interface StagedUpdate {
  * with a note. Two runs on an unchanged project stage byte-identical files
  * and a plan that differs only in `generatedAt`. Then prints
  * `staged update <base> -> <cli>: <counts>`, the `next:` step and any
- * `note:` lines.
+ * `note:` lines. With `options.fetchBase`, the base release is fetched from
+ * npm (the one network step) when `--base-version` was given or some base
+ * is known only by its hash, and a hash-only base its files match becomes a
+ * content base; `plan.base.fetched` records whether a fetch ran.
  *
  * @throws `CliUsageError` (exit 2), with nothing written, when the target is
  * missing or not a directory, `.groundwork` or `.groundwork/update` is a
  * symlink or not a directory, the project holds an unfinished adopt run or
  * is of unknown origin with no lock, or the base cannot be resolved (an
- * invalid lock, a lock newer than the CLI, no inferable release). A plain
+ * invalid lock, a lock newer than the CLI, no inferable release), or a
+ * `--fetch-base` fetch fails. A plain
  * `Error` (exit 1) when the template history, the migrations or the CLI's
  * own templates cannot be loaded, or when staging fails -- any previous
  * `.groundwork/update/` then survives, with the failure as `cause` (an
@@ -742,6 +749,11 @@ export function runUpdate(
       theirs,
       notes,
       classify: deps.classify ?? classifyProject,
+      fetch: {
+        fetchBase: options.fetchBase,
+        explicitVersion: options.baseVersion !== undefined,
+        runNpm: deps.runNpm,
+      },
     });
   } catch (error) {
     failed = true;
@@ -779,6 +791,7 @@ function stageUpdate(
     readonly theirs: TheirsTree;
     readonly notes: string[];
     readonly classify: typeof classifyProject;
+    readonly fetch: Parameters<typeof fetchedBaseFor>[1];
   },
 ): StagedUpdate {
   const { history, runningVersion, base, theirs, notes } = run;
@@ -788,6 +801,19 @@ function stageUpdate(
     );
   }
   const origin = updateOrigin(targetDir, base.lock);
+  const packVersions = ledgerPackVersions(run.ledger);
+  const fetchedBase = fetchedBaseFor(
+    {
+      targetDir,
+      lock: base.lock,
+      history,
+      baseVersion: base.version,
+      ledgerPacks: run.ledgerNames,
+      tokens: run.tokens,
+      ledgerPackVersions: packVersions,
+    },
+    run.fetch,
+  );
   const input: ClassifyProjectInput = {
     targetDir,
     lock: base.lock,
@@ -801,7 +827,8 @@ function stageUpdate(
     runningVersion,
     origin,
     missingPacks: theirs.missingPacks,
-    ledgerPackVersions: ledgerPackVersions(run.ledger),
+    ledgerPackVersions: packVersions,
+    fetchedBase,
   };
   const result = run.classify(input);
   notes.push(...result.notes);
@@ -899,6 +926,7 @@ function stageUpdate(
     base: {
       version: base.version,
       source: base.source,
+      fetched: fetchedBase !== undefined,
       lockSha256: lockBytes === undefined ? null : sha256Hex(lockBytes),
     },
     tokens: run.tokens,

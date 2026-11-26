@@ -128,6 +128,8 @@ export interface CliOptions {
   update: boolean;
   /** `--base-version`: the release `--check-update` or `--update` starts from (plain `x.y.z`). */
   baseVersion: string | undefined;
+  /** `--fetch-base`: with `--check-update` or `--update`, fetch the base release from npm when needed. */
+  fetchBase: boolean;
 }
 
 // --name and --base-version take a single value; --pack and --add-pack are
@@ -150,6 +152,7 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   "--reinstall",
   "--check-update",
   "--update",
+  "--fetch-base",
   ...LIST_PACKS_FLAGS,
   ...HELP_FLAGS,
   ...VERSION_FLAGS,
@@ -234,8 +237,8 @@ function packNamesOf(
 /**
  * Rejects what `--check-update` and `--update` cannot honor, as usage errors
  * (exit 2): the two together, either with any flag that installs, stages,
- * lists or names (naming both flags), `--base-version` without either, and
- * a `--base-version` that is not a plain `x.y.z`.
+ * lists or names (naming both flags), `--base-version` or `--fetch-base`
+ * without either, and a `--base-version` that is not a plain `x.y.z`.
  */
 function assertCheckUpdateUsage(tokenized: TokenizedArgv): void {
   const { flags, values, repeatableValues } = tokenized;
@@ -246,6 +249,11 @@ function assertCheckUpdateUsage(tokenized: TokenizedArgv): void {
     if (baseVersion !== undefined) {
       throw new CliUsageError(
         `--base-version only applies to --check-update or --update -- add one of them, or drop --base-version\n\n${USAGE}`,
+      );
+    }
+    if (flags.has("--fetch-base")) {
+      throw new CliUsageError(
+        `--fetch-base only applies to --check-update or --update -- add one of them, or drop --fetch-base\n\n${USAGE}`,
       );
     }
     return;
@@ -319,6 +327,7 @@ export function parseArgs(argv: string[]): CliOptions {
       checkUpdate: false,
       update: false,
       baseVersion: undefined,
+      fetchBase: false,
     };
   }
 
@@ -369,6 +378,7 @@ export function parseArgs(argv: string[]): CliOptions {
     checkUpdate,
     update: flags.has("--update"),
     baseVersion: values.get("--base-version"),
+    fetchBase: flags.has("--fetch-base"),
   };
 }
 
@@ -1244,6 +1254,7 @@ export function main(
     return runCheckUpdate({
       targetDir: options.targetDir,
       baseVersion: options.baseVersion,
+      fetchBase: options.fetchBase,
     });
   }
 
@@ -1253,6 +1264,7 @@ export function main(
     return runUpdate({
       targetDir: options.targetDir,
       baseVersion: options.baseVersion,
+      fetchBase: options.fetchBase,
     });
   }
 

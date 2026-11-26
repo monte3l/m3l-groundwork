@@ -8,6 +8,7 @@
  * when an update is available; a bad invocation or an unsuitable target is a
  * `CliUsageError` (exit 2), anything else an `Error` (exit 1).
  */
+import type { FetchedBase, RunNpm } from "./fetch-base.js";
 import { resolveCliVersion } from "./inventory.js";
 import type { Lock } from "./lock.js";
 import { loadMigrations } from "./migrations.js";
@@ -30,6 +31,7 @@ import {
   assertUpdatableOrigin,
   assertUpdateTarget,
   escapeInline,
+  fetchedBaseFor,
   formatUpdateCounts,
   installedCoreDir,
   isUpdateAvailable,
@@ -40,17 +42,18 @@ import {
 } from "./update-common.js";
 
 /**
- * `--check-update`'s options: the project directory, and the
- * `--base-version` override when given.
+ * `--check-update`'s options: the project directory, the `--base-version`
+ * override when given, and `--fetch-base`.
  *
  * @example
  * ```ts
- * const options: CheckUpdateOptions = { targetDir: "/path/to/project", baseVersion: "1.4.0" };
+ * const options: CheckUpdateOptions = { targetDir: "/path/to/project", baseVersion: "1.4.0", fetchBase: true };
  * ```
  */
 export interface CheckUpdateOptions {
   readonly targetDir: string;
   readonly baseVersion?: string | undefined;
+  readonly fetchBase?: boolean | undefined;
 }
 
 /**
@@ -61,7 +64,8 @@ export interface CheckUpdateOptions {
  * absent is compared as an empty tree); for the `if you update:` preview,
  * the classifier (default: `classifyProject`), the theirs-tree builder
  * (default: `buildTheirsTree`) and the migrations file (default: the
- * shipped one).
+ * shipped one); for `--fetch-base`, how `npm` runs (default: spawned with
+ * no shell).
  *
  * @example
  * ```ts
@@ -75,6 +79,7 @@ export interface CheckUpdateDeps {
   readonly classify?: typeof classifyProject;
   readonly buildTheirs?: typeof buildTheirsTree;
   readonly migrationsPath?: string;
+  readonly runNpm?: RunNpm;
 }
 
 /** Exit code: the project's templates match the running CLI's. */
@@ -143,6 +148,8 @@ function updatePreview(
     readonly packNames: readonly string[];
     readonly packVersions: Readonly<Record<string, string>>;
     readonly outdatedPacks: number;
+    readonly tokens: Lock["tokens"];
+    readonly fetchedBase: FetchedBase | undefined;
   },
   deps: PreviewDeps,
 ): UpdatePreview {
@@ -154,7 +161,7 @@ function updatePreview(
     skipped += 1;
   }
   const migrations = "migrations" in loaded ? loaded.migrations : [];
-  const tokens = input.lock?.tokens ?? buildTokens(projectNameOf(targetDir));
+  const { tokens } = input;
   let theirs: ReturnType<typeof buildTheirsTree>;
   try {
     theirs = deps.buildTheirs({
@@ -194,6 +201,7 @@ function updatePreview(
       origin: updateOrigin(targetDir, input.lock),
       missingPacks: theirs.missingPacks,
       ledgerPackVersions: input.packVersions,
+      fetchedBase: input.fetchedBase,
     });
     notes.push(...result.notes);
     skipped += result.notes.length;
@@ -245,13 +253,17 @@ interface CheckUpdateReport {
  * `up to date (base X (<source>), CLI Y): N file(s) changed upstream, but your project already matches or keeps them`
  * when upstream differs but nothing here would change, or `up to date (base X (<source>), CLI Y)`. A
  * base at or above the running version skips the core comparison; ledger
- * packs recorded at an older version are still compared. Never writes
- * anything.
+ * packs recorded at an older version are still compared. With
+ * `options.fetchBase`, and only when the preview runs, the base release is
+ * fetched from npm (the one network step) when `--base-version` was given
+ * or some base is known only by its hash, and the preview compares against
+ * its files. Never writes anything.
  *
  * @throws `CliUsageError` (exit 2) when the target is missing or not a
  * directory, holds an unfinished adopt run, is of unknown origin with no
  * lock (even with `--base-version`), or when {@link resolveUpdateBase}
- * refuses (an invalid lock, a lock newer than the CLI, no resolvable base).
+ * refuses (an invalid lock, a lock newer than the CLI, no resolvable base),
+ * or when `--fetch-base` was asked to fetch and the fetch failed.
  * A plain `Error` (exit 1) when the shipped template history or the CLI's
  * own `templates/core` cannot be loaded: that is a packaging defect, never
  * reported as "up to date".
@@ -278,6 +290,8 @@ export function runCheckUpdate(
     runningVersion: deps.runningVersion ?? resolveCliVersion(),
     coreDir: deps.coreDir ?? installedCoreDir("cannot check for an update"),
     baseVersion,
+    fetchBase: options.fetchBase,
+    runNpm: deps.runNpm,
     preview: {
       classify: deps.classify ?? classifyProject,
       buildTheirs: deps.buildTheirs ?? buildTheirsTree,
@@ -299,6 +313,8 @@ function buildReport(
     readonly runningVersion: string;
     readonly coreDir: string;
     readonly baseVersion: string | undefined;
+    readonly fetchBase: boolean | undefined;
+    readonly runNpm: RunNpm | undefined;
     readonly preview: PreviewDeps;
   },
 ): CheckUpdateReport {
@@ -377,6 +393,28 @@ function buildReport(
     const manifest = pack.manifestChanged ? ", manifest changed" : "";
     lines.push(`pack "${pack.name}": ${countLine(pack)}${manifest}`);
   }
+  const tokens = base.lock?.tokens ?? buildTokens(projectNameOf(targetDir));
+  const packVersions = ledgerPackVersions(ledger.entries);
+  // Outside the preview's own error handling: a failed fetch is a usage
+  // error, never a skipped preview.
+  const fetchedBase = coreUpToDate
+    ? undefined
+    : fetchedBaseFor(
+        {
+          targetDir,
+          lock: base.lock,
+          history,
+          baseVersion: base.version,
+          ledgerPacks: ledger.names,
+          tokens,
+          ledgerPackVersions: packVersions,
+        },
+        {
+          fetchBase: settings.fetchBase,
+          explicitVersion: baseVersion !== undefined,
+          runNpm: settings.runNpm,
+        },
+      );
   const preview: UpdatePreview = coreUpToDate
     ? { line: undefined, notes: [], skipped: 0, available: undefined }
     : updatePreview(
@@ -388,7 +426,9 @@ function buildReport(
           runningVersion,
           coreDir,
           packNames: ledger.names,
-          packVersions: ledgerPackVersions(ledger.entries),
+          packVersions,
+          tokens,
+          fetchedBase,
           outdatedPacks: inspection.packs.filter(
             ({ status }) =>
               status.source === "ledger" && status.status === "outdated",
