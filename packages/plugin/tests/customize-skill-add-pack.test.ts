@@ -597,8 +597,17 @@ describe("step-0-reconcile.md -- the interrupted-run advice spares the ledger an
 
   it("says to delete everything in .groundwork/ EXCEPT installed-packs.json and add-pack/", () => {
     expect(bullet).toMatch(
-      /delete everything in `\.groundwork\/`[^.]*except[^.]*`installed-packs\.json`[^.]*`add-pack\/`/i,
+      /delete everything in `\.groundwork\/` except `installed-packs\.json`/i,
     );
+    for (const kept of [
+      "groundwork.lock.json",
+      "answers.json",
+      "base/",
+      "update/",
+      "add-pack/",
+    ]) {
+      expect(bullet).toContain(`\`${kept}\``);
+    }
   });
 
   it("no longer advises deleting the whole .groundwork/", () => {
@@ -657,5 +666,67 @@ describe("step-3-round-1.md -- the add-pack recipe replaces the adopt re-run rec
     const tail = step3.slice(idx, idx + 700);
     expect(tail).toContain("installed-packs.json");
     expect(tail).toContain('via: "adopt-round-1"');
+  });
+});
+
+describe("the fresh-mode record (lock, base snapshot, ledger) in the skill text", () => {
+  const ignored = [
+    "add-pack/",
+    "update/",
+    "installed-packs.json",
+    "groundwork.lock.json",
+    "answers.json",
+    "base/",
+  ];
+  const outline = skill.slice(
+    skill.indexOf("1. Look for `.groundwork/inventory.json`."),
+    skill.indexOf("2. **The deep read.**"),
+  );
+  const step0Classify = step0.slice(
+    step0.indexOf("1. Look for `.groundwork/inventory.json`"),
+    step0.indexOf("Absent, and no"),
+  );
+
+  it.each(ignored)(
+    "step-0-reconcile.md Step 0.1 ignores %s when classifying",
+    (entry) => {
+      expect(step0Classify).toContain(`\`${entry}\``);
+      expect(step0Classify).toMatch(/ignoring/i);
+    },
+  );
+
+  it.each(ignored)(
+    "SKILL.md's Step 0 outline names %s as the fresh-path exemption",
+    (entry) => {
+      expect(outline).toContain(`\`${entry}\``);
+      expect(outline).toMatch(/nothing but/i);
+    },
+  );
+
+  it("SKILL.md's recommended .gitignore block keeps the lock, the answers file and base/ tracked", () => {
+    const block = /```gitignore\n([\s\S]*?)```/.exec(skillRaw)?.[1] ?? "";
+    const lines = block.split("\n");
+    expect(lines).toContain("!.groundwork/groundwork.lock.json");
+    expect(lines).toContain("!.groundwork/answers.json");
+    expect(lines).toContain("!.groundwork/base/");
+  });
+
+  it("pack-install.md says the CLI writes via: fresh ledger entries at bootstrap and no longer says it writes no ledger", () => {
+    expect(packInstall).not.toMatch(/which writes no ledger itself/);
+    expect(packInstall).not.toMatch(/this skill does not write it today/);
+    const windows = windowsAround(packInstall, '"fresh"', 400);
+    expect(windows.length).toBeGreaterThan(0);
+    expect(
+      windows.some((w) => /CLI (writes|records)[^.]*(ledger|entr)/i.test(w)),
+    ).toBe(true);
+  });
+
+  it("pack-install.md still names add-pack and adopt-round-1 as the skill's own via values", () => {
+    expect(packInstall).toContain('`"add-pack"`');
+    expect(packInstall).toContain('`"adopt-round-1"`');
+  });
+
+  it("keeps SKILL.md at most 18000 bytes", () => {
+    expect(Buffer.byteLength(skillRaw, "utf8")).toBeLessThanOrEqual(18000);
   });
 });

@@ -23,6 +23,7 @@ path = [
   "REUSE.toml",
   ".gitleaks.toml",
   ".worktreeinclude",
+  ".groundwork/base/**",
 ]
 SPDX-FileCopyrightText = "Copyright the __PROJECT_NAME__ contributors"
 SPDX-License-Identifier = "NOASSERTION"

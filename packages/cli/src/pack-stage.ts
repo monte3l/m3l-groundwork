@@ -18,6 +18,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { toPosixPath } from "./assets.js";
 import { isPathContained } from "./emit.js";
+import { serializePackManifest } from "./packs.js";
 import type { Pack } from "./packs.js";
 import {
   STAGED_SUFFIX,
@@ -147,13 +148,12 @@ function isFilesDir(name: string, filesDir: string): boolean {
 }
 
 function serializeManifest(name: string, manifest: Pack["manifest"]): Buffer {
-  // JSON.stringify is typed string but yields undefined for some inputs
-  // (a toJSON returning undefined); never write or hash that as text.
-  const text: unknown = JSON.stringify(manifest, null, 2);
-  if (typeof text !== "string") {
+  // Never write or hash an undefined serialization as text.
+  const text = serializePackManifest(manifest);
+  if (text === undefined) {
     throw new Error(`stagePacks: pack "${name}"'s manifest is not JSON`);
   }
-  return Buffer.from(`${text}\n`);
+  return Buffer.from(text);
 }
 
 /**

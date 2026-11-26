@@ -54,14 +54,6 @@
   requests. This entry goes when the last one ships. `--list-packs` already
   marks an installed pack **outdated** (offline, from the shipped template
   history).
-- **Fresh `--pack` writes no installed-packs ledger.** Only `/customize`
-  writes `.groundwork/installed-packs.json` (after `/customize add-pack` or
-  adopt Round 1). A pack installed at bootstrap with `--pack` is not in it,
-  so `--list-packs` and `--add-pack` tell that it is installed by detecting
-  its files on disk. To record it, stage it again with
-  `npx @monte3l/groundwork . --add-pack <name> --reinstall` (the CLI refuses
-  an installed pack without `--reinstall`) and then run
-  `/customize add-pack <name>`.
 - **CI uses `pnpm/setup` only in part.** Re-checked 2026-11-25 against
   v3.2.0 (#319): no open hang report, and the one possible network bug
   (pnpm/setup#97, `tls handshake eof`) comes from behind a corporate registry.

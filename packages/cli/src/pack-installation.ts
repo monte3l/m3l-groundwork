@@ -32,7 +32,7 @@ import {
   mergeVerifySteps,
 } from "./merge-json.js";
 import type { SettingsHooksFragment } from "./merge-json.js";
-import { listPackNames, loadPack } from "./packs.js";
+import { listPackNames, loadPack, packManifestSha256 } from "./packs.js";
 import type { Pack } from "./packs.js";
 import { errnoCode, isAbsentError } from "./survey/internal/read-guard.js";
 import { loadTemplateHistory, packHashesAt } from "./template-history.js";
@@ -120,8 +120,15 @@ type EntryKind =
  * `targetDir` itself and its ancestors are not checked, and a component
  * swapped for a symlink after the check is not covered (the same residual
  * risk as adopt mode's guard).
+ *
+ * @example
+ * ```ts
+ * if (projectEntry("/path/to/project", ".groundwork/groundwork.lock.json").kind === "absent") {
+ *   console.log("no lock yet");
+ * }
+ * ```
  */
-function projectEntry(targetDir: string, rel: string): EntryKind {
+export function projectEntry(targetDir: string, rel: string): EntryKind {
   const parts = rel.split("/");
   for (let depth = 1; depth < parts.length; depth++) {
     let isSymlink: boolean;
@@ -190,8 +197,14 @@ type JsonRead = { readonly ok: true; readonly value: unknown } | ReadFailure;
  * A project file's text, read only when {@link projectEntry} answers `file`
  * (never a symlink, never through a symlinked directory). Never throws:
  * every failure is a reason naming `rel` and at most an errno code.
+ *
+ * @example
+ * ```ts
+ * const read = readProjectFile("/path/to/project", "package.json");
+ * if (!read.ok) console.log(read.reason); // e.g. "package.json is a symlink -- not followed"
+ * ```
  */
-function readProjectFile(
+export function readProjectFile(
   targetDir: string,
   rel: string,
 ): { readonly ok: true; readonly text: string } | ReadFailure {
@@ -490,7 +503,16 @@ export function matchesTokenizedTemplate(
   return false;
 }
 
-const LEDGER_SCHEMA_VERSION = 1;
+/**
+ * The `schemaVersion` every `.groundwork/installed-packs.json` ledger carries.
+ *
+ * @example
+ * ```ts
+ * import { LEDGER_SCHEMA_VERSION } from "./pack-installation.js";
+ * const ledger = { schemaVersion: LEDGER_SCHEMA_VERSION, packs: [] };
+ * ```
+ */
+export const LEDGER_SCHEMA_VERSION = 1;
 
 /**
  * One `.groundwork/installed-packs.json` entry as read: the pack `name`, plus
@@ -1267,7 +1289,7 @@ function currentPackHashes(pack: Pack): CurrentPackHashes {
       [toPosix(path), sha256Hex(readFileSync(source))] as const,
   );
   return {
-    manifestSha256: sha256Hex(`${JSON.stringify(pack.manifest, null, 2)}\n`),
+    manifestSha256: packManifestSha256(pack.manifest),
     files: Object.fromEntries(files),
   };
 }
@@ -1287,7 +1309,16 @@ export interface OutdatedCheckDeps {
   readonly runningVersion?: string;
 }
 
-const LEDGER_PATH = `${GROUNDWORK}/installed-packs.json`;
+/**
+ * The installed-packs ledger's project-relative, `/`-separated path.
+ *
+ * @example
+ * ```ts
+ * import { LEDGER_PATH } from "./pack-installation.js";
+ * console.log(LEDGER_PATH); // ".groundwork/installed-packs.json"
+ * ```
+ */
+export const LEDGER_PATH: string = `${GROUNDWORK}/installed-packs.json`;
 
 /**
  * Which ledger-listed packs in `collected` are outdated, and the notes for

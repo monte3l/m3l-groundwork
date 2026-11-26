@@ -24,6 +24,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CUSTOMIZE_SKILL_FILE_NAMES } from "../src/customize-paths.js";
 import { chmodIneffective } from "./chmod-ineffective.js";
 import { emitTemplate } from "../src/emit.js";
 import { installPack, listPackNames, loadPack } from "../src/packs.js";
@@ -35,9 +36,26 @@ import type { InstallPluginResult } from "../src/plugin.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
-const installCustomizeSkillMock = vi.fn((): InstallPluginResult => ({
-  filesWritten: [],
-}));
+/** Pre-seeds the skill payload on disk, as a prior run would have left it. */
+function seedSkillPayload(dir: string): void {
+  for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+    const abs = join(dir, ".claude", "skills", "customize", name);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, `payload ${name}\n`);
+  }
+}
+
+/** Behaves like the real installer: really writes every payload file. */
+function installRealisticSkill(dir: string = ""): InstallPluginResult {
+  seedSkillPayload(dir);
+  return {
+    filesWritten: CUSTOMIZE_SKILL_FILE_NAMES.map((name) =>
+      join(".claude", "skills", "customize", name),
+    ),
+  };
+}
+
+const installCustomizeSkillMock = vi.fn(installRealisticSkill);
 const installCustomizeSkillGuardedMock = vi.fn(() => ({
   filesWritten: [],
   location: "claude" as const,
@@ -152,12 +170,14 @@ describe("main", () => {
 
     it("prints 'the /customize skill was already up to date' when installCustomizeSkill reports a no-op (filesWritten: [])", () => {
       const emptyTarget = join(targetDir, "sub-noop");
+      // A real no-op happens only when the payload is already on disk.
+      seedSkillPayload(emptyTarget);
       installCustomizeSkillMock.mockReturnValueOnce({ filesWritten: [] });
       const logSpy = vi
         .spyOn(console, "log")
         .mockImplementation(() => undefined);
 
-      main([emptyTarget, "--skip-install"]);
+      main([emptyTarget, "--skip-install", "--force", "--fresh"]);
 
       expect(logSpy).toHaveBeenCalledWith(
         "the /customize skill was already up to date",
@@ -167,11 +187,17 @@ describe("main", () => {
 
     it("prints 'installed the /customize skill (N files)' when installCustomizeSkill actually wrote files", () => {
       const emptyTarget = join(targetDir, "sub-installed");
-      installCustomizeSkillMock.mockReturnValueOnce({
-        filesWritten: [
-          join(".claude", "skills", "customize", "SKILL.md"),
-          join(".claude", "skills", "customize", "kind-facet-map.ts"),
-        ],
+      const skillFiles = [
+        join(".claude", "skills", "customize", "SKILL.md"),
+        join(".claude", "skills", "customize", "kind-facet-map.ts"),
+      ];
+      // The recording step reads every reported file back, so really write them.
+      installCustomizeSkillMock.mockImplementationOnce((dir: string = "") => {
+        for (const rel of skillFiles) {
+          mkdirSync(dirname(join(dir, rel)), { recursive: true });
+          writeFileSync(join(dir, rel), "skill\n");
+        }
+        return { filesWritten: skillFiles };
       });
       const logSpy = vi
         .spyOn(console, "log")
@@ -184,6 +210,79 @@ describe("main", () => {
       );
       logSpy.mockRestore();
     });
+
+    it("records the skill payload already on disk when the installer reports a no-op", () => {
+      const target = join(targetDir, "rerun");
+      const skillDir = join(".claude", "skills", "customize");
+      const payload = CUSTOMIZE_SKILL_FILE_NAMES.map((name) =>
+        [".claude", "skills", "customize", name].join("/"),
+      );
+      mkdirSync(join(target, skillDir), { recursive: true });
+      for (const rel of payload) {
+        writeFileSync(join(target, rel), `payload ${rel}\n`);
+      }
+      installCustomizeSkillMock.mockReturnValueOnce({ filesWritten: [] });
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      try {
+        main([target, "--skip-install", "--force", "--fresh"]);
+      } finally {
+        logSpy.mockRestore();
+      }
+
+      const lock = JSON.parse(
+        readFileSync(
+          join(target, ".groundwork", "groundwork.lock.json"),
+          "utf8",
+        ),
+      ) as { files: { path: string; source: string }[] };
+      const skillEntries = lock.files
+        .filter((f) => f.source === "skill")
+        .map((f) => f.path)
+        .sort();
+      expect(skillEntries).toEqual([...payload].sort());
+      for (const rel of payload) {
+        expect(
+          readFileSync(
+            join(target, ".groundwork", "base", `${rel}.base`),
+            "utf8",
+          ),
+        ).toBe(`payload ${rel}\n`);
+      }
+    });
+
+    it.each([
+      ["invalid JSON", "{not json"],
+      ["a wrong schema version", '{"schemaVersion":2,"packs":[]}'],
+    ])(
+      "refuses an existing ledger with %s and leaves the target untouched",
+      (_label, text) => {
+        const target = join(targetDir, "bad-ledger");
+        mkdirSync(join(target, ".groundwork"), { recursive: true });
+        writeFileSync(
+          join(target, ".groundwork", "installed-packs.json"),
+          text,
+        );
+        const snapshot = (): string[] =>
+          readdirSync(target, { recursive: true }).map(String).sort();
+        const before = snapshot();
+
+        expect(() =>
+          main([target, "--skip-install", "--force", "--fresh"]),
+        ).toThrow(/installed-packs\.json.*not a valid ledger/s);
+
+        expect(snapshot()).toEqual(before);
+        expect(
+          readFileSync(
+            join(target, ".groundwork", "installed-packs.json"),
+            "utf8",
+          ),
+        ).toBe(text);
+        expect(gitInitMock).not.toHaveBeenCalled();
+      },
+    );
 
     describe("fails early, before writing anything", () => {
       it.each([
@@ -1447,5 +1546,201 @@ describe("main", () => {
         });
       },
     );
+  });
+});
+
+describe("main -- fresh mode records a lock, a base snapshot and a ledger", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "main-run-lock-"));
+    gitInitMock.mockClear();
+    runInstallMock.mockClear();
+    installCustomizeSkillMock.mockClear();
+    // The mocked installer writes one real skill file, as the real one would.
+    installCustomizeSkillMock.mockImplementation((dir: string = "") => {
+      const rel = join(".claude", "skills", "customize", "SKILL.md");
+      mkdirSync(join(dir, ".claude", "skills", "customize"), {
+        recursive: true,
+      });
+      writeFileSync(join(dir, rel), "# skill\n");
+      return { filesWritten: [rel] };
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    installCustomizeSkillMock.mockReset();
+    installCustomizeSkillMock.mockImplementation(installRealisticSkill);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const sha = (bytes: Buffer | string): string =>
+    createHash("sha256").update(bytes).digest("hex");
+
+  function readJson(path: string): Record<string, unknown> {
+    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  }
+
+  interface LockEntry {
+    path: string;
+    source: string;
+    baseSha256: string | null;
+    status: string;
+  }
+
+  it("writes the lock with core, pack and skill entries whose digests match the files on disk, plus a byte-identical .base copy of each", () => {
+    const target = join(root, "p");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    main([target, "--name", "acme", "--pack", "quality", "--skip-install"]);
+
+    const lockText = readFileSync(
+      join(target, ".groundwork", "groundwork.lock.json"),
+      "utf8",
+    );
+    expect(lockText.endsWith("}\n")).toBe(true);
+    const lock = JSON.parse(lockText) as Record<string, unknown>;
+    expect(lock["schemaVersion"]).toBe(1);
+    expect(lock["kind"]).toBe("m3l-groundwork/lock");
+    expect(lock["origin"]).toBe("fresh");
+    expect(lock["via"]).toBe("fresh");
+    expect(typeof lock["baseVersion"]).toBe("string");
+    expect(Number.isNaN(Date.parse(lock["updatedAt"] as string))).toBe(false);
+    expect(lock["skip"]).toEqual(["README.md"]);
+    expect(lock["tokens"]).toMatchObject({ PROJECT_NAME: "acme" });
+
+    const files = lock["files"] as LockEntry[];
+    const paths = files.map((f) => f.path);
+    expect(paths).toEqual([...paths].sort());
+    expect(new Set(paths).size).toBe(paths.length);
+    const byPath = new Map(files.map((f) => [f.path, f]));
+    expect(byPath.get("package.json")?.source).toBe("core");
+    expect(byPath.get("bin/check-file-budget.mjs")?.source).toBe(
+      "pack:quality",
+    );
+    expect(byPath.get(".claude/skills/customize/SKILL.md")?.source).toBe(
+      "skill",
+    );
+    // Merged by the pack, still the baseline's file.
+    expect(byPath.get(".claude/settings.json")?.source).toBe("core");
+
+    for (const f of files) {
+      expect(f.status).toBe("installed");
+      const onDisk = readFileSync(join(target, f.path));
+      expect(f.baseSha256, f.path).toBe(sha(onDisk));
+      const base = readFileSync(
+        join(target, ".groundwork", "base", `${f.path}.base`),
+      );
+      expect(base.equals(onDisk), f.path).toBe(true);
+    }
+    expect(paths.some((p) => p.startsWith(".groundwork/"))).toBe(false);
+
+    expect(
+      log.mock.calls.some((c) => String(c[0]).includes("groundwork.lock.json")),
+    ).toBe(true);
+  });
+
+  it("writes the ledger for each --pack: via fresh, manifest digest, file digests, applied wiring, nothing dropped", () => {
+    const target = join(root, "p");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    main([target, "--pack", "quality", "--skip-install"]);
+
+    const ledger = readJson(
+      join(target, ".groundwork", "installed-packs.json"),
+    );
+    expect(ledger["schemaVersion"]).toBe(1);
+    const packs = ledger["packs"] as Record<string, unknown>[];
+    expect(packs).toHaveLength(1);
+    const entry = packs[0] as Record<string, unknown>;
+    expect(entry["name"]).toBe("quality");
+    expect(entry["via"]).toBe("fresh");
+    expect(typeof entry["cliVersion"]).toBe("string");
+    expect(Number.isNaN(Date.parse(entry["installedAt"] as string))).toBe(
+      false,
+    );
+    const manifest = loadPack("quality").manifest;
+    expect(entry["manifestSha256"]).toBe(
+      sha(`${JSON.stringify(manifest, null, 2)}\n`),
+    );
+    const files = entry["files"] as { path: string; sha256: string }[];
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      expect(f.sha256).toBe(sha(readFileSync(join(target, f.path))));
+    }
+    expect(files.map((f) => f.path)).toContain("bin/check-file-budget.mjs");
+    const wiring = entry["wiring"] as { applied: string[]; skipped: string[] };
+    expect(wiring.skipped).toEqual([]);
+    expect(wiring.applied.some((a) => a.startsWith("verifySteps:"))).toBe(true);
+    expect(entry["dropped"]).toEqual([]);
+  });
+
+  it("writes a lock and base snapshot but NO ledger when no --pack is given", () => {
+    const target = join(root, "p");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    main([target, "--skip-install"]);
+    expect(
+      existsSync(join(target, ".groundwork", "groundwork.lock.json")),
+    ).toBe(true);
+    expect(
+      existsSync(join(target, ".groundwork", "base", "package.json.base")),
+    ).toBe(true);
+    expect(
+      existsSync(join(target, ".groundwork", "installed-packs.json")),
+    ).toBe(false);
+  });
+
+  it("records before git init", () => {
+    const target = join(root, "p");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    gitInitMock.mockImplementationOnce(() => {
+      expect(
+        existsSync(join(target, ".groundwork", "groundwork.lock.json")),
+      ).toBe(true);
+    });
+    main([target, "--skip-install"]);
+    expect(gitInitMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a lock write failure like the skill-install failure: names the cause, says to re-run --fresh --force, skips git", () => {
+    const target = join(root, "p");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    // After the pre-flight passed, a regular file at .groundwork makes the
+    // lock write fail.
+    installCustomizeSkillMock.mockImplementationOnce((dir: string = "") => {
+      writeFileSync(join(dir, ".groundwork"), "not a directory");
+      return { filesWritten: [] };
+    });
+    let thrown: unknown;
+    try {
+      main([target, "--skip-install"]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(CliUsageError);
+    expect((thrown as Error).cause).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain(target);
+    expect(message.toLowerCase()).toContain("lock");
+    expect(message).toContain("--fresh --force");
+    expect(message).toContain("a plain re-run adopts it");
+    expect(existsSync(join(target, "package.json"))).toBe(true);
+    expect(gitInitMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a symlinked .groundwork in a --force target before any write", () => {
+    const target = join(root, "p");
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(target);
+    mkdirSync(elsewhere);
+    symlinkSync(elsewhere, join(target, ".groundwork"));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(() =>
+      main([target, "--skip-install", "--force", "--fresh"]),
+    ).toThrow(/symlink/i);
+    expect(existsSync(join(target, "package.json"))).toBe(false);
+    expect(readdirSync(elsewhere)).toEqual([]);
+    expect(readdirSync(target)).toEqual([".groundwork"]);
+    expect(installCustomizeSkillMock).not.toHaveBeenCalled();
   });
 });

@@ -11,17 +11,31 @@
  * manifests pass through untouched.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { CUSTOMIZE_SKILL_FILE_NAMES } from "../src/customize-paths.js";
 import type * as PacksModule from "../src/packs.js";
 import type { InstallPluginResult } from "../src/plugin.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
-const installCustomizeSkillMock = vi.fn((): InstallPluginResult => ({
-  filesWritten: [],
-}));
+
+/** Behaves like the real installer: really writes every payload file. */
+function installRealisticSkill(dir: string): InstallPluginResult {
+  for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+    const abs = join(dir, ".claude", "skills", "customize", name);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, `payload ${name}\n`);
+  }
+  return {
+    filesWritten: CUSTOMIZE_SKILL_FILE_NAMES.map((name) =>
+      join(".claude", "skills", "customize", name),
+    ),
+  };
+}
+
+const installCustomizeSkillMock = vi.fn(installRealisticSkill);
 
 const { injectedSteps } = vi.hoisted(() => ({
   injectedSteps: new Map<string, string[]>(),
@@ -103,7 +117,7 @@ describe("fresh mode: pack setupSteps block", () => {
     gitInitMock.mockReset();
     runInstallMock.mockReset();
     installCustomizeSkillMock.mockReset();
-    installCustomizeSkillMock.mockReturnValue({ filesWritten: [] });
+    installCustomizeSkillMock.mockImplementation(installRealisticSkill);
     injectedSteps.clear();
   });
 

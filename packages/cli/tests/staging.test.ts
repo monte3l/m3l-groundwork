@@ -28,6 +28,15 @@ describe("staging.ts exports", () => {
     expect(STAGED_SUFFIX).toBe(".staged");
   });
 
+  it("stagedNameFor takes an optional suffix and keeps the default unchanged", () => {
+    expect(stagedNameFor("src/index.ts", ".base")).toBe("src/index.ts.base");
+    expect(stagedNameFor("a", ".x")).toBe("a.x");
+    expect(stagedNameFor("src/index.ts", STAGED_SUFFIX)).toBe(
+      stagedNameFor("src/index.ts"),
+    );
+    expect(stagedNameFor("src/index.ts")).toBe("src/index.ts.staged");
+  });
+
   it("stagedNameFor appends the suffix to a project-relative path", () => {
     expect(stagedNameFor("src/index.ts")).toBe("src/index.ts.staged");
     expect(stagedNameFor("eslint.config.js")).toBe("eslint.config.js.staged");

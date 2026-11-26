@@ -425,4 +425,54 @@ describe("adopt mode end-to-end", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
+
+  it("never writes, deletes or alters the lock, the base snapshot, the ledger or answers.json of a fresh-bootstrapped project, even across two adopt runs", () => {
+    const projectDir = mkdtempSync(
+      join(tmpdir(), "m3l-groundwork-adopt-lock-e2e-"),
+    );
+    try {
+      execFileSync(
+        "node",
+        [
+          binPath,
+          projectDir,
+          "--name",
+          "lock-survival",
+          "--pack",
+          "quality",
+          "--skip-install",
+        ],
+        { stdio: "pipe" },
+      );
+      const groundwork = join(projectDir, ".groundwork");
+      writeFileSync(join(groundwork, "answers.json"), '{"schemaVersion":1}\n');
+      const recorded = (): Map<string, string> =>
+        new Map(
+          [...snapshotTree(projectDir)].filter(
+            ([rel]) =>
+              rel === join(".groundwork", "groundwork.lock.json") ||
+              rel === join(".groundwork", "installed-packs.json") ||
+              rel === join(".groundwork", "answers.json") ||
+              rel.startsWith(`${join(".groundwork", "base")}${sep}`),
+          ),
+        );
+      const before = recorded();
+      expect(before.has(join(".groundwork", "groundwork.lock.json"))).toBe(
+        true,
+      );
+      expect(before.has(join(".groundwork", "installed-packs.json"))).toBe(
+        true,
+      );
+      expect(before.size).toBeGreaterThan(3);
+
+      const args = [binPath, projectDir, "--adopt", "--name", "lock-survival"];
+      execFileSync("node", args, { stdio: "pipe" });
+      execFileSync("node", args, { stdio: "pipe" });
+
+      expect(recorded()).toEqual(before);
+      expect(existsSync(join(groundwork, "inventory.json"))).toBe(true);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 });

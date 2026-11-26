@@ -813,6 +813,51 @@ describe("installPack", () => {
     );
   });
 
+  it("reports every wiring item it applied (verifySteps:, settings:, settingsTopLevel:, packageScripts:)", () => {
+    writeManifest(packsRoot, "wired-all", {
+      wiring: {
+        settings: {
+          PreToolUse: [
+            {
+              matcher: "Bash",
+              hooks: [{ type: "command", command: "node x.mjs", timeout: 30 }],
+            },
+          ],
+        },
+        settingsTopLevel: { statusLine: { type: "command", command: "x" } },
+        packageScripts: { "x:run": "node x.mjs" },
+        verifySteps: [
+          { id: "x-gate", group: "build", name: "X", cmd: ["node", "x.mjs"] },
+        ],
+      },
+    });
+    mkdirSync(join(targetDir), { recursive: true });
+    writeFileSync(join(targetDir, "package.json"), '{"scripts":{}}\n');
+    const result = installPack(loadPack("wired-all", packsRoot), targetDir, {});
+    const applied = (result as unknown as { wiringApplied: string[] })
+      .wiringApplied;
+    expect(applied).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^verifySteps:.*x-gate/),
+        expect.stringMatching(/^settings:.*PreToolUse/),
+        expect.stringMatching(/^settingsTopLevel:.*statusLine/),
+        expect.stringMatching(/^packageScripts:.*x:run/),
+      ]),
+    );
+    expect(applied).toHaveLength(4);
+    for (const item of applied) expect(item.length).toBeGreaterThan(0);
+  });
+
+  it("reports no wiring items for a pack that declares none", () => {
+    writeManifest(packsRoot, "plain", {});
+    mkdirSync(join(packsRoot, "plain", "files"), { recursive: true });
+    writeFileSync(join(packsRoot, "plain", "files", "a.txt"), "a\n");
+    const result = installPack(loadPack("plain", packsRoot), targetDir, {});
+    expect(
+      (result as unknown as { wiringApplied: string[] }).wiringApplied,
+    ).toEqual([]);
+  });
+
   it("copies files, merges settings.json, and appends a verify step", () => {
     writeManifest(packsRoot, "wired", {
       wiring: {
