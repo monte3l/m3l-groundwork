@@ -64,13 +64,17 @@ paths:
   `adopt.e2e.test.ts` is the test of that guarantee; don't weaken it.
   An adopt re-run deletes only its four stale files and its own `packs/` and
   `baseline/` staging, so `.groundwork/add-pack/` and
-  `.groundwork/installed-packs.json` survive it byte-identical.
+  `.groundwork/installed-packs.json` survive it byte-identical, and so do
+  the bootstrap's `groundwork.lock.json`, `base/` and `answers.json`: adopt
+  mode never writes, rewrites or deletes them (`STALE_FILE_NAMES` stays the
+  four files above).
 - **`.groundwork/installed-packs.json` is the installed-packs ledger.** Only
   `/customize` writes it (`pack-install.md`'s last step, after an
   add-pack install or adopt Round 1); the CLI only reads it, leniently
   (`readInstalledPacksLedger` in `pack-installation.ts`). It is tracked in
   git, so the recommended `.gitignore` block un-ignores it. Fresh `--pack`
-  writes no entry: a pack installed at bootstrap is found by detection.
+  now writes an entry too, but from the CLI (`record-bootstrap.ts`, `via:
+"fresh"`): the CLI records what it installed itself, never the skill.
 - **`--add-pack` (`add-pack.ts`) writes only `.groundwork/add-pack/<name>/`**
   (`pack.json.staged`, `files/<path>.staged`, then `plan.json` last), one pack
   at a time through `staging.ts`'s atomic swap, after every refusal and

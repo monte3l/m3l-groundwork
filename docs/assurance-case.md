@@ -104,7 +104,9 @@ dependency -- there isn't one (`packages/cli/package.json`'s
   settings, plus `security-events: write` to upload SARIF results.
 - **Fail-safe defaults.** Adopt mode's default action is to write nothing
   but `.groundwork/` and a guarded, additive `/customize` copy; a fresh-mode
-  collision with an existing directory is a hard error unless `--force` is
+  run records what it installed (a lock, a base snapshot, a pack ledger) under
+  `.groundwork/`, after refusing a symlinked `.groundwork` before any write; a
+  fresh-mode collision with an existing directory is a hard error unless `--force` is
   passed explicitly, never a silent overwrite.
 - **Economy of mechanism.** Zero runtime dependencies in `packages/cli`;
   token substitution is a plain string replace, not a template engine or

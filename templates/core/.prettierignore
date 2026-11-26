@@ -19,3 +19,8 @@ CHANGELOG.md
 # that does not exist, so this costs nothing when the pack is not installed.
 .claude/hooks/guard-shell-portability.mjs
 bin/lib/signed-range.mjs
+# What groundwork recorded at bootstrap (a lock, pristine copies of every file it
+# wrote, a pack ledger). The lock and ledger are written by the CLI and by
+# /customize, and the copies must stay byte-identical to what was installed, so
+# Prettier must not reformat any of it.
+.groundwork/

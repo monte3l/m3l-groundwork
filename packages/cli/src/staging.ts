@@ -45,16 +45,22 @@ export { toPosixPath } from "./assets.js";
 export const STAGED_SUFFIX = ".staged";
 
 /**
- * The staged name for a project-relative `path`: `path` + {@link STAGED_SUFFIX}.
- * The single derivation every stager and adopt mode's write-scope check use.
+ * The staged name for a project-relative `path`: `path` + `suffix`, which
+ * defaults to {@link STAGED_SUFFIX}. The single derivation every stager and
+ * adopt mode's write-scope check use; the lock's base copies pass their own
+ * suffix.
  *
  * @example
  * ```ts
  * stagedNameFor("src/index.ts"); // "src/index.ts.staged"
+ * stagedNameFor("src/index.ts", ".base"); // "src/index.ts.base"
  * ```
  */
-export function stagedNameFor(path: string): string {
-  return `${path}${STAGED_SUFFIX}`;
+export function stagedNameFor(
+  path: string,
+  suffix: string = STAGED_SUFFIX,
+): string {
+  return `${path}${suffix}`;
 }
 
 /**

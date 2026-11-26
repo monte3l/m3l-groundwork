@@ -116,8 +116,8 @@ is re-serialised, so their formatting may change). The entry's shape:
 `name` is the pack's name and `installedAt` the current time as an ISO 8601
 string. `via` is `"add-pack"` (followed from add-pack.md) or
 `"adopt-round-1"` (followed from adopt Round 1); `"fresh"` names a pack the
-CLI installed at bootstrap with `--pack`, which writes no ledger itself, so
-this skill does not write it today. `cliVersion` is `plan.cliVersion` for
+CLI installed at bootstrap with `--pack`; the CLI writes its ledger entry
+itself, so this skill never writes that value. `"update"` is reserved for `/customize update`. `cliVersion` is `plan.cliVersion` for
 add-pack or `inventory.cliVersion` for adopt. `manifestSha256` is the SHA-256
 of the verified `pack.json.staged` bytes. `files` lists every file the pack
 installed by its project path, and each `sha256` is the SHA-256 of the

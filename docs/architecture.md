@@ -97,6 +97,14 @@ date.
   convention and the same atomic swap (`staging.ts`), writing the
   `plan.json` survey last. It never installs and never writes anything else;
   `/customize add-pack` installs from the staged copy.
+- **`lock.ts` and `record-bootstrap.ts`** record a fresh bootstrap. After the
+  baseline, the packs and the `/customize` skill are written, and before
+  `git init`, `record-bootstrap.ts` copies every file it wrote to
+  `.groundwork/base/<path>.base`, writes the pack ledger (`via: "fresh"`) and
+  writes `groundwork.lock.json` last, so the lock's presence means the record
+  is complete. A symlinked `.groundwork` is refused before the first write.
+  Adopt mode never touches any of it. `lock.ts` is the lock's schema:
+  `parseLock` is strict, and `readLock` never throws.
 - **`assets.ts`** is the one place that locates `templates/` and the plugin
   payload, whether running from the source checkout or a published npm
   tarball -- see its own header comment for why the probe order matters.
@@ -127,8 +135,9 @@ records the pack in `.groundwork/installed-packs.json` (the
 
 > [!NOTE]
 > Designed in [ADR 0002](decisions/0002-update-stages-three-way.md) and landing
-> across seven pull requests. Until each lands, the matching part below is a
-> plan, not behaviour.
+> across seven pull requests. Shipped so far: the template history and the
+> `outdated` pack status, and the lock and base snapshot a fresh bootstrap
+> writes. The rest below is a plan, not behaviour.
 
 A project that already adopted groundwork, or was bootstrapped by it, moves to a
 newer release in two steps that mirror add-pack: `npx @monte3l/groundwork .

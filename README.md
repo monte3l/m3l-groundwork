@@ -122,7 +122,7 @@ one of the two modes already set up.
 
 | Mode         | When                                                     | What it does                                                                                                                                                                                                                                                                                                                    |
 | ------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fresh**    | The target is empty or missing                           | Writes the full baseline, installs any `--pack`, installs the `/customize` skill, runs `git init`, then `pnpm install`.                                                                                                                                                                                                         |
+| **Fresh**    | The target is empty or missing                           | Writes the full baseline, installs any `--pack`, installs the `/customize` skill, records what it wrote in `.groundwork/` (a lock, a base snapshot and a pack ledger), runs `git init`, then `pnpm install`.                                                                                                                    |
 | **Adopt**    | The target already looks like a project                  | Surveys it read-only and writes `.groundwork/`: an inventory, a report, inert `.staged` copies of the baseline files it would add (`.groundwork/baseline/`) and of the packs (`.groundwork/packs/`). It writes only under `.groundwork/`, plus one guarded copy of the `/customize` skill, and never overwrites a project file. |
 | **Add-pack** | `--add-pack <name>` on a bootstrapped or adopted project | Stages each named pack as inert `.staged` copies plus a `plan.json` survey under `.groundwork/add-pack/<name>/`, for `/customize add-pack` to install. Beyond `add-pack/<name>/` it creates only `.groundwork/` and `.groundwork/add-pack/` when they are absent, and writes nothing else.                                      |
 
@@ -153,7 +153,7 @@ the wiring contract.
 | `supply-chain`   | Secret scanning (`gitleaks.yml`) and an OpenSSF Scorecard run (`scorecard.yml`) for any GitHub project, published or not. Two workflows (read-only apart from the Scorecard job's `security-events` and `id-token` write), adopt-capable, recommended for every project kind.                                                                                                                                                                                          |
 | `worktrees`      | Enforces that all src/tests development happens inside an isolated git worktree, on any branch, for any caller: a `working-in-worktrees` skill (start/status/sync/finish/fan-out), a dependency-install backstop hook, a guard stricter than the baseline's own branch/hub guards, and a `.worktreeinclude` copying `.env`/`.env.local`/`.env.*.local` into every worktree Claude Code creates. Changes the day-to-day workflow -- opt-in, not recommended by default. |
 
-In fresh mode `--pack` installs a pack directly. In adopt mode the CLI only
+In fresh mode `--pack` installs a pack directly and records it in the ledger. In adopt mode the CLI only
 surveys which packs apply and stages them under `.groundwork/packs/` (and
 the baseline files it would add under `.groundwork/baseline/`);
 `/customize` installs from there after you confirm.
@@ -250,8 +250,17 @@ my-new-project/
 ├── .github/workflows/     # ci, dependency-review, security-audit
 ├── .claude/               # agents, skills, hooks, rules, settings.json
 ├── CLAUDE.md              # the agent-facing project guide
-└── docs/research/         # living trackers for the guidance sweeps
+├── docs/research/         # living trackers for the guidance sweeps
+└── .groundwork/           # what was installed: lock, base snapshot, pack ledger
 ```
+
+`.groundwork/` is what a later update measures against, so commit it:
+`groundwork.lock.json` lists every file groundwork wrote with the release it
+came from and the hash of its pristine bytes, `base/<path>.base` holds those
+pristine bytes (the `.base` suffix keeps every tool and Claude Code from
+reading them as live files), and `installed-packs.json` records each `--pack`
+you chose. The lock also names `README.md` in a `skip` list, because it is
+yours to rewrite. Nothing in `.groundwork/` is loaded as code or context.
 
 `pnpm verify` runs the same five [groups](docs/glossary.md#verify-group)
 (`format`, `lint`, `typecheck`, `build`, `test`) that the pre-push hook and
@@ -434,9 +443,14 @@ examples. From 1.0.0, the public API is:
    path and a `sha256` in `inventory.json`'s `stagedPacks`. All packs are
    staged together: written to a temp sibling directory and swapped in by
    rename, never half-written.
-5. **The `engines.node` floor** -- narrowing it is breaking; widening it
+5. **`.groundwork/groundwork.lock.json` and the `.groundwork/base/` layout**
+   written at bootstrap: the lock's `schemaVersion` (a bump that changes a
+   field's meaning is breaking), its field names, and the `<path>.base` naming
+   of the pristine snapshots. The CLI's adopt mode never writes, rewrites or
+   deletes them.
+6. **The `engines.node` floor** -- narrowing it is breaking; widening it
    isn't.
-6. **`/customize`'s invocation name**, and the promise that it reads every
+7. **`/customize`'s invocation name**, and the promise that it reads every
    inventory `schemaVersion` the CLI has ever emitted since 1.0.
 
 **Not covered by this policy:** the **contents** of the baseline the CLI

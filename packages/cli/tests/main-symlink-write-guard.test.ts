@@ -36,20 +36,35 @@ import {
   lstatSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   CLAUDE_DEST_SEGMENTS,
   CUSTOMIZE_SKILL_ENTRY_FILE,
+  CUSTOMIZE_SKILL_FILE_NAMES,
 } from "../src/customize-paths.js";
 import type * as PluginModule from "../src/plugin.js";
 import type { InstallPluginResult } from "../src/plugin.js";
 
 const gitInitMock = vi.fn();
 const runInstallMock = vi.fn();
+
+/** Behaves like the real installer: really writes every payload file. */
+function installRealisticSkill(dir: string): InstallPluginResult {
+  for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+    const abs = join(dir, ".claude", "skills", "customize", name);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, `payload ${name}\n`);
+  }
+  return {
+    filesWritten: CUSTOMIZE_SKILL_FILE_NAMES.map((name) =>
+      join(".claude", "skills", "customize", name),
+    ),
+  };
+}
+
 const installCustomizeSkillMock = vi.fn(
-  (_targetDir: string, _sourceDir?: string): InstallPluginResult => ({
-    filesWritten: [],
-  }),
+  (targetDir: string, _sourceDir?: string): InstallPluginResult =>
+    installRealisticSkill(targetDir),
 );
 const installCustomizeSkillGuardedMock = vi.fn(() => ({
   filesWritten: [],
@@ -276,9 +291,7 @@ describe("main() fresh mode: symlink/non-directory preflight (GAP 1)", () => {
     });
 
     afterEach(() => {
-      installCustomizeSkillMock.mockImplementation((): InstallPluginResult => ({
-        filesWritten: [],
-      }));
+      installCustomizeSkillMock.mockImplementation(installRealisticSkill);
     });
 
     describe("a symlinked .claude/skills/customize (the /customize skill's own destination -- not part of assertSafeEmitDestinations, since the baseline never ships a skill at that path)", () => {

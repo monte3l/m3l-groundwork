@@ -75,7 +75,7 @@ In outline:
    shows the repository has commits (the folder may be gitignored), in which
    case ask first. A `.groundwork/` holding only tracked report files is a
    clone of an adopted project: re-run the CLI. A `.groundwork/` with nothing but
-   `add-pack/` and `installed-packs.json` is not an interrupted run: take the
+   `add-pack/`, `update/`, `installed-packs.json`, `groundwork.lock.json`, `answers.json` and `base/` is not an interrupted run: take the
    fresh path above. Any other `.groundwork/` with no inventory means an interrupted CLI run, and an unreadable inventory is invalid: in both cases
    stop and change nothing, and never treat the project as a fresh bootstrap.
 2. **The deep read.** The CLI's survey is an index, not an interpretation:
@@ -302,12 +302,11 @@ retargeted gate reported as not exercised), an **Assumed, not answered** list
 `guard-readonly-bash` with its reason. Rewrite the adoption report's
 `## Next step` to point at this file. Never write it in fresh mode: a
 `.groundwork/` directory with no inventory reads as an interrupted adopt run,
-unless it holds only `add-pack/` staging and the `installed-packs.json`
-ledger.
+unless it holds only `add-pack/`, `update/`, `installed-packs.json`, `groundwork.lock.json`, `answers.json` and `base/`.
 
 **Adopt mode only: ask once about `.gitignore`.** The CLI never edits the
-project's `.gitignore`. Recommend tracking the two reports and the
-installed-packs ledger and ignoring the rest of `.groundwork/` (the inventory holds absolute machine paths, the
+project's `.gitignore`. Recommend tracking the two reports, the
+installed-packs ledger, the lock, the answers file and the base snapshot, and ignoring the rest of `.groundwork/` (the inventory holds absolute machine paths, the
 staged copies are bulky, and the decisions file is only valid beside its own
 inventory):
 
@@ -316,6 +315,9 @@ inventory):
 !.groundwork/adoption-report.md
 !.groundwork/customization-report.md
 !.groundwork/installed-packs.json
+!.groundwork/groundwork.lock.json
+!.groundwork/answers.json
+!.groundwork/base/
 ```
 
 Add it only if the user agrees. Say that a teammate's clone then holds the

@@ -13,6 +13,7 @@
  * key in `wiring.settings`, `wiring.settingsTopLevel` or
  * `wiring.packageScripts`, so such a pack is neither installed nor staged.
  */
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -66,6 +67,48 @@ export interface PackManifest {
   adoptNotes: string | undefined;
   /** Shell commands, run in the target directory, that a fresh install needs before its first `pnpm verify` (fresh mode prints them; see main.ts). Optional: absent means no setup. */
   setupSteps?: string[] | undefined;
+}
+
+/**
+ * `manifest` as staging writes it (`JSON.stringify(manifest, null, 2)` plus
+ * a trailing newline), or `undefined` when `JSON.stringify` yields no text
+ * (a `toJSON` returning `undefined`).
+ *
+ * @example
+ * ```ts
+ * import { loadPack, serializePackManifest } from "./packs.js";
+ *
+ * const text = serializePackManifest(loadPack("quality").manifest);
+ * ```
+ */
+export function serializePackManifest(
+  manifest: PackManifest,
+): string | undefined {
+  // JSON.stringify is typed string but yields undefined for some inputs.
+  const text: unknown = JSON.stringify(manifest, null, 2);
+  return typeof text === "string" ? `${text}\n` : undefined;
+}
+
+/**
+ * The sha256 (lowercase hex) of `manifest` as {@link serializePackManifest}
+ * writes it -- the `manifestSha256` the ledger and the template history
+ * record.
+ *
+ * @throws `Error` when the manifest does not serialize to JSON text.
+ *
+ * @example
+ * ```ts
+ * import { loadPack, packManifestSha256 } from "./packs.js";
+ *
+ * console.log(packManifestSha256(loadPack("quality").manifest));
+ * ```
+ */
+export function packManifestSha256(manifest: PackManifest): string {
+  const text = serializePackManifest(manifest);
+  if (text === undefined) {
+    throw new Error(`pack "${manifest.name}"'s manifest is not JSON`);
+  }
+  return createHash("sha256").update(text).digest("hex");
 }
 
 export interface Pack {
@@ -470,6 +513,12 @@ function writeSettingsJson(path: string, value: unknown): void {
 export interface PackInstallResult {
   filesWritten: string[];
   budget: CapCounts;
+  /**
+   * Every wiring item applied, in a stable order: `settings:<event>` per hook
+   * event, then `settingsTopLevel:<key>`, `packageScripts:<name>` and
+   * `verifySteps:<id>`, each in manifest order. Empty for a pack with no wiring.
+   */
+  wiringApplied: string[];
 }
 
 /**
@@ -539,7 +588,18 @@ export function installPack(
     );
   }
 
-  return { filesWritten, budget: manifest.budget };
+  const wiringApplied = [
+    ...Object.keys(manifest.wiring.settings).map((e) => `settings:${e}`),
+    ...Object.keys(manifest.wiring.settingsTopLevel ?? {}).map(
+      (k) => `settingsTopLevel:${k}`,
+    ),
+    ...Object.keys(manifest.wiring.packageScripts).map(
+      (n) => `packageScripts:${n}`,
+    ),
+    ...manifest.wiring.verifySteps.map((step) => `verifySteps:${step.id}`),
+  ];
+
+  return { filesWritten, budget: manifest.budget, wiringApplied };
 }
 
 /**

@@ -13,9 +13,9 @@ Contents:
 ## Step 0 — Reconcile (adopt mode only)
 
 1. Look for `.groundwork/inventory.json`. Classify `.groundwork/` after
-   ignoring its two entries `add-pack/` and `installed-packs.json` (packs
-   staged by `--add-pack` and the installed-packs ledger, which a fresh
-   bootstrap can carry too).
+   ignoring its entries `add-pack/`, `update/`, `installed-packs.json`, `groundwork.lock.json`, `answers.json` and `base/` (packs staged by `--add-pack`, a staged update,
+   the installed-packs ledger, the lock, the answers file and the base
+   snapshot, which a fresh bootstrap carries too).
    - **Absent, and no `.groundwork/` directory either → usually a fresh
      bootstrap; skip straight to Step 1.** Everything below this step applies
      only when an inventory exists. **One guard first:** an adopted project
@@ -28,15 +28,15 @@ Contents:
      second answer stops with the re-run advice below and changes nothing.
      Never apply fresh-mode tailoring to an established codebase on the
      strength of a missing directory alone.
-   - **Absent, and `.groundwork/` holds nothing but those two entries → not
+   - **Absent, and `.groundwork/` holds nothing but those ignored entries → not
      an interrupted run: continue on the fresh path**, with the same
      `git rev-list -n1 HEAD` guard as the bullet above. If any
      `.groundwork/add-pack/*/plan.json` exists, mention it: "pack(s) staged:
      run /customize add-pack <name>" (naming each one).
    - **Absent, but `.groundwork/` holds only tracked report files → a clone
      of an adopted project.** The recommended `.gitignore` (Step 7) tracks
-     `adoption-report.md`, `customization-report.md` and the
-     `installed-packs.json` ledger and ignores the rest, so a clone has a `.groundwork/` with those reports and no
+     `adoption-report.md`, `customization-report.md`, the
+     `installed-packs.json` ledger, the lock, `answers.json` and `base/` and ignores the rest, so a clone has a `.groundwork/` with those reports and no
      inventory, no `baseline/` and no `packs/`. Confirm with
      `git ls-files .groundwork` (it lists the files present). This is not an
      interrupted run. Stop, change nothing, and tell the user: "This clone has
@@ -52,8 +52,10 @@ Contents:
      established project. Tell the user: "`.groundwork/` is incomplete: a
      previous adopt run did not finish, or `inventory.json` was removed.
      If this project was never adopted (it was bootstrapped fresh), delete
-     everything in `.groundwork/` except `installed-packs.json` and
-     `add-pack/` (the tracked ledger and any pending pack staging) and run
+     everything in `.groundwork/` except `installed-packs.json`,
+     `groundwork.lock.json`, `answers.json`, `base/`, `update/` and
+     `add-pack/` (the tracked ledger, lock, answers and base snapshot, and any
+     pending staging) and run
      `/customize` again. Otherwise re-run
      `npx @monte3l/groundwork .` and then run `/customize` again."
      Change nothing.

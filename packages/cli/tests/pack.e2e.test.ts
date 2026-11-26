@@ -250,10 +250,25 @@ describe("published tarball end-to-end", () => {
       join(".claude", "skills", "customize", "SKILL.md"),
     );
 
+    // The lock's `updatedAt` and the ledger's `installedAt` are the wall
+    // clock of each bootstrap; they are the ONLY fields allowed to differ.
+    const stripTimestamps = (text: string): string =>
+      text.replace(/"(updatedAt|installedAt)": "[^"]*"/g, '"$1": "<time>"');
+    const volatile = new Set([
+      join(".groundwork", "groundwork.lock.json"),
+      join(".groundwork", "installed-packs.json"),
+    ]);
     for (const file of tarballFiles) {
-      expect(readFileSync(join(fromTarball, file), "utf8"), file).toBe(
-        readFileSync(join(fromCheckout, file), "utf8"),
-      );
+      const fromTar = readFileSync(join(fromTarball, file), "utf8");
+      const fromCheck = readFileSync(join(fromCheckout, file), "utf8");
+      if (volatile.has(file)) {
+        expect(stripTimestamps(fromTar), file).toBe(stripTimestamps(fromCheck));
+      } else {
+        expect(fromTar, file).toBe(fromCheck);
+      }
+    }
+    for (const file of volatile) {
+      expect(tarballFiles).toContain(file);
     }
   });
 

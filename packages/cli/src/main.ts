@@ -77,6 +77,11 @@ import {
 import { STAGED_PACKS_DIR, planPackStaging, stagePacks } from "./pack-stage.js";
 import { renderReport } from "./report.js";
 import {
+  assertSafeRecordDestination,
+  recordFreshBootstrap,
+} from "./record-bootstrap.js";
+import type { RecordedPack } from "./record-bootstrap.js";
+import {
   NPM_NAME_MAX_LENGTH,
   buildTokens,
   isNpmPackageName,
@@ -376,6 +381,8 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   // runs only after the baseline is written -- too late to leave the target
   // untouched.
   assertSafeSkillDestination(options.targetDir);
+  // And the lock/base/ledger record written after the skill install.
+  assertSafeRecordDestination(options.targetDir);
 
   mkdirSync(options.targetDir, { recursive: true });
 
@@ -385,9 +392,15 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
   );
 
   const installedPacks: { name: string; budget: CapCounts }[] = [];
+  const recordedPacks: RecordedPack[] = [];
   for (const pack of packs) {
     const name = pack.manifest.name;
     const packResult = installPack(pack, options.targetDir, tokens);
+    recordedPacks.push({
+      manifest: pack.manifest,
+      filesWritten: packResult.filesWritten,
+      wiringApplied: packResult.wiringApplied,
+    });
     console.log(
       `installed pack "${name}" (${packResult.filesWritten.length} files)`,
     );
@@ -438,6 +451,34 @@ function runFresh(options: CliOptions, platform: NodeJS.Platform): void {
     pluginResult.filesWritten.length === 0
       ? "the /customize skill was already up to date"
       : `installed the /customize skill (${pluginResult.filesWritten.length} files)`,
+  );
+
+  let recorded: number;
+  try {
+    recorded = recordFreshBootstrap({
+      targetDir,
+      tokens,
+      coreFiles: result.filesWritten,
+      // A no-op install wrote nothing because the payload on disk is already
+      // identical: record that payload (a missing file fails the record).
+      skillFiles:
+        pluginResult.filesWritten.length > 0
+          ? pluginResult.filesWritten
+          : CUSTOMIZE_SKILL_FILE_NAMES.map((name) =>
+              [...CLAUDE_DEST_SEGMENTS, name].join("/"),
+            ),
+      packs: recordedPacks,
+    });
+  } catch (error) {
+    // Same retry shape as the skill-install failure above.
+    const notRun = skipInstall ? "git init" : "git init / pnpm install";
+    throw new Error(
+      `the project was written to ${targetDir}, but its lock/base record (.groundwork/groundwork.lock.json, .groundwork/base/) could not be written and ${notRun} did not run -- fix the cause, then re-run with --fresh --force (plus your original --name/--pack/--skip-install); a plain re-run adopts it`,
+      { cause: error },
+    );
+  }
+  console.log(
+    `recorded ${String(recorded)} files in .groundwork/groundwork.lock.json`,
   );
 
   try {

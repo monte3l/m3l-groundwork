@@ -2094,3 +2094,15 @@ describe("inspectPackInstallations: the real committed history", () => {
     }
   });
 });
+
+describe("classifyProjectOrigin with the fresh-mode record", () => {
+  it("keeps a bootstrapped project bootstrapped when .groundwork/ holds only the lock, base/ and the ledger", () => {
+    const dir = bootstrap(["quality"]);
+    write(dir, ".groundwork/groundwork.lock.json", "{}\n");
+    write(dir, ".groundwork/base/package.json.base", "{}\n");
+    write(dir, ".groundwork/installed-packs.json", "{}\n");
+    const origin = classifyProjectOrigin(dir);
+    expect(origin.kind).toBe("bootstrapped");
+    expect(origin.evidence.length).toBeGreaterThan(0);
+  });
+});
