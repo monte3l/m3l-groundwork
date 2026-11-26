@@ -1,2 +1,12 @@
 [extend]
 useDefault = true
+
+# packages/cli/data/template-history.json maps template file paths to the
+# sha256 of their contents. A path that happens to contain a secret-like word
+# (api-doc/..., guard-secret-writes.mjs) next to a 64-hex digest matches
+# generic-api-key; those are file hashes, not secrets. Only that one rule is
+# skipped for that one generated file, and every other rule still scans it.
+[[allowlists]]
+description = "template-history.json maps template paths to sha256 digests"
+targetRules = ["generic-api-key"]
+paths = ['''packages/cli/data/template-history\.json$''']
