@@ -13,7 +13,7 @@
         "$description": "Alternating bands, sidebars, docs nav. Text-safe for all text tokens."
       },
       "sunken": {
-        "$value": "{color.neutral.100}",
+        "$value": "{color.neutral.150}",
         "$description": "Inset wells, table header rows, badge backgrounds."
       },
       "raised": {

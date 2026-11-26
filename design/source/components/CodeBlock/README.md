@@ -31,7 +31,7 @@ Monospaced code in docs: a block with an optional language/filename header, plus
 ## Tokens
 
 - Fill `color-surface-code`, text `color-text-primary`, comments and header `color-text-secondary`, border `color-border-subtle`, focus `color-focus-ring`.
-- Inline code: `color-surface-hover` fill, `color-text-primary` text, `radius-xs`.
+- Inline code: `color-surface-sunken` fill, `color-text-primary` text, `radius-xs`.
 - Shape `radius-lg`, padding `space-4`.
 - Component-tier aliases: `code-block-bg`, `-fg`, `-border`.
 
@@ -45,5 +45,5 @@ Syntax-highlighting tokens are out of v1 scope. Use only the two treatments abov
 | ------------------------ | ---------------------------------------------- | ----: | ----: | ----: |
 | code                     | `color-text-primary` on `color-surface-code`   | 16.62 | 16.62 |   4.5 |
 | comments, header         | `color-text-secondary` on `color-surface-code` |  7.59 | 10.60 |   4.5 |
-| inline code on page      | `color-text-primary` on `color-surface-hover`  | 15.66 | 13.16 |   4.5 |
+| inline code on page      | `color-text-primary` on `color-surface-sunken` | 14.56 | 15.06 |   4.5 |
 | scroll-region focus ring | `color-focus-ring` on `color-surface-default`  | 10.39 |  8.81 |     3 |

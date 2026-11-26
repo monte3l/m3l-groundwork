@@ -27,7 +27,7 @@
 }
 
 :root, [data-theme="light"] {
-  --badge-neutral-bg: #f4eef0;
+  --badge-neutral-bg: #ece6e8;
   --badge-neutral-fg: #554d50;
   --button-primary-bg: #692746;
   --button-primary-bg-active: #381224;
@@ -138,7 +138,7 @@
   --color-surface-raised: #fefcfd;
   --color-surface-selected: #feeff4;
   --color-surface-subtle: #faf5f7;
-  --color-surface-sunken: #f4eef0;
+  --color-surface-sunken: #ece6e8;
   --color-text-disabled: #aba2a5;
   --color-text-on-accent: #fefcfd;
   --color-text-primary: #1a1617;
@@ -173,7 +173,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --badge-neutral-bg: #120e10;
+    --badge-neutral-bg: #241f21;
     --badge-neutral-fg: #cdc5c8;
     --button-primary-bg: #d1789e;
     --button-primary-bg-active: #f4c0d4;
@@ -284,7 +284,7 @@
     --color-surface-raised: #241f21;
     --color-surface-selected: #280f1a;
     --color-surface-subtle: #1a1617;
-    --color-surface-sunken: #120e10;
+    --color-surface-sunken: #241f21;
     --color-text-disabled: #6f6669;
     --color-text-on-accent: #120e10;
     --color-text-primary: #faf5f7;
@@ -319,7 +319,7 @@
 }
 
 [data-theme="dark"] {
-  --badge-neutral-bg: #120e10;
+  --badge-neutral-bg: #241f21;
   --badge-neutral-fg: #cdc5c8;
   --button-primary-bg: #d1789e;
   --button-primary-bg-active: #f4c0d4;
@@ -430,7 +430,7 @@
   --color-surface-raised: #241f21;
   --color-surface-selected: #280f1a;
   --color-surface-subtle: #1a1617;
-  --color-surface-sunken: #120e10;
+  --color-surface-sunken: #241f21;
   --color-text-disabled: #6f6669;
   --color-text-on-accent: #120e10;
   --color-text-primary: #faf5f7;

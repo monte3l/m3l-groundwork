@@ -12,7 +12,7 @@
  *
  * `--out` writes the site. `--check` writes nothing and exits 1, listing every
  * problem at once, on: an unresolved link or anchor, a disallowed link scheme,
- * an italic span, unsupported Markdown, a `_headers` file over Cloudflare's
+ * a local image that does not exist, an italic span, unsupported Markdown, a `_headers` file over Cloudflare's
  * limits, tracked Markdown that is neither a page nor excluded, a stale
  * `pages`/`exclude` entry, a `SHA256SUMS` mismatch, a design marker that is
  * not the vendored tier, a literal in a local stylesheet, more than two
@@ -55,6 +55,9 @@ const REPO_BRANCH = "main";
 const ALLOWED_HREF_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 const EXTERNAL_HREF_RE = /^([a-z][a-z0-9+.-]*:|#)/i;
 const HREF_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+/** Local files a page may reference that the build copies into the site, under `FILES_DIR`. */
+const COPIED_EXTENSIONS = new Set([".svg", ".png"]);
+const FILES_DIR = "assets/files";
 
 function splitFragment(href) {
   const i = href.indexOf("#");
@@ -75,11 +78,12 @@ function nonPageHeadings(root, targetSrc, cache) {
 /**
  * Resolves one Markdown href found on `page` into the href the site emits: an
  * external URL or bare `#anchor` unchanged; a relative `.html` path when it
- * points at another Markdown page; a `blob/main/<path>` GitHub URL for any
- * other repo file. Under `check`, every way that can be wrong is appended to
+ * points at another Markdown page; a relative path into `assets/files/` for a
+ * local `.svg` or `.png`, which the build copies (collected in `files`); a
+ * `blob/main/<path>` GitHub URL for any other repo file. Under `check`, every way that can be wrong is appended to
  * `problems` instead of thrown, so one run reports the whole site.
  */
-function resolveHref(href, page, { config, mdPages, headingIndex, nonPageHeadingCache, problems, check }) {
+function resolveHref(href, page, { config, mdPages, headingIndex, nonPageHeadingCache, problems, check, files }) {
   const { root, repo } = config;
   if (EXTERNAL_HREF_RE.test(href)) {
     if (!check) return href;
@@ -122,6 +126,11 @@ function resolveHref(href, page, { config, mdPages, headingIndex, nonPageHeading
       }
     }
   }
+  if (COPIED_EXTENSIONS.has(path.posix.extname(targetSrc).toLowerCase()) && !targetSrc.startsWith("..") && existsSync(path.join(root, targetSrc))) {
+    files.add(targetSrc);
+    const rel = path.posix.relative(path.posix.dirname(page.out), `${FILES_DIR}/${targetSrc}`);
+    return frag ? `${rel}#${frag}` : rel;
+  }
   return `${repo}/blob/${REPO_BRANCH}/${targetSrc}${frag ? `#${frag}` : ""}`;
 }
 
@@ -144,9 +153,10 @@ async function renderMarkdownPages(config, mdPages, check) {
   const problems = [];
   const italics = [];
   const rendered = new Map();
+  const files = new Set();
   for (const page of mdPages) {
     const resolveLink = (href) =>
-      resolveHref(href, page, { config, mdPages, headingIndex, nonPageHeadingCache, problems, check });
+      resolveHref(href, page, { config, mdPages, headingIndex, nonPageHeadingCache, problems, check, files });
     let result;
     try {
       result = renderMarkdown(sources.get(page.src), { resolveLink });
@@ -159,7 +169,7 @@ async function renderMarkdownPages(config, mdPages, check) {
     for (const span of new Set(result.italics)) italics.push(`${page.src}: ${span}`);
     rendered.set(page.src, result);
   }
-  return { sources, rendered, problems, italics };
+  return { sources, rendered, problems, italics, files };
 }
 
 /**
@@ -360,7 +370,7 @@ function lastmodsFor(config) {
  * `markdown`), the pages with `markdownOut` set, and the text of `llms.txt`,
  * `llms-full.txt` and `sitemap.xml`. Returns null when the config asks for none.
  */
-function buildAgentFiles(config, mdPages, generated, sources) {
+function buildAgentFiles(config, mdPages, generated, sources, localFiles) {
   if (!config.llms && !config.sitemap) return null;
   const allPages = [...mdPages, ...generated];
   const lastmods = lastmodsFor(config);
@@ -386,7 +396,7 @@ function buildAgentFiles(config, mdPages, generated, sources) {
     }
   }
   const copyTargets = new Set([...mdPages, ...generated.filter((page) => page.markdown !== undefined)].map((page) => page.out));
-  const resolveCtx = { config, mdPages, headingIndex: new Map(), nonPageHeadingCache: new Map(), problems: [], check: false };
+  const resolveCtx = { config, mdPages, headingIndex: new Map(), nonPageHeadingCache: new Map(), problems: [], check: false, files: localFiles };
   const copies = [];
   const pages = allPages.map((page) => {
     if (!copyTargets.has(page.out)) return page;
@@ -415,9 +425,13 @@ function buildAgentFiles(config, mdPages, generated, sources) {
  * so a link split across lines would stay as the repository wrote it and point
  * nowhere from the copy's URL: this is the gate that finds it.
  */
-function agentCopyProblems(agent, allPages) {
+function agentCopyProblems(agent, allPages, files) {
   const problems = [];
-  const known = new Set([...agent.copies.map((copy) => copy.markdownOut), ...allPages.map((page) => page.out)]);
+  const known = new Set([
+    ...agent.copies.map((copy) => copy.markdownOut),
+    ...allPages.map((page) => page.out),
+    ...[...files].map((src) => `${FILES_DIR}/${src}`),
+  ]);
   for (const copy of agent.copies) {
     const hrefs = [];
     try {
@@ -545,11 +559,16 @@ async function copyAssets(config, outDir, localCss) {
   }
 }
 
-async function writeSite(config, allPages, outDir, rendered, agent = null) {
+async function writeSite(config, allPages, outDir, rendered, agent = null, files = new Set()) {
   const localCss = await localCssFiles(config);
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await copyAssets(config, outDir, localCss);
+  for (const src of [...files].sort()) {
+    const target = path.join(outDir, FILES_DIR, src);
+    await mkdir(path.dirname(target), { recursive: true });
+    await copyFile(path.join(config.root, src), target);
+  }
   for (const page of allPages) {
     const target = path.join(outDir, page.out);
     await mkdir(path.dirname(target), { recursive: true });
@@ -683,13 +702,13 @@ async function main() {
     if (error instanceof ConfigError) return usage(error.message);
     throw error;
   }
-  const { sources, rendered, problems, italics } = pagesResult;
+  const { sources, rendered, problems, italics, files } = pagesResult;
   for (const page of generated) {
     rendered.set(page.src, { html: page.html, headings: headingsOfHtml(page.html), italics: [] });
   }
   let agent;
   try {
-    agent = buildAgentFiles(config, mdPages, generated, sources);
+    agent = buildAgentFiles(config, mdPages, generated, sources, files);
   } catch (error) {
     if (error instanceof ConfigError || error instanceof MarkdownError) return usage(error.message);
     throw error;
@@ -700,14 +719,14 @@ async function main() {
     const missing = brandProblems(config);
     if (missing.length > 0) return usage(missing.join("\n"));
     const outDir = path.resolve(config.root, requestedOut);
-    await writeSite(config, allPages, outDir, rendered, agent);
+    await writeSite(config, allPages, outDir, rendered, agent, files);
     const rel = path.relative(config.root, outDir);
     console.log(`wrote ${rel.startsWith("..") ? outDir : `${rel}/`}`);
     return;
   }
 
   for (const page of generated) problems.push(...generatedPageProblems(page, rendered, allPages));
-  if (agent) problems.push(...agentCopyProblems(agent, allPages));
+  if (agent) problems.push(...agentCopyProblems(agent, allPages, files));
   const gate = await repoProblems(config, sources);
   let failed = false;
   const report = (heading, list) => {
@@ -722,7 +741,7 @@ async function main() {
   if (!failed) {
     const tmpDir = await mkdtemp(path.join(tmpdir(), "m3l-docs-check-"));
     try {
-      await writeSite(config, allPages, tmpDir, rendered, agent);
+      await writeSite(config, allPages, tmpDir, rendered, agent, files);
     } catch (error) {
       console.error("fail  the site does not build:");
       console.error(`      ${error.message}`);
