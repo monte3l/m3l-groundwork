@@ -32,6 +32,11 @@ export const USAGE: string = [
   "  --reinstall             With --add-pack: stage a pack the project already has",
   "  --list-packs [<dir>]    Print every available pack and exit; with a directory,",
   "                          also report which packs that project has (read-only)",
+  "  --check-update          Report whether this CLI's templates differ from the release",
+  "                          the project was installed from (read-only, offline;",
+  "                          exit 0 up to date, 3 update available)",
+  "  --base-version <x.y.z>  With --check-update: the release to compare against",
+  "                          (default: the lock's, else inferred from the project's files)",
   "  --help, -h              Print this message",
   "  --version, -v           Print the CLI's version",
   "",
@@ -47,6 +52,10 @@ export const USAGE: string = [
   "--add-pack skips mode detection and cannot be combined with --pack,",
   "--adopt, --fresh, --force or --skip-install; with it, --name only",
   "proposes the PROJECT_NAME token (default: package.json's name).",
+  "",
+  "--check-update skips mode detection, writes nothing, and cannot be",
+  "combined with --pack, --add-pack, --reinstall, --adopt, --fresh, --force,",
+  "--skip-install or --list-packs.",
 ].join("\n");
 
 /**

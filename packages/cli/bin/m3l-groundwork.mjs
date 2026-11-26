@@ -23,7 +23,10 @@ import { handleFatal } from "../dist/fatal.js";
 import { paint } from "../dist/term.js";
 
 try {
-  main(process.argv.slice(2));
+  // Only --check-update returns an exit code (0 up to date, 3 update
+  // available); every other run leaves it unset.
+  const code = main(process.argv.slice(2));
+  if (code !== undefined) process.exitCode = code;
 } catch (error) {
   handleFatal(
     error,

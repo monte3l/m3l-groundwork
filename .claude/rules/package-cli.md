@@ -27,6 +27,15 @@ paths:
 - **Adopt mode never writes a project file.** It writes under
   `.groundwork/` plus the guarded `/customize` copy. `adopt.e2e.test.ts` is
   the test of that guarantee: do not weaken it.
+- **`--check-update` reads and reports, it never writes.** It is the one mode
+  whose exit code carries information: `0` up to date, `3` an update is
+  available (`1` and `2` stay failure and bad invocation, so a CI step can tell
+  "behind" from "broken"). `main()` returns the code and
+  `bin/m3l-groundwork.mjs` sets `process.exitCode`; a new mode that wants its
+  own code must be added to the README's exit-code section and the versioning
+  policy. A base at or above the running version is "up to date" without a
+  comparison, and a history that cannot be loaded is a plain error, never "up
+  to date".
 - **`--add-pack` stages, it never installs.** It writes only under
   `.groundwork/add-pack/<name>/`; every refusal is a `CliUsageError` raised
   before the first write. `CliUsageError` and `USAGE` live in `usage.ts` so

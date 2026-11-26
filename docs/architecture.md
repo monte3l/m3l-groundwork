@@ -105,6 +105,30 @@ date.
   is complete. A symlinked `.groundwork` is refused before the first write.
   Adopt mode never touches any of it. `lock.ts` is the lock's schema:
   `parseLock` is strict, and `readLock` never throws.
+- **`update-base.ts` and `check-update.ts`** back `--check-update`, which is
+  read-only, offline and never mentions what it would write. `resolveUpdateBase`
+  picks the release the project was installed from: `--base-version`, else the
+  lock's `baseVersion`, else inference. Inference compares the project's files
+  with the file hashes of each release in the shipped template history, plus the
+  running CLI's own live templates as the newest candidate, and takes the one
+  that matches the most files (at least five); a tie goes to the oldest release
+  and adds a note, because over-reporting is safer than a false "up to date". A
+  tarball's history never holds its own release (a release is recorded in the
+  history after it ships), so a base equal to or above the running version needs
+  no history entry. `diffAgainstHistory` compares the base release's recorded
+  hashes with the ones the running CLI's templates produce (raw bytes, no token
+  substitution, the same keys the history generator wrote) and counts changed,
+  added and removed files, skipping the lock's `skip` list and `declined` and
+  `removed` entries (a file removed upstream counts when the lock marks it
+  `installed` or `kept`). It then does the same for each ledger-listed pack at
+  its own recorded release. `runCheckUpdate` builds the whole report first and
+  prints it once, so an error never leaves partial output. A base at or above
+  the running version skips only the core comparison, never the packs. The
+  verdict names where the base came from (`flag`, `lock` or `inferred`), and says
+  how many comparisons were skipped when any were, so a CI script reading only
+  the exit code can still be told to look at the notes. `0` is up to date, `3`
+  is an update available. `main()` returns that code and
+  `bin/m3l-groundwork.mjs` sets `process.exitCode` from it.
 - **`assets.ts`** is the one place that locates `templates/` and the plugin
   payload, whether running from the source checkout or a published npm
   tarball -- see its own header comment for why the probe order matters.
@@ -136,8 +160,8 @@ records the pack in `.groundwork/installed-packs.json` (the
 > [!NOTE]
 > Designed in [ADR 0002](decisions/0002-update-stages-three-way.md) and landing
 > across seven pull requests. Shipped so far: the template history and the
-> `outdated` pack status, and the lock and base snapshot a fresh bootstrap
-> writes. The rest below is a plan, not behaviour.
+> `outdated` pack status, the lock and base snapshot a fresh bootstrap writes,
+> and `--check-update`. The rest below is a plan, not behaviour.
 
 A project that already adopted groundwork, or was bootstrapped by it, moves to a
 newer release in two steps that mirror add-pack: `npx @monte3l/groundwork .
