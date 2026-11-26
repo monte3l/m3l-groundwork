@@ -36,7 +36,8 @@ states.
   `RELEASE_APP_PRIVATE_KEY` (the version-PR GitHub App).
   `JANITOR_APP_CLIENT_ID`/`JANITOR_APP_PRIVATE_KEY` (the environment-cleanup
   GitHub App, see [`docs/environment-janitor.md`](environment-janitor.md))
-  are, like `GITLEAKS_LICENSE`, organization secrets shared with selected
+  are secrets of the `env-janitor` environment, limited to `main`.
+  `GITLEAKS_LICENSE` is an organization secret shared with selected
   repositories. Also in scope: the `main`
   branch ruleset and the `npm-publish` environment's approval gate.
 - The Cloudflare API token (`docs-cloudflare` environment, `main`-only)
