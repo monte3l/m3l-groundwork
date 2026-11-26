@@ -10,6 +10,7 @@ import * as fc from "fast-check";
 import { applyTokens } from "../src/tokens.js";
 import {
   classifyPackInstallation,
+  isPackOutdated,
   matchesTokenizedTemplate,
 } from "../src/pack-installation.js";
 import type { PackInstallFacts } from "../src/pack-installation.js";
@@ -166,6 +167,94 @@ describe("classifyPackInstallation (property)", () => {
           expect(result.source).toBe("ledger");
         },
       ),
+    );
+  });
+});
+
+describe("isPackOutdated (property)", () => {
+  const hex = fc.stringMatching(/^[0-9a-f]{64}$/);
+  const semver = fc
+    .tuple(fc.nat({ max: 30 }), fc.nat({ max: 30 }), fc.nat({ max: 30 }))
+    .map(([a, b, c]) => ({
+      text: `${String(a)}.${String(b)}.${String(c)}`,
+      n: [a, b, c],
+    }));
+  const cmp = (a: number[], b: number[]): number =>
+    (a[0] ?? 0) - (b[0] ?? 0) ||
+    (a[1] ?? 0) - (b[1] ?? 0) ||
+    (a[2] ?? 0) - (b[2] ?? 0);
+  const files = fc.dictionary(fc.stringMatching(/^[a-z]{1,5}$/), hex, {
+    maxKeys: 4,
+  });
+  const current = fc.record({ manifestSha256: hex, files });
+  const history = fc.option(
+    fc.record({
+      schemaVersion: fc.constant(1 as const),
+      versions: fc.dictionary(
+        semver.map((v) => v.text),
+        fc.record({
+          core: fc.constant({}),
+          packs: fc.dictionary(
+            fc.constantFrom("p", "q"),
+            fc.record({ manifest: hex, files }),
+          ),
+        }),
+        { maxKeys: 3 },
+      ),
+      blobs: fc.constant({}),
+    }),
+    { nil: undefined },
+  );
+
+  it("is never true for a ledger version at or above the running version", () => {
+    fc.assert(
+      fc.property(
+        semver,
+        semver,
+        fc.option(hex, { nil: undefined }),
+        current,
+        history,
+        (ledgerV, running, manifestSha256, cur, hist) => {
+          fc.pre(cmp(ledgerV.n, running.n) >= 0);
+          const entry = { name: "p", cliVersion: ledgerV.text, manifestSha256 };
+          expect(isPackOutdated(entry, cur, hist, running.text)).toBe(false);
+        },
+      ),
+    );
+  });
+
+  it("is never true without a ledger entry", () => {
+    fc.assert(
+      fc.property(current, history, semver, (cur, hist, running) => {
+        expect(isPackOutdated(undefined, cur, hist, running.text)).toBe(false);
+      }),
+    );
+  });
+
+  it("is never true when a recorded hash equals the current one and there is no history", () => {
+    fc.assert(
+      fc.property(semver, semver, current, (ledgerV, running, cur) => {
+        const entry = {
+          name: "p",
+          cliVersion: ledgerV.text,
+          manifestSha256: cur.manifestSha256,
+        };
+        expect(isPackOutdated(entry, cur, undefined, running.text)).toBe(false);
+      }),
+    );
+  });
+
+  it("is true for an older ledger version whose recorded manifest hash differs", () => {
+    fc.assert(
+      fc.property(semver, semver, hex, current, (a, b, recorded, cur) => {
+        fc.pre(cmp(a.n, b.n) < 0 && recorded !== cur.manifestSha256);
+        const entry = {
+          name: "p",
+          cliVersion: a.text,
+          manifestSha256: recorded,
+        };
+        expect(isPackOutdated(entry, cur, undefined, b.text)).toBe(true);
+      }),
     );
   });
 });

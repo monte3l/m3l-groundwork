@@ -37,6 +37,7 @@
     "!dist/**/*.map",
     "!dist/.tsbuildinfo",
     "bin",
+    "data",
     "templates",
     "plugin",
     "LICENSE"

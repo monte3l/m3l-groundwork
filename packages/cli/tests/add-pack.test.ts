@@ -564,6 +564,59 @@ describe("staging into an adopted project", () => {
   });
 });
 
+describe("an outdated ledger pack", () => {
+  /** A bootstrapped project whose ledger records `statusline` from an older CLI with a stale manifest. */
+  function outdatedProject(): string {
+    const dir = bootstrap(["statusline"]);
+    write(
+      dir,
+      ".groundwork/installed-packs.json",
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [
+          {
+            name: "statusline",
+            cliVersion: "0.0.1",
+            manifestSha256: "0".repeat(64),
+          },
+        ],
+      }),
+    );
+    return dir;
+  }
+
+  it("refuses without --reinstall, saying it is installed and outdated and naming --reinstall, and writes nothing", () => {
+    const dir = outdatedProject();
+    const before = snapshot(root);
+    const { thrown } = run([dir, "--add-pack", "statusline"]);
+    expect(thrown).toBeInstanceOf(CliUsageError);
+    const message = (thrown as Error).message;
+    expect(message).toMatch(/statusline/);
+    expect(message).toMatch(/installed/);
+    expect(message).toMatch(/outdated/);
+    expect(message).toMatch(/--reinstall/);
+    expect(message).not.toMatch(/--update/);
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  it("stages with --reinstall and records outdated in the plan", () => {
+    const dir = outdatedProject();
+    const before = snapshot(dir);
+    const lines = runOk([dir, "--add-pack", "statusline", "--reinstall"]);
+    expectOnlyAddPackAdditions(before, snapshot(dir), ["statusline"]);
+    const plan = readPlan(dir, "statusline");
+    expect(plan.reinstall).toBe(true);
+    expect(plan.installation.status).toBe("outdated");
+    expect(
+      lines.some(
+        (l) =>
+          l.startsWith("add-pack statusline: staged ") &&
+          l.includes("(outdated;"),
+      ),
+    ).toBe(true);
+  });
+});
+
 describe("--reinstall", () => {
   it("refuses an installed pack without --reinstall, naming the pack and the flag", () => {
     const dir = bootstrap(["statusline"]);

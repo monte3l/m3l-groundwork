@@ -1060,8 +1060,20 @@ function listPackStatus(targetDir: string): void {
   console.log(
     `project: ${report.origin.kind} (${report.origin.evidence.map(escapeInline).join("; ")})`,
   );
-  for (const { name, modes, description, status } of report.packs) {
-    const ledger = status.source === "ledger" ? " (ledger)" : "";
+  for (const {
+    name,
+    modes,
+    description,
+    status,
+    ledgerVersion,
+  } of report.packs) {
+    // An outdated pack names the CLI version its ledger entry records.
+    const ledger =
+      status.source !== "ledger"
+        ? ""
+        : ledgerVersion === undefined
+          ? " (ledger)"
+          : ` (ledger ${ledgerVersion})`;
     console.log(
       `${name} (modes: ${modes.join(", ")}) [${PACK_STATUS_LABELS[status.status]}]${ledger} -- ${description}`,
     );

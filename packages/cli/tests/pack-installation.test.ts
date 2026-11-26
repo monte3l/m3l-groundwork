@@ -9,8 +9,10 @@
  * per-test mkdtemp sandbox), never a mock of the thing under test.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
+  readdirSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -25,17 +27,24 @@ import { join } from "node:path";
 import { chmodIneffective } from "./chmod-ineffective.js";
 import { emitTemplate } from "../src/emit.js";
 import { templatesCoreDir } from "../src/main.js";
-import { installPack, loadPack } from "../src/packs.js";
+import { installPack, listPackNames, loadPack } from "../src/packs.js";
 import {
   classifyPackInstallation,
   classifyProjectOrigin,
   collectPackInstallFacts,
+  PACK_STATUS_LABELS,
   inspectPackInstallations,
+  isPackOutdated,
   matchesTokenizedTemplate,
   readInstalledPacksLedger,
 } from "../src/pack-installation.js";
+import { resolveCliVersion } from "../src/inventory.js";
+import { restoreDotfilePath } from "../src/assets.js";
+import { loadTemplateHistory } from "../src/template-history.js";
+import type { TemplateHistory } from "../src/template-history.js";
 import type { Pack } from "../src/packs.js";
 import type {
+  LedgerEntry,
   PackInstallFacts,
   ProjectOrigin,
 } from "../src/pack-installation.js";
@@ -228,6 +237,7 @@ describe("readInstalledPacksLedger", () => {
   it("returns empty names and no notes when the file is missing", () => {
     expect(readInstalledPacksLedger(root)).toEqual({
       names: [],
+      entries: [],
       undetermined: [],
     });
   });
@@ -243,8 +253,61 @@ describe("readInstalledPacksLedger", () => {
     );
     expect(readInstalledPacksLedger(root)).toEqual({
       names: ["quality", "statusline"],
+      entries: [{ name: "quality" }, { name: "statusline" }],
       undetermined: [],
     });
+  });
+
+  it("returns entries carrying cliVersion and manifestSha256 when they are strings", () => {
+    write(
+      root,
+      LEDGER,
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [
+          {
+            name: "quality",
+            cliVersion: "1.4.0",
+            manifestSha256: "ab".repeat(32),
+          },
+          { name: "statusline", cliVersion: "1.5.0" },
+        ],
+      }),
+    );
+    expect(readInstalledPacksLedger(root).entries).toEqual([
+      { name: "quality", cliVersion: "1.4.0", manifestSha256: "ab".repeat(32) },
+      { name: "statusline", cliVersion: "1.5.0" },
+    ]);
+  });
+
+  it("drops an optional field that is not a string but keeps the entry", () => {
+    write(
+      root,
+      LEDGER,
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [{ name: "quality", cliVersion: 7, manifestSha256: null }],
+      }),
+    );
+    const result = readInstalledPacksLedger(root);
+    expect(result.names).toEqual(["quality"]);
+    expect(result.entries).toEqual([{ name: "quality" }]);
+    expect(result.undetermined).toEqual([]);
+  });
+
+  it("keeps entries in step with names when bad entries are skipped, with the same note", () => {
+    write(
+      root,
+      LEDGER,
+      `{"schemaVersion":1,"packs":[{"name":"__proto__","cliVersion":"1.0.0"},{"name":7},{"name":"quality","cliVersion":"1.4.0"}]}`,
+    );
+    const result = readInstalledPacksLedger(root);
+    expect(result.names).toEqual(["quality"]);
+    expect(result.entries).toEqual([{ name: "quality", cliVersion: "1.4.0" }]);
+    expect(result.undetermined).toHaveLength(1);
+    expect(result.undetermined[0]).toMatch(
+      /2 entries without a usable pack name/,
+    );
   });
 
   it.each([
@@ -721,6 +784,7 @@ describe("untested edges of origin, ledger and facts (real fixtures)", () => {
     write(root, ".groundwork", "i am a file");
     expect(readInstalledPacksLedger(root)).toEqual({
       names: [],
+      entries: [],
       undetermined: [],
     });
   });
@@ -1444,5 +1508,589 @@ describe("note path style", () => {
       ].filter((line) => /inventory\.json.*EACCES/.test(line));
       expect(sentences).toHaveLength(1);
     });
+  });
+});
+
+describe("classifyPackInstallation: the outdated flag", () => {
+  const f: PackInstallFacts = {
+    files: { present: ["a"], absent: [], modified: [] },
+    wiring: "complete",
+  };
+
+  it("reports a ledger-listed pack as outdated from the ledger when the flag is set, keeping the facts", () => {
+    expect(classifyPackInstallation(f, ["p"], "p", [], true)).toEqual({
+      status: "outdated",
+      source: "ledger",
+      files: f.files,
+      wiring: "complete",
+    });
+  });
+
+  it("still reports a ledger-listed pack as installed without the flag, and with it false", () => {
+    expect(classifyPackInstallation(f, ["p"], "p", []).status).toBe(
+      "installed",
+    );
+    expect(classifyPackInstallation(f, ["p"], "p", [], false).status).toBe(
+      "installed",
+    );
+  });
+
+  it("never reports a detected (non-ledger) pack as outdated, whatever the flag", () => {
+    const result = classifyPackInstallation(f, [], "p", [], true);
+    expect(result).toMatchObject({ status: "installed", source: "detected" });
+    const other = classifyPackInstallation(f, ["other"], "p", [], true);
+    expect(other).toMatchObject({ status: "installed", source: "detected" });
+  });
+});
+
+describe("PACK_STATUS_LABELS", () => {
+  it("labels outdated as outdated and keeps the other labels", () => {
+    expect(PACK_STATUS_LABELS).toEqual({
+      installed: "installed",
+      partial: "partial",
+      "not-installed": "not installed",
+      undetermined: "undetermined",
+      outdated: "outdated",
+    });
+  });
+});
+
+describe("isPackOutdated", () => {
+  const MANIFEST = "1".repeat(64);
+  const F_A = "a".repeat(64);
+  const F_B = "b".repeat(64);
+  const F_C = "c".repeat(64);
+  const current = {
+    manifestSha256: MANIFEST,
+    files: { "x.txt": F_A, "y.txt": F_B },
+  };
+  const history = (
+    manifest: string,
+    files: Record<string, string>,
+  ): TemplateHistory => ({
+    schemaVersion: 1,
+    versions: {
+      "1.4.0": { core: {}, packs: { quality: { manifest, files } } },
+    },
+    blobs: {},
+  });
+  const matching = history(MANIFEST, { "x.txt": F_A, "y.txt": F_B });
+  const entry = (extra: Partial<LedgerEntry> = {}): LedgerEntry => ({
+    name: "quality",
+    cliVersion: "1.4.0",
+    ...extra,
+  });
+  const check = (
+    e: LedgerEntry | undefined,
+    h: TemplateHistory | undefined,
+    running = "1.5.0",
+    cur = current,
+  ): boolean => isPackOutdated(e, cur, h, running);
+
+  it("is false for a missing ledger entry", () => {
+    expect(check(undefined, matching)).toBe(false);
+  });
+
+  it.each([
+    ["equal to the running version", "1.5.0"],
+    ["newer than the running version (a downgrade)", "1.6.0"],
+    ["newer in major", "2.0.0"],
+    ["newer in patch", "1.5.1"],
+  ])(
+    "is false when the ledger version is %s, even with a differing manifest",
+    (_l, cliVersion) => {
+      expect(
+        check(entry({ cliVersion, manifestSha256: "0".repeat(64) }), undefined),
+      ).toBe(false);
+    },
+  );
+
+  it.each([["1.5.0-rc.1"], ["next"], ["unknown"], [""], ["1.4"], ["v1.4.0"]])(
+    "is false when the ledger version %j is not a plain x.y.z, even with a differing manifest",
+    (cliVersion) => {
+      expect(
+        check(entry({ cliVersion, manifestSha256: "0".repeat(64) }), undefined),
+      ).toBe(false);
+    },
+  );
+
+  it("is false when the ledger records no version", () => {
+    expect(
+      check({ name: "quality", manifestSha256: "0".repeat(64) }, undefined),
+    ).toBe(false);
+  });
+
+  it("compares versions numerically, not as text (1.10.0 is newer than 1.9.0)", () => {
+    const stale = entry({
+      cliVersion: "1.10.0",
+      manifestSha256: "0".repeat(64),
+    });
+    expect(check(stale, undefined, "1.9.0")).toBe(false);
+    const older = entry({
+      cliVersion: "1.9.0",
+      manifestSha256: "0".repeat(64),
+    });
+    expect(check(older, undefined, "1.10.0")).toBe(true);
+  });
+
+  it("is true when the recorded manifest hash differs from the current one", () => {
+    expect(check(entry({ manifestSha256: "0".repeat(64) }), undefined)).toBe(
+      true,
+    );
+  });
+
+  it("is false when the recorded manifest hash equals the current one and there is no history", () => {
+    expect(check(entry({ manifestSha256: MANIFEST }), undefined)).toBe(false);
+  });
+
+  it("is false when everything recorded matches", () => {
+    expect(check(entry({ manifestSha256: MANIFEST }), matching)).toBe(false);
+  });
+
+  it("is true when a current file's hash differs from the history's", () => {
+    const h = history(MANIFEST, { "x.txt": F_C, "y.txt": F_B });
+    expect(check(entry({ manifestSha256: MANIFEST }), h)).toBe(true);
+  });
+
+  it("is true when the current pack has a file the history's lacks", () => {
+    const h = history(MANIFEST, { "x.txt": F_A });
+    expect(check(entry({ manifestSha256: MANIFEST }), h)).toBe(true);
+  });
+
+  it("is true when the history's pack has a file the current one lacks", () => {
+    const h = history(MANIFEST, { "x.txt": F_A, "y.txt": F_B, "z.txt": F_C });
+    expect(check(entry({ manifestSha256: MANIFEST }), h)).toBe(true);
+  });
+
+  it("is true when the history's manifest hash differs from the current one", () => {
+    // The manifest blob is present, so its canonical form's hash is compared.
+    const blobText = '{"name":"quality","version":"0"}\n';
+    const blobKey = createHash("sha256").update(blobText).digest("hex");
+    const h: TemplateHistory = {
+      ...history(blobKey, { "x.txt": F_A, "y.txt": F_B }),
+      blobs: { [blobKey]: blobText },
+    };
+    expect(check(entry({ manifestSha256: MANIFEST }), h)).toBe(true);
+  });
+
+  it("decides by the history alone when the ledger has no manifestSha256", () => {
+    expect(check(entry(), matching)).toBe(false);
+    expect(
+      check(entry(), history(MANIFEST, { "x.txt": F_C, "y.txt": F_B })),
+    ).toBe(true);
+  });
+
+  it("is false when there is no manifestSha256 and no history", () => {
+    expect(check(entry(), undefined)).toBe(false);
+  });
+
+  it("is false when the history lacks the ledger's version or the pack, and the manifest hash matches", () => {
+    const e = entry({ cliVersion: "1.3.0", manifestSha256: MANIFEST });
+    expect(check(e, matching)).toBe(false);
+    const other: TemplateHistory = {
+      schemaVersion: 1,
+      versions: { "1.4.0": { core: {}, packs: {} } },
+      blobs: {},
+    };
+    expect(check(entry({ manifestSha256: MANIFEST }), other)).toBe(false);
+  });
+
+  it("still flags a manifest-hash difference when the history lacks the version", () => {
+    const e = entry({ cliVersion: "1.3.0", manifestSha256: "0".repeat(64) });
+    expect(check(e, matching)).toBe(true);
+  });
+});
+
+describe("inspectPackInstallations: outdated ledger entries (real packs)", () => {
+  const LEDGER = ".groundwork/installed-packs.json";
+  const manifestHash = (name: string): string =>
+    createHash("sha256")
+      .update(JSON.stringify(loadPack(name).manifest, null, 2) + "\n")
+      .digest("hex");
+  const ledgerOf = (entry: Record<string, unknown>): string =>
+    JSON.stringify({ schemaVersion: 1, packs: [entry] });
+
+  it("reports a ledger pack outdated when its recorded manifest hash differs and its version is older", () => {
+    const dir = bootstrap();
+    write(
+      dir,
+      LEDGER,
+      ledgerOf({
+        name: "statusline",
+        cliVersion: "0.0.1",
+        manifestSha256: "0".repeat(64),
+      }),
+    );
+    const [pack] = inspectPackInstallations(dir, ["statusline"]).packs;
+    expect(pack?.status).toMatchObject({
+      status: "outdated",
+      source: "ledger",
+    });
+  });
+
+  it("reports installed when the recorded manifest hash is the one the staging would write", () => {
+    const dir = bootstrap();
+    write(
+      dir,
+      LEDGER,
+      ledgerOf({
+        name: "statusline",
+        cliVersion: "0.0.1",
+        manifestSha256: manifestHash("statusline"),
+      }),
+    );
+    const [pack] = inspectPackInstallations(dir, ["statusline"]).packs;
+    expect(pack?.status.status).toBe("installed");
+  });
+
+  it("never reports outdated for a ledger version equal to the running version", () => {
+    const dir = bootstrap();
+    write(
+      dir,
+      LEDGER,
+      ledgerOf({
+        name: "statusline",
+        cliVersion: resolveCliVersion(),
+        manifestSha256: "0".repeat(64),
+      }),
+    );
+    const [pack] = inspectPackInstallations(dir, ["statusline"]).packs;
+    expect(pack?.status.status).toBe("installed");
+  });
+
+  it("reports an entry without version or hash as installed, as before", () => {
+    const dir = bootstrap();
+    write(dir, LEDGER, ledgerOf({ name: "statusline" }));
+    const [pack] = inspectPackInstallations(dir, ["statusline"]).packs;
+    expect(pack?.status.status).toBe("installed");
+  });
+});
+
+/** The files of a real pack as the running checkout ships them: project path to sha256. */
+function realPackFiles(name: string): Record<string, string> {
+  const filesDir = loadPack(name).filesDir;
+  const out: Record<string, string> = {};
+  for (const entry of readdirSync(filesDir, {
+    recursive: true,
+    withFileTypes: true,
+  })) {
+    if (!entry.isFile()) continue;
+    const full = join(entry.parentPath, entry.name);
+    const rel = full
+      .slice(filesDir.length + 1)
+      .split("\\")
+      .join("/");
+    out[restoreDotfilePath(rel)] = createHash("sha256")
+      .update(readFileSync(full))
+      .digest("hex");
+  }
+  return out;
+}
+
+describe("isPackOutdated: a missing manifest blob", () => {
+  const MANIFEST = "1".repeat(64);
+  const OTHER = "2".repeat(64);
+  const F_A = "a".repeat(64);
+  const files = { "x.txt": F_A };
+  const historyWithoutBlob: TemplateHistory = {
+    schemaVersion: 1,
+    versions: {
+      "1.4.0": { core: {}, packs: { quality: { manifest: OTHER, files } } },
+    },
+    blobs: {},
+  };
+  const entry: LedgerEntry = { name: "quality", cliVersion: "1.4.0" };
+
+  it("gives no verdict from the manifest comparison (not outdated when the files agree)", () => {
+    expect(
+      isPackOutdated(
+        entry,
+        { manifestSha256: MANIFEST, files },
+        historyWithoutBlob,
+        "1.5.0",
+      ),
+    ).toBe(false);
+  });
+
+  it("still applies the file-hash comparison", () => {
+    expect(
+      isPackOutdated(
+        entry,
+        { manifestSha256: MANIFEST, files: { "x.txt": "b".repeat(64) } },
+        historyWithoutBlob,
+        "1.5.0",
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("readInstalledPacksLedger: manifestSha256 trust boundary", () => {
+  const LEDGER = ".groundwork/installed-packs.json";
+  const GOOD = "ab".repeat(32);
+
+  it.each([
+    ["uppercase hex", GOOD.toUpperCase()],
+    ["the staging placeholder", "<sha256 of pack.json.staged>"],
+    ["truncated", GOOD.slice(0, 63)],
+    ["too long", `${GOOD}0`],
+    ["a number", 5],
+    ["null", null],
+  ])("drops %s but keeps the entry and its name", (_label, bad) => {
+    write(
+      root,
+      LEDGER,
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [{ name: "quality", cliVersion: "1.4.0", manifestSha256: bad }],
+      }),
+    );
+    expect(readInstalledPacksLedger(root)).toEqual({
+      names: ["quality"],
+      entries: [{ name: "quality", cliVersion: "1.4.0" }],
+      undetermined: [],
+    });
+  });
+
+  it("keeps a lowercase 64-hex hash", () => {
+    write(
+      root,
+      LEDGER,
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [{ name: "quality", manifestSha256: GOOD }],
+      }),
+    );
+    expect(readInstalledPacksLedger(root).entries).toEqual([
+      { name: "quality", manifestSha256: GOOD },
+    ]);
+  });
+});
+
+describe("inspectPackInstallations: injected history and running version", () => {
+  const LEDGER = ".groundwork/installed-packs.json";
+  const EMPTY: TemplateHistory = { schemaVersion: 1, versions: {}, blobs: {} };
+  const manifestHash = (name: string): string =>
+    createHash("sha256")
+      .update(JSON.stringify(loadPack(name).manifest, null, 2) + "\n")
+      .digest("hex");
+  const ledgerOf = (...entries: Record<string, unknown>[]): string =>
+    JSON.stringify({ schemaVersion: 1, packs: entries });
+  const sha = (text: string): string =>
+    createHash("sha256").update(text).digest("hex");
+  const currentFiles = realPackFiles;
+  const notesFor = (notes: readonly string[], ...needles: string[]): string[] =>
+    notes.filter((note) => needles.every((needle) => note.includes(needle)));
+
+  it("reports the injected note in undetermined and keeps the verdict installed", () => {
+    const dir = bootstrap();
+    write(dir, LEDGER, ledgerOf({ name: "statusline", cliVersion: "1.0.0" }));
+    const report = inspectPackInstallations(dir, ["statusline"], {
+      history: { note: "HISTORY-GONE-NOTE" },
+      runningVersion: "1.5.0",
+    });
+    expect(report.undetermined).toContain("HISTORY-GONE-NOTE");
+    expect(report.packs[0]?.status.status).toBe("installed");
+  });
+
+  it("reports outdated from an injected history recording an older version whose files differ", () => {
+    const dir = bootstrap();
+    write(dir, LEDGER, ledgerOf({ name: "statusline", cliVersion: "1.2.3" }));
+    const history: TemplateHistory = {
+      schemaVersion: 1,
+      versions: {
+        "1.2.3": {
+          core: {},
+          packs: {
+            statusline: {
+              manifest: manifestHash("statusline"),
+              files: { "no-such-file.txt": "a".repeat(64) },
+            },
+          },
+        },
+      },
+      blobs: {},
+    };
+    const report = inspectPackInstallations(dir, ["statusline"], {
+      history: { history },
+      runningVersion: "1.5.0",
+    });
+    expect(report.packs[0]?.status.status).toBe("outdated");
+  });
+
+  it("drops a malformed ledger manifestSha256 instead of calling the pack outdated", () => {
+    const dir = bootstrap();
+    write(
+      dir,
+      LEDGER,
+      ledgerOf({
+        name: "statusline",
+        cliVersion: "1.0.0",
+        manifestSha256: "<sha256 of pack.json.staged>",
+      }),
+    );
+    const report = inspectPackInstallations(dir, ["statusline"], {
+      history: { history: EMPTY },
+      runningVersion: "1.5.0",
+    });
+    expect(report.packs[0]?.status.status).toBe("installed");
+  });
+
+  it("notes a ledger cliVersion that is not a plain x.y.z, naming the pack and version", () => {
+    const dir = bootstrap();
+    write(
+      dir,
+      LEDGER,
+      ledgerOf({ name: "statusline", cliVersion: "1.0.0-rc.8" }),
+    );
+    const report = inspectPackInstallations(dir, ["statusline"], {
+      history: { history: EMPTY },
+      runningVersion: "1.5.0",
+    });
+    expect(
+      notesFor(report.undetermined, "statusline", "1.0.0-rc.8"),
+    ).toHaveLength(1);
+    expect(report.packs[0]?.status.status).toBe("installed");
+  });
+
+  it("notes a ledger cliVersion the loaded history does not record", () => {
+    const dir = bootstrap();
+    write(dir, LEDGER, ledgerOf({ name: "statusline", cliVersion: "1.2.3" }));
+    const report = inspectPackInstallations(dir, ["statusline"], {
+      history: { history: EMPTY },
+      runningVersion: "1.5.0",
+    });
+    expect(notesFor(report.undetermined, "statusline", "1.2.3")).toHaveLength(
+      1,
+    );
+    expect(report.packs[0]?.status.status).toBe("installed");
+  });
+
+  it("emits one note, not one per pack, when the running version is unknown", () => {
+    const dir = bootstrap();
+    write(
+      dir,
+      LEDGER,
+      ledgerOf(
+        { name: "statusline", cliVersion: "1.2.3" },
+        { name: "quality", cliVersion: "1.2.3" },
+      ),
+    );
+    const report = inspectPackInstallations(dir, ["statusline", "quality"], {
+      history: { history: EMPTY },
+      runningVersion: "unknown",
+    });
+    expect(notesFor(report.undetermined, "unknown")).toHaveLength(1);
+  });
+
+  it.each([
+    ["equal to", "1.5.0"],
+    ["newer than", "1.6.0"],
+  ])(
+    "adds no note when the ledger version is %s the running version",
+    (_label, cliVersion) => {
+      const dir = bootstrap();
+      write(dir, LEDGER, ledgerOf({ name: "statusline", cliVersion }));
+      const report = inspectPackInstallations(dir, ["statusline"], {
+        history: { history: EMPTY },
+        runningVersion: "1.5.0",
+      });
+      expect(notesFor(report.undetermined, "statusline")).toEqual([]);
+      expect(notesFor(report.undetermined, cliVersion)).toEqual([]);
+    },
+  );
+
+  it("adds no note for a pack without a ledger entry, even with an unknown running version", () => {
+    const dir = bootstrap();
+    write(dir, LEDGER, ledgerOf({ name: "quality", cliVersion: "1.0.0-rc.8" }));
+    const report = inspectPackInstallations(dir, ["statusline"], {
+      history: { history: EMPTY },
+      runningVersion: "unknown",
+    });
+    expect(notesFor(report.undetermined, "statusline")).toEqual([]);
+  });
+
+  it("notes an unparsable stored manifest blob, naming the pack, and is not outdated", () => {
+    const dir = bootstrap();
+    write(dir, LEDGER, ledgerOf({ name: "statusline", cliVersion: "1.2.3" }));
+    const blob = "this is not json";
+    const history: TemplateHistory = {
+      schemaVersion: 1,
+      versions: {
+        "1.2.3": {
+          core: {},
+          packs: {
+            statusline: {
+              manifest: sha(blob),
+              files: currentFiles("statusline"),
+            },
+          },
+        },
+      },
+      blobs: { [sha(blob)]: blob },
+    };
+    const report = inspectPackInstallations(dir, ["statusline"], {
+      history: { history },
+      runningVersion: "1.5.0",
+    });
+    expect(notesFor(report.undetermined, "statusline")).not.toEqual([]);
+    expect(report.packs[0]?.status.status).toBe("installed");
+  });
+});
+
+describe("inspectPackInstallations: the real committed history", () => {
+  const LEDGER = ".groundwork/installed-packs.json";
+  const sha = (data: string | Buffer): string =>
+    createHash("sha256").update(data).digest("hex");
+
+  it("reports every pack unchanged since the newest recorded release as installed, never outdated", () => {
+    const loaded = loadTemplateHistory();
+    if (!("history" in loaded)) throw new Error(loaded.note);
+    const { history } = loaded;
+    const newest = Object.keys(history.versions).sort((a, b) => {
+      const left = a.split(".").map(Number);
+      const right = b.split(".").map(Number);
+      return (
+        (left[0] ?? 0) - (right[0] ?? 0) ||
+        (left[1] ?? 0) - (right[1] ?? 0) ||
+        (left[2] ?? 0) - (right[2] ?? 0)
+      );
+    })[Object.keys(history.versions).length - 1] as string;
+    const [major, minor, patch] = newest.split(".").map(Number);
+    const running = `${String(major)}.${String(minor)}.${String((patch ?? 0) + 1)}`;
+
+    const unchanged = listPackNames().filter((name) => {
+      const recorded = history.versions[newest]?.packs[name];
+      if (recorded === undefined) return false;
+      const blob = history.blobs[recorded.manifest];
+      if (blob === undefined) return false;
+      const manifest = sha(`${JSON.stringify(JSON.parse(blob), null, 2)}\n`);
+      const current = sha(
+        `${JSON.stringify(loadPack(name).manifest, null, 2)}\n`,
+      );
+      if (manifest !== current) return false;
+      const files = realPackFiles(name);
+      return (
+        JSON.stringify(Object.entries(files).sort()) ===
+        JSON.stringify(Object.entries(recorded.files).sort())
+      );
+    });
+    expect(unchanged.length).toBeGreaterThan(0);
+
+    for (const name of unchanged) {
+      const dir = join(root, `project-${name}`);
+      write(
+        dir,
+        LEDGER,
+        JSON.stringify({
+          schemaVersion: 1,
+          packs: [{ name, cliVersion: newest }],
+        }),
+      );
+      const report = inspectPackInstallations(dir, [name], {
+        history: loaded,
+        runningVersion: running,
+      });
+      expect(report.packs[0]?.status.status, name).toBe("installed");
+    }
   });
 });

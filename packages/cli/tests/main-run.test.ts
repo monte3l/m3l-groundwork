@@ -1273,6 +1273,30 @@ describe("main", () => {
       expect(lines).toContain(packLine("statusline", "not installed"));
     });
 
+    it("prints [outdated] and the ledger version for a ledger pack recorded by an older CLI with a stale manifest", () => {
+      const dir = bootstrapProject(["statusline"]);
+      mkdirSync(join(dir, ".groundwork"), { recursive: true });
+      writeFileSync(
+        join(dir, ".groundwork", "installed-packs.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          packs: [
+            {
+              name: "statusline",
+              cliVersion: "0.0.1",
+              manifestSha256: "0".repeat(64),
+            },
+          ],
+        }),
+      );
+      const lines = listLines(["--list-packs", dir]);
+
+      expect(lines).toContain(
+        packLine("statusline", "outdated", " (ledger 0.0.1)"),
+      );
+      expect(lines).toContain(packLine("licensing", "not installed"));
+    });
+
     it("accepts the directory before --list-packs too", () => {
       const dir = bootstrapProject(["licensing"]);
       const lines = listLines([dir, "--list-packs"]);

@@ -144,3 +144,23 @@ export function resolveAsset(
       "a published package should ship one (see scripts/vendor-assets.mjs)",
   );
 }
+
+/**
+ * The committed template history (`bin/build-template-history.mjs` writes
+ * it): `packages/cli/data/template-history.json` in a checkout, and
+ * `data/template-history.json` beside `dist/` in a published tarball, which
+ * ships the package's own `data/` directory as-is (no vendoring needed).
+ *
+ * @throws The `Error` {@link resolveAsset} raises when neither layout has it.
+ *
+ * @example
+ * ```ts
+ * const text = readFileSync(templateHistoryPath(), "utf8");
+ * ```
+ */
+export function templateHistoryPath(): string {
+  return resolveAsset({
+    repo: "packages/cli/data/template-history.json",
+    local: "data/template-history.json",
+  });
+}

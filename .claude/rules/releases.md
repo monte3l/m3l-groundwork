@@ -149,6 +149,15 @@ separately asserts `packages/plugin/package.json` stays `private` -- a
 structural guard against this design quietly regrowing the npm-publish shape it
 deliberately dropped.
 
+**Record each release's template history before the next release PR.**
+`packages/cli/data/template-history.json` holds the hashes of every released
+version's templates, and the `template-history` gate fails when a released
+version in `CHANGELOG.md` is missing from it, except the version in
+`packages/cli/package.json`. So after a release X is published, fetch the tags,
+run `node bin/build-template-history.mjs` and land a `chore: record X template
+history` commit. Until it lands, release-please's PR for X+1 fails `verify`.
+Never edit the file by hand.
+
 **The `npm-publish` environment gates the staged publish.**
 `release.yml`'s `publish` job has `environment: npm-publish`, a GitHub
 environment (created once, by hand, via `gh api` -- not committed as JSON,

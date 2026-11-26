@@ -51,7 +51,9 @@
   again. The fix is designed in
   [ADR 0002](decisions/0002-update-stages-three-way.md) (`--update`,
   `--check-update`, a tracked lock and base) and lands across seven pull
-  requests. This entry goes when the last one ships.
+  requests. This entry goes when the last one ships. `--list-packs` already
+  marks an installed pack **outdated** (offline, from the shipped template
+  history).
 - **Fresh `--pack` writes no installed-packs ledger.** Only `/customize`
   writes `.groundwork/installed-packs.json` (after `/customize add-pack` or
   adopt Round 1). A pack installed at bootstrap with `--pack` is not in it,

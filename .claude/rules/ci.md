@@ -128,6 +128,11 @@ paths:
   default and Dependabot doesn't track it, so bump it by hand periodically;
   `GITLEAKS_LICENSE` (a free org license, required because this repo is
   org-owned) is an org-level secret set up outside this repo.
+  `.gitleaks.toml` allowlists `generic-api-key` for
+  `packages/cli/data/template-history.json` alone: it maps template paths to
+  sha256 digests, and a path containing a word like `api` or `secret` next to
+  a digest reads as a key. Do not widen it, and expect any new generated file
+  that pairs names with digests to need the same scoped entry.
 - `security-audit.yml` runs `pnpm audit --audit-level=high` daily (and on
   dispatch) and opens one `security`-labelled issue if it fails. Root
   Dependabot has npm updates off on purpose and Dependency Review only sees
