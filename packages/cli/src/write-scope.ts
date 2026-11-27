@@ -3,7 +3,12 @@
 
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { isPathContained } from "./emit.js";
+import {
+  isLexicallyContained,
+  isPathContained,
+  isRealPathContained,
+} from "./emit.js";
+import { resolveRealPath } from "./fs-guard.js";
 import {
   CLAUDE_DEST_SEGMENTS,
   GROUNDWORK_DEST_SEGMENTS,
@@ -18,9 +23,13 @@ import {
  * {@link isPathContained}'s, so a sibling that merely shares a root's name
  * as a prefix (`.groundwork-evil/`) is rejected. Both roots are derived from
  * `customize-paths.ts`'s segment constants, so they cannot drift from where
- * the install actually writes. The check is lexical -- it never touches the
- * filesystem, so it does not detect a symlinked directory component; that
- * refusal lives in the writers themselves (`fs-guard.ts`).
+ * the install actually writes. The lexical check is followed by a real-path
+ * one: `targetDir` is resolved first, and each path, with its symlinks
+ * resolved, must lie under that real directory plus the root's segments, so a
+ * `.groundwork` or `.claude/skills` that is a symlink out of the project is
+ * refused. A path that cannot be resolved safely (a dangling link, a loop) is
+ * refused too. The writers still refuse a symlinked component themselves
+ * (`fs-guard.ts`); this is the second, independent check.
  *
  * @throws `AssertionError` (from `node:assert/strict`) naming the first path
  * that escapes both allowed roots.
@@ -37,15 +46,29 @@ export function assertAdoptWriteScope(
   targetDir: string,
   paths: readonly string[],
 ): void {
-  const allowedRoots = [
-    resolve(targetDir, GROUNDWORK_DEST_SEGMENTS[0]),
-    resolve(targetDir, ...CLAUDE_DEST_SEGMENTS),
+  const segmentSets = [
+    GROUNDWORK_DEST_SEGMENTS.slice(0, 1),
+    CLAUDE_DEST_SEGMENTS,
   ];
+  const allowedRoots = segmentSets.map((segments) =>
+    resolve(targetDir, ...segments),
+  );
+  const realBase = resolveRealPath(targetDir);
+  const realRoots =
+    realBase === undefined
+      ? []
+      : segmentSets.map((segments) => resolve(realBase, ...segments));
   for (const path of paths) {
     const resolved = resolve(targetDir, path);
+    const lexical = allowedRoots.some((root) =>
+      isLexicallyContained(resolved, root),
+    );
+    const real = realRoots.some((root) => isRealPathContained(resolved, root));
     assert.ok(
-      allowedRoots.some((root) => isPathContained(resolved, root)),
-      `adopt mode wrote outside its scope: ${resolved}`,
+      lexical && real,
+      lexical
+        ? `adopt mode wrote outside its scope: ${resolved} (a symlink on its path leads outside the project, or the path cannot be resolved)`
+        : `adopt mode wrote outside its scope: ${resolved}`,
     );
   }
 }
@@ -78,7 +101,44 @@ export function assertUpdateWriteScope(
     const resolved = resolve(targetDir, path);
     assert.ok(
       isPathContained(resolved, root),
-      `update mode wrote outside its scope: ${resolved}`,
+      isLexicallyContained(resolved, root)
+        ? `update mode wrote outside its scope: ${resolved} (a symlink on its path leads outside it, or the path cannot be resolved)`
+        : `update mode wrote outside its scope: ${resolved}`,
+    );
+  }
+}
+
+/**
+ * The string-only form of {@link assertAdoptWriteScope}, for paths built from
+ * `customize-paths.ts`'s constants before anything is written. It reads no
+ * filesystem state, so a symlinked `.claude` -- which the `/customize`
+ * install answers by falling back to `.groundwork/customize/` -- does not
+ * fail it; what the install then actually wrote is checked with
+ * {@link assertAdoptWriteScope}.
+ *
+ * @throws `AssertionError` (from `node:assert/strict`) naming the first path
+ * that escapes both allowed roots.
+ *
+ * @example
+ * ```ts
+ * import { assertAdoptPlannedScope } from "./write-scope.js";
+ *
+ * assertAdoptPlannedScope("/work/app", [".groundwork/inventory.json"]); // ok
+ * ```
+ */
+export function assertAdoptPlannedScope(
+  targetDir: string,
+  paths: readonly string[],
+): void {
+  const allowedRoots = [
+    resolve(targetDir, GROUNDWORK_DEST_SEGMENTS[0]),
+    resolve(targetDir, ...CLAUDE_DEST_SEGMENTS),
+  ];
+  for (const path of paths) {
+    const resolved = resolve(targetDir, path);
+    assert.ok(
+      allowedRoots.some((root) => isLexicallyContained(resolved, root)),
+      `adopt mode planned a write outside its scope: ${resolved}`,
     );
   }
 }

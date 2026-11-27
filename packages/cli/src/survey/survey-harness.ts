@@ -9,7 +9,8 @@
  */
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import type { Stats } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
+import { resolveRealPath } from "../fs-guard.js";
 import { fieldText, parseFrontmatter } from "../harness/frontmatter.js";
 import {
   SurveyReadError,
@@ -45,29 +46,72 @@ function extractFrontmatterField(
   return text === undefined || text === "" ? undefined : text;
 }
 
-/** Reads `path` as UTF-8 text, or `undefined` (recorded) when it is unreadable. */
-function readText(path: string, undetermined: string[]): string | undefined {
+/**
+ * True, and recorded in `undetermined`, when `path` resolves through a
+ * symlink to somewhere outside `root` (the project being surveyed). The
+ * survey never reads such an entry, so a link planted in an adopted project
+ * cannot pull text from elsewhere on the machine into `inventory.json` or the
+ * report. A symlink that stays inside `root` is followed as before. A path
+ * that does not resolve (absent, dangling, a loop, no permission) is not
+ * judged here: the read or probe that follows records it as it always did.
+ */
+function leavesRoot(
+  root: string,
+  path: string,
+  undetermined: string[],
+): boolean {
+  const realRoot = resolveRealPath(root);
+  const realPath = resolveRealPath(path);
+  if (realRoot === undefined || realPath === undefined) return false;
+  if (realPath === realRoot || realPath.startsWith(realRoot + sep)) {
+    return false;
+  }
+  undetermined.push(
+    `${path} is a symlink out of the project, not followed -- its contents are not in this survey`,
+  );
+  return true;
+}
+
+/** Reads `path` as UTF-8 text, or `undefined` (recorded) when it is unreadable or leaves `root`. */
+function readText(
+  root: string,
+  path: string,
+  undetermined: string[],
+): string | undefined {
+  if (leavesRoot(root, path, undetermined)) return undefined;
   return guardedRead(path, () => readFileSync(path, "utf8"), undetermined);
 }
 
-/** Lists `dir`'s entry names: `[]` when it is absent, or unreadable (recorded). */
-function listNames(dir: string, undetermined: string[]): string[] {
+/** Lists `dir`'s entry names: `[]` when it is absent, leaves `root`, or is unreadable (recorded). */
+function listNames(
+  root: string,
+  dir: string,
+  undetermined: string[],
+): string[] {
   if (!guardedExists(dir, undetermined)) return [];
+  if (leavesRoot(root, dir, undetermined)) return [];
   return guardedRead(dir, () => readdirSync(dir), undetermined) ?? [];
 }
 
-function listMarkdownFiles(dir: string, undetermined: string[]): string[] {
-  return listNames(dir, undetermined).filter((name) => name.endsWith(".md"));
+function listMarkdownFiles(
+  root: string,
+  dir: string,
+  undetermined: string[],
+): string[] {
+  return listNames(root, dir, undetermined).filter((name) =>
+    name.endsWith(".md"),
+  );
 }
 
 function surveyAgents(
+  root: string,
   claudeDir: string,
   undetermined: string[],
 ): HarnessAgent[] {
   const agentsDir = join(claudeDir, "agents");
   const results: HarnessAgent[] = [];
-  for (const name of listMarkdownFiles(agentsDir, undetermined)) {
-    const content = readText(join(agentsDir, name), undetermined);
+  for (const name of listMarkdownFiles(root, agentsDir, undetermined)) {
+    const content = readText(root, join(agentsDir, name), undetermined);
     if (content === undefined) continue;
     results.push({
       name: name.replace(/\.md$/, ""),
@@ -78,11 +122,13 @@ function surveyAgents(
 }
 
 function surveySkills(
+  root: string,
   claudeDir: string,
   undetermined: string[],
 ): HarnessSkill[] {
   const skillsDir = join(claudeDir, "skills");
   if (!guardedExists(skillsDir, undetermined)) return [];
+  if (leavesRoot(root, skillsDir, undetermined)) return [];
   const entries =
     guardedRead(
       skillsDir,
@@ -94,7 +140,7 @@ function surveySkills(
     if (!entry.isDirectory()) continue;
     const skillFile = join(skillsDir, entry.name, "SKILL.md");
     if (!guardedExists(skillFile, undetermined)) continue;
-    const content = readText(skillFile, undetermined);
+    const content = readText(root, skillFile, undetermined);
     if (content === undefined) continue;
     results.push({
       name: extractFrontmatterField(content, "name") ?? entry.name,
@@ -104,17 +150,25 @@ function surveySkills(
   return results;
 }
 
-function surveyHooks(claudeDir: string, undetermined: string[]): string[] {
-  return listNames(join(claudeDir, "hooks"), undetermined).filter(
+function surveyHooks(
+  root: string,
+  claudeDir: string,
+  undetermined: string[],
+): string[] {
+  return listNames(root, join(claudeDir, "hooks"), undetermined).filter(
     (name) => name.endsWith(".mjs") || name.endsWith(".js"),
   );
 }
 
-function surveyRules(claudeDir: string, undetermined: string[]): HarnessRule[] {
+function surveyRules(
+  root: string,
+  claudeDir: string,
+  undetermined: string[],
+): HarnessRule[] {
   const rulesDir = join(claudeDir, "rules");
   const results: HarnessRule[] = [];
-  for (const name of listMarkdownFiles(rulesDir, undetermined)) {
-    const content = readText(join(rulesDir, name), undetermined);
+  for (const name of listMarkdownFiles(root, rulesDir, undetermined)) {
+    const content = readText(root, join(rulesDir, name), undetermined);
     if (content === undefined) continue;
     results.push({
       name: name.replace(/\.md$/, ""),
@@ -124,8 +178,12 @@ function surveyRules(claudeDir: string, undetermined: string[]): HarnessRule[] {
   return results;
 }
 
-function surveyCommands(claudeDir: string, undetermined: string[]): string[] {
-  return listMarkdownFiles(join(claudeDir, "commands"), undetermined);
+function surveyCommands(
+  root: string,
+  claudeDir: string,
+  undetermined: string[],
+): string[] {
+  return listMarkdownFiles(root, join(claudeDir, "commands"), undetermined);
 }
 
 function extractHeadings(content: string): string[] {
@@ -135,10 +193,14 @@ function extractHeadings(content: string): string[] {
     .map((line) => line.replace(/^#{1,3}\s*/, "").trim());
 }
 
-/** `CLAUDE.md`'s heading outline: `[]` when it is absent, or unreadable (recorded). */
-function claudeMdHeadings(path: string, undetermined: string[]): string[] {
+/** `CLAUDE.md`'s heading outline: `[]` when it is absent, leaves `root`, or is unreadable (recorded). */
+function claudeMdHeadings(
+  root: string,
+  path: string,
+  undetermined: string[],
+): string[] {
   if (!guardedExists(path, undetermined)) return [];
-  const content = readText(path, undetermined);
+  const content = readText(root, path, undetermined);
   return content === undefined ? [] : extractHeadings(content);
 }
 
@@ -245,7 +307,9 @@ function surveyPluginLayout(
  * it `null`; a symlinked component, or one whose probe fails with
  * `EACCES`/`EPERM`/`ELOOP`, is recorded and omitted while the layout stays
  * non-null. Any other read failure throws, naming the path, with the original
- * failure as `cause`.
+ * failure as `cause`. A harness file or directory that is a symlink resolving
+ * outside `dir` is not read: it is recorded in `undetermined` and left out
+ * (an in-project symlink is followed).
  *
  * @example
  * ```ts
@@ -275,7 +339,7 @@ export function surveyHarness(
       commands: [],
       hasSettingsLocal: false,
       hasClaudeMd,
-      claudeMdHeadings: claudeMdHeadings(claudeMdPath, undetermined),
+      claudeMdHeadings: claudeMdHeadings(dir, claudeMdPath, undetermined),
       pluginLayout: surveyPluginLayout(dir, undetermined),
     };
   }
@@ -287,17 +351,17 @@ export function surveyHarness(
     settingsFile: guardedExists(settingsPath, undetermined)
       ? "settings.json"
       : undefined,
-    agents: surveyAgents(claudeDir, undetermined),
-    skills: surveySkills(claudeDir, undetermined),
-    hooks: surveyHooks(claudeDir, undetermined),
-    rules: surveyRules(claudeDir, undetermined),
-    commands: surveyCommands(claudeDir, undetermined),
+    agents: surveyAgents(dir, claudeDir, undetermined),
+    skills: surveySkills(dir, claudeDir, undetermined),
+    hooks: surveyHooks(dir, claudeDir, undetermined),
+    rules: surveyRules(dir, claudeDir, undetermined),
+    commands: surveyCommands(dir, claudeDir, undetermined),
     hasSettingsLocal: guardedExists(
       join(claudeDir, "settings.local.json"),
       undetermined,
     ),
     hasClaudeMd,
-    claudeMdHeadings: claudeMdHeadings(claudeMdPath, undetermined),
+    claudeMdHeadings: claudeMdHeadings(dir, claudeMdPath, undetermined),
     pluginLayout: surveyPluginLayout(dir, undetermined),
   };
 }

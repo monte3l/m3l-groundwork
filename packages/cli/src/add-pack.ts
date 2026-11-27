@@ -24,7 +24,7 @@ import {
 import type { CapCounts } from "./caps.js";
 import { planConflicts } from "./conflicts.js";
 import type { FileConflict } from "./conflicts.js";
-import { isPathContained } from "./emit.js";
+import { isLexicallyContained, isPathContained } from "./emit.js";
 import { assertNotSymlink } from "./fs-guard.js";
 import { resolveCliVersion } from "./inventory.js";
 import {
@@ -110,7 +110,9 @@ export function assertAddPackWriteScope(
     const resolved = resolve(targetDir, path);
     assert.ok(
       isPathContained(resolved, root),
-      `add-pack mode wrote outside its scope: ${resolved}`,
+      isLexicallyContained(resolved, root)
+        ? `add-pack mode wrote outside its scope: ${resolved} (a symlink on its path leads outside it, or the path cannot be resolved)`
+        : `add-pack mode wrote outside its scope: ${resolved}`,
     );
   }
 }
