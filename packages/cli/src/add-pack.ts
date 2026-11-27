@@ -24,12 +24,13 @@ import {
 import type { CapCounts } from "./caps.js";
 import { planConflicts } from "./conflicts.js";
 import type { FileConflict } from "./conflicts.js";
-import { isPathContained } from "./emit.js";
+import { isLexicallyContained, isPathContained } from "./emit.js";
 import { assertNotSymlink } from "./fs-guard.js";
 import { resolveCliVersion } from "./inventory.js";
 import {
   PACK_STATUS_LABELS,
   inspectPackInstallations,
+  unsafeLedgerNames,
   projectNameOf,
 } from "./pack-installation.js";
 import type { PackInstallStatus, ProjectOrigin } from "./pack-installation.js";
@@ -109,7 +110,9 @@ export function assertAddPackWriteScope(
     const resolved = resolve(targetDir, path);
     assert.ok(
       isPathContained(resolved, root),
-      `add-pack mode wrote outside its scope: ${resolved}`,
+      isLexicallyContained(resolved, root)
+        ? `add-pack mode wrote outside its scope: ${resolved} (a symlink on its path leads outside it, or the path cannot be resolved)`
+        : `add-pack mode wrote outside its scope: ${resolved}`,
     );
   }
 }
@@ -276,6 +279,15 @@ export function runAddPack(options: CliOptions): void {
   }
   const names = [...new Set(options.addPacks)].sort();
   const packs = names.map((name) => resolveAddPack(name));
+
+  // The /customize Record step never updates a ledger entry named like an
+  // object-prototype key, so refuse here, before anything is staged.
+  const unsafeNames = unsafeLedgerNames(targetDir);
+  if (unsafeNames.length > 0) {
+    throw new CliUsageError(
+      `${targetDir}'s .groundwork/installed-packs.json has an entry named ${unsafeNames.map((name) => JSON.stringify(name)).join(", ")}, which no pack can have -- remove it and re-run\n\n${USAGE}`,
+    );
+  }
 
   const report = inspectPackInstallations(targetDir, names);
   const { origin } = report;

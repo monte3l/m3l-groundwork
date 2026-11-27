@@ -37,6 +37,7 @@ import {
   isPackOutdated,
   matchesTokenizedTemplate,
   readInstalledPacksLedger,
+  unsafeLedgerNames,
 } from "../src/pack-installation.js";
 import { resolveCliVersion } from "../src/inventory.js";
 import { restoreDotfilePath } from "../src/assets.js";
@@ -2104,5 +2105,32 @@ describe("classifyProjectOrigin with the fresh-mode record", () => {
     const origin = classifyProjectOrigin(dir);
     expect(origin.kind).toBe("bootstrapped");
     expect(origin.evidence.length).toBeGreaterThan(0);
+  });
+});
+
+describe("unsafeLedgerNames", () => {
+  const LEDGER = ".groundwork/installed-packs.json";
+
+  it("lists the prototype-sensitive entry names, and only those", () => {
+    write(
+      root,
+      LEDGER,
+      '{"schemaVersion":1,"packs":[{"name":"quality"},{"name":"__proto__"},{"name":"constructor"},{"name":"prototype"},{"name":7}]}',
+    );
+    expect(unsafeLedgerNames(root)).toEqual([
+      "__proto__",
+      "constructor",
+      "prototype",
+    ]);
+    // The reader still skips them, keeping the rest.
+    expect(readInstalledPacksLedger(root).names).toEqual(["quality"]);
+  });
+
+  it("is empty for a missing, malformed or ordinary ledger", () => {
+    expect(unsafeLedgerNames(root)).toEqual([]);
+    write(root, LEDGER, "not json");
+    expect(unsafeLedgerNames(root)).toEqual([]);
+    write(root, LEDGER, '{"schemaVersion":1,"packs":[{"name":"quality"}]}');
+    expect(unsafeLedgerNames(root)).toEqual([]);
   });
 });

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { assertAdoptWriteScope as fromMain } from "../src/main.js";
 import {
+  assertAdoptPlannedScope,
   assertAdoptWriteScope,
   assertUpdateWriteScope,
 } from "../src/write-scope.js";
@@ -122,5 +123,22 @@ describe("assertUpdateWriteScope", () => {
       `${UPDATE_PREFIX} ${join(TARGET, "package.json")}`,
     );
     expect(message).not.toContain(join(TARGET, "README.md"));
+  });
+});
+
+describe("assertAdoptPlannedScope", () => {
+  it("accepts the in-scope paths without touching the filesystem", () => {
+    expect(() => {
+      assertAdoptPlannedScope(TARGET, [
+        ".groundwork/inventory.json",
+        ".claude/skills/customize/SKILL.md",
+      ]);
+    }).not.toThrow();
+  });
+
+  it("rejects a path outside both roots", () => {
+    expect(() => {
+      assertAdoptPlannedScope(TARGET, ["package.json"]);
+    }).toThrow(AssertionError);
   });
 });

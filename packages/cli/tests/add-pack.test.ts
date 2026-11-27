@@ -534,6 +534,30 @@ describe("staging into an adopted project", () => {
     }
   });
 
+  it.each(["__proto__", "constructor", "prototype"])(
+    "refuses a ledger entry named %s before staging anything",
+    (name) => {
+      const dir = adopted();
+      // JSON text, so "__proto__" is a real own key of the parsed entry.
+      write(
+        dir,
+        ".groundwork/installed-packs.json",
+        `{"schemaVersion":1,"packs":[{"name":"github"},{"name":"${name}"}]}\n`,
+      );
+      const before = snapshot(dir);
+      expectUsageError(
+        [dir, "--add-pack", "quality"],
+        new RegExp(`entry named "${name}"`),
+      );
+      expect(snapshot(dir)).toEqual(before);
+    },
+  );
+
+  it("still stages when the ledger only carries ordinary names", () => {
+    const dir = adopted();
+    expect(() => runOk([dir, "--add-pack", "quality"])).not.toThrow();
+  });
+
   it("records origin adopted with its inventory schema version, requiredMode adopt, and a missing required path as a fact, not an error", () => {
     const dir = adopted();
     runOk([dir, "--add-pack", "quality"]);

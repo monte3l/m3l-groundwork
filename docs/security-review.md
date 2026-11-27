@@ -153,9 +153,28 @@ unpacked tarballs, not from running the code; it no longer matters for the
 shipped workflows but explains why the alerts were not dismissed in the
 meantime.
 
+**The `finalize` job's permissions stay as they are.** `finalize` calls the
+shared `release-finalize.yml` with `attest: false`, so none of the shared
+job's steps that need `id-token` or `attestations` (the two `actions/attest`
+steps) run here; only `contents: write` is used, to find and publish the
+draft. The grant cannot be trimmed from this repository anyway: GitHub caps a
+called workflow's permissions at the caller job's, and the shared `publish`
+job declares all three statically, so a caller that grants less fails when the
+run starts, not at the step. Dropping `id-token` and `attestations` needs a
+change in `monte3l/.github` first (a publish-only job that declares
+`contents: write` alone, reached when `attest` is false), then a new
+`release-baseline` pin here. Running `finalize` in the `npm-publish`
+environment is not the fix: it would only add a second required-reviewer
+approval (the environment has required reviewers and a `main`-only branch
+policy), and no OIDC token is minted in this job, so there is nothing for the
+environment to scope. The standing condition is unchanged: re-read this when
+`release-finalize.yml` changes, since a pin bump could start using the OIDC
+token here. Not exercised: no release was run for this review, and a dry run
+of the shared workflow is not possible (it publishes a draft release).
+
 ## Advisory in the docs deploy tooling (deploy-tools lockfile)
 
-**Dated 2026-10-08; fixed by an override (see "The fix" below).** Dependabot opened one
+**Dated 2026-10-08; fixed by an override, since dropped (see "The fix" below).** Dependabot opened one
 alert in `tools/deploy/package-lock.json`, the lockfile that pins the wrangler
 the docs workflow's deploy job installs. That job holds a Cloudflare API token
 (see [`cloudflare-docs.md`](cloudflare-docs.md)).
@@ -196,14 +215,28 @@ sharp 0.35.4, because miniflare pins it exactly.
 
 **The fix.** Unlike the npm-bundled packages above, sharp is an ordinary
 dependency, so an `overrides` entry works. `tools/deploy/package.json`
-now overrides `sharp` to `^0.35.5` beside the existing `undici` entry, and the
+overrode `sharp` to `^0.35.5` beside the existing `undici` entry, and the
 lockfile resolves sharp 0.35.5 (with its platform packages and libvips 1.3.4)
 while wrangler stays out of the fix (4.141.0 at that check; the pin is 4.149.0 now). Checked on 2026-10-08: every changed
 integrity hash matches the registry, a clean `npm ci --ignore-scripts` succeeds,
 `npm audit` in that directory reports no vulnerabilities, and the same
 `wrangler deploy --dry-run` completes. The alert should close when Dependabot
-next scans after the change merges. Drop the override once miniflare itself
-requires sharp >= 0.35.5.
+next scans after the change merges.
+
+**The `sharp` override is dropped (2026-11-27).** The condition was met:
+the lockfile's miniflare 5.20261119.0-beta (wrangler 4.166.0) requires sharp
+`0.35.5` exactly and resolves it. With the override removed the lockfile is
+unchanged, a clean `npm ci --ignore-scripts` installs, `npm audit` reports
+0 vulnerabilities and `wrangler deploy --dry-run` completes.
+
+**The `undici` override is dropped (2026-11-27).** The condition was met:
+the lockfile's miniflare 5.20261119.0-beta, `@cloudflare/workers-utils` 0.56.0
+and wrangler 4.166.0 each require undici `7.30.2` exactly, and `npm ls undici`
+shows one copy, 7.30.2. With the override removed (and `overrides` gone from
+`tools/deploy/package.json`) the lockfile is unchanged, `npm audit` reports 0
+vulnerabilities before and after, a clean `npm ci --ignore-scripts` installs and
+`wrangler deploy --dry-run` completes. The same condition was in
+[`cloudflare-docs.md`](cloudflare-docs.md), which no longer lists an override.
 
 **Decision.** Nothing is dismissed. The reachability analysis above stands
 even with the fix: a change that adds an Images binding to `wrangler.jsonc`, or runs `wrangler dev`
@@ -234,7 +267,18 @@ because nothing is bundled). cacache passes only `silent`, `nosort`, `follow`
 and `nodir` to glob, all still accepted by glob 14. Checked on 2026-11-05: a
 clean `npm ci --ignore-scripts` installs, `npm audit` reports 0 in both
 directories, and `cacache.verify` and `rm.all` run against a temporary cache.
-Drop the overrides once `cacache` requires glob >= 14.0.2.
+**The overrides are dropped (2026-11-27).** The condition, `cacache`
+requiring glob >= 14.0.2, was met by cacache 21.0.2 (glob `^14.0.3`, reached
+through make-fetch-happen's `cacache ^21.0.0`). Removing the overrides alone
+was not enough: `npm audit` then reported five alerts, because
+`@npmcli/package-json` 8.0.0 and `@tufjs/models` 5.0.2 (through `tuf-js`) also
+carried glob 13 and minimatch 10. Their latest releases (8.0.1 and 5.0.3)
+require glob `^14.0.3` and minimatch `^11.0.9`, so both lockfiles were
+refreshed with `npm update cacache @npmcli/package-json @tufjs/models tuf-js`.
+Both now resolve cacache 21.0.2, glob 14.0.3 and minimatch 11.0.9, a clean
+`npm ci --ignore-scripts` installs, and `npm audit` reports 0 in both
+directories. The next advisory against this tree arrives as an ordinary
+Dependabot fix PR.
 
 **Open: root lockfile (#41).** minimatch 11 removes `makeRe`, and
 `eslint-plugin-import-x` 4.17.1 (the latest) imports it at module load, so an
