@@ -2,7 +2,7 @@
 
 > The whole procedure for `/customize update`, which `SKILL.md`'s router sends here. Read this whole file before acting, and re-read it after a compaction: a compacted session keeps only the start of `SKILL.md`.
 
-Skill version: 1.6.0 <!-- x-release-please-version -->
+Skill version: 1.6.1 <!-- x-release-please-version -->
 
 `m3l-groundwork <dir> --update` staged an update of the project's baseline
 into `.groundwork/update/` and changed nothing else: theirs (the new
