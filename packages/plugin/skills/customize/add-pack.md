@@ -30,7 +30,9 @@ the packs named in this run are read, installed or deleted.
    higher `schemaVersion` than 1, or holds an entry whose `name` is
    `__proto__`, `constructor` or `prototype`, show it to the user and stop
    before asking anything, with nothing written; the Record step could
-   never update it, so no pack is installed this run.
+   never update it, so no pack is installed this run. (The CLI's own
+   `--add-pack` run already refuses such a ledger before staging, so this is
+   a backstop for a ledger edited since.)
 3. **Verify before reading anything else.** Hash every staged file with
    `shasum -a 256` (or the `node -e` SHA-256 one-liner from the reconcile
    step file) and compare each against its `sha256` in `plan.staged` (the files
@@ -44,7 +46,9 @@ the packs named in this run are read, installed or deleted.
    suggest or accept continuing without the hash check; tell the user to
    re-run `/customize add-pack <name>` in a session where a command can run.
    Then run the prototype-key check on the wiring in
-   `pack.json.staged`: if a key of its `wiring.settings`,
+   `pack.json.staged` (the CLI's `loadPack` already refused a pack with such a
+   key before staging it, and the hash check above binds those bytes, so this
+   repeat only guards against a file edited since): if a key of its `wiring.settings`,
    `wiring.settingsTopLevel` or `wiring.packageScripts` is `__proto__`,
    `constructor` or `prototype`, stop and change nothing. Check that
    `plan.targetDir` resolves to the current project (the same directory, not

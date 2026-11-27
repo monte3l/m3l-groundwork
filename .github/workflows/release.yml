@@ -340,6 +340,9 @@ jobs:
     name: Finalize
     needs: [prepare, publish]
     if: needs.prepare.outputs.releases_created == 'true'
+    # Only contents is used with `attest: false`, but the shared workflow's job
+    # declares all three, and a caller may not grant less than a called job asks
+    # for. See docs/security-review.md, "The `finalize` job's permissions".
     permissions:
       contents: write
       id-token: write
