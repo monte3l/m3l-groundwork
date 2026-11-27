@@ -239,7 +239,8 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   skill copy never writes through a symlinked or non-directory component
   under `.claude` and instead installs into `.groundwork/customize/`, and in
   adopt mode never removes or replaces an entry the project owns under
-  `.claude/skills/customize/`. It replaces files remove-then-`wx` only in the
+  `.claude/skills/customize/`. It replaces files, by an atomic rename of a staged copy (see "The
+  skill install swaps file by file" below), only in the
   CLI-owned `.groundwork/customize/` and, in fresh mode under `--force`, in
   `.claude/skills/customize/`. There is,
   however, a time-of-check-to-time-of-use gap between those `lstat` and
@@ -258,17 +259,58 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   there is a time-of-check-to-time-of-use gap between this pre-flight and the
   writes, and a local attacker who can swap a component for a symlink in that
   window is outside the threat model.
-- **The skill install is not fully atomic.** A pre-flight refuses a directory
-  sitting at any of the skill's file names before anything is touched, and a
-  failed write removes the files that run created. A failure after the install
-  has begun still cannot restore what it had already replaced, in the CLI-owned
-  `.groundwork/customize/` and in fresh mode under `--force` in
-  `.claude/skills/customize/` (the previous copy's `SKILL.md` and each file
-  removed ahead of its own rewrite; after such a failure on a fresh `--force`
-  re-run the previously loadable skill is gone until a successful re-run, and
-  the error says so). An entry that appears after the pre-flight, for example a
-  directory created concurrently, fails the install part-way. The
-  `.claude/skills/customize/` location is never replaced in adopt mode.
+- **The skill install swaps file by file, not the directory at once.** What
+  it guarantees: no payload file is ever missing or partly written, at any
+  step. Content goes to a temporary file in the same directory, is flushed
+  with `fsync`, and is renamed over the destination, and `rename(2)` replaces
+  an existing file atomically, so a reader finds no point at which it is
+  missing ([rename(2)](https://man7.org/linux/man-pages/man2/rename.2.html);
+  Node's `fs.renameSync` is that call, see
+  [`fs.rename`](https://nodejs.org/docs/latest-v24.x/api/fs.html)). Every new
+  file is staged, with a saved copy of each entry it will replace (a hard
+  link to it, else a byte copy), before the first rename; a failure while
+  staging has replaced nothing, and a failure on a rename puts every earlier
+  file back by renaming its saved copy, byte-for-byte and with its mode. In
+  adopt mode's project-owned `.claude/skills/customize/` each missing file is
+  created by hard-linking its flushed temporary file, so it appears whole or
+  not at all and an entry that appeared meanwhile makes the install fail
+  without being touched. The replacing locations hold an exclusive
+  `.install.lock`, so a second run is refused instead of rolling the first
+  one back. What remains, stated exactly:
+  - **The files change one after another, not together.** Between the first
+    and the last rename (a few renames, `SKILL.md` last) a reader can see
+    some files at the new version and others at the old one, each complete.
+    Closing that needs an atomic exchange of two directories, which Node does
+    not expose (no `renameat2` `RENAME_EXCHANGE`), and renaming a directory
+    over a non-empty one fails (`ENOTEMPTY`), so a directory swap would
+    reintroduce a window in which the skill is missing.
+  - **A killed run (SIGKILL, power loss) mid-swap** leaves the same mixture,
+    its `.install.lock` and its temporary files. Every file is still
+    complete. A re-run refuses, naming the lock, rather than guess that the
+    owner is gone; once the lock is deleted by hand it finishes the install
+    and sweeps the leftovers. In the project-owned adopt location a killed
+    run can leave a `.<name>.new-*.tmp` file, which nothing sweeps. The
+    tests simulate a death by failing every later filesystem call, so no
+    cleanup or undo runs; they do not kill a real process.
+  - **Durability is per file.** Content is flushed before each rename, but
+    the directory is not, so after a power loss a rename may be undone: each
+    file is then the old or the new one, never empty. This follows from the flush-then-rename order, which the tests
+    check; a power loss itself is not tested.
+  - **Windows** (adopt mode only; fresh mode refuses it): libuv renames with
+    `MoveFileExW(..., MOVEFILE_REPLACE_EXISTING)`
+    ([`fs.c`](https://github.com/libuv/libuv/blob/v1.x/src/win/fs.c)), and
+    Microsoft does not document that replacement as atomic, or promise it
+    succeeds while a reader holds the file open. The install fails closed in
+    that case (that file is not replaced and the earlier ones are put back),
+    but the "never missing" claim is made for POSIX only.
+  - **A filesystem without hard links** (some network and removable
+    filesystems) makes the additive adopt install fail closed with a message
+    saying so, rather than fall back to a write that could be seen
+    truncated. The replacing locations fall back to copying.
+  - **A previous file that can be neither hard-linked nor read** refuses a
+    replacing install before anything is replaced: it could not be put back.
+  - Failures of the checks before the swap (the `lstat` pre-flight) keep the
+    time-of-check-to-time-of-use limit described above.
 - **The adopt survey follows a symlink that stays inside the project** (for
   example `survey-harness.ts` reading a skill's `SKILL.md` that links to
   another project file), but no longer one that leaves it: `survey-harness.ts`

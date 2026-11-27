@@ -522,7 +522,7 @@ describe("a stale .groundwork/customize/ entry that is itself a symlink (item 8)
     expect(readFileSync(outsideFile, "utf8")).toBe("// SENTINEL, stale\n");
   });
 
-  it("[8b] throws 'could not remove the stale ...' before any data write when removing the stale SKILL.md fails, leaving the old install intact", () => {
+  it("[8b] refuses before anything is replaced when the destination directory cannot be written, leaving the old install intact", () => {
     // A root process ignores directory write-permission bits entirely, and
     // Windows has no POSIX chmod semantics -- neither can produce the
     // permission failure this test relies on.
@@ -552,7 +552,8 @@ describe("a stale .groundwork/customize/ entry that is itself a symlink (item 8)
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
     expect(message).toContain("could not install the /customize skill");
-    expect(message).toContain("could not remove the stale");
+    expect(message).toContain("could not take the install lock");
+    expect(message).toContain("nothing was removed or written");
 
     // Every old file is completely untouched -- the failure happened before
     // any data write was attempted.
