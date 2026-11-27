@@ -11,7 +11,8 @@
  * Fresh mode's writers (`emit.ts`, `plugin.ts`) share the same refusals with
  * fresh mode's own single retry instruction ({@link FRESH_RETRY}) instead.
  */
-import { lstatSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
+import { dirname, resolve, sep } from "node:path";
 import type { Stats } from "node:fs";
 import { isAbsentError, permissionCode } from "./survey/internal/read-guard.js";
 
@@ -265,3 +266,43 @@ export function assertNotDirectory(path: string, advice: string): void {
  * ```
  */
 export const FRESH_SYMLINK_ADVICE: string = `remove it, then ${FRESH_RETRY}`;
+
+/**
+ * `path` with every symlink on its way resolved, or `undefined` when that
+ * cannot be said safely. The longest existing prefix is resolved with
+ * `realpathSync` and the part that does not exist yet is appended
+ * lexically, so a destination a writer is about to create resolves too. A
+ * dangling symlink answers `undefined` (a write would follow it to a place
+ * not yet on disk), as does any failure other than "nothing is there"
+ * (`ENOENT`/`ENOTDIR`), such as `ELOOP` or a permission error.
+ *
+ * @example
+ * ```ts
+ * import { resolveRealPath } from "./fs-guard.js";
+ *
+ * resolveRealPath("/work/app/.groundwork/inventory.json");
+ * ```
+ */
+export function resolveRealPath(path: string): string | undefined {
+  const absolute = resolve(path);
+  const missing: string[] = [];
+  let probe = absolute;
+  for (;;) {
+    try {
+      const real = realpathSync(probe);
+      return missing.length === 0 ? real : resolve(real, ...missing.reverse());
+    } catch (error) {
+      if (!isAbsentError(error)) return undefined;
+    }
+    // Nothing resolves at `probe`: it is missing, or a dangling symlink.
+    if (
+      lstatSync(probe, { throwIfNoEntry: false })?.isSymbolicLink() === true
+    ) {
+      return undefined;
+    }
+    const parent = dirname(probe);
+    if (parent === probe) return undefined;
+    missing.push(probe.slice(parent.length + (parent.endsWith(sep) ? 0 : 1)));
+    probe = parent;
+  }
+}

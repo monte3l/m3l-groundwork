@@ -95,7 +95,10 @@ import type { ModeDetection } from "./mode.js";
 import { gradeToolchain } from "./toolchain/grade.js";
 import { escapeControls } from "./format-error.js";
 import { paint } from "./term.js";
-import { assertAdoptWriteScope } from "./write-scope.js";
+import {
+  assertAdoptPlannedScope,
+  assertAdoptWriteScope,
+} from "./write-scope.js";
 import { CliUsageError, USAGE } from "./usage.js";
 import { runAddPack } from "./add-pack.js";
 import { runCheckUpdate } from "./check-update.js";
@@ -981,7 +984,7 @@ function runAdopt(options: CliOptions, detection: ModeDetection): void {
   // condition. The installer lstat-checks every directory component itself
   // (and falls back to .groundwork/customize/ when one under .claude/ is a
   // symlink or not a directory -- see fallbackReason below).
-  assertAdoptWriteScope(options.targetDir, plannedCustomizeSkillPaths());
+  assertAdoptPlannedScope(options.targetDir, plannedCustomizeSkillPaths());
 
   // A symlinked .groundwork/ or staging directory would redirect a delete
   // or a write outside the project; refuse it before anything is deleted.
