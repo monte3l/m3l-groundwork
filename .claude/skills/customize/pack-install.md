@@ -38,7 +38,7 @@ apply blind — and `licensing`, whose one-time SPDX header backfill fails an
 established project's `pnpm verify`) is never auto-installed here even if staged and approved;
 instead, state in Step 7 that it needs a manual install (point at `.groundwork/packs/<name>/` and the pack's own `adoptNotes`, and say to strip the `.staged` suffix from every name when copying by hand and to replace every `__KEY__` token with the project's real value) and stop
 there for that pack. Before merging any staged `pack.json.staged` wiring, repeat
-the prototype-key check from Step 0.4(c): if a key of `wiring.settings`,
+the prototype-key check from Step 0.4(c) (the CLI's `loadPack` already refuses such a pack when it stages it; this is the backstop): if a key of `wiring.settings`,
 `wiring.settingsTopLevel` or `wiring.packageScripts` is `__proto__`,
 `constructor` or `prototype`, stop the same way and change nothing. For an
 adopt-capable pack, install each file from

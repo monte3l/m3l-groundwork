@@ -30,6 +30,7 @@ import { resolveCliVersion } from "./inventory.js";
 import {
   PACK_STATUS_LABELS,
   inspectPackInstallations,
+  unsafeLedgerNames,
   projectNameOf,
 } from "./pack-installation.js";
 import type { PackInstallStatus, ProjectOrigin } from "./pack-installation.js";
@@ -276,6 +277,15 @@ export function runAddPack(options: CliOptions): void {
   }
   const names = [...new Set(options.addPacks)].sort();
   const packs = names.map((name) => resolveAddPack(name));
+
+  // The /customize Record step never updates a ledger entry named like an
+  // object-prototype key, so refuse here, before anything is staged.
+  const unsafeNames = unsafeLedgerNames(targetDir);
+  if (unsafeNames.length > 0) {
+    throw new CliUsageError(
+      `${targetDir}'s .groundwork/installed-packs.json has an entry named ${unsafeNames.map((name) => JSON.stringify(name)).join(", ")}, which no pack can have -- remove it and re-run\n\n${USAGE}`,
+    );
+  }
 
   const report = inspectPackInstallations(targetDir, names);
   const { origin } = report;

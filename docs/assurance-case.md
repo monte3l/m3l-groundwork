@@ -284,9 +284,12 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
   ([#48](https://github.com/monte3l/m3l-groundwork/issues/48),
   [#97](https://github.com/monte3l/m3l-groundwork/issues/97)): the merges
   and `loadPack` throw when a pack fragment carries `__proto__`,
-  `constructor` or `prototype`. The remaining limit is in adopt mode, where
-  `/customize` merges a staged manifest by hand and its check is an
-  instruction to a model, not code. A pack's own `pack.json`/`wiring`
+  `constructor` or `prototype`, and `--add-pack` refuses an
+  installed-packs ledger with an entry of that name before staging anything.
+  The `/customize` skill's own repeat of the check stays as a backstop: it
+  merges a staged manifest by hand, so that repeat is an instruction to a
+  model, not code, but what it guards has already been refused by the CLI and
+  bound by the staged files' hashes. A pack's own `pack.json`/`wiring`
   fragment is also inside this project's trusted-content boundary (see the
   table above).
 - **The hub-and-spoke and branch guards can be overridden by an installed
