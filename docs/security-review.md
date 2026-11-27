@@ -153,6 +153,25 @@ unpacked tarballs, not from running the code; it no longer matters for the
 shipped workflows but explains why the alerts were not dismissed in the
 meantime.
 
+**The `finalize` job's permissions stay as they are.** `finalize` calls the
+shared `release-finalize.yml` with `attest: false`, so none of the shared
+job's steps that need `id-token` or `attestations` (the two `actions/attest`
+steps) run here; only `contents: write` is used, to find and publish the
+draft. The grant cannot be trimmed from this repository anyway: GitHub caps a
+called workflow's permissions at the caller job's, and the shared `publish`
+job declares all three statically, so a caller that grants less fails when the
+run starts, not at the step. Dropping `id-token` and `attestations` needs a
+change in `monte3l/.github` first (a publish-only job that declares
+`contents: write` alone, reached when `attest` is false), then a new
+`release-baseline` pin here. Running `finalize` in the `npm-publish`
+environment is not the fix: it would only add a second required-reviewer
+approval (the environment has required reviewers and a `main`-only branch
+policy), and no OIDC token is minted in this job, so there is nothing for the
+environment to scope. The standing condition is unchanged: re-read this when
+`release-finalize.yml` changes, since a pin bump could start using the OIDC
+token here. Not exercised: no release was run for this review, and a dry run
+of the shared workflow is not possible (it publishes a draft release).
+
 ## Advisory in the docs deploy tooling (deploy-tools lockfile)
 
 **Dated 2026-10-08; fixed by an override (see "The fix" below).** Dependabot opened one
