@@ -47,8 +47,8 @@ committed as `chore` never ships. A push to `main` runs `release.yml`:
    three files to the draft, reads them back, and last stages the package on
    npm with `bin/npm-stage-publish.mjs`. It sits behind the `npm-publish`
    environment.
-4. `finalize` (the shared `release-finalize.yml`, called with `attest: false`
-   because step 3 already attested) publishes the draft, then dispatches
+4. `finalize` (the shared `release-publish.yml`, which needs only
+   `contents: write` because step 3 already attested) publishes the draft, then dispatches
    `release-published` to `m3l-plugins`, which opens the pin-bump pull request.
 
 release-please counts a commit when it changes a file that ships: the CLI, the

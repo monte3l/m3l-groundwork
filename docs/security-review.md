@@ -153,24 +153,22 @@ unpacked tarballs, not from running the code; it no longer matters for the
 shipped workflows but explains why the alerts were not dismissed in the
 meantime.
 
-**The `finalize` job's permissions stay as they are.** `finalize` calls the
-shared `release-finalize.yml` with `attest: false`, so none of the shared
-job's steps that need `id-token` or `attestations` (the two `actions/attest`
-steps) run here; only `contents: write` is used, to find and publish the
-draft. The grant cannot be trimmed from this repository anyway: GitHub caps a
-called workflow's permissions at the caller job's, and the shared `publish`
-job declares all three statically, so a caller that grants less fails when the
-run starts, not at the step. Dropping `id-token` and `attestations` needs a
-change in `monte3l/.github` first (a publish-only job that declares
-`contents: write` alone, reached when `attest` is false), then a new
-`release-baseline` pin here. Running `finalize` in the `npm-publish`
-environment is not the fix: it would only add a second required-reviewer
-approval (the environment has required reviewers and a `main`-only branch
-policy), and no OIDC token is minted in this job, so there is nothing for the
-environment to scope. The standing condition is unchanged: re-read this when
-`release-finalize.yml` changes, since a pin bump could start using the OIDC
-token here. Not exercised: no release was run for this review, and a dry run
-of the shared workflow is not possible (it publishes a draft release).
+**The `finalize` job holds `contents: write` only.** It calls the shared
+`release-publish.yml`, whose single job declares `contents: write` and nothing
+else, and the caller job grants the same. `publish` already attested the
+tarball and SBOM, so `finalize` only finds and publishes the draft, then
+notifies `m3l-plugins`. It was not possible earlier: GitHub caps a called
+workflow's permissions at the caller job's, and the older shared
+`release-finalize.yml` declares `id-token: write` and `attestations: write`
+statically on its job, so a caller granting less failed when the run started.
+The fix was the split in `monte3l/.github`, a publish-only file with no
+attestation step. Running `finalize` in the `npm-publish` environment is not
+needed: it would only add a second required-reviewer approval, and no OIDC
+token is minted in this job, so there is nothing for the environment to scope.
+The standing condition: re-read this when `release-publish.yml` changes, since
+a pin bump could widen what the shared job does or declares. Not exercised: the
+next real release is the proof, and a dry run of the shared workflow is not
+possible (it publishes a draft release).
 
 ## Advisory in the docs deploy tooling (deploy-tools lockfile)
 
