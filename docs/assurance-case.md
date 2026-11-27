@@ -278,10 +278,13 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
     complete. A re-run refuses, naming the lock, rather than guess that the
     owner is gone; once the lock is deleted by hand it finishes the install
     and sweeps the leftovers. In the project-owned adopt location a killed
-    run can leave a `.<name>.new-*.tmp` file, which nothing sweeps.
+    run can leave a `.<name>.new-*.tmp` file, which nothing sweeps. The
+    tests simulate a death by failing every later filesystem call, so no
+    cleanup or undo runs; they do not kill a real process.
   - **Durability is per file.** Content is flushed before each rename, but
     the directory is not, so after a power loss a rename may be undone: each
-    file is then the old or the new one, never empty.
+    file is then the old or the new one, never empty. This follows from the flush-then-rename order, which the tests
+    check; a power loss itself is not tested.
   - **Windows** (adopt mode only; fresh mode refuses it): libuv renames with
     `MoveFileExW(..., MOVEFILE_REPLACE_EXISTING)`
     ([`fs.c`](https://github.com/libuv/libuv/blob/v1.x/src/win/fs.c)), and

@@ -49,6 +49,7 @@ const { mocks, real } = vi.hoisted(() => ({
     fsyncSync: vi.fn(),
     rmSync: vi.fn(),
     readFileSync: vi.fn(),
+    openSync: vi.fn(),
   },
   real: {} as Record<
     | "renameSync"
@@ -56,7 +57,8 @@ const { mocks, real } = vi.hoisted(() => ({
     | "writeFileSync"
     | "fsyncSync"
     | "rmSync"
-    | "readFileSync",
+    | "readFileSync"
+    | "openSync",
     Fn
   >,
 }));
@@ -176,6 +178,51 @@ function thrownBy(run: () => unknown): Error {
   throw new Error("expected the install to throw");
 }
 
+/** Lets `survive` calls of `fn` succeed, then fails that call and everything after it, for every mutating function (a simulated death, not a real kill). */
+function dieAfter(fn: Mocked, survive: number): void {
+  let calls = 0;
+  let dead = false;
+  for (const key of MOCKED) {
+    if (key === "readFileSync" || key === "openSync") {
+      continue;
+    }
+    mocks[key].mockImplementation((...args: unknown[]) => {
+      if (key === fn) {
+        calls++;
+        if (calls > survive) {
+          dead = true;
+        }
+      }
+      if (dead) {
+        throw errno("EIO", "the process died");
+      }
+      return real[key](...args);
+    });
+  }
+}
+
+/**
+ * Pairs each fsync with the file it flushed (through the fd `openSync`
+ * returned), and returns the set of paths flushed so far.
+ */
+function trackFlushedFiles(): Set<string> {
+  const pathOfFd = new Map<number, string>();
+  const flushed = new Set<string>();
+  mocks.openSync.mockImplementation((...args: unknown[]) => {
+    const fd = real.openSync(...args) as number;
+    pathOfFd.set(fd, String(args[0]));
+    return fd;
+  });
+  mocks.fsyncSync.mockImplementation((...args: unknown[]) => {
+    const path = pathOfFd.get(args[0] as number);
+    if (path !== undefined) {
+      flushed.add(path);
+    }
+    return real.fsyncSync(...args);
+  });
+  return flushed;
+}
+
 let sourceDir: string;
 let targetDir: string;
 
@@ -270,31 +317,21 @@ describe.each(REPLACING)("replacing install ($label)", (scenario) => {
     expectNoLeftovers(destDir);
   });
 
-  it("flushes every new file before the first rename, and renames in write order with SKILL.md last", () => {
-    const log: string[] = [];
-    for (const key of ["fsyncSync", "renameSync"] as const) {
-      mocks[key].mockImplementation((...args: unknown[]) => {
-        log.push(
-          key === "renameSync" ? `rename:${basename(String(args[1]))}` : key,
-        );
-        return real[key](...args);
-      });
-    }
+  it("flushes each new file, and that same file, before renaming it; renames in write order with SKILL.md last", () => {
+    const flushed = trackFlushedFiles();
+    const renames: string[] = [];
+    hookCalls("renameSync", (args) => {
+      const from = String(args[0]);
+      expect(flushed.has(from), `${from} renamed before it was flushed`).toBe(
+        true,
+      );
+      renames.push(basename(String(args[1])));
+    });
 
     scenario.run(targetDir, sourceDir);
 
-    const renames = log.filter((entry) => entry.startsWith("rename:"));
-    expect(renames).toEqual(
-      CUSTOMIZE_SKILL_WRITE_ORDER.map((name) => `rename:${name}`),
-    );
-    const firstRename = log.indexOf(renames[0] ?? "");
-    const flushedBefore = log
-      .slice(0, firstRename)
-      .filter((e) => e === "fsyncSync");
-    expect(flushedBefore.length).toBeGreaterThanOrEqual(
-      CUSTOMIZE_SKILL_FILE_NAMES.length,
-    );
-    expect(log.at(-1)).toBe("rename:SKILL.md");
+    expect(renames).toEqual([...CUSTOMIZE_SKILL_WRITE_ORDER]);
+    expect(renames.at(-1)).toBe("SKILL.md");
   });
 
   it.each(CUSTOMIZE_SKILL_WRITE_ORDER.map((name, index) => ({ name, index })))(
@@ -431,6 +468,69 @@ describe.each(REPLACING)("replacing install ($label)", (scenario) => {
     expectNoLeftovers(destDir);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "restores the previous file's mode through the byte-copy path too (hard link refused)",
+    () => {
+      chmodSync(join(destDir, "pack-map.ts"), 0o640);
+      mocks.linkSync.mockImplementation(() => {
+        throw errno("EPERM", "operation not permitted, link");
+      });
+      hookCalls("renameSync", (args) => {
+        if (
+          String(args[1]) === join(destDir, "SKILL.md") &&
+          String(args[0]).includes(".new-")
+        ) {
+          throw errno("EACCES", "permission denied, rename");
+        }
+      });
+
+      thrownBy(() => scenario.run(targetDir, sourceDir));
+      passthrough();
+
+      expect(statSync(join(destDir, "pack-map.ts")).mode & 0o777).toBe(0o640);
+      expect(readFileSync(join(destDir, "pack-map.ts"), "utf8")).toBe(
+        oldContent("pack-map.ts"),
+      );
+    },
+  );
+
+  describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "a previous file this process cannot read (chmod 000) but can link",
+    () => {
+      const unreadable = (): string => join(destDir, "domain-map.ts");
+
+      it("is replaced like any stale copy", () => {
+        chmodSync(unreadable(), 0o000);
+
+        scenario.run(targetDir, sourceDir);
+
+        expectAll(destDir, newContent);
+      });
+
+      it("is put back byte-for-byte, with its mode, when a later rename fails", () => {
+        chmodSync(unreadable(), 0o000);
+        hookCalls("renameSync", (args) => {
+          if (
+            String(args[1]) === join(destDir, "SKILL.md") &&
+            String(args[0]).includes(".new-")
+          ) {
+            throw errno("EACCES", "permission denied, rename");
+          }
+        });
+
+        thrownBy(() => scenario.run(targetDir, sourceDir));
+        passthrough();
+
+        expect(statSync(unreadable()).mode & 0o777).toBe(0);
+        chmodSync(unreadable(), 0o600);
+        expect(readFileSync(unreadable(), "utf8")).toBe(
+          oldContent("domain-map.ts"),
+        );
+        expectNoLeftovers(destDir);
+      });
+    },
+  );
+
   it("refuses up front, replacing nothing, a previous file it can neither hard-link nor read", () => {
     const target = join(destDir, "domain-map.ts");
     mocks.linkSync.mockImplementation(() => {
@@ -500,29 +600,6 @@ describe.each(REPLACING)("replacing install ($label)", (scenario) => {
   );
 
   describe("a run that dies part-way (simulated: every later fs call fails, so no cleanup or undo runs)", () => {
-    /** Lets `survive` calls of `fn` succeed, then fails that call and everything after it, for every mutating function. */
-    function dieAfter(fn: Mocked, survive: number): void {
-      let calls = 0;
-      let dead = false;
-      for (const key of MOCKED) {
-        if (key === "readFileSync") {
-          continue;
-        }
-        mocks[key].mockImplementation((...args: unknown[]) => {
-          if (key === fn) {
-            calls++;
-            if (calls > survive) {
-              dead = true;
-            }
-          }
-          if (dead) {
-            throw errno("EIO", "the process died");
-          }
-          return real[key](...args);
-        });
-      }
-    }
-
     beforeEach(() => {
       vi.spyOn(console, "warn").mockImplementation(() => undefined);
     });
@@ -597,7 +674,7 @@ describe.each(REPLACING)("replacing install ($label)", (scenario) => {
       expectNoLeftovers(destDir);
     });
 
-    it("never has its rollback undone by, nor undoes, the other run: the lock is released after a failure", () => {
+    it("releases the lock after a failed install, so a later run is not refused and completes", () => {
       hookCalls("renameSync", (args) => {
         if (
           String(args[1]) === join(destDir, "SKILL.md") &&
@@ -608,8 +685,11 @@ describe.each(REPLACING)("replacing install ($label)", (scenario) => {
       });
 
       thrownBy(() => scenario.run(targetDir, sourceDir));
-
       expect(readdirSync(destDir)).not.toContain(".install.lock");
+
+      passthrough();
+      scenario.run(targetDir, sourceDir);
+      expectAll(destDir, newContent);
     });
   });
 
@@ -750,31 +830,61 @@ describe("adopt mode's additive install into .claude/skills/customize/", () => {
     destDir = join(targetDir, ".claude", "skills", "customize");
   });
 
-  it("makes every file appear complete or not at all, at every fs step", () => {
-    const observe = (when: string): void => {
-      for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
-        const path = join(destDir, name);
-        if (existsSync(path)) {
-          expect(real.readFileSync(path, "utf8"), `${when}: ${name}`).toBe(
-            newContent(name),
-          );
-        }
-      }
-    };
-    for (const key of MOCKED) {
-      mocks[key].mockImplementation((...args: unknown[]) => {
-        observe(`before ${key}`);
-        const result = real[key](...args);
-        observe(`after ${key}`);
-        return result;
-      });
+  it("only ever links a complete, flushed temporary file onto an absent destination, and never writes to a destination", () => {
+    const flushed = trackFlushedFiles();
+    const linked: string[] = [];
+    hookCalls("linkSync", (args) => {
+      const [from, to] = [String(args[0]), String(args[1])];
+      expect(existsSync(to), `${to} already exists`).toBe(false);
+      expect(flushed.has(from), `${from} linked before it was flushed`).toBe(
+        true,
+      );
+      expect(real.readFileSync(from, "utf8")).toBe(newContent(basename(to)));
+      linked.push(basename(to));
+    });
+    const opened: string[] = [];
+    const trackedOpen = mocks.openSync.getMockImplementation();
+    mocks.openSync.mockImplementation((...args: unknown[]) => {
+      opened.push(String(args[0]));
+      return trackedOpen?.(...args) as unknown;
+    });
+
+    const result = installCustomizeSkillGuarded(targetDir, sourceDir);
+
+    expect(result.location).toBe("claude");
+    expect(linked).toEqual([...CUSTOMIZE_SKILL_WRITE_ORDER]);
+    for (const name of CUSTOMIZE_SKILL_FILE_NAMES) {
+      expect(opened).not.toContain(join(destDir, name));
     }
+    expectAll(destDir, newContent);
+    expectNoLeftovers(destDir);
+  });
+
+  it("a simulated death after 3 links leaves 3 complete files and the next temporary file; the next run completes and the leftover stays", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    dieAfter("linkSync", 3);
+
+    thrownBy(() => installCustomizeSkillGuarded(targetDir, sourceDir));
+    passthrough();
+
+    const left = readdirSync(destDir).toSorted();
+    const temps = left.filter((n) => n.endsWith(".tmp"));
+    expect(temps).toHaveLength(1);
+    expect(temps[0]).toMatch(/^\.plugin-map\.ts\.new-\d+-[0-9a-f]{8}\.tmp$/u);
+    expect(left.filter((n) => !n.endsWith(".tmp"))).toEqual(
+      CUSTOMIZE_SKILL_WRITE_ORDER.slice(0, 3).toSorted(),
+    );
+    for (const name of CUSTOMIZE_SKILL_WRITE_ORDER.slice(0, 3)) {
+      expect(readFileSync(join(destDir, name), "utf8")).toBe(newContent(name));
+    }
+    expect(existsSync(join(destDir, "SKILL.md"))).toBe(false);
 
     const result = installCustomizeSkillGuarded(targetDir, sourceDir);
 
     expect(result.location).toBe("claude");
     expectAll(destDir, newContent);
-    expectNoLeftovers(destDir);
+    // Nothing sweeps a temporary file in the project-owned directory.
+    expect(readdirSync(destDir)).toContain(temps[0]);
   });
 
   it("links the flushed temporary file into place, so SKILL.md is last and exclusive", () => {
@@ -915,6 +1025,30 @@ describe("the install lock", () => {
     writeFileSync(join(destDir, ".install.lock"), "99999\n");
 
     const error = thrownBy(() => installCustomizeSkill(targetDir, sourceDir));
+
+    expect(error.message).toContain(`${join(destDir, ".install.lock")} exists`);
+    expect(error.message).toContain("nothing was removed or written");
+    expectAll(destDir, oldContent);
+    expect(readFileSync(join(destDir, ".install.lock"), "utf8")).toBe(
+      "99999\n",
+    );
+  });
+
+  it("is refused with the lock named, and nothing touched, when one is already held in .groundwork/customize/", () => {
+    mkdirSync(join(targetDir, ".claude", "skills", "customize"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(targetDir, ".claude", "skills", "customize", "SKILL.md"),
+      "a project-authored skill\n",
+    );
+    const destDir = join(targetDir, ".groundwork", "customize");
+    writeOld(destDir);
+    writeFileSync(join(destDir, ".install.lock"), "99999\n");
+
+    const error = thrownBy(() =>
+      installCustomizeSkillGuarded(targetDir, sourceDir),
+    );
 
     expect(error.message).toContain(`${join(destDir, ".install.lock")} exists`);
     expect(error.message).toContain("nothing was removed or written");
