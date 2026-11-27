@@ -28,6 +28,7 @@ import {
   assertDirectoryComponent,
   assertFileDestination,
   FRESH_SYMLINK_ADVICE,
+  resolveRealPath,
 } from "./fs-guard.js";
 import { applyTokens } from "./tokens.js";
 import type { TokenTable } from "./tokens.js";
@@ -37,19 +38,64 @@ import type { TokenTable } from "./tokens.js";
 const BINARY_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".ico"]);
 
 /**
- * True when `target`, once resolved, is `root` itself or lies inside it.
- * Exact match or proper prefix plus a separator -- never a bare
- * `startsWith`, which would wrongly accept a sibling path that merely shares
- * `root`'s name as a prefix (e.g. `/foo/bar-evil` against `/foo/bar`).
+ * True when `target` is `root` itself or lies inside it, both lexically and
+ * once every symlink on the way is resolved. The lexical test is exact match
+ * or proper prefix plus a separator -- never a bare `startsWith`, which would
+ * wrongly accept a sibling path that merely shares `root`'s name as a prefix
+ * (e.g. `/foo/bar-evil` against `/foo/bar`). The real-path test
+ * ({@link resolveRealPath}) then refuses a `target` that reaches outside
+ * `root` through a symlinked directory below it, and answers false when a
+ * path cannot be resolved safely (a dangling link, a loop, a permission
+ * error). Paths that do not exist yet are resolved from their longest
+ * existing prefix, so a planned destination can be checked before it is
+ * written. `root` is taken as given: a caller whose root may itself be a
+ * symlink uses {@link isRealPathContained} with a root built on a real base.
  *
  * @example
  * ```ts
  * isPathContained("/foo/bar/x", "/foo/bar"); // true
  * isPathContained("/foo/bar", "/foo/bar"); // true
  * isPathContained("/foo/bar-evil/x", "/foo/bar"); // false
+ * // /foo/bar/link -> /etc, so a path under it leaves the root:
+ * isPathContained("/foo/bar/link/passwd", "/foo/bar"); // false
  * ```
  */
 export function isPathContained(target: string, root: string): boolean {
+  if (!isLexicallyContained(target, root)) return false;
+  const realRoot = resolveRealPath(root);
+  return realRoot !== undefined && isRealPathContained(target, realRoot);
+}
+
+/**
+ * True when `target`, with every symlink on its way resolved
+ * ({@link resolveRealPath}), is `realRoot` itself or lies inside it. `realRoot`
+ * must already be a real path: it is not resolved here, so a root that is
+ * itself a symlink out of the tree cannot vouch for what lies behind it.
+ * False when `target` cannot be resolved safely.
+ *
+ * @example
+ * ```ts
+ * isRealPathContained("/work/app/.groundwork/x", "/work/app/.groundwork");
+ * ```
+ */
+export function isRealPathContained(target: string, realRoot: string): boolean {
+  const realTarget = resolveRealPath(target);
+  return realTarget !== undefined && isLexicallyContained(realTarget, realRoot);
+}
+
+/**
+ * The string-only half of {@link isPathContained}: `target`, once resolved, is
+ * `root` itself or lies under it by proper prefix plus a separator. It never
+ * touches the filesystem, for the invariants that check paths built from
+ * constants rather than what is on disk.
+ *
+ * @example
+ * ```ts
+ * isLexicallyContained("/foo/bar/x", "/foo/bar"); // true
+ * isLexicallyContained("/foo/bar-evil/x", "/foo/bar"); // false
+ * ```
+ */
+export function isLexicallyContained(target: string, root: string): boolean {
   const resolvedTarget = resolve(target);
   const resolvedRoot = resolve(root);
   return (
@@ -89,7 +135,7 @@ function planEmit(
       // CWE-22 invariant (docs/assurance-case.md): a token value substituted
       // into a path segment must never walk the write out of `targetRoot`.
       assert.ok(
-        isPathContained(targetPath, targetRoot),
+        isLexicallyContained(targetPath, targetRoot),
         `emitTemplate: target path ${resolve(targetPath)} escapes ${resolve(targetRoot)}`,
       );
 
