@@ -210,12 +210,14 @@ the lockfile's miniflare 5.20261119.0-beta (wrangler 4.166.0) requires sharp
 unchanged, a clean `npm ci --ignore-scripts` installs, `npm audit` reports
 0 vulnerabilities and `wrangler deploy --dry-run` completes.
 
-**The `undici` override stays.** `tools/deploy/package.json` still overrides
-`undici` to `^7.29.1`. Its recorded condition is that miniflare itself requires
-undici 7.29.1 or later. On 2026-11-27 miniflare 5.20261119.0-beta pins undici
-`7.30.2` exactly, so the condition looks met; dropping the override is a
-separate change that needs the same `npm ci`, `npm audit` and dry-run checks.
-The same condition is in [`cloudflare-docs.md`](cloudflare-docs.md).
+**The `undici` override is dropped (2026-11-27).** The condition was met:
+the lockfile's miniflare 5.20261119.0-beta, `@cloudflare/workers-utils` 0.56.0
+and wrangler 4.166.0 each require undici `7.30.2` exactly, and `npm ls undici`
+shows one copy, 7.30.2. With the override removed (and `overrides` gone from
+`tools/deploy/package.json`) the lockfile is unchanged, `npm audit` reports 0
+vulnerabilities before and after, a clean `npm ci --ignore-scripts` installs and
+`wrangler deploy --dry-run` completes. The same condition was in
+[`cloudflare-docs.md`](cloudflare-docs.md), which no longer lists an override.
 
 **Decision.** Nothing is dismissed. The reachability analysis above stands
 even with the fix: a change that adds an Images binding to `wrangler.jsonc`, or runs `wrangler dev`

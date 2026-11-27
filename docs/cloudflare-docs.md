@@ -23,14 +23,9 @@ on GitHub.
 
 ## Dependency overrides
 
-`tools/deploy/package.json` carries an `overrides` floor for one package.
-
-- `undici: ^7.29.1`, because wrangler 4.141.0's miniflare resolves an undici
-  with open advisories. Drop it once miniflare itself requires undici 7.29.1
-  or later.
-
-A `sharp` floor was dropped on 2026-11-27, once miniflare itself required sharp
-0.35.5 (see `security-review.md`).
+`tools/deploy/package.json` carries no `overrides` entry. The `sharp` and
+`undici` floors were dropped on 2026-11-27, once miniflare itself required
+sharp 0.35.5 and undici 7.30.2 (see `security-review.md`).
 
 `.github/workflows/dependency-review.yml` allows the LGPL libvips binaries
 that `sharp` pulls in, by package name rather than by license.
