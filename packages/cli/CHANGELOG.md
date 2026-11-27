@@ -1,5 +1,15 @@
 # @monte3l/groundwork
 
+## [1.6.1](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.6.0...@monte3l/groundwork@1.6.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **cli:** leave a concurrent run's staging work directory alone ([6926329](https://github.com/monte3l/m3l-groundwork/commit/69263292809cec62cbcd583913eb4821ab5938eb))
+* **cli:** refuse an installed-packs ledger with a prototype-sensitive name ([3a7c969](https://github.com/monte3l/m3l-groundwork/commit/3a7c96916919808a6635ddd9d85e4900e278d755))
+* **cli:** replace skill files by atomic rename so none is missing or truncated ([1a808b2](https://github.com/monte3l/m3l-groundwork/commit/1a808b23d5059f9de108690672e8a9670f7e675b))
+* **cli:** resolve symlinks before the adopt-mode containment checks ([c5664cf](https://github.com/monte3l/m3l-groundwork/commit/c5664cfb475a89abd84089091000703b2c0d2805))
+
 ## [1.6.0](https://github.com/monte3l/m3l-groundwork/compare/@monte3l/groundwork@1.5.0...@monte3l/groundwork@1.6.0) (2026-11-26)
 
 
