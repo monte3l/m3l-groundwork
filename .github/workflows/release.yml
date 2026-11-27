@@ -335,22 +335,16 @@ jobs:
 
   # Publishes the draft last, then dispatches to m3l-plugins so it opens the
   # pin pull request. The tarball and SBOM were attested by `publish`, so the
-  # shared workflow only publishes.
+  # shared release-publish.yml only publishes and needs `contents: write`.
   finalize:
     name: Finalize
     needs: [prepare, publish]
     if: needs.prepare.outputs.releases_created == 'true'
-    # Only contents is used with `attest: false`, but the shared workflow's job
-    # declares all three, and a caller may not grant less than a called job asks
-    # for. See docs/security-review.md, "The `finalize` job's permissions".
     permissions:
       contents: write
-      id-token: write
-      attestations: write
-    uses: monte3l/.github/.github/workflows/release-finalize.yml@490d616b98cf8a798c021a2c893ea496bc0acc43 # release-baseline
+    uses: monte3l/.github/.github/workflows/release-publish.yml@8d0aae31248de42005dadf78f1285487ba08880d # release-baseline
     with:
       tag: ${{ needs.prepare.outputs.tag_name }}
-      attest: false
       notify: '["m3l-plugins"]'
     secrets:
       RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
