@@ -17,8 +17,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   renameSync,
+  statSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -236,17 +238,63 @@ export function isIncompleteStagingError(error: unknown): error is Error {
   );
 }
 
+/** The file inside a work directory that names the process running the staging, so a sweep can tell a live run's directory from a crashed one's. */
+const WORK_DIR_OWNER_FILE = ".owner-pid";
+
+/** How old a work directory must be before a sweep removes it even when its owner's pid still answers (a pid is reused, so a live pid alone is not proof of a live run). */
+const WORK_DIR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Whether a process with this pid exists (`EPERM` means it does, owned by someone else). */
+function pidIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 /**
- * Removes every entry of `groundworkDir` whose name starts with
- * `.<dirName>-`, best effort (a removal failure only warns). Its purpose is
- * reclaiming work directories a crashed earlier run left behind, but there
- * is no PID or age check: any matching entry is removed, whatever made it,
- * because `.groundwork/` is CLI-owned. So two concurrent runs against the
- * same directory can delete each other's in-progress work directory; the
- * run that loses fails with the generic {@link incompleteStagingError}
- * ("`.groundwork/` is incomplete -- re-run the CLI"). Nothing else in
- * `groundworkDir` is touched; a missing `groundworkDir` is a no-op. Failing
- * to list `groundworkDir` at all throws {@link incompleteStagingError}.
+ * Whether a sweep must leave `workDir` alone: it names, in
+ * {@link WORK_DIR_OWNER_FILE}, another process that is still running, and it
+ * is younger than {@link WORK_DIR_MAX_AGE_MS}. A directory with no readable
+ * owner file (a crash before it was written, or an older CLI's), one naming
+ * this process (a leftover of an earlier call of this run) or a dead process,
+ * and one past the age limit are stale. Any failure to look means stale: the
+ * sweep's purpose is removal, and a directory it cannot judge is the CLI's own.
+ */
+function isLiveWorkDir(workDir: string): boolean {
+  try {
+    const pid = Number.parseInt(
+      readFileSync(join(workDir, WORK_DIR_OWNER_FILE), "utf8").trim(),
+      10,
+    );
+    if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) {
+      return false;
+    }
+    if (Date.now() - statSync(workDir).mtimeMs > WORK_DIR_MAX_AGE_MS) {
+      return false;
+    }
+    return pidIsAlive(pid);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Removes the entries of `groundworkDir` whose name starts with
+ * `.<dirName>-` and that are stale, best effort (a removal failure only
+ * warns). Its purpose is reclaiming work directories a crashed earlier run
+ * left behind. A work directory carries its process's pid
+ * ({@link WORK_DIR_OWNER_FILE}); one whose process is still running (and under
+ * a day old) belongs to a concurrent run and is skipped, so two runs against
+ * the same directory no longer delete each other's in-progress work. What is
+ * removed is everything else that matches: a dead owner, this process's own
+ * leftover, an entry with no owner file, one past the age limit. The one gap
+ * left is the instant between a run creating its work directory and writing
+ * the owner file. Nothing else in `groundworkDir` is touched; a missing
+ * `groundworkDir` is a no-op. Failing to list `groundworkDir` at all throws
+ * {@link incompleteStagingError}.
  */
 function removeStaleWorkDirs(target: StagingTarget): void {
   const { groundworkDir, dirName, noun } = target;
@@ -261,7 +309,7 @@ function removeStaleWorkDirs(target: StagingTarget): void {
   }
   const prefix = `.${dirName}-`;
   for (const name of names) {
-    if (name.startsWith(prefix)) {
+    if (name.startsWith(prefix) && !isLiveWorkDir(join(groundworkDir, name))) {
       removeBestEffort(join(groundworkDir, name));
     }
   }
@@ -369,10 +417,10 @@ export interface StagingTarget {
  * The first step of every staging run: refuses a symlinked `groundworkDir`
  * or `<groundworkDir>/<dirName>` (before anything is deleted or written),
  * then sweeps the `.<dirName>-*` work directories a crashed earlier run
- * left. The sweep removes **every** entry of the CLI-owned `.groundwork/`
- * whose name matches `.<dirName>-*`, whatever created it -- including a
- * concurrent run's in-progress work directory, so two runs against the same
- * directory can fail each other with the standard incomplete/re-run error;
+ * left. The sweep removes the stale ones: an entry whose owner pid
+ * ({@link WORK_DIR_OWNER_FILE}) names another running process, and is under a
+ * day old, is a concurrent run's in-progress work directory and is skipped;
+ * anything else matching `.<dirName>-*` is removed;
  * a failure to remove one only warns. Returns the staging directory's path.
  *
  * @throws `Error` naming the path when either directory is a symlink; the
@@ -480,6 +528,7 @@ export function stageAtomically<T>(
   try {
     mkdirSync(target.groundworkDir, { recursive: true });
     workDir = mkdtempSync(join(target.groundworkDir, `.${target.dirName}-`));
+    writeFileSync(join(workDir, WORK_DIR_OWNER_FILE), String(process.pid));
     const newDir = join(workDir, target.dirName);
     mkdirSync(newDir);
     const result = write(newDir);

@@ -579,10 +579,38 @@ export function readInstalledPacksLedger(targetDir: string): {
   entries: LedgerEntry[];
   undetermined: string[];
 } {
+  const { names, entries, undetermined } = scanInstalledPacksLedger(targetDir);
+  return { names, entries, undetermined };
+}
+
+/**
+ * The prototype-sensitive names (`__proto__`, `constructor`, `prototype`) the
+ * installed-packs ledger carries as an entry's `name`, in order. These are the
+ * entries {@link readInstalledPacksLedger} skips with a note; the `--add-pack`
+ * run refuses on them instead, so a ledger the `/customize` Record step could
+ * never update stops the run before anything is staged. Empty for a missing,
+ * unreadable or malformed ledger (those are reported by
+ * {@link readInstalledPacksLedger}). Never throws.
+ *
+ * @example
+ * ```ts
+ * if (unsafeLedgerNames("/path/to/project").length > 0) console.log("refuse");
+ * ```
+ */
+export function unsafeLedgerNames(targetDir: string): string[] {
+  return scanInstalledPacksLedger(targetDir).unsafe;
+}
+
+function scanInstalledPacksLedger(targetDir: string): {
+  names: string[];
+  entries: LedgerEntry[];
+  undetermined: string[];
+  unsafe: string[];
+} {
   const rel = `${GROUNDWORK}/installed-packs.json`;
   const undetermined: string[] = [];
   if (projectEntry(targetDir, rel).kind === "absent") {
-    return { names: [], entries: [], undetermined };
+    return { names: [], entries: [], undetermined, unsafe: [] };
   }
 
   const read = readJsonFile(targetDir, rel);
@@ -590,25 +618,26 @@ export function readInstalledPacksLedger(targetDir: string): {
     undetermined.push(
       `${read.reason} -- the installed-packs ledger was ignored`,
     );
-    return { names: [], entries: [], undetermined };
+    return { names: [], entries: [], undetermined, unsafe: [] };
   }
   const ledger = read.value;
   if (schemaVersionOf(ledger) !== LEDGER_SCHEMA_VERSION || !isRecord(ledger)) {
     undetermined.push(
       `${rel} is not a schemaVersion ${String(LEDGER_SCHEMA_VERSION)} ledger object -- ignored`,
     );
-    return { names: [], entries: [], undetermined };
+    return { names: [], entries: [], undetermined, unsafe: [] };
   }
   const packs: unknown = Object.hasOwn(ledger, "packs")
     ? ledger["packs"]
     : undefined;
   if (!Array.isArray(packs)) {
     undetermined.push(`${rel} has no packs array -- ignored`);
-    return { names: [], entries: [], undetermined };
+    return { names: [], entries: [], undetermined, unsafe: [] };
   }
 
   const names: string[] = [];
   const entries: LedgerEntry[] = [];
+  const unsafe: string[] = [];
   let skipped = 0;
   for (const entry of packs as unknown[]) {
     const name: unknown =
@@ -620,6 +649,9 @@ export function readInstalledPacksLedger(targetDir: string): {
       typeof name !== "string" ||
       isPrototypeSensitiveKey(name)
     ) {
+      if (typeof name === "string" && isPrototypeSensitiveKey(name)) {
+        unsafe.push(name);
+      }
       skipped++;
       continue;
     }
@@ -636,7 +668,7 @@ export function readInstalledPacksLedger(targetDir: string): {
       `${rel}: ${String(skipped)} entr${skipped === 1 ? "y" : "ies"} without a usable pack name skipped`,
     );
   }
-  return { names, entries, undetermined };
+  return { names, entries, undetermined, unsafe };
 }
 
 /**
