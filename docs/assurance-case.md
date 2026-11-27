@@ -201,9 +201,12 @@ for the full write-up, and `SECURITY.md`'s "Dynamic analysis".
 - **`--add-pack`'s symlink guard has adopt mode's limits.** It is an
   `lstat` check made before the writes, so a component swapped for a symlink
   after the check is not covered, and `targetDir` itself and its ancestors
-  are not checked. Its stale-work-dir sweep removes any `.<name>-*` entry
-  under `.groundwork/add-pack/`, so two concurrent runs staging the same pack
-  can fail each other with the incomplete/re-run error.
+  are not checked. Its stale-work-dir sweep
+  skips a `.<name>-*` work directory whose owner file names another running
+  process (under a day old), so two concurrent runs staging the same pack no
+  longer remove each other's work. What remains is the instant between a run
+  creating its work directory and writing that file, and a directory left by
+  an older CLI, which has no owner file and is swept as stale.
 - **Adopted projects can contain arbitrarily hostile config files**; the
   survey/grader code is written defensively against that (never execute,
   always degrade to `{ checked: 0 }`/`undetermined` rather than guess), but
